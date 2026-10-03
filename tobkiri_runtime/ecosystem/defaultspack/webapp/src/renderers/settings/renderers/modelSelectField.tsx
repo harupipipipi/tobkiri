@@ -4,6 +4,7 @@ import { Info } from "lucide-react";
 import type { ModelSearchItem } from "../../../lib/api";
 import {
   enrichModelSelectOptions,
+  mergeRegisteredModelProfileOptions,
   ModelSearchPicker,
   findSelectedModelOption,
   modelProviderOptions,
@@ -19,6 +20,23 @@ import {
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
 import type { SettingsFieldRendererProps } from "../fieldRendererRegistry";
 import { fieldOptions, modelSelectTargetFieldId, SettingsFieldShell } from "./settingsFieldRendererUtils";
+
+const REGISTERED_ROUTE_MODEL_TARGETS = new Set([
+  "preferred_model",
+  "main_model",
+  "lightweight_model",
+]);
+
+export function modelSelectOptionsForSettingsTarget(
+  targetFieldId: string,
+  catalogOptions: ModelSelectOption[],
+  modelProfiles: SettingsFieldRendererProps["modelProfiles"] = [],
+): ModelSelectOption[] {
+  if (REGISTERED_ROUTE_MODEL_TARGETS.has(targetFieldId)) {
+    return mergeRegisteredModelProfileOptions(catalogOptions, modelProfiles);
+  }
+  return enrichModelSelectOptions(catalogOptions, modelProfiles);
+}
 
 export function SettingsModelSearchField({
   value,
@@ -169,7 +187,8 @@ export function BuiltinModelSelectRenderer({
 }: SettingsFieldRendererProps) {
   const targetFieldId = modelSelectTargetFieldId(field);
   const selectedValue = String(sectionValues?.[targetFieldId] ?? value ?? field.default ?? "");
-  const options = enrichModelSelectOptions(
+  const options = modelSelectOptionsForSettingsTarget(
+    targetFieldId,
     fieldOptions(field).map(modelFieldOptionToModelSelectOption),
     modelProfiles,
   );

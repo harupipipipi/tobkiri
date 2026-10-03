@@ -13,10 +13,10 @@ from typing import Any, Callable, Mapping
 AUTHORITY = "rumi.service.host.authorize.v1"
 AGENT_STATE_RESOURCE = "rumi.resource.agent.state.v1"
 AGENT_STATE_ACTION = "rumi.action.agent.state.v1"
-CONVERSATION_RESOURCE = "rumi.resource.conversation.v1"
+CONVERSATION_RESOURCE = "tobkiri.resource.conversation.v1"
 MESSAGE_ACTION = "rumi.action.message.manage.v1"
-TURN_RESOURCE = "rumi.resource.turn.v1"
-TURN_ACTION = "rumi.action.turn.lifecycle.v1"
+TURN_RESOURCE = "tobkiri.resource.turn.v1"
+TURN_ACTION = "tobkiri.action.turn.lifecycle.v1"
 CONTEXT = "rumi.service.context.v1"
 AI_GENERATE = "rumi.service.ai.generate.v1"
 TOOL_INVOKE = "rumi.service.tool.invoke.v1"
@@ -500,6 +500,9 @@ class AgentRuntime:
             "get",
             {"profile_id": self.profile_id, "conversation_id": conversation_id},
         )
+        if not isinstance(value, Mapping):
+            raise KeyError("agent conversation is unknown")
+        value = value.get("conversation", value)
         if not isinstance(value, Mapping):
             raise KeyError("agent conversation is unknown")
         return dict(value)

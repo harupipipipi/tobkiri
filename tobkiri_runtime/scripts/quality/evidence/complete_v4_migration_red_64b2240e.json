@@ -11,14 +11,14 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 3,
+      "migration_evidence": 4,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 143,
     "migration_status": {
       "generated-draft": 1,
-      "release-verified": 141,
-      "semantically-reviewed": 1
+      "release-verified": 140,
+      "semantically-reviewed": 2
     },
     "production_pack_directories": 143,
     "v4_artifact_files": 572,
@@ -37,6 +37,18 @@
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
+      {
+        "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch"
+        ],
+        "line": 1,
+        "pack_id": "rumi_agent_runtime_service_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
       {
         "errors": [
           "curated_review_source_digest_mismatch",
@@ -71,16 +83,17 @@
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
+          "rumi_agent_runtime_service_pack",
           "rumi_provider_adapters_pack",
           "rumi_provider_registry_pack"
         ],
         "status_counts": {
           "generated-draft": 1,
-          "release-verified": 141,
-          "semantically-reviewed": 1
+          "release-verified": 140,
+          "semantically-reviewed": 2
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 2
+        "unverified_count": 3
       }
     ],
     "offline_projection": []
@@ -143,6 +156,18 @@
             "runtime_receipt_target_digest_mismatch"
           ],
           "line": 1,
+          "pack_id": "rumi_agent_runtime_service_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch"
+          ],
+          "line": 1,
           "pack_id": "rumi_provider_adapters_pack",
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "pack_release_proof_invalid",
@@ -170,16 +195,17 @@
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
+            "rumi_agent_runtime_service_pack",
             "rumi_provider_adapters_pack",
             "rumi_provider_registry_pack"
           ],
           "status_counts": {
             "generated-draft": 1,
-            "release-verified": 141,
-            "semantically-reviewed": 1
+            "release-verified": 140,
+            "semantically-reviewed": 2
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 2
+          "unverified_count": 3
         }
       ],
       "status": "RED"
@@ -943,8 +969,8 @@
     },
     "migration_status_counts": {
       "generated-draft": 1,
-      "release-verified": 141,
-      "semantically-reviewed": 1
+      "release-verified": 140,
+      "semantically-reviewed": 2
     },
     "migration_status_records": [
       {
@@ -964,7 +990,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_runtime_service_pack",
@@ -2247,8 +2273,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "09199572ab70e36c56704b089da49e7894d8fcf7",
-    "semantic_digest": "sha256:8fa1779efc45507634d28f831d70710fca40e5f786fc4ce89ac9d8c338d684ff",
+    "observed_head_sha": "30c8d65894466178439632935ebd2c7a8b743694",
+    "semantic_digest": "sha256:76eed25c6818ee805b58df966a7aa8eef0c4ed13788dbb25ad9f77e96bee093e",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

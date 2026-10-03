@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:977070b39f122c32826d3227f53fcca1883a51a52f0618e69dc17bb155dcfb25",
+  "catalog_digest": "sha256:77c95204c0635bf514a555304792c66cb8a458d460ae17f6b9a9164fc99a42c6",
   "pack_id": "rumi_agent_runtime_service_pack",
-  "source_identity": "sha256:4e8f2344aa2ef8c99d0b12fcde1c9e02dd3d0da87ce83c7cfbfb69ba9cf095bc",
+  "source_identity": "sha256:06142e418ec25a0748206694946cd72e51827ea0df7bfb02fc5c00c8e67f437a",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
-      "implementation_digest": "sha256:e0d97b9e55724486c67d2a9cb37ab64e78e5ad4c9f34563143355765b77490da",
+      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
       "implementation_path": "runtime/runtime.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
-      "implementation_digest": "sha256:e0d97b9e55724486c67d2a9cb37ab64e78e5ad4c9f34563143355765b77490da",
+      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
       "implementation_path": "runtime/runtime.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
-      "implementation_digest": "sha256:e0d97b9e55724486c67d2a9cb37ab64e78e5ad4c9f34563143355765b77490da",
+      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
       "implementation_path": "runtime/runtime.py",
       "materialization_mode": "on_demand",
       "operations": [

@@ -49,12 +49,12 @@
     {
       "path": "packs/rumi_agent_runtime_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:dc0236121131851aa3199d56a3eda379ba97b884b71335ceae232b2dfb79d20c"
+      "digest": "sha256:7f686d5156aa083d520f695c88387c7cf88c63fcdd149994174ac1e62259d802"
     },
     {
       "path": "packs/rumi_agent_runtime_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:4574ba8982c3010759c9bfbe7df244e4ab201129d040218ea69b3950b9beffcd"
+      "digest": "sha256:2160d1f0f11128c85be54937685ed4469705f1b8039c1d25e2a67ba773044ee6"
     },
     {
       "path": "packs/rumi_agent_state_store_pack.executables.v4.json",

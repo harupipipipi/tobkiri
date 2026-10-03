@@ -12,9 +12,9 @@ from core_runtime.global_contract_dispatch import (
     invoke_global_contract,
 )
 
-TURN_RESOURCE = "rumi.resource.turn.v1"
-TURN_ACTION = "rumi.action.turn.lifecycle.v1"
-CONVERSATION_RESOURCE = "rumi.resource.conversation.v1"
+TURN_RESOURCE = "tobkiri.resource.turn.v1"
+TURN_ACTION = "tobkiri.action.turn.lifecycle.v1"
+CONVERSATION_RESOURCE = "tobkiri.resource.conversation.v1"
 _TERMINAL = {"completed", "failed", "cancelled"}
 
 
@@ -257,6 +257,9 @@ class ConversationSteerStore:
             "get",
             {"conversation_id": conversation_id},
         )
+        if not isinstance(conversation, Mapping):
+            raise KeyError("conversation is unknown")
+        conversation = conversation.get("conversation", conversation)
         if not isinstance(conversation, Mapping):
             raise KeyError("conversation is unknown")
         return _invoke(

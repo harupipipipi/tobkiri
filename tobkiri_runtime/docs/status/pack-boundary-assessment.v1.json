@@ -313,7 +313,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/ecosystem.json",
-          "sha256": "bd8b8fb8a40b44298dc95902cc089f353ce0a43e7f416390ec3d84b57b196561"
+          "sha256": "8260c400e12a63baf8660d67b4cdc40c733271bd09552931d0888d3c26558e5b"
         }
       ]
     },

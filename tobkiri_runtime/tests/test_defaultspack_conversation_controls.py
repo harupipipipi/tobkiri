@@ -22,8 +22,10 @@ def steer_runtime(monkeypatch):
         if contract_id == steer_module.CONVERSATION_RESOURCE:
             assert operation == "get"
             return {
-                "id": payload["conversation_id"],
-                "conversation_revision": 1,
+                "conversation": {
+                    "id": payload["conversation_id"],
+                    "conversation_revision": 1,
+                }
             }
         if contract_id == steer_module.TURN_RESOURCE:
             if operation == "get":

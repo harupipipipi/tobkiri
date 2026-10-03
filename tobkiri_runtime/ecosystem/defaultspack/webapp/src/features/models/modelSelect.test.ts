@@ -22,6 +22,7 @@ import {
   modelOptionThinkingLevels,
   modelProviderOptions,
   modelSearchItemToModelSelectOption,
+  mergeRegisteredModelProfileOptions,
   parseModelProviderQuery,
   parseModelAllowlist,
   serializeModelAllowlist,
@@ -29,6 +30,7 @@ import {
 } from "./modelSelect";
 import {
   SettingsModelSearchField,
+  modelSelectOptionsForSettingsTarget,
   withThinkingLevelForModel,
 } from "../../renderers/settings/renderers/modelSelectField";
 
@@ -239,6 +241,71 @@ test("settings options recover model capability metadata from the Host-read prof
   assert.deepEqual(modelOptionThinkingLevels(option), ["low", "high"]);
   assert.equal(option.default_thinking_level, "high");
   assert.equal(option.supports_vision, true);
+});
+
+test("settings main and lightweight slots include saved routes with canonical identities", () => {
+  const catalogOptions: ModelSelectOption[] = [
+    {
+      value: "provider.openai_compatible.gemma1b/gemma-3-1b-it",
+      label: "Catalog Gemma",
+      provider_id: "provider.openai_compatible.gemma1b",
+      model_id: "gemma-3-1b-it",
+    },
+    { value: "stub/default", label: "Stub Default", provider_id: "stub", model_id: "default" },
+  ];
+  const route = {
+    profile_id: "gemma1b-local",
+    display_name: "Gemma 3 1B Local",
+    provider_id: "provider.openai_compatible.gemma1b",
+    provider_display_name: "Local Gemma",
+    model_id: "gemma-3-1b-it",
+    route_configured: true,
+    local: true,
+    supports_thinking: true,
+    thinking_levels: ["low", "high"],
+  };
+
+  const mainOptions = modelSelectOptionsForSettingsTarget("main_model", catalogOptions, [route]);
+  const lightweightOptions = modelSelectOptionsForSettingsTarget("lightweight_model", catalogOptions, [route]);
+  for (const options of [mainOptions, lightweightOptions]) {
+    assert.deepEqual(options.map((option) => option.value), ["stub/default", "gemma1b-local"]);
+    const saved = options[1];
+    assert.equal(saved.label, "Gemma 3 1B Local");
+    assert.equal(saved.provider_id, "provider.openai_compatible.gemma1b");
+    assert.equal(saved.provider_display_name, "Local Gemma");
+    assert.equal(saved.model_id, "gemma-3-1b-it");
+    assert.equal(saved.configured, true);
+    assert.equal(saved.local, true);
+    assert.deepEqual(saved.thinking_levels, ["low", "high"]);
+  }
+});
+
+test("saved routes replace matching catalog aliases without hiding unrelated options", () => {
+  const options = mergeRegisteredModelProfileOptions([
+    { value: "gemma1b-local", label: "Duplicate saved route" },
+    {
+      value: "provider.openai_compatible.gemma1b/gemma-3-1b-it",
+      label: "Duplicate provider/model alias",
+      provider_id: "provider.openai_compatible.gemma1b",
+      model_id: "gemma-3-1b-it",
+    },
+    { value: "other/model", label: "Other Model" },
+  ], [{
+    profile_id: "gemma1b-local",
+    display_name: "Gemma 3 1B Local",
+    provider_id: "provider.openai_compatible.gemma1b",
+    model_id: "gemma-3-1b-it",
+    route_configured: true,
+  }, {
+    profile_id: "not-saved",
+    display_name: "Not Saved",
+    provider_id: "provider.other",
+    model_id: "other",
+    route_configured: false,
+  }]);
+
+  assert.deepEqual(options.map((option) => option.value), ["other/model", "gemma1b-local"]);
+  assert.equal(options[1].label, "Gemma 3 1B Local");
 });
 
 test("settings model selector keeps thinking next to the selected model", () => {

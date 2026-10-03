@@ -154,6 +154,84 @@ export function enrichModelSelectOptions(
   });
 }
 
+function registeredModelProfileOption(profile: ModelProfile): ModelSelectOption | null {
+  const value = String(profile.profile_id ?? "").trim();
+  const providerId = String(profile.provider_id ?? "").trim();
+  const modelId = String(profile.model_id ?? "").trim();
+  if (!value || !providerId || !modelId || profile.route_configured !== true) return null;
+
+  const availability = profile.availability ?? {};
+  return {
+    // The saved profile ID is the route's canonical selection identity. A
+    // provider/model alias can name a different saved route.
+    value,
+    label: String(profile.display_name ?? value).trim() || value,
+    provider_id: providerId,
+    provider_display_name: String(profile.provider_display_name ?? providerId).trim() || providerId,
+    model_id: modelId,
+    qualified_model_id: String(profile.qualified_model_id ?? "").trim() || undefined,
+    configured: true,
+    local: Boolean(profile.local || availability.local || availability.offline),
+    supports_vision: profile.supports_vision,
+    supports_image_input: profile.supports_image_input,
+    supports_tool_calling: profile.supports_tool_calling,
+    supports_thinking: profile.supports_thinking,
+    supports_fast: profile.supports_fast,
+    thinking_levels: profile.thinking_levels,
+    default_thinking_level: profile.default_thinking_level,
+    speed_tier: profile.speed_tier,
+    quality_tier: profile.quality_tier,
+    cost_tier: profile.cost_tier,
+    knowledge_level: profile.knowledge_level,
+    capability_tags: profile.capability_tags,
+    recommended_roles: profile.recommended_roles,
+  };
+}
+
+function modelOptionIdentityKeys(option: ModelSelectOption): Set<string> {
+  const providerId = String(option.provider_id ?? option.provider ?? "").trim();
+  const modelId = String(option.model_id ?? "").trim();
+  return new Set([
+    option.value,
+    option.qualified_model_id,
+    providerId && modelId ? `${providerId}/${modelId}` : "",
+  ].map((value) => String(value ?? "").trim()).filter(Boolean));
+}
+
+function matchingModelOptionIdentities(
+  first: ModelSelectOption,
+  second: ModelSelectOption,
+): boolean {
+  const firstKeys = modelOptionIdentityKeys(first);
+  return [...modelOptionIdentityKeys(second)].some((key) => firstKeys.has(key));
+}
+
+/**
+ * Add enabled, saved routes to a catalog-backed Settings picker.
+ *
+ * Catalog options describe built-in defaults, while saved profiles carry the
+ * canonical route identity selected by the runtime. When they describe the
+ * same provider/model, keep the saved route so a Settings change persists the
+ * exact profile ID instead of a provider/model alias.
+ */
+export function mergeRegisteredModelProfileOptions(
+  catalogOptions: ModelSelectOption[],
+  modelProfiles: ModelProfile[] = [],
+): ModelSelectOption[] {
+  const registered = dedupeModelSelectOptions(modelProfiles
+    .map(registeredModelProfileOption)
+    .filter((option): option is ModelSelectOption => option !== null));
+  if (registered.length === 0) return enrichModelSelectOptions(catalogOptions, modelProfiles);
+
+  const unmatchedCatalog = catalogOptions.filter((option) => (
+    !registered.some((saved) => matchingModelOptionIdentities(option, saved))
+  ));
+  return [
+    ...enrichModelSelectOptions(unmatchedCatalog, modelProfiles),
+    ...registered,
+  ];
+}
+
 export function modelSearchItemToModelSelectOption(item: ModelSearchItem): ModelSelectOption {
   const providerId = String(item.provider_id ?? "").trim();
   const modelId = String(item.model_id ?? "").trim();
