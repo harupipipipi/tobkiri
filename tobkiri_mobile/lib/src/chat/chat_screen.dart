@@ -1080,8 +1080,8 @@ class _ChatScreenState extends State<ChatScreen>
             if (_activeSpaceIsPc) ...[
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('DeepThink'),
-                subtitle: const Text('PCのDeepThink設定'),
+                title: const Text('tobkirithink'),
+                subtitle: const Text('PCのtobkirithink設定'),
                 value: _pcDeepthinkEnabled,
                 onChanged: (value) {
                   Navigator.of(context).pop();
@@ -1340,7 +1340,7 @@ class _ChatScreenState extends State<ChatScreen>
       orElse: () => PcCommandItem.fromJson(<String, dynamic>{
         'id': 'deepthink',
         'name': 'deepthink',
-        'label': 'DeepThink',
+        'label': 'tobkirithink',
         'category': 'model',
         'visibility': 'default',
         'risk': 'medium',

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "io.tobkiri.quality.pack-migration-runtime-receipts.v1",
+  "title": "Exact Pack migration runtime receipts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "authority",
+    "generator_id",
+    "receipts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "io.tobkiri.quality.pack-migration-runtime-receipts.v1"
+    },
+    "authority": {
+      "const": "host-runtime-receipts"
+    },
+    "generator_id": {
+      "type": "null"
+    },
+    "receipts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "isolated-conformance": {
+            "type": "object",
+            "properties": {
+              "operation_executions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/operationExecution"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "Historical v1 receipts remain readable. Nonempty inventories are release-eligible only with complete measured operation_executions, validated against exact reviewed identities and the Host receipt.",
+  "$defs": {
+    "operationExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "pack_id",
+        "target_digest",
+        "host_instance_id",
+        "function_id",
+        "contract_id",
+        "operation_id",
+        "invocation_id",
+        "observed_at",
+        "outcome",
+        "input_digest",
+        "output_digest"
+      ],
+      "properties": {
+        "method": {
+          "const": "host-operation-invocation.v1"
+        },
+        "pack_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "host_instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contract_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "input_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "output_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

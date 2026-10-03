@@ -1,0 +1,37 @@
+{
+  "artifact_set_digest": "sha256:84a8f44f491b0658d671bbb24bef56cc243d3f9922355b37adc6672f430e23a6",
+  "artifacts": [
+    {
+      "digest": "sha256:3b176e839e7c504358a4d9641ca56ddaa3e725799cd938e54d2eedce1e910ea3",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:7c5ddbc8dab3920109a0ba53fb52f2e3ea6bdb6f2796ba7ecbfca4a670946c75",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:99012984fe6716c02a57f514838957b63e5a71ab22654393b75c04091967379f",
+      "path": "frontend/contributions/ai-strategy.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:25ad75d6bd5816784f5f4ae329bdf15b797981954c0ec4e9ed5246fa44a9877b",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61",
+      "path": "runtime/strategy.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:9330f8c46e3bf0605b2aaa6b59786c7fc678a9b5804acce8ada8b5856db274a6"
+  },
+  "pack_id": "rumi_deepthink_pack",
+  "source_identity": "sha256:b1b41217b96a9ab47a43d183e99aa20769f4c64b50c38ac174819aab4fb29ec6"
+}

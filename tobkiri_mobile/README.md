@@ -29,7 +29,7 @@ menu for PC controls:
 
 - choose any selectable PC model/profile reported by the PC capabilities
   endpoint;
-- toggle PC turn options such as DeepThink/thinking levels when the selected
+- toggle PC turn options such as tobkirithink/thinking levels when the selected
   model supports them;
 - run PC slash commands from the menu instead of typing them manually.
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-revoke-debug-approval"
+description = "Enables the revoke_debug_approval command without any pre-configured scope."
+commands.allow = ["revoke_debug_approval"]
+
+[[permission]]
+identifier = "deny-revoke-debug-approval"
+description = "Denies the revoke_debug_approval command without any pre-configured scope."
+commands.deny = ["revoke_debug_approval"]

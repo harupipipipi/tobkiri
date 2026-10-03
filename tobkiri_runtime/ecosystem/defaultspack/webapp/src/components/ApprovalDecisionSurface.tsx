@@ -3,11 +3,23 @@ import { useEffect, useId, useRef } from "react";
 
 import type { ApprovalStatus, ApprovalViewModel } from "../lib/approvalPresentation";
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "./ErrorNotice";
 
 const STATUS_LABELS: Record<ApprovalStatus, string> = {
   pending: "判断を待っています", approving: "許可を保存しています", denying: "拒否を保存しています",
   approved: "許可済み", denied: "拒否済み", expired: "期限切れ", stale: "処理済み", error: "再試行が必要です",
 };
+
+function approvalErrorCopyText(approval: ApprovalViewModel): string {
+  return [
+    STATUS_LABELS.error,
+    `${approval.title}: ${approval.consequence}`,
+    `対象: ${approval.target}`,
+    `必要な理由: ${approval.reason}`,
+    `影響とリスク: ${approval.riskExplanation}`,
+    `技術的な詳細:\n${JSON.stringify(approval.technicalDetails, null, 2)}`,
+  ].join("\n\n");
+}
 
 type Props = {
   approval: ApprovalViewModel;
@@ -43,7 +55,7 @@ export function ApprovalDecisionSurface({ approval, onApprove, onDeny, onOpenTru
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200"><ShieldAlert size={15} /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300">Rumi が許可を求めています</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300">Tobkiri が許可を求めています</p>
           <h2 id={headingId} className="mt-1 break-words text-sm font-semibold leading-5 text-zinc-100">{approval.title}</h2>
           <p className="mt-1 break-words text-xs leading-5 text-zinc-300">{approval.consequence}</p>
         </div>
@@ -65,7 +77,17 @@ export function ApprovalDecisionSurface({ approval, onApprove, onDeny, onOpenTru
         <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-black/30 p-2 font-mono">{JSON.stringify(approval.technicalDetails, null, 2)}</pre>
       </details>
 
-      <p ref={statusRef} role="status" aria-live="polite" className="mt-2 text-[11px] text-zinc-500">{STATUS_LABELS[approval.status]}</p>
+      {approval.status === "error" ? (
+        <ErrorNotice
+          className="mt-2 px-2 py-1.5 text-[11px]"
+          copyLabel="承認エラーをコピー"
+          copyText={approvalErrorCopyText(approval)}
+          errorIcon="approval-decision"
+          message={STATUS_LABELS.error}
+        />
+      ) : (
+        <p ref={statusRef} role="status" aria-live="polite" className="mt-2 text-[11px] text-zinc-500">{STATUS_LABELS[approval.status]}</p>
+      )}
 
       {actionable && approval.trustedWindowRequired && onOpenTrustedWindow && (
         <div className="mt-3 rounded-lg border border-sky-500/25 bg-sky-500/5 p-2.5">

@@ -1,0 +1,134 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:1a75386073f86521bfdd361ee60c375e246107c6762a019f8e2dabf8a8b6331c",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:33d9f699a92c4ef64d4d1797c9014936c1c07cdcc4ea2a44df5cf63ebc2f7f60",
+      "kind": "executable",
+      "path": "runtime/adapter.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.connector.adapter.v1",
+      "operations": [
+        "rumi_line_connector_pack.line-adapter"
+      ],
+      "revision_digest": "sha256:73470a390f086beb6c39e07ab54a01ae71ea3730a1df8f25cb3c57f3bf9525cf"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:73470a390f086beb6c39e07ab54a01ae71ea3730a1df8f25cb3c57f3bf9525cf",
+      "id": "rumi_line_connector_pack.connector.line",
+      "implementation_digest": "sha256:33d9f699a92c4ef64d4d1797c9014936c1c07cdcc4ea2a44df5cf63ebc2f7f60",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_line_connector_pack.line-adapter"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:cc01088aed52fae29b2476488222a182bad8d913af686e8c1b1ca0a8d022b336",
+    "contract_catalog_digest": "sha256:9c17c6be19f5230041b519ae4b7f811331f81d16d1c8c27741489f6a7eeaac41",
+    "source_identity": "sha256:d8024baa2be6a1809e05982596091f67e3ff6f2725b67008753284462a10e479"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.connector.adapter.v1",
+      "rumi:ecosystem/rumi_line_connector_pack",
+      "rumi_line_connector_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.connector.adapter.v1",
+      "effect_ceiling": [
+        "capability:connector.adapter.verify",
+        "capability:connector.delivery.execute",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_line_connector_pack.line-adapter",
+      "owner": "rumi_line_connector_pack",
+      "provider_id": "rumi_line_connector_pack.connector.line",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:cc01088aed52fae29b2476488222a182bad8d913af686e8c1b1ca0a8d022b336",
+    "display_name": "Rumi LINE Connector",
+    "id": "rumi_line_connector_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:d8024baa2be6a1809e05982596091f67e3ff6f2725b67008753284462a10e479",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:d8024baa2be6a1809e05982596091f67e3ff6f2725b67008753284462a10e479",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_line_connector_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.connector.adapter.v1",
+      "operations": [
+        "rumi_line_connector_pack.line-adapter"
+      ],
+      "owner": "rumi_line_connector_pack",
+      "provider_id": "rumi_line_connector_pack.connector.line"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "connector.adapter.verify",
+      "connector.delivery.execute",
+      "credential.resolve",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.credential.resolve.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

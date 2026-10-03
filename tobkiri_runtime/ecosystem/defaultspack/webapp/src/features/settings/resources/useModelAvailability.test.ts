@@ -4,6 +4,16 @@ import assert from "node:assert/strict";
 import { availabilityCopy, isModelsAvailable, type ModelAvailabilityAfterKeySave } from "./useModelAvailability";
 
 describe("model availability after key save", () => {
+  it("treats a successful save without an availability snapshot as successful", () => {
+    const value: ModelAvailabilityAfterKeySave = { status: "saved" };
+
+    assert.equal(isModelsAvailable(value), false);
+    assert.deepEqual(availabilityCopy(value), {
+      tone: "success",
+      text: "API key saved.",
+    });
+  });
+
   it("treats populated models_available responses as successful", () => {
     const value: ModelAvailabilityAfterKeySave = {
       status: "models_available",

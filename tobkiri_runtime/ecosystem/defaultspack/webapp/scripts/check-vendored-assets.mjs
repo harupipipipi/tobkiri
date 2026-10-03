@@ -70,6 +70,10 @@ function sha256(filePath) {
   return createHash("sha256").update(hashBytes).digest("hex");
 }
 
+function normalizedText(filePath) {
+  return readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+}
+
 function assertPackageLock(errors) {
   const lockPath = path.join(WEBAPP_ROOT, "package-lock.json");
   const lock = JSON.parse(readFileSync(lockPath, "utf8"));
@@ -121,13 +125,15 @@ function assertNotice(errors) {
     errors.push(`missing MediaPipe notice: public/${NOTICE_PATH}`);
     return;
   }
-  const notice = readFileSync(noticePath, "utf8");
+  const notice = normalizedText(noticePath);
   for (const required of [
     MEDIAPIPE_TASKS_VISION.package,
     MEDIAPIPE_TASKS_VISION.version,
     MEDIAPIPE_TASKS_VISION.license,
+    MEDIAPIPE_TASKS_VISION.integrity,
     "hand_landmarker.task",
     "SHA-256",
+    ...ASSETS.flatMap((asset) => [asset.path, asset.sha256]),
   ]) {
     if (!notice.includes(required)) errors.push(`public/${NOTICE_PATH} is missing ${required}`);
   }
@@ -136,6 +142,9 @@ function assertNotice(errors) {
     if (!existsSync(generatedNotice)) {
       if (REQUIRE_UI_ASSETS) errors.push(`missing packaged MediaPipe notice: ${generatedRoot.label}/${NOTICE_PATH}`);
       continue;
+    }
+    if (normalizedText(generatedNotice) !== notice) {
+      errors.push(`public/${NOTICE_PATH} and ${generatedRoot.label}/${NOTICE_PATH} are out of sync`);
     }
   }
 }

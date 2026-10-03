@@ -19,12 +19,21 @@ from __future__ import annotations
 import enum
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
+
+
+_this_module = sys.modules.get(__name__)
+if _this_module is not None:
+    if __name__.startswith("tobkiri_runtime."):
+        sys.modules.setdefault(__name__.removeprefix("tobkiri_runtime."), _this_module)
+    else:
+        sys.modules.setdefault(f"tobkiri_runtime.{__name__}", _this_module)
 
 
 # ============================================================

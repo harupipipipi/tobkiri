@@ -1,38 +1,52 @@
-# Profile Workspace
+# Profile Workspace v4
 
-Profile workspaces live under `<RUMI_USER_DATA>/profiles/<profile_id>/` and isolate per-profile runtime data without removing legacy `settings/startup_profiles.json`.
+Profile workspaces live under `<RUMI_USER_DATA>/workspaces/<profile_id>/`.
+They are state containers, not Profile authorities.
 
 ```text
-profiles/<profile_id>/
-  profile.yaml
-  user_data/
-  database/rumi.sqlite
-  startup/launch.yaml
-  startup/surface.yaml
-  flows/
-  prompts/
-  ecosystem/snapshots/
-  permissions/grants.yaml
-  permissions/tool_policy.yaml
-  permissions/approvals.yaml
+workspaces/<profile_id>/
+  activation/          # digest-bound ActivationStore envelopes
+  state/
+    workspace.json     # state-only marker
+    rumi.sqlite
+  artifacts/
+  snapshots/
   audit/events.jsonl
 ```
 
-`profile.yaml` mirrors the startup profile's core fields: identity, pack and graph selection, runtime profile fields, policy, permissions defaults, node overrides, and timestamps.
+The verified `Profile v5 -> ProfileLock v5 -> ResolvedPlan v2 -> ActivationRecord
+v2` chain is the only source of active identity, Pack membership, providers,
+permissions, policy, Shell, and resource bindings. Files inside a workspace may
+store application state and audit evidence, but runtime code must not interpret
+them as authority.
 
-`user_data/` is the future per-profile runtime data root. `database/rumi.sqlite` is the profile-scoped database path returned by the resolver APIs. `startup/` stores launch and surface configuration. `flows/` and `prompts/` hold profile overrides. `ecosystem/snapshots/` contains lockfiles for copied defaultspack resources. `permissions/` is a source of defaults, not a grant bypass. `audit/events.jsonl` records profile-scoped events.
+Frozen Profile v4, ProfileLock v4, ResolvedPlan v1, and ActivationRecord v1
+records are accepted only by the restart migrator. Migration validates the
+legacy envelope and Authority reservation, reconstructs current records from
+the signed bundle, and atomically publishes the successor. It is not a general
+legacy configuration importer and cannot fill missing trust data from the
+workspace or client input.
 
-Migration reads `<RUMI_USER_DATA>/settings/startup_profiles.json`, creates missing `profile.yaml` files, writes `profiles/active_profile.json`, and records `profiles/.migration_state.json`. The legacy file remains the compatibility source for StartupProfileManager state until stores are fully moved.
+The retired layout is not read or generated:
 
-## Runtime Database Scope
+- `profiles/<id>/profile.yaml`
+- `profiles/active_profile.json`
+- `settings/startup_profiles.json`
+- per-Profile startup, surface, policy, permission, or approval YAML
 
-This PR introduces profile database path resolution through `resolve_runtime_database_path()` and profile user-data root resolution through `resolve_runtime_user_data_dir()`. Creating or launching a profile initializes `<RUMI_USER_DATA>/profiles/<profile_id>/database/rumi.sqlite` and exposes that path in launch payloads and active ecosystem metadata.
+There is no in-process compatibility migration from those files. Importing old
+configuration, when provided by an offline tool, must produce canonical v4
+artifacts and pass normal verification before activation.
 
-This PR does not migrate every runtime store to the profile-scoped database yet. Full migration of runtime stores to profile-scoped DB and profile-scoped user data remains a follow-up unless a store is already explicitly wired.
+## Runtime state scope
 
-Follow-up TODOs:
+`resolve_runtime_database_path()` returns
+`workspaces/<profile_id>/state/rumi.sqlite`.
+`resolve_runtime_user_data_dir()` returns the active Profile workspace. The
+workspace manager exposes the `state/` child to stateful Pack services and
+creates only state, artifact, snapshot, and audit locations.
 
-- ChatStore: use `resolve_runtime_database_path()` before opening chat persistence.
-- MemoryStore: use `resolve_runtime_database_path()` for SQLite-backed memory.
-- Settings managers and settings files: use `resolve_runtime_user_data_dir()` instead of the legacy global user-data root.
-- Attachments and uploaded files: use `resolve_runtime_user_data_dir()` for profile-scoped storage.
+ChatStore, MemoryStore, Attachments, and other runtime stores must resolve their
+paths from the verified active Profile. They must never fall back to a shared
+database or infer a Profile from environment variables, a mutable marker, or a
+legacy Profile document.
