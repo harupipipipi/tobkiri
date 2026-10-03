@@ -58,9 +58,34 @@ export function savedTurnSnapshotState(
     && !isAssistantMessageStillRunning(assistant) ? "current" : "pending";
 }
 
-export function savedTurnSnapshotNotice(state: ReturnType<typeof savedTurnSnapshotState>): string | null {
-  if (state === "changed") return "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。";
-  if (state === "unavailable") return "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。";
+export type SavedTurnSnapshotNotice = {
+  message: string;
+  title: string;
+  tone: "success" | "warning";
+};
+
+/**
+ * Presents an owner-verified saved-turn result without treating a newer
+ * conversation snapshot as a failed send. Pending and mismatched snapshots
+ * deliberately have no notice because their callers must keep reconciling.
+ */
+export function savedTurnSnapshotNotice(
+  state: ReturnType<typeof savedTurnSnapshotState>,
+): SavedTurnSnapshotNotice | null {
+  if (state === "changed") {
+    return {
+      tone: "success",
+      title: "送信を確認しました",
+      message: "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。",
+    };
+  }
+  if (state === "unavailable") {
+    return {
+      tone: "warning",
+      title: "現在の会話を確認できません",
+      message: "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。",
+    };
+  }
   return null;
 }
 

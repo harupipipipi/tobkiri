@@ -162,6 +162,11 @@ export type ChatHeaderRendererProps = {
 };
 
 export type ChatMessagesRendererProps = {
+  completionNotice?: {
+    message: string;
+    title: string;
+    tone: "success" | "warning";
+  } | null;
   error: string | null;
   isMessagesRegionVisible: boolean;
   isLoading: boolean;
@@ -183,6 +188,7 @@ export type ChatMessagesRendererProps = {
   onOpenToolPreview?: (previewId: string) => void;
   onLoadPromptTrace?: (traceId: string, profileId?: string) => Promise<PromptUsageSummary>;
   onRetry?: () => void;
+  onDismissCompletionNotice?: () => void;
   onDismissError?: () => void;
 };
 

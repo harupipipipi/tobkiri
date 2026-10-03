@@ -35,6 +35,7 @@ export type ChatMessage = {
   conversation_id: string;
   parent_id?: string | null;
   children_ids?: string[];
+  sequence?: number;
   sequence_number?: number;
   finish_reason?: string | null;
   usage?: Record<string, number> | null;

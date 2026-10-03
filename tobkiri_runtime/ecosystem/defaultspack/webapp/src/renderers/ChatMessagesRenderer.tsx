@@ -1673,6 +1673,7 @@ function PendingToolTray({
 }
 
 export function ChatMessagesRenderer({
+  completionNotice,
   error,
   isMessagesRegionVisible,
   isLoading,
@@ -1693,6 +1694,7 @@ export function ChatMessagesRenderer({
   onOpenToolPreview,
   onLoadPromptTrace,
   onRetry,
+  onDismissCompletionNotice,
   onDismissError,
 }: ChatMessagesRendererProps) {
   const [imagePreview, setImagePreview] = useState<ImagePreviewRequest | null>(null);
@@ -1708,6 +1710,50 @@ export function ChatMessagesRenderer({
 
   return (
     <>
+      {completionNotice && (
+        <div
+          aria-live="polite"
+          className={cn(
+            "rumi-chat-completion-notice mx-4 mt-3 flex items-start gap-2 rounded-xl border px-3.5 py-3",
+            completionNotice.tone === "success"
+              ? "border-emerald-400/25 bg-emerald-500/[0.09] text-emerald-100"
+              : "border-amber-400/25 bg-amber-500/[0.09] text-amber-100",
+          )}
+          data-chat-completion-notice={completionNotice.tone}
+          role="status"
+        >
+          <span
+            className={cn(
+              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center",
+              completionNotice.tone === "success" ? "text-emerald-300" : "text-amber-300",
+            )}
+          >
+            {completionNotice.tone === "success"
+              ? <Check aria-hidden="true" size={15} />
+              : <CircleAlert aria-hidden="true" size={15} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-semibold">{completionNotice.title}</p>
+            <p className="mt-1 whitespace-pre-wrap text-[12px] leading-5 opacity-80">{completionNotice.message}</p>
+          </div>
+          {onDismissCompletionNotice ? (
+            <button
+              aria-label="通知を閉じる"
+              className={cn(
+                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-white/10",
+                completionNotice.tone === "success"
+                  ? "text-emerald-200/70 hover:text-emerald-50"
+                  : "text-amber-200/70 hover:text-amber-50",
+              )}
+              onClick={onDismissCompletionNotice}
+              title="閉じる"
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          ) : null}
+        </div>
+      )}
       {error && (
         <ErrorNotice
           className="rumi-chat-error mx-4 mt-3 rounded-xl border-red-400/25 bg-red-500/[0.09] px-3.5 py-3 text-red-100"

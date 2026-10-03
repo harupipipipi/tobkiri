@@ -118,8 +118,16 @@ test("saved completion distinguishes current, changed, unavailable and unverifie
   assert.equal(classify(null, { ...turn, result_reference: undefined }), "pending");
   assert.equal(classify(snapshot, { ...turn, id: "other" }), "pending");
   assert.equal(classify(snapshot, { ...turn, result_reference: { ...turn.result_reference!, outcome_digest: "forged" } }), "pending");
-  assert.match(savedTurnSnapshotNotice("changed")!, /その後更新/);
-  assert.match(savedTurnSnapshotNotice("unavailable")!, /自動再送はしません/);
+  assert.deepEqual(savedTurnSnapshotNotice("changed"), {
+    tone: "success",
+    title: "送信を確認しました",
+    message: "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。",
+  });
+  assert.deepEqual(savedTurnSnapshotNotice("unavailable"), {
+    tone: "warning",
+    title: "現在の会話を確認できません",
+    message: "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。",
+  });
   assert.equal(savedTurnSnapshotNotice("current"), null);
 });
 

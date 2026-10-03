@@ -872,6 +872,60 @@ test("chat send error exposes retry and dismiss actions without truncating the m
   assert.match(html, /Network connection failed/);
 });
 
+test("verified saved completion renders a non-error chat notice", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    completionNotice: {
+      tone: "success",
+      title: "送信を確認しました",
+      message: "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。",
+    },
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+    onDismissCompletionNotice: () => undefined,
+  }));
+
+  assert.match(html, /data-chat-completion-notice="success"/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /送信を確認しました/);
+  assert.match(html, /aria-label="通知を閉じる"/);
+  assert.doesNotMatch(html, /処理を完了できませんでした|rumi-chat-error|role="alert"/);
+});
+
+test("unavailable saved conversation keeps an explicit warning notice", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    completionNotice: {
+      tone: "warning",
+      title: "現在の会話を確認できません",
+      message: "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。",
+    },
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /data-chat-completion-notice="warning"/);
+  assert.match(html, /現在の会話を確認できません/);
+  assert.match(html, /自動再送はしません/);
+  assert.doesNotMatch(html, /処理を完了できませんでした|role="alert"/);
+});
+
 test("message copy keeps the double-square glyph while status is announced separately", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,

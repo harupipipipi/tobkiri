@@ -11,13 +11,13 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 5,
+      "migration_evidence": 6,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 143,
     "migration_status": {
-      "generated-draft": 2,
-      "release-verified": 139,
+      "generated-draft": 3,
+      "release-verified": 138,
       "semantically-reviewed": 2
     },
     "production_pack_directories": 143,
@@ -45,6 +45,23 @@
         ],
         "line": 1,
         "pack_id": "rumi_agent_runtime_service_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_conversation_store_pack",
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "pack_release_proof_invalid",
         "symbol": "pack_release_proof_invalid"
@@ -101,17 +118,18 @@
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
           "rumi_agent_runtime_service_pack",
+          "rumi_conversation_store_pack",
           "rumi_provider_adapters_pack",
           "rumi_provider_registry_pack",
           "rumi_turn_runtime_pack"
         ],
         "status_counts": {
-          "generated-draft": 2,
-          "release-verified": 139,
+          "generated-draft": 3,
+          "release-verified": 138,
           "semantically-reviewed": 2
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 4
+        "unverified_count": 5
       }
     ],
     "offline_projection": []
@@ -181,6 +199,23 @@
         },
         {
           "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_conversation_store_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
             "curated_review_source_digest_mismatch",
             "curated_review_target_digest_mismatch",
             "runtime_receipt_target_digest_mismatch"
@@ -231,17 +266,18 @@
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
             "rumi_agent_runtime_service_pack",
+            "rumi_conversation_store_pack",
             "rumi_provider_adapters_pack",
             "rumi_provider_registry_pack",
             "rumi_turn_runtime_pack"
           ],
           "status_counts": {
-            "generated-draft": 2,
-            "release-verified": 139,
+            "generated-draft": 3,
+            "release-verified": 138,
             "semantically-reviewed": 2
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 4
+          "unverified_count": 5
         }
       ],
       "status": "RED"
@@ -1004,8 +1040,8 @@
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 2,
-      "release-verified": 139,
+      "generated-draft": 3,
+      "release-verified": 138,
       "semantically-reviewed": 2
     },
     "migration_status_records": [
@@ -1354,7 +1390,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_conversation_store_pack",
@@ -2309,8 +2345,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "b3ab24d2f842f8325caf548ff9b04821edd249ba",
-    "semantic_digest": "sha256:03574d9cc744cbc244516142b0e6ec086373a1228e2fdf672999fa79393c37f1",
+    "observed_head_sha": "67c54b73d26221d0ec5b936c2da3d6c4079c9e72",
+    "semantic_digest": "sha256:f37981281310246f32e5d1dc40b103361fa90d28a2cc3837683c8d1c95ccec96",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

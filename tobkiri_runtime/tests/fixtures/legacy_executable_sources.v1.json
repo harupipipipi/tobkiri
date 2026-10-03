@@ -58,7 +58,7 @@
         "contract_id": "tobkiri.action.message.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "implementation_digest": "sha256:4317cdd7869f147d5bac6497eaeeb6b5f31567557f9fa0040bcd5f42b2c47de4",
         "operation_ids": [
           "rumi_conversation_store_pack.message-manage"
         ]
@@ -74,7 +74,7 @@
         "contract_id": "tobkiri.action.conversation.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "implementation_digest": "sha256:4317cdd7869f147d5bac6497eaeeb6b5f31567557f9fa0040bcd5f42b2c47de4",
         "operation_ids": [
           "rumi_conversation_store_pack.conversation-manage"
         ]
@@ -90,7 +90,7 @@
         "contract_id": "tobkiri.resource.conversation.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "implementation_digest": "sha256:4317cdd7869f147d5bac6497eaeeb6b5f31567557f9fa0040bcd5f42b2c47de4",
         "operation_ids": [
           "rumi_conversation_store_pack.conversation-resource"
         ]

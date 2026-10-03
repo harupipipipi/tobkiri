@@ -1,5 +1,6 @@
 """Captured owner message actions reject replay and identity widening."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -102,12 +103,14 @@ def test_message_actions_round_trip_and_replay(tmp_path: Path) -> None:
             **base,
             "operation": "update",
             "message_id": "user-1",
-            "patch": {"content": "Edited"},
+            "patch": {"content": "Edited", "sequence_number": 99},
             "expected_conversation_revision": 2,
         },
         None,
     )
     assert result["message"]["content"] == "Edited"
+    assert result["message"]["sequence"] == 0
+    assert result["message"]["sequence_number"] == 1
     invoke(
         OPERATION_ID,
         {
@@ -132,6 +135,70 @@ def test_message_actions_round_trip_and_replay(tmp_path: Path) -> None:
     assert store.get("one")["conversation_revision"] == 5
     assert not ConversationStore("other", user_data_root=tmp_path).path.exists()
     captured.close()
+
+
+def test_owner_projects_and_repairs_legacy_duplicate_sequence_numbers(
+    tmp_path: Path,
+) -> None:
+    """Distinct legacy rows remain visible and repair on the next owner write."""
+    store = ConversationStore("defaults", user_data_root=tmp_path)
+    store.create({"id": "one"}, expected_revision=0)
+    revision = 1
+    parent_id = None
+    for index, role in enumerate(("user", "assistant", "user")):
+        message_id = f"message-{index}"
+        result = store.append_message(
+            "one",
+            {
+                "id": message_id,
+                "role": role,
+                "content": f"content-{index}",
+                "parent_id": parent_id,
+            },
+            expected_conversation_revision=revision,
+        )
+        revision = result["conversation_revision"]
+        parent_id = message_id
+
+    state = json.loads(store.path.read_text(encoding="utf-8"))
+    legacy_messages = state["conversations"]["one"]["messages"]
+    for message in legacy_messages:
+        message["sequence_number"] = 1
+    store.path.write_text(json.dumps(state), encoding="utf-8")
+    legacy_bytes = store.path.read_bytes()
+
+    projected = store.get("one")
+    assert projected is not None
+    assert [item["id"] for item in projected["messages"]] == [
+        "message-0",
+        "message-1",
+        "message-2",
+    ]
+    assert [item["sequence"] for item in projected["messages"]] == [0, 1, 2]
+    assert [item["sequence_number"] for item in projected["messages"]] == [1, 2, 3]
+    assert projected["current_node_id"] == "message-2"
+    assert store.path.read_bytes() == legacy_bytes
+
+    appended = store.append_message(
+        "one",
+        {
+            "id": "message-3",
+            "role": "assistant",
+            "content": "content-3",
+            "parent_id": "message-2",
+            "sequence_number": 1,
+        },
+        expected_conversation_revision=revision,
+    )
+    assert appended["message"]["sequence"] == 3
+    assert appended["message"]["sequence_number"] == 4
+
+    persisted = json.loads(store.path.read_text(encoding="utf-8"))
+    persisted_messages = persisted["conversations"]["one"]["messages"]
+    assert [item["sequence"] for item in persisted_messages] == [0, 1, 2, 3]
+    assert [item["sequence_number"] for item in persisted_messages] == [1, 2, 3, 4]
+    assert persisted["conversations"]["one"]["current_node_id"] == "message-3"
+    assert persisted_messages[2]["children_ids"] == ["message-3"]
 
 
 @pytest.mark.parametrize(

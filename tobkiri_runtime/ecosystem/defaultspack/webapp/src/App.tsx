@@ -118,7 +118,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -2044,6 +2044,47 @@ function completedGuidanceLineageIsSettled(
   return true;
 }
 
+function settledGuidanceTerminalNotice(
+  turn: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+  seen: Set<string> = new Set(),
+): string | null {
+  if (seen.has(turn.id) || savedTurnStatus(turn) !== "completed") return null;
+  seen.add(turn.id);
+  for (const guidance of turn.guidance ?? []) {
+    if (guidance.value.auto_send !== true) continue;
+    if (!isAutomaticGuidanceForConversation(guidance, conversationId)) return null;
+    const children = [...turnsById.values()].filter((child) => (
+      child.guidance_parent_turn_id === turn.id
+      && child.guidance_id === guidance.id
+      && exactGuidanceFollowup(turn, child, turnsById, conversationId)
+    ));
+    if (children.length !== 1) return null;
+    const [child] = children;
+    const guidanceStatus = guidance.status.trim().toLowerCase();
+    const childStatus = savedTurnStatus(child);
+    if (guidanceStatus === "failed") {
+      if (childStatus === "failed") {
+        return "追加指示は失敗で終了しました。自動再送はしません。";
+      }
+      if (childStatus === "cancelled") {
+        return "追加指示の停止を確認しました。自動再送はしません。";
+      }
+      return null;
+    }
+    if (guidanceStatus !== "sent" || childStatus !== "completed") return null;
+    const descendantNotice = settledGuidanceTerminalNotice(
+      child,
+      turnsById,
+      conversationId,
+      seen,
+    );
+    if (descendantNotice) return descendantNotice;
+  }
+  return null;
+}
+
 export function pendingSavedTurnChainForConversation(
   turns: readonly SavedTurn[],
   conversationId: string,
@@ -2079,6 +2120,29 @@ export function pendingSavedTurnChainForConversation(
   return lineage
     ? { state: "active", root, active, lineage }
     : { state: "unsettled", root };
+}
+
+/**
+ * Returns a terminal descendant outcome only after the canonical list proves
+ * one complete, exact root-to-child guidance lineage. This keeps a completed
+ * root from being presented as a successful overall interaction when its
+ * server-owned automatic follow-up failed or was cancelled.
+ */
+export function savedTurnGuidanceTerminalNotice(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+): string | null {
+  const chain = pendingSavedTurnChainForConversation(
+    turns,
+    conversationId,
+    rootTurnId,
+  );
+  if (chain.state !== "settled") return null;
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (conversationTurns.length !== turnsById.size) return null;
+  return settledGuidanceTerminalNotice(chain.root, turnsById, conversationId);
 }
 
 export function pendingSavedTurnForConversation(
@@ -2944,6 +3008,9 @@ export function ChatApp() {
     { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
   ]);
   const [error, setError] = useState<string | null>(null);
+  const [savedTurnCompletionNotice, setSavedTurnCompletionNotice] = useState<(
+    SavedTurnSnapshotNotice & { conversationId: string }
+  ) | null>(null);
   const [transientAlert, setTransientAlert] = useState<TransientAlertItem | null>(null);
   const transientAlertSequenceRef = useRef(0);
   const composerAlertAnchorRef = useRef<HTMLDivElement>(null);
@@ -4535,8 +4602,9 @@ export function ChatApp() {
             return;
           }
           if (turn.status === "completed") {
+            let listedTurns = await api.listSavedTurns(activeConversationId);
             let chain = pendingSavedTurnChainForConversation(
-              await api.listSavedTurns(activeConversationId),
+              listedTurns,
               activeConversationId,
               pendingRequest.operationId,
             );
@@ -4582,8 +4650,9 @@ export function ChatApp() {
                 });
                 return;
               }
+              listedTurns = await api.listSavedTurns(activeConversationId);
               chain = pendingSavedTurnChainForConversation(
-                await api.listSavedTurns(activeConversationId),
+                listedTurns,
                 activeConversationId,
                 pendingRequest.operationId,
               );
@@ -4602,6 +4671,26 @@ export function ChatApp() {
               }
             }
             setSteerItems(savedTurnGuidanceItems(chain.root));
+            const guidanceTerminalNotice = savedTurnGuidanceTerminalNotice(
+              listedTurns,
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            if (guidanceTerminalNotice) {
+              const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+                if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+                throw error;
+              });
+              if (disposed) return;
+              if (conversation) setActiveConversation(conversation);
+              setSavedTurnCompletionNotice(null);
+              setError(guidanceTerminalNotice);
+              forgetPendingRequest(activeConversationId);
+              replaceChatIdInUrl(activeConversationId, false);
+              setIsGenerating(false);
+              void refreshConversations(activeConversationId);
+              return;
+            }
           }
           if (turn.status !== "completed") {
             const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
@@ -4634,7 +4723,11 @@ export function ChatApp() {
             throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
           }
           setActiveConversation(conversation);
-          setError(savedTurnSnapshotNotice(state));
+          const snapshotNotice = savedTurnSnapshotNotice(state);
+          setError(null);
+          setSavedTurnCompletionNotice(snapshotNotice
+            ? { ...snapshotNotice, conversationId: activeConversationId }
+            : null);
           forgetPendingRequest(activeConversationId);
           replaceChatIdInUrl(activeConversationId, false);
           setIsGenerating(false);
@@ -7128,6 +7221,7 @@ export function ChatApp() {
     setIsGenerating(true);
     cancelPendingMentionAttachments();
     setError(null);
+    setSavedTurnCompletionNotice(null);
     if (wasNewConversation) {
       setIsNewChatLaunching(true);
     }
@@ -7282,7 +7376,36 @@ export function ChatApp() {
       if (snapshotState === "pending") {
         throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
       }
-      setError(savedTurnSnapshotNotice(snapshotState));
+      const listedTurns = await api.listSavedTurns(conversation.id);
+      const guidanceChain = pendingSavedTurnChainForConversation(
+        listedTurns,
+        conversation.id,
+        operationId,
+      );
+      if (guidanceChain.state !== "settled") {
+        // The pending saved-turn poll owns reconciliation. Leaving this
+        // request pending preserves its exact operation id without falsely
+        // presenting an in-progress follow-up as a send error.
+        updatePendingRequests((current) => {
+          const entry = current[conversation.id];
+          const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+          return entry && entry.status !== status
+            ? { ...current, [conversation.id]: { ...entry, status } }
+            : current;
+        });
+        return;
+      }
+      const guidanceTerminalNotice = savedTurnGuidanceTerminalNotice(
+        listedTurns,
+        conversation.id,
+        operationId,
+      );
+      if (guidanceTerminalNotice) throw new Error(guidanceTerminalNotice);
+      const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
+      setError(null);
+      setSavedTurnCompletionNotice(snapshotNotice
+        ? { ...snapshotNotice, conversationId: conversation.id }
+        : null);
       setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
@@ -7823,6 +7946,9 @@ export function ChatApp() {
               </div>
             ) : (
               <Renderers.chatMessages
+                completionNotice={savedTurnCompletionNotice?.conversationId === activeConversationId
+                  ? savedTurnCompletionNotice
+                  : null}
                 error={error}
                 isMessagesRegionVisible={showRegion("chat_messages")}
                 isLoading={isLoading}
@@ -7847,6 +7973,7 @@ export function ChatApp() {
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
                 onRetry={retryableSubmission && error === retryableSubmission.errorMessage ? handleRetryLastFailedSubmission : undefined}
+                onDismissCompletionNotice={() => setSavedTurnCompletionNotice(null)}
                 onDismissError={error ? dismissChatError : undefined}
               />
             )}

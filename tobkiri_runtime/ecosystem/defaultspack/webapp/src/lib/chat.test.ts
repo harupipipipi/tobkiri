@@ -103,3 +103,109 @@ test("orderConversationMessages collapses duplicate sequence finals even when id
   assert.equal(diagnostics.collapsedCount, 1);
   assert.equal(diagnostics.duplicateSequenceCount, 1);
 });
+
+test("orderConversationMessages keeps canonical durable history when legacy sequence aliases repeat", () => {
+  const durableRecords: Array<[number, ChatMessage["role"], string]> = [
+    [0, "user", "最初の質問"],
+    [1, "assistant", "最初の回答"],
+    [2, "user", "GUIDANCE_OK を続けてください"],
+    [3, "assistant", "GUIDANCE_OK"],
+    [4, "user", "7 + 7 は？"],
+    [5, "assistant", "14"],
+  ];
+  const messages = durableRecords.map(([sequence, role, rawText]) => ({
+    id: `durable-${sequence}`,
+    role,
+    content: [{ type: "text", text: rawText }],
+    raw_text: rawText,
+    created_at: 10_000 - sequence,
+    conversation_id: "native-gemma-conversation",
+    sequence,
+    sequence_number: 1,
+  } satisfies ChatMessage));
+
+  const ordered = orderConversationMessages([...messages].reverse());
+  const diagnostics = inspectConversationIntegrity(messages);
+
+  assert.deepEqual(ordered.map((message) => message.id), [
+    "durable-0",
+    "durable-1",
+    "durable-2",
+    "durable-3",
+    "durable-4",
+    "durable-5",
+  ]);
+  assert.deepEqual(ordered.map((message) => message.role), [
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+  ]);
+  assert.deepEqual(ordered.map((message) => message.raw_text), [
+    "最初の質問",
+    "最初の回答",
+    "GUIDANCE_OK を続けてください",
+    "GUIDANCE_OK",
+    "7 + 7 は？",
+    "14",
+  ]);
+  assert.equal(diagnostics.collapsedCount, 0);
+});
+
+test("orderConversationMessages falls back to legacy aliases when canonical sequence is null", () => {
+  const first = {
+    id: "legacy-first",
+    role: "assistant",
+    content: [{ type: "text", text: "first" }],
+    raw_text: "first",
+    created_at: 1020,
+    conversation_id: "c1",
+    sequence: null,
+    sequence_number: 1,
+  } as unknown as ChatMessage;
+  const second = {
+    id: "legacy-second",
+    role: "assistant",
+    content: [{ type: "text", text: "second" }],
+    raw_text: "second",
+    created_at: 1010,
+    conversation_id: "c1",
+    sequence: null,
+    sequence_number: 2,
+  } as unknown as ChatMessage;
+
+  const ordered = orderConversationMessages([second, first]);
+  const diagnostics = inspectConversationIntegrity([second, first]);
+
+  assert.deepEqual(ordered.map((message) => message.id), ["legacy-first", "legacy-second"]);
+  assert.equal(diagnostics.collapsedCount, 0);
+});
+
+test("orderConversationMessages collapses canonical duplicate finals with distinct ids", () => {
+  const draft = {
+    id: "assistant-draft",
+    role: "assistant",
+    content: [{ type: "text", text: "draft" }],
+    raw_text: "draft",
+    created_at: 1010,
+    conversation_id: "c1",
+    sequence: 1,
+    sequence_number: 1,
+  } satisfies ChatMessage;
+  const final = {
+    ...draft,
+    id: "assistant-final",
+    content: [{ type: "text", text: "final" }],
+    raw_text: "final",
+    sequence_number: 99,
+  } satisfies ChatMessage;
+
+  const ordered = orderConversationMessages([draft, final]);
+  const diagnostics = inspectConversationIntegrity([draft, final]);
+
+  assert.equal(ordered.length, 1);
+  assert.equal(ordered[0]?.raw_text, "final");
+  assert.equal(diagnostics.duplicateSequenceCount, 1);
+});

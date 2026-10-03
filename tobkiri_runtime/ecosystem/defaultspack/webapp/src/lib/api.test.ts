@@ -16,6 +16,7 @@ import {
   pendingSavedTurnChainForConversation,
   pendingSavedTurnForConversation,
   savedTurnChainGuidanceItems,
+  savedTurnGuidanceTerminalNotice,
   savedTurnRootLineageContainsGuidance,
   settlePendingSteerGuidanceId,
   stableSteerGuidanceId,
@@ -342,6 +343,65 @@ test("saved turn chains retain the root through one exact active nested followup
       "turn-root",
     ).state,
     "settled",
+  );
+});
+
+test("settled failed or cancelled guidance descendants cannot be presented as root success", () => {
+  const guidanceValue = {
+    prompt: "Continue with the implementation",
+    target_type: "conversation",
+    target_id: "conversation-1",
+    conversation_id: "conversation-1",
+    visible: true,
+    auto_send: true,
+    metadata: { source: "composer_steer" },
+  };
+  const root = {
+    id: "turn-root",
+    conversation_id: "conversation-1",
+    status: "completed",
+    revision: 7,
+    guidance: [{
+      id: "guidance-root",
+      status: "failed",
+      value: guidanceValue,
+      followup_turn_id: "turn-child",
+      followup_source_turn_id: "turn-root",
+    }],
+  };
+  const child = {
+    id: "turn-child",
+    conversation_id: "conversation-1",
+    status: "failed",
+    revision: 4,
+    guidance_parent_turn_id: "turn-root",
+    guidance_id: "guidance-root",
+    guidance_source_turn_id: "turn-root",
+  };
+
+  assert.equal(
+    pendingSavedTurnChainForConversation([root, child], "conversation-1", "turn-root").state,
+    "settled",
+  );
+  assert.equal(
+    savedTurnGuidanceTerminalNotice([root, child], "conversation-1", "turn-root"),
+    "追加指示は失敗で終了しました。自動再送はしません。",
+  );
+  assert.equal(
+    savedTurnGuidanceTerminalNotice(
+      [root, { ...child, status: "cancelled" }],
+      "conversation-1",
+      "turn-root",
+    ),
+    "追加指示の停止を確認しました。自動再送はしません。",
+  );
+  assert.equal(
+    savedTurnGuidanceTerminalNotice(
+      [root, { ...child, guidance_parent_turn_id: "foreign-root" }],
+      "conversation-1",
+      "turn-root",
+    ),
+    null,
   );
 });
 

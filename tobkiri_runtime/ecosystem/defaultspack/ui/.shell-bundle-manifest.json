@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "34997ef87c15485fa05ce6b5da3d84af1fe070f8a659ff209885157a55477b8f",
+    "digest": "d4ab9cc883c4b1917ad7caf8eccbb45bbf49d823a7d2c5406c34535ced4a845a",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 364359,
-        "sha256": "a12c5e92458f6d7cc2a41ad2770836a273483a0f27e66106768314ca8f0aa9b4"
+        "size": 369742,
+        "sha256": "207fcab8f99a5d1b414af8b5fcaae482fad7a7e62cce665ae92160b2c715010e"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1160,13 +1160,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 178387,
-        "sha256": "e104fceaca70aaed08837f4b8daa68259934e0517e8d59a80b168fb16c4fb8dd"
+        "size": 180092,
+        "sha256": "f6a31c9ac954fbfd8ab0be930ff9e8d61a37fcd4459eba59535a526e1583848c"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 224593,
-        "sha256": "36a584ce5d4171bb288ebdf38991c372bd44b9505f424104c7f67a8301175eae"
+        "size": 224614,
+        "sha256": "a27e3f926d4babd439a8252172eac1364dc1a9b83eac14f3a30161ff18fd8643"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1280,13 +1280,13 @@
       },
       {
         "path": "src/lib/chat.test.ts",
-        "size": 3283,
-        "sha256": "7699f615f02b4b90ccef677be07ec39746705ff117e860bcbcfa386fd32c1849"
+        "size": 6469,
+        "sha256": "f1e7493e3c7812c74386ce52e23e5e846401d38c2c8ec4c91529b4e7e543c5c2"
       },
       {
         "path": "src/lib/chat.ts",
-        "size": 6074,
-        "sha256": "d17fc271e2444d28db6952a9074a4693724395f53114e1acbf4600f586a20839"
+        "size": 6789,
+        "sha256": "f490138b1d3db0353de1dc701c586f96629bdfaa3aa9e4cd9f3a4f09ff741275"
       },
       {
         "path": "src/lib/chatApprovalContinuation.test.ts",
@@ -1560,13 +1560,13 @@
       },
       {
         "path": "src/lib/pendingChat.test.ts",
-        "size": 11292,
-        "sha256": "a93537a58e40caac603110588d58c85feafdba246e5f910eb76dfa3a2b63ae81"
+        "size": 11689,
+        "sha256": "571857bad1ccfa51c4e10702e1f5cbca1e59639d2f19f90c98f438ff0fce9b59"
       },
       {
         "path": "src/lib/pendingChat.ts",
-        "size": 9191,
-        "sha256": "637eb3fbb1877fbf079479cb02e73c252887224aa062446698b917d1d80bdf3a"
+        "size": 9771,
+        "sha256": "a1045a271886048faa1f1002c9bbc32247210a188f8a2fe515dcae3e198822bb"
       },
       {
         "path": "src/lib/placement.test.ts",
@@ -1775,13 +1775,13 @@
       },
       {
         "path": "src/renderers/ChatMessagesRenderer.test.ts",
-        "size": 32836,
-        "sha256": "c029aaf519c3c5f393c3e1fd251f25d754318c502f69abd92163878aa6668224"
+        "size": 34930,
+        "sha256": "235622107eaf15a4f0e3170767a09b9933337a5dc7e541904312e3444a1c22de"
       },
       {
         "path": "src/renderers/ChatMessagesRenderer.tsx",
-        "size": 79106,
-        "sha256": "4479ff37eaa02be283e42e27474976e112ff6cb4951bb5b15c57da9bd4125929"
+        "size": 81018,
+        "sha256": "69da6d8777accbd7442c2adf08c47789f1bcf1bd2c90f617abbab1a87b02d10b"
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
@@ -1925,8 +1925,8 @@
       },
       {
         "path": "src/renderers/types.ts",
-        "size": 14366,
-        "sha256": "1127374824b7c739e65a47371f975c0032bbea063a18fc0b9a8e1b3d243fcf1a"
+        "size": 14516,
+        "sha256": "66071bf9136cf8cc3cd43a6bb51ad46bc08e89141caa8e7a0333c62e84d7c23d"
       },
       {
         "path": "src/settings/controlCenter.test.ts",
@@ -2021,12 +2021,12 @@
     ]
   },
   "bundle": {
-    "digest": "9cef6a872f9549b313563834f6bbdce9f6e93dc8ac0f61a7f3f73289a78ac2a5",
+    "digest": "82f7944f948c074f118904db0175e5dbc4f30c885ba986a0a74aaed406b0b598",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 234802,
-        "sha256": "b4156cc1fb27376979f03178d7b8918ed25bd407b1b1f9f17d7b3920ef719ac5"
+        "size": 235656,
+        "sha256": "4d597d4a2b514e2fd7e99133b49ae757b1f96625148a19c09dacd778a08afa63"
       },
       {
         "path": "shell-app.js",
@@ -2035,8 +2035,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2268165,
-        "sha256": "2b84bbef3cf5f9e77f624969a75fc07b1f0021b34686781d27b1b7ec97e0b167"
+        "size": 2271406,
+        "sha256": "d68dbb4d92d812fc327c28d3d55efc31a6212cf37aed8faed6d5e45f577271a4"
       },
       {
         "path": "shell-rolldown-runtime.js",

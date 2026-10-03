@@ -93,6 +93,8 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
         ("user", "Hello"),
         ("assistant", "Hi"),
     ]
+    assert [item["sequence"] for item in messages] == [0, 1]
+    assert [item["sequence_number"] for item in messages] == [1, 2]
     assert messages[1]["parent_id"] == messages[0]["id"]
     assert intent["message"] == messages[1]
     with pytest.raises(ValueError):

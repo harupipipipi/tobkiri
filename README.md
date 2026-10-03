@@ -188,10 +188,11 @@ For example, run a 1B model with llama.cpp on Apple Silicon macOS:
 brew install llama.cpp
 llama-server -hf ggml-org/gemma-3-1b-it-GGUF:Q4_K_M \
   --host 127.0.0.1 --port 1234 --alias gemma-3-1b-it \
-  --ctx-size 16384 --parallel 1 --jinja
+  --ctx-size 16384 --parallel 1 --jinja --temp 0 --seed 42
 ```
 
 The first run downloads the model; later runs use the downloaded file.
+This example fixes sampling for repeatable local smoke tests.
 In Tobkiri, open **Settings** → **Models**, select **Custom**, then choose
 **Local OpenAI-compatible**. Enter a connection name and
 `http://127.0.0.1:1234/v1`, and approve the connection when prompted.

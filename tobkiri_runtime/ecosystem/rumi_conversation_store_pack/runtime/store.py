@@ -282,6 +282,7 @@ class ConversationStore:
                     for item in messages
                 ]
             normalized["sequence"] = len(messages)
+            normalized["sequence_number"] = len(messages) + 1
             if saved_input is not None:
                 receipts = dict(state.get("saved_receipts", {}))
                 turn_id = saved_input.get("request", {}).get("turn_id")
@@ -421,9 +422,9 @@ class ConversationStore:
                         messages[index][key] = _safe(patch[key])
                 messages[index]["updated_at"] = _now_ms()
                 action = "message_updated"
+            _normalize_message_order(messages)
+            if not delete:
                 result_message = _copy(messages[index])
-            for sequence, item in enumerate(messages):
-                item["sequence"] = sequence
             current["messages"] = messages
             if delete and current.get("current_node_id") == message_id:
                 current["current_node_id"] = parent_id
@@ -454,8 +455,7 @@ class ConversationStore:
         if len(message_ids) != len(set(message_ids)):
             raise ValueError("duplicate message ID in replacement")
         _normalize_message_links(normalized)
-        for sequence, item in enumerate(normalized):
-            item["sequence"] = sequence
+        _normalize_message_order(normalized)
         with NamedLock(self.lock_root, "conversations"):
             state = self._read()
             current = state["conversations"].get(conversation_id)
@@ -553,6 +553,13 @@ class ConversationStore:
             conversation["metadata"] = _conversation_metadata(
                 conversation.get("metadata")
             )
+            messages = conversation.get("messages")
+            if isinstance(messages, list) and all(
+                isinstance(item, Mapping) for item in messages
+            ):
+                normalized_messages = [dict(item) for item in messages]
+                _normalize_message_order(normalized_messages)
+                conversation["messages"] = normalized_messages
             conversations[conversation_id] = conversation
         return {**value, "conversations": conversations}
 
@@ -710,8 +717,7 @@ def _conversation(value: Mapping[str, Any], *, allow_messages: bool) -> dict[str
     if len(message_ids) != len(set(message_ids)):
         raise ValueError("duplicate message ID in conversation")
     _normalize_message_links(normalized_messages)
-    for sequence, item in enumerate(normalized_messages):
-        item["sequence"] = sequence
+    _normalize_message_order(normalized_messages)
     created_at = int(value.get("created_at") or _now_ms())
     return {
         "id": conversation_id,
@@ -764,6 +770,13 @@ def _message(value: Mapping[str, Any]) -> dict[str, Any]:
         "events": _safe(value.get("events")),
         "tool_logs": _safe(value.get("tool_logs")),
     }
+
+
+def _normalize_message_order(messages: list[dict[str, Any]]) -> None:
+    """Derive canonical and compatibility ordinals from owner order."""
+    for sequence, item in enumerate(messages):
+        item["sequence"] = sequence
+        item["sequence_number"] = sequence + 1
 
 
 def _normalize_message_links(messages: list[dict[str, Any]]) -> None:
