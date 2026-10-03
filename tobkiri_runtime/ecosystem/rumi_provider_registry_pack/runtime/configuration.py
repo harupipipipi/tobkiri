@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from core_runtime.global_contract_dispatch import GlobalContractClient
 from tobkiri_protocol.canonical import canonical_digest
 
+from .local_endpoint import local_openai_endpoint
 from .registry import ProviderRegistry
 
 CREDENTIAL_CONTRACT = "tobkiri.action.credential.manage.v1"
@@ -30,13 +31,24 @@ def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
     name = payload["connection_name"]
     key = payload["key_value"]
     endpoint = payload["endpoint"]
+    protocol = payload["protocol"]
     if (
         _NAME.fullmatch(name) is None
-        or payload["protocol"] not in {"openai-compatible", "anthropic"}
-        or not key or len(key) > 16_384
+        or protocol not in {
+            "openai-compatible", "anthropic", "local-openai-compatible",
+        }
+        or len(key) > 16_384
         or any(ord(char) < 32 or ord(char) == 127 for char in key)
         or len(endpoint) > 2_048
     ):
+        raise ValueError("provider configuration values are invalid")
+    if protocol == "local-openai-compatible":
+        if key:
+            raise ValueError("local provider credentials are not permitted")
+        normalized = dict(payload)
+        normalized["endpoint"] = local_openai_endpoint(endpoint)
+        return normalized
+    if not key:
         raise ValueError("provider configuration values are invalid")
     try:
         parsed = urlsplit(endpoint)
@@ -66,7 +78,9 @@ def prepare_configuration(
         "adapter_id": request["protocol"],
         "endpoint": request["endpoint"],
         "expected_revision": registry.snapshot()["revision"],
-        "request_digest": canonical_digest(request),
+        # The coordinator later verifies the exact submitted request. Keep its
+        # digest raw while freezing the separately canonicalized endpoint.
+        "request_digest": canonical_digest(dict(payload)),
     }
 
 
@@ -88,6 +102,37 @@ def execute_configuration(
     # connection changed since prepare, nor leave a key behind for that conflict.
     if dict(plan) != prepare_configuration(registry, request):
         raise PermissionError("provider configuration changed after preparation")
+    if request["protocol"] == "local-openai-compatible":
+        record = {
+            "provider_instance_id": plan["provider_instance_id"],
+            "adapter_id": plan["adapter_id"],
+            "endpoint": plan["endpoint"],
+            "credential_handle": None,
+        }
+        try:
+            registry.save(record, expected_revision=plan["expected_revision"])
+        except Exception:
+            try:
+                matches = [
+                    item for item in registry.snapshot()["providers"]
+                    if item["provider_instance_id"]
+                    == record["provider_instance_id"]
+                ]
+            except Exception:
+                raise RuntimeError(
+                    "provider connection save was not confirmed"
+                ) from None
+            if len(matches) != 1 or any(
+                matches[0].get(key) != value
+                for key, value in record.items()
+            ):
+                raise RuntimeError(
+                    "provider connection save was not confirmed"
+                ) from None
+        return {
+            "configured": True,
+            "provider_instance_id": record["provider_instance_id"],
+        }
     try:
         created = client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
             "operation": "create", "profile_id": registry.profile_id,

@@ -156,6 +156,52 @@ def _publish_capture(server: PackAPIServer, session: _CapturedDispatch) -> None:
     server.server.RequestHandlerClass = handler
 
 
+@pytest.mark.parametrize("asset", ["shell.html", "shell-app.js"])
+def test_authenticated_static_ui_is_not_cached_across_runtime_captures(
+    tmp_path: Path, asset: str,
+) -> None:
+    """Stable UI URLs cannot retain HTML or code from a previous runtime."""
+    web_root = tmp_path / "ui"
+    web_root.mkdir()
+    (web_root / asset).write_text("current application", encoding="utf-8")
+    binding = _binding(activation_id="activation:static", security_epoch=7)
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, [binding]),
+        web_mounts=({
+            "path_prefix": "/static", "web_root": web_root,
+            "spa_fallback": False, "index_file": "shell.html",
+            "auth_required": True, "auth_bootstrap": False,
+        },),
+    )
+    server.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    try:
+        status, bootstrap, _ = _request(
+            server, "POST", "/api/panel/auth/bootstrap", body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200
+        status, _, headers = _request(
+            server, "POST", "/api/panel/auth/exchange",
+            body={"code": bootstrap["data"]["code"]},
+            headers={"Origin": f"http://127.0.0.1:{server.port}"},
+        )
+        assert status == 200
+        cookie = next(value.split(";", 1)[0] for key, value in headers
+                      if key.lower() == "set-cookie")
+        connection.request("GET", f"/static/{asset}", headers={"Cookie": cookie})
+        response = connection.getresponse()
+        assert response.status == 200
+        assert response.getheader("Cache-Control") == "no-store"
+        assert response.read() == b"current application"
+    finally:
+        connection.close()
+        server.stop()
+
+
 def test_pack_api_rejects_stale_exchange_and_cookie_before_invocation() -> None:
     capture_a = _binding(activation_id="activation:capture-a", security_epoch=11)
     capture_b = _binding(activation_id="activation:capture-b", security_epoch=11)

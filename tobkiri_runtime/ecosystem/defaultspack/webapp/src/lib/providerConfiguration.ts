@@ -7,7 +7,7 @@ export type ProviderConfigurationStatus = {
 
 export type ProviderConfigurationRequest = {
   connection_name: string;
-  protocol: "openai-compatible" | "anthropic";
+  protocol: "openai-compatible" | "anthropic" | "local-openai-compatible";
   endpoint: string;
   key_value: string;
 };

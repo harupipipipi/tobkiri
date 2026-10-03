@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
+import json
+import math
+import time
 from typing import Any, Callable, Mapping
 import urllib.parse
 
@@ -15,6 +19,9 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderCaptureContextV4,
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
+)
+from ecosystem.rumi_provider_registry_pack.runtime.local_endpoint import (
+    local_openai_endpoint,
 )
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
@@ -30,6 +37,9 @@ DEFAULT_JSON_HEADERS = {
     "Accept": "application/json",
     "User-Agent": "RumiAI/1.0",
 }
+_MAX_LOCAL_REQUEST_BYTES = 1024 * 1024
+_MAX_LOCAL_RESPONSE_BYTES = 4 * 1024 * 1024
+_MAX_LOCAL_TIMEOUT_SECONDS = 30.0
 
 
 def create_generate_operation(client: GlobalContractClient):
@@ -59,13 +69,14 @@ def _operation(client: GlobalContractClient, *, streaming: bool):
             raise ValueError(f"unknown provider adapter operation: {name}")
         request = dict(payload)
         connection = _connection(client, request, streaming=streaming)
+        adapter_id = str(connection.get("adapter_id") or "")
         credential_handle = _credential_handle(
             request,
             connection,
             scope="ai.stream" if streaming else "ai.generate",
         )
         adapter = _adapter(
-            str(connection.get("adapter_id") or ""),
+            adapter_id,
             provider_id=str(request.get("provider_id") or ""),
         )
         return adapter(
@@ -111,6 +122,10 @@ def _connection(
     streaming: bool = False,
 ) -> dict[str, Any]:
     connection_id = request.get("provider_connection_id")
+    if request.get("endpoint") is not None:
+        raise GlobalContractInvocationError(
+            "denied", "provider endpoint is bound by the Host provider registry"
+        )
     if connection_id is None:
         # Catalog-driven requests retain the legacy provider-slug route.
         # Explicit saved connection IDs are opaque registry identities and
@@ -157,7 +172,7 @@ def _credential_handle(
     connection: Mapping[str, Any],
     *,
     scope: str,
-) -> str:
+) -> str | None:
     del scope
     supplied_handle = request.get("credential_handle")
     handle = connection.get("credential_handle")
@@ -165,6 +180,18 @@ def _credential_handle(
         raise GlobalContractInvocationError(
             "denied", "credential handle is bound by the Host provider registry"
         )
+    if connection.get("adapter_id") == "local-openai-compatible":
+        if handle is not None:
+            raise GlobalContractInvocationError(
+                "denied", "local provider credentials are not permitted"
+            )
+        try:
+            local_openai_endpoint(connection.get("endpoint"))
+        except ValueError:
+            raise GlobalContractInvocationError(
+                "denied", "local provider endpoint is invalid"
+            ) from None
+        return None
     if handle is None:
         raise GlobalContractInvocationError(
             "not_configured", "provider credential is not configured"
@@ -197,6 +224,7 @@ def _adapter(
         "openai-compatible": _openai_compatible,
         "openai": _openai_compatible,
         "openrouter": _openai_compatible,
+        "local-openai-compatible": _local_openai_compatible,
         "anthropic": _anthropic,
     }
     try:
@@ -250,6 +278,131 @@ def _openai_compatible(
         "finish_reason": (first.get("finish_reason") if isinstance(first, Mapping) else None),
     }
     return _stream_result(result) if streaming else result
+
+
+def _local_openai_compatible(
+    client: GlobalContractClient,
+    request: Mapping[str, Any],
+    connection: Mapping[str, Any],
+    credential_handle: str | None,
+    credential_scope: str,
+    streaming: bool,
+) -> dict[str, Any]:
+    """Call one registry-bound loopback OpenAI chat endpoint without a secret."""
+    del client, credential_scope
+    if credential_handle is not None:
+        raise GlobalContractInvocationError(
+            "denied", "local provider credentials are not permitted"
+        )
+    endpoint = local_openai_endpoint(connection.get("endpoint"))
+    body = {
+        "model": _provider_model_id(request),
+        "messages": list(request.get("messages") or []),
+        "stream": False,
+        **dict(request.get("parameters") or {}),
+    }
+    tools = request.get("tools")
+    if isinstance(tools, list) and tools:
+        body["tools"] = tools
+    value = _local_post(endpoint, body, request)
+    choices = value.get("choices") if isinstance(value, Mapping) else None
+    first = choices[0] if isinstance(choices, list) and choices else {}
+    message = first.get("message") if isinstance(first, Mapping) else {}
+    content = message.get("content") if isinstance(message, Mapping) else ""
+    result: dict[str, Any] = {
+        "output": content if content is not None else "",
+        "tool_intents": (
+            list(message.get("tool_calls") or [])
+            if isinstance(message, Mapping)
+            else []
+        ),
+        "usage": dict(value.get("usage") or {}),
+        "finish_reason": (
+            first.get("finish_reason") if isinstance(first, Mapping) else None
+        ),
+    }
+    return _stream_result(result) if streaming else result
+
+
+def _local_post(
+    endpoint: str,
+    body: Mapping[str, Any],
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Send bounded JSON to the finite local chat route without proxy use."""
+    parsed = urllib.parse.urlsplit(local_openai_endpoint(endpoint))
+    encoded = json.dumps(
+        body, ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+    if len(encoded) > _MAX_LOCAL_REQUEST_BYTES:
+        raise GlobalContractInvocationError(
+            "invalid_request", "local provider request is too large"
+        )
+    timeout = _local_timeout(request)
+    connection = http.client.HTTPConnection(
+        parsed.hostname, parsed.port, timeout=timeout,
+    )
+    try:
+        connection.request(
+            "POST",
+            "/v1/chat/completions",
+            body=encoded,
+            headers={**DEFAULT_JSON_HEADERS, "Content-Length": str(len(encoded))},
+        )
+        if connection.sock is not None:
+            connection.sock.settimeout(_local_timeout(request))
+        response = connection.getresponse()
+        if connection.sock is not None:
+            connection.sock.settimeout(_local_timeout(request))
+        if response.status != 200:
+            raise GlobalContractInvocationError(
+                "provider_unavailable", "local provider returned an error"
+            )
+        raw = response.read(_MAX_LOCAL_RESPONSE_BYTES + 1)
+        if len(raw) > _MAX_LOCAL_RESPONSE_BYTES:
+            raise GlobalContractInvocationError(
+                "invalid_response", "local provider response is too large"
+            )
+    except GlobalContractInvocationError:
+        raise
+    except (OSError, TimeoutError, http.client.HTTPException):
+        raise GlobalContractInvocationError(
+            "provider_unavailable", "local provider is unavailable"
+        ) from None
+    finally:
+        connection.close()
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise GlobalContractInvocationError(
+            "invalid_response", "local provider returned invalid JSON"
+        ) from None
+    if not isinstance(value, dict):
+        raise GlobalContractInvocationError(
+            "invalid_response", "local provider returned a non-object response"
+        )
+    return value
+
+
+def _local_timeout(request: Mapping[str, Any]) -> float:
+    """Return the remaining bounded wall-clock budget for one socket phase."""
+    deadline = request.get("deadline")
+    if deadline is None:
+        return _MAX_LOCAL_TIMEOUT_SECONDS
+    if (
+        not isinstance(deadline, (int, float))
+        or isinstance(deadline, bool)
+        or not math.isfinite(float(deadline))
+    ):
+        raise GlobalContractInvocationError(
+            "invalid_request", "provider deadline is invalid"
+        )
+    timeout = min(_MAX_LOCAL_TIMEOUT_SECONDS, float(deadline) - time.time())
+    if timeout <= 0:
+        raise GlobalContractInvocationError(
+            "provider_unavailable", "provider deadline expired"
+        )
+    return timeout
 
 
 def _anthropic(
@@ -479,11 +632,14 @@ class ProviderAdapterHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
+            invocation.assert_current()
             client = invocation.contract_client(
                 allowed_contract_ids=frozenset({REGISTRY_CONTRACT}),
                 consumer_pack_id="rumi_provider_adapters_pack",
             )
-            return operation_factory(client)(operation_name, payload)
+            result = operation_factory(client)(operation_name, payload)
+            invocation.assert_current()
+            return result
 
         contributions = []
         for binding in context.provider_bindings:

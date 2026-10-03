@@ -989,22 +989,22 @@
     {
       "path": "packs/rumi_provider_adapters_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:cb0ac8125b435aea8b8b9ea5f1bfae4af358fe112ceda37193b457ab265981ef"
+      "digest": "sha256:302ab265407dc96570f9875d1de4050492f6d2889713d413b8855ed895e56790"
     },
     {
       "path": "packs/rumi_provider_adapters_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:95d42ee8c9721a7a19318f57ec02ddea397324ebbba700ca6c8e042c8e134fa9"
+      "digest": "sha256:ef8d08f00f34db8aa1e2c0ed60bbf93207a992f5e5ed9f83ad911ea6e6597dfd"
     },
     {
       "path": "packs/rumi_provider_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:996574f681211f1ae681e65f12930d413f85631daf89c46b1c11152b5042ffcf"
+      "digest": "sha256:ff4bcc6c5fb96f882fd163704d7ae52b469c1ba766b24945b1c3ea0d0f1816a8"
     },
     {
       "path": "packs/rumi_provider_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:ba4c6d90d99a6da7b7d139af83014e18d24828f6d60fd6558136a86abc7135ef"
+      "digest": "sha256:7bcd8f05a968f820b866978dce3b782ab6723de6c00bf8c97b4c463f0cb9d719"
     },
     {
       "path": "packs/rumi_qr_pairing_connector_pack.executables.v4.json",

@@ -806,19 +806,19 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.executables.v4.json",
-      "digest": "sha256:cb0ac8125b435aea8b8b9ea5f1bfae4af358fe112ceda37193b457ab265981ef"
+      "digest": "sha256:302ab265407dc96570f9875d1de4050492f6d2889713d413b8855ed895e56790"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.pack.v4.json",
-      "digest": "sha256:95d42ee8c9721a7a19318f57ec02ddea397324ebbba700ca6c8e042c8e134fa9"
+      "digest": "sha256:ef8d08f00f34db8aa1e2c0ed60bbf93207a992f5e5ed9f83ad911ea6e6597dfd"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.executables.v4.json",
-      "digest": "sha256:996574f681211f1ae681e65f12930d413f85631daf89c46b1c11152b5042ffcf"
+      "digest": "sha256:ff4bcc6c5fb96f882fd163704d7ae52b469c1ba766b24945b1c3ea0d0f1816a8"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.pack.v4.json",
-      "digest": "sha256:ba4c6d90d99a6da7b7d139af83014e18d24828f6d60fd6558136a86abc7135ef"
+      "digest": "sha256:7bcd8f05a968f820b866978dce3b782ab6723de6c00bf8c97b4c463f0cb9d719"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_qr_pairing_connector_pack.executables.v4.json",
@@ -1353,9 +1353,9 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:02c7bad26c778a1531166eaf6353e0c4b469dc6a0c2c1a4f0c4bdf942eba7a8c",
-    "catalog_revision": "sha256:b854f832432e7064eabe7927e0e99244a35486d77069fefb464058f50adb259c",
-    "closure_digest": "sha256:e50c0221367e87ac09ff179961a0468bd953439098ec267e6a6c50cd903abcf9"
+    "bundle_digest": "sha256:4a1062a5ddaddd5bd5fcde0e6c88f8cb032749d830ee1014b93cdd22545ff2d7",
+    "catalog_revision": "sha256:4fed474749075e82aa8b27fe8faec7fdf2fa08db9a12946148b659cf59358f65",
+    "closure_digest": "sha256:38c205a2578fdf2088945b3efccf19bb410ac8604d443a709d18deaf55785dc4"
   },
   "outputs": [
     {
@@ -1364,8 +1364,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:db45c214b5d4214c3c1e166794072e55997b5077dcf17ef1e66ed43b8f8355e6"
+      "digest": "sha256:7c1608d2ba1155a932e46c8c74876ae1d0978e2eececca4ee170f9506af1b65e"
     }
   ],
-  "release_digest": "sha256:a03e5afd73de3d672f3b376efb468314d8d88c415168a5545c54f1533e84120f"
+  "release_digest": "sha256:0b18a9260aa99087554c07c78446fb1091f68be4fbdb8f644e1409ddae3e06b5"
 }

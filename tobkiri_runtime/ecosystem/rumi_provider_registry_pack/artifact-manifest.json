@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/configuration.py",
-      "sha256": "sha256:1ac0e5c5a405a8bc0610b626260e9c42a56debb160831d8a8e0e417fa8404d44"
+      "sha256": "sha256:1a35072cfa7a2b7f88421504ee6fa168b9ada618cf7b5e8436bb46437f6ea745"
     },
     {
       "path": "runtime/__init__.py",
@@ -26,7 +26,7 @@
     },
     {
       "path": "runtime/registry.py",
-      "sha256": "sha256:825de1b62ebb90906c1c90de4cb0d0a6a50eed220d35d36a4c1c1f194d5d1615"
+      "sha256": "sha256:32d04184443fc0e77c3b88bb67cb420d7cb56d2965be950a6524c0e07bb948a5"
     },
     {
       "path": "runtime/service.py",
@@ -34,7 +34,7 @@
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
+      "sha256": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195"
     },
     {
       "path": "runtime/health_process.py",
@@ -59,6 +59,10 @@
     {
       "path": "runtime/providers/google.py",
       "sha256": "sha256:2b23d73bbd7046b315b8dd6c66dcda8655510ad84d810f30572d1aae37919133"
+    },
+    {
+      "path": "runtime/local_endpoint.py",
+      "sha256": "sha256:f88df64fb81657369a3a70daa5b7d28ffedee47f8365b412324f60911e49c995"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

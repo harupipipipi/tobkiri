@@ -11763,7 +11763,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
-      "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+      "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -11777,7 +11777,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+          "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -11816,7 +11816,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
-      "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+      "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -11830,7 +11830,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+          "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -11869,7 +11869,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
-      "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+      "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -11883,7 +11883,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+          "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -11922,7 +11922,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
-      "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+      "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -11936,7 +11936,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
+          "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -11975,7 +11975,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-configure.execute",
-      "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+      "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -11989,7 +11989,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12026,7 +12026,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
-      "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+      "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -12040,7 +12040,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12181,7 +12181,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+      "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -12195,7 +12195,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12234,7 +12234,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+      "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -12247,7 +12247,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12268,7 +12268,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12288,7 +12288,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
+          "implementation_digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18290,7 +18290,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:8630a0e81b96627de89f71b7dd62f411316a4c9df71d8587275c6a2d90b995cb",
+    "input_digest": "sha256:4880ba13079d92e588410e211db814249dab1746e21c5aad7e404810ad9fa72f",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -18886,12 +18886,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:cc1c4711238bc3d236a00fff99120148e1fd97ce24e06a0a1677da4e539d6b04",
+        "digest": "sha256:d3f70912cbf9996e2cc35b8e92b0ebb5dfdc6fb0138336337afa93a582a2344a",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:75a5b84f5945e921082a3e332425b39d5f47db5b48957af8704f9bfd1f9a93a2",
+        "digest": "sha256:928fa0ecd1c93c245319a5532852d07ad0fc5da8448b2648d1631dd7d7cac05c",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-manifest.json"
       },
@@ -19376,12 +19376,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:f78e74aeb7f425ea43c7c8a11525bc5c91c1d5a400b1cf68268eec793757cb78",
+        "digest": "sha256:45d47b0ad18e25dc6d94ce255db9cf63e5638f607cf65f99e53ab95a73d9e682",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "digest": "sha256:5229de9d7d8c92432d7b19b881a0c97e9bcf1f710ea43d8aeb9e14a35168d1be",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json"
       },

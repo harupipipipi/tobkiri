@@ -795,6 +795,43 @@ test("custom LLM API setup exposes only supported protocol choices", () => {
   assert.match(html, /value="anthropic"/);
 });
 
+test("local OpenAI-compatible setup asks for a loopback URL and no API key", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "APIs",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Key Setup",
+          type: "api_key_setup",
+          provider_id: "openai_compatible",
+          protocol: "local-openai-compatible",
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: { apis: { api_keys: [] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Local OpenAI-compatible \(認証なし\)/);
+  assert.match(html, /ローカル接続先 URL/);
+  assert.match(html, /placeholder="http:\/\/127\.0\.0\.1:1234\/v1"/);
+  assert.match(html, /placeholder="接続名 \(例: gemma3-1b\)"/);
+  assert.doesNotMatch(html, /placeholder="openai_compatible API key"/);
+});
+
 test("Connections external-token setup omits LLM endpoint and model-route controls", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {

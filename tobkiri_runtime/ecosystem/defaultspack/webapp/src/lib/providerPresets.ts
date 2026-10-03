@@ -6,7 +6,12 @@
  * setup form can collect only a provider, a connection name, and a key. A
  * custom endpoint still has to be chosen explicitly and is never guessed.
  */
-export type ProviderSetupProtocol = "openai-compatible" | "anthropic";
+export const LOCAL_OPENAI_COMPATIBLE_PROTOCOL = "local-openai-compatible" as const;
+
+export type ProviderSetupProtocol =
+  | "openai-compatible"
+  | "anthropic"
+  | typeof LOCAL_OPENAI_COMPATIBLE_PROTOCOL;
 
 export type ProviderSetupPreset = Readonly<{
   endpoint: string;
@@ -16,6 +21,13 @@ export type ProviderSetupPreset = Readonly<{
 export const CUSTOM_PROVIDER_ID = "openai_compatible";
 
 const OPENAI_COMPATIBLE = "openai-compatible" as const;
+
+/** Return whether a connection targets a user-run loopback OpenAI server. */
+export function isLocalOpenAICompatibleProtocol(
+  protocol: ProviderSetupProtocol | undefined,
+): boolean {
+  return protocol === LOCAL_OPENAI_COMPATIBLE_PROTOCOL;
+}
 
 const PROVIDER_SETUP_PRESETS: Readonly<Record<string, ProviderSetupPreset>> = {
   anthropic: { endpoint: "https://api.anthropic.com", protocol: "anthropic" },

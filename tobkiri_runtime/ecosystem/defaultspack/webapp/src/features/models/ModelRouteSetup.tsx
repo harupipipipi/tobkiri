@@ -2,7 +2,28 @@ import { useEffect, useState } from "react";
 
 import { ErrorNotice } from "../../components/ErrorNotice";
 import type { RegisteredProviderConnection } from "../../lib/api";
+import { redactDiagnosticText } from "../../lib/clientDiagnostics";
 import { settingsApiResources } from "../settings/resources/settingsApiResources";
+
+/** Return a user-visible model route error without exposing connection secrets. */
+export function modelRouteSaveErrorMessage(error: unknown): string {
+  const detail = redactDiagnosticText(
+    error instanceof Error ? error.message : error,
+    320,
+  );
+  const prefix = "モデルルートを保存できませんでした。接続とモデル設定を確認してから保存し直してください。";
+  return detail ? `${prefix} 詳細: ${detail}` : prefix;
+}
+
+/** Return a user-visible connection-list error without exposing secrets. */
+export function modelRouteConnectionsErrorMessage(error: unknown): string {
+  const detail = redactDiagnosticText(
+    error instanceof Error ? error.message : error,
+    320,
+  );
+  const prefix = "Provider接続一覧を確認できません。再読み込みしてから設定してください。";
+  return detail ? `${prefix} 詳細: ${detail}` : prefix;
+}
 
 export function ModelRouteErrorNotices({
   connectionsError,
@@ -35,7 +56,9 @@ export function ProviderReadiness({
 }) {
   const credential = connection.credential_status === "configured"
     ? "資格情報: 設定済み"
-    : "資格情報: 未設定";
+    : connection.credential_status === "not_required"
+      ? "資格情報: 不要（ローカル接続）"
+      : "資格情報: 未設定";
   const reachability = connection.reachability === "available"
     ? "到達性: 利用可能"
     : connection.reachability === "unavailable"
@@ -75,12 +98,12 @@ export function ModelRouteSetup() {
             ? current
             : ""
         ));
-      } catch {
+      } catch (error) {
         if (!active) return;
         setConnections([]);
         setProviderRegistryRevision(null);
         setProvider("");
-        setConnectionsError("Provider接続一覧を確認できません。再読み込みしてから設定してください。");
+        setConnectionsError(modelRouteConnectionsErrorMessage(error));
       }
     };
     void loadConnections();
@@ -109,8 +132,8 @@ export function ModelRouteSetup() {
       });
       setMessage("モデル設定を保存しました。モデル一覧から選択してください。Provider到達確認はまだ行っていません。");
       window.dispatchEvent(new Event("tobkiri-model-profiles-changed"));
-    } catch {
-      setSaveError("Provider接続またはモデル設定が更新された可能性があります。接続を確認してから保存し直してください。APIキーは再送しません。");
+    } catch (error) {
+      setSaveError(modelRouteSaveErrorMessage(error));
     } finally {
       setBusy(false);
     }

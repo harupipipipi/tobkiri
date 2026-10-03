@@ -2157,6 +2157,15 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
             reachability: "unknown",
             observed_at: null,
           },
+          {
+            provider_instance_id: "provider.openai_compatible.gemma3-1b",
+            display_name: "Local Gemma 3 1B",
+            enabled: true,
+            credential_status: "not_required",
+            health_status: "unverified",
+            reachability: "unknown",
+            observed_at: null,
+          },
         ],
       };
     return new Response(JSON.stringify({ success: true, data }), {
@@ -2174,6 +2183,13 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
         health_status: "verified",
         reachability: "available",
         observed_at: 123.5,
+      }, {
+        provider_instance_id: "provider.openai_compatible.gemma3-1b",
+        display_name: "Local Gemma 3 1B",
+        credential_status: "not_required",
+        health_status: "unverified",
+        reachability: "unknown",
+        observed_at: null,
       }],
     });
     assert.deepEqual(calls, [{ target: routeKey("api/connections/status"), body: undefined }]);
@@ -2342,6 +2358,76 @@ test("saveProviderApiKey keeps Custom endpoints explicit", async () => {
     api.saveProviderApiKey("openai_compatible", "fixture-private-key", { apiId: "main", protocol: "openai-compatible" }),
     /Custom ProviderにはHTTPSの接続先URL/,
   );
+});
+
+test("saveProviderApiKey configures a loopback OpenAI server through approval without a key", async () => {
+  const f = providerConfigurationFixture();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const data = requestTarget(input).includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await api.saveProviderApiKey("openai_compatible", "", {
+      apiId: "gemma3-1b",
+      baseUrl: "http://127.0.0.1:1234/v1",
+      protocol: "local-openai-compatible",
+      credentialMode: "none",
+    });
+    assert.deepEqual(bodies[0], {
+      phase: "prepare",
+      effect_kind: "provider_configure",
+      request: {
+        connection_name: "openai_compatible.gemma3-1b",
+        protocol: "local-openai-compatible",
+        endpoint: "http://127.0.0.1:1234/v1",
+        key_value: "",
+      },
+      correlation_id: bodies[0].correlation_id,
+    });
+    assert.deepEqual(bodies.slice(1), [
+      { request_id: "approval-1" },
+      { phase: "resume", effect_id: "effect-1" },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("saveProviderApiKey accepts only nonprivileged loopback OpenAI endpoints", async () => {
+  const options = {
+    apiId: "gemma3-1b",
+    protocol: "local-openai-compatible" as const,
+    credentialMode: "none" as const,
+  };
+  for (const endpoint of [
+    "http://localhost:1234/v1",
+    "http://2130706433:1234/v1",
+    "http://127.0.0.1:80/v1",
+    "http://127.0.0.1:1234/api",
+    "http://[::1]:1234/v1?models=all",
+  ]) {
+    await assert.rejects(
+      api.saveProviderApiKey("openai_compatible", "", { ...options, baseUrl: endpoint }),
+      /接続名・ローカルURL・認証なし設定/,
+    );
+  }
 });
 
 test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {

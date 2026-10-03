@@ -198,6 +198,7 @@ def _provider_connection_snapshot(
         display_name = item.get("display_name")
         enabled = item.get("enabled")
         credential_handle = item.get("credential_handle")
+        adapter_id = item.get("adapter_id")
         evidence = item.get("health_evidence")
         evidence = evidence if isinstance(evidence, Mapping) else {}
         health_verified = evidence.get("verified") is True
@@ -224,7 +225,10 @@ def _provider_connection_snapshot(
             "display_name": display_name,
             "enabled": enabled,
             "credential_status": (
-                "configured"
+                "not_required"
+                if adapter_id == "local-openai-compatible"
+                and credential_handle is None
+                else "configured"
                 if isinstance(credential_handle, str) and credential_handle
                 else "missing"
             ),

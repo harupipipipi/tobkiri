@@ -1,4 +1,8 @@
-import { isCustomProviderSetup } from "../../lib/providerPresets";
+import {
+  isCustomProviderSetup,
+  isLocalOpenAICompatibleProtocol,
+  type ProviderSetupProtocol,
+} from "../../lib/providerPresets";
 
 export const BUILTIN_API_PROVIDER_IDS: string[] = [
   "anthropic",
@@ -52,7 +56,7 @@ export const BUILTIN_EXTERNAL_PROVIDER_IDS: string[] = [
 
 export type ApiProviderKind = "llm" | "custom";
 export type ApiProviderScope = "all" | "llm" | "non_llm";
-export type ApiProviderProtocol = "openai-compatible" | "anthropic";
+export type ApiProviderProtocol = ProviderSetupProtocol;
 export type ApiKeySaveResource = "provider" | "external_token";
 
 export type ApiProviderOption = {
@@ -255,6 +259,24 @@ export function requiresExplicitApiProviderProtocol(
   // people to choose a protocol. Registered LLM providers also remain custom
   // connections because their endpoint cannot be safely inferred.
   return isCustomProviderSetup(providerId);
+}
+
+/** Return whether the setup form has the fields required for its selected mode. */
+export function apiKeySetupSaveEnabled(
+  draft: Pick<ApiKeySetupDraft, "provider_id" | "name" | "value" | "kind" | "protocol" | "base_url">,
+  fallbackKind: ApiProviderKind = "llm",
+): boolean {
+  const providerId = draft.provider_id.trim();
+  const kind = draft.kind ?? fallbackKind;
+  const requiresProtocol = requiresExplicitApiProviderProtocol(providerId, kind);
+  const localOpenAICompatible = requiresProtocol
+    && isLocalOpenAICompatibleProtocol(draft.protocol);
+  return Boolean(
+    providerId
+    && draft.name.trim()
+    && (localOpenAICompatible || draft.value.trim())
+    && (!requiresProtocol || draft.base_url?.trim()),
+  );
 }
 
 /** Keep non-LLM credentials out of the typed AI provider registry. */

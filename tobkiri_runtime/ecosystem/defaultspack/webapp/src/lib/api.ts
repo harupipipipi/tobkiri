@@ -6,7 +6,12 @@ import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
 import { jsonValueMatches } from "./jsonValueMatches";
-import { isCustomProviderSetup, providerSetupPreset } from "./providerPresets";
+import {
+  isCustomProviderSetup,
+  isLocalOpenAICompatibleProtocol,
+  providerSetupPreset,
+  type ProviderSetupProtocol,
+} from "./providerPresets";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -1663,7 +1668,7 @@ export type ModelProfile = {
 export type RegisteredProviderConnection = {
   provider_instance_id: string;
   display_name: string;
-  credential_status: "configured" | "missing";
+  credential_status: "configured" | "missing" | "not_required";
   health_status: "verified" | "unverified";
   reachability: "available" | "unavailable" | "unknown";
   observed_at: number | null;
@@ -2661,7 +2666,7 @@ function isProviderConnectionSnapshot(
     provider_instance_id: string;
     display_name: string;
     enabled: boolean;
-    credential_status: "configured" | "missing";
+    credential_status: "configured" | "missing" | "not_required";
     health_status: "verified" | "unverified";
     reachability: "available" | "unavailable" | "unknown";
     observed_at: number | null;
@@ -2686,7 +2691,8 @@ function isProviderConnectionSnapshot(
       && hasNonEmptyString(item, "display_name")
       && typeof item.enabled === "boolean"
       && (item.credential_status === "configured"
-        || item.credential_status === "missing")
+        || item.credential_status === "missing"
+        || item.credential_status === "not_required")
       && (item.health_status === "verified"
         || item.health_status === "unverified")
       && ["available", "unavailable", "unknown"].includes(String(item.reachability))
@@ -4293,7 +4299,7 @@ export const api = {
         provider_instance_id: string;
         display_name: string;
         enabled: boolean;
-        credential_status: "configured" | "missing";
+        credential_status: "configured" | "missing" | "not_required";
         health_status: "verified" | "unverified";
         reachability: "available" | "unavailable" | "unknown";
         observed_at: number | null;
@@ -4932,7 +4938,8 @@ export const api = {
     notes?: string;
     quotaLabel?: string;
     kind?: string;
-    protocol?: "openai-compatible" | "anthropic";
+    protocol?: ProviderSetupProtocol;
+    credentialMode?: "api_key" | "none";
   }) {
     const preset = providerSetupPreset(providerId);
     const customSetup = isCustomProviderSetup(providerId);
@@ -4945,16 +4952,43 @@ export const api = {
     }
     const connection = `${providerId}.${options?.apiId || "default"}`;
     const endpoint = options?.baseUrl?.trim() || preset?.endpoint || "";
+    const localOpenAICompatible = isLocalOpenAICompatibleProtocol(protocol);
     if (customSetup && !options?.baseUrl?.trim()) {
-      throw new Error("Custom ProviderにはHTTPSの接続先URLを入力してください。");
+      throw new Error(localOpenAICompatible
+        ? "ローカルProviderには接続先URLを入力してください。"
+        : "Custom ProviderにはHTTPSの接続先URLを入力してください。");
     }
     let url: URL;
-    try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
+    try {
+      url = new URL(endpoint);
+    } catch {
+      throw new Error(localOpenAICompatible
+        ? "ローカルProviderの接続先URLを入力してください。"
+        : "HTTPSのProvider接続先URLを入力してください。");
+    }
+    const localEndpointPattern =
+      /^http:\/\/(?:127\.0\.0\.1|\[::1\]):(\d{1,5})\/v1\/?$/;
+    const localEndpointMatch = localEndpointPattern.exec(endpoint);
+    const localPort = Number(localEndpointMatch?.[1]);
+    const localEndpointValid = Boolean(localEndpointMatch)
+      && localPort >= 1024
+      && localPort <= 65535;
+    const hostedEndpointValid = url.protocol === "https:"
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash;
+    const credentialValid = localOpenAICompatible
+      ? options?.credentialMode === "none" && value.length === 0
+      : Boolean(value);
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)
-      || !value || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
-      || url.protocol !== "https:" || url.username || url.password || url.search || url.hash
-      || /\s/.test(endpoint) || endpoint.length > 2048 || endpoint.includes(value) || connection.includes(value)) {
-      throw new Error("Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
+      || !credentialValid || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
+      || (localOpenAICompatible ? !localEndpointValid : !hostedEndpointValid)
+      || /\s/.test(endpoint) || endpoint.length > 2048
+      || (value.length > 0 && (endpoint.includes(value) || connection.includes(value)))) {
+      throw new Error(localOpenAICompatible
+        ? "接続名・ローカルURL・認証なし設定の入力を確認してください。"
+        : "Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
     }
     const post = (body: object) => request<ProviderConfigurationStatus>(
       defaultspackContractRoute("api/ai/provider-key"), {

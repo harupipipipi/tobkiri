@@ -7,6 +7,8 @@ import {
   ModelRouteErrorNotices,
   ModelRouteSetup,
   ProviderReadiness,
+  modelRouteConnectionsErrorMessage,
+  modelRouteSaveErrorMessage,
 } from "./ModelRouteSetup";
 
 import {
@@ -82,6 +84,42 @@ test("provider readiness distinguishes credential, health, and reachability", ()
   assert.match(html, /資格情報: 未設定/);
   assert.match(html, /到達性: 未確認/);
   assert.match(html, /未検証/);
+});
+
+test("model route save errors preserve a redacted native cause", () => {
+  const message = modelRouteSaveErrorMessage(new Error(
+    "request http://127.0.0.1:1234/v1 failed: Authorization: Bearer local-secret-value api_key=another-secret",
+  ));
+
+  assert.match(message, /モデルルートを保存できませんでした/);
+  assert.doesNotMatch(message, /local-secret-value|another-secret|127\.0\.0\.1/);
+  assert.match(message, /\[url\]|\[auth-header\]|\[credential\]/);
+});
+
+test("provider connection errors preserve a redacted native cause", () => {
+  const message = modelRouteConnectionsErrorMessage(new Error(
+    "request http://127.0.0.1:1234/v1 failed: Authorization: Bearer local-secret-value api_key=another-secret",
+  ));
+
+  assert.match(message, /Provider接続一覧を確認できません/);
+  assert.doesNotMatch(message, /local-secret-value|another-secret|127\.0\.0\.1/);
+  assert.match(message, /\[url\]|\[auth-header\]|\[credential\]/);
+});
+
+test("provider readiness identifies credentialless local connections", () => {
+  const html = renderToStaticMarkup(createElement(ProviderReadiness, {
+    connection: {
+      provider_instance_id: "provider.openai_compatible.gemma3-1b",
+      display_name: "Local Gemma 3 1B",
+      credential_status: "not_required",
+      health_status: "unverified",
+      reachability: "unknown",
+      observed_at: null,
+    },
+  }));
+
+  assert.match(html, /資格情報: 不要（ローカル接続）/);
+  assert.match(html, /到達性: 未確認/);
 });
 
 function makeModelOption(index: number): ModelSelectOption {

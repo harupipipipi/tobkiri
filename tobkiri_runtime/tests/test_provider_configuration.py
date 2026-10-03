@@ -12,12 +12,25 @@ from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
     prepare_configuration,
 )
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+from core_runtime.interactive_effect_coordinator import (
+    INTERACTIVE_EFFECT_SPECS,
+    _execute_payload,
+)
 
 
 def _request() -> dict[str, str]:
     return {
         "connection_name": "fixture", "protocol": "openai-compatible",
         "endpoint": "https://provider.example/v1", "key_value": "fixture-secret-123",
+    }
+
+
+def _local_request() -> dict[str, str]:
+    return {
+        "connection_name": "local-fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1/",
+        "key_value": "",
     }
 
 
@@ -127,6 +140,82 @@ def test_configuration_does_not_retry_or_revoke_an_unknown_credential_write(
     assert request["key_value"] not in str(exc.value)
     assert client.calls == ["create"]
     assert not registry.path.exists()
+
+
+@pytest.mark.parametrize("lost_ack", [False, True])
+def test_local_configuration_never_writes_a_credential_and_recovers_owner_ack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lost_ack: bool,
+) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = _local_request()
+    plan = prepare_configuration(registry, request)
+    assert plan["endpoint"] == "http://127.0.0.1:1234/v1"
+    original_save = registry.save
+
+    def save(*args: Any, **kwargs: Any) -> Any:
+        result = original_save(*args, **kwargs)
+        if lost_ack:
+            raise OSError("fixture lost owner ACK")
+        return result
+
+    monkeypatch.setattr(registry, "save", save)
+    result = execute_configuration(
+        registry,
+        client,
+        {"request": request, "plan": plan},
+        consumer_pack_id="fixture.consumer",
+    )
+    assert result["provider_instance_id"] == "provider.local-fixture"
+    assert client.calls == []
+    assert registry.snapshot()["providers"][0]["credential_handle"] is None
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_configuration(
+            registry,
+            client,
+            {"request": request, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert client.calls == []
+
+
+def test_local_trailing_slash_plan_binds_raw_approval_request(
+    tmp_path: Path,
+) -> None:
+    """Canonical endpoint storage must preserve the coordinator request digest."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    request = _local_request()
+    plan = prepare_configuration(registry, request)
+    assert plan["endpoint"] == "http://127.0.0.1:1234/v1"
+    execute_payload = _execute_payload(
+        INTERACTIVE_EFFECT_SPECS["provider_configure"], request, plan,
+    )
+    assert execute_payload == {"request": request, "plan": plan}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"endpoint": "http://localhost:1234/v1"},
+        {"endpoint": "http://127.0.0.1/v1"},
+        {"endpoint": "http://127.0.0.1:80/v1"},
+        {"endpoint": "https://127.0.0.1:1234/v1"},
+        {"endpoint": "http://127.0.0.1:1234/v1/models"},
+        {"endpoint": "http://user@127.0.0.1:1234/v1"},
+        {"endpoint": "http://127.0.0.1:1234/v1?key=value"},
+        {"key_value": "must-not-exist"},
+    ],
+)
+def test_local_configuration_rejects_noncanonical_or_credentialed_input(
+    tmp_path: Path,
+    change: dict[str, str],
+) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    with pytest.raises(ValueError):
+        prepare_configuration(registry, {**_local_request(), **change})
+    assert not (tmp_path / "packs").exists()
 
 
 @pytest.mark.parametrize("field,value", [

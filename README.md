@@ -180,6 +180,29 @@ When the Launcher window opens, complete setup if prompted. On Apple Silicon mac
 
 `--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
 
+### Use a local model without Docker or an API key
+
+For example, run a 1B model with llama.cpp on Apple Silicon macOS:
+
+```bash
+brew install llama.cpp
+llama-server -hf ggml-org/gemma-3-1b-it-GGUF:Q4_K_M \
+  --host 127.0.0.1 --port 1234 --alias gemma-3-1b-it \
+  --ctx-size 16384 --parallel 1 --jinja
+```
+
+The first run downloads the model; later runs use the downloaded file.
+In Tobkiri, open **Settings** → **Models**, select **Custom**, then choose
+**Local OpenAI-compatible**. Enter a connection name and
+`http://127.0.0.1:1234/v1`, and approve the connection when prompted.
+No API key is required. Create a model route using that registered connection
+and model ID `gemma-3-1b-it`, then select the saved model in the chat composer.
+
+Local connections accept only numeric loopback addresses (`127.0.0.1` or
+`[::1]`), an explicit port from 1024 to 65535, and the `/v1` base path.
+Keep the model server running while chatting. Hosted providers continue to
+require HTTPS and an API key.
+
 ## Common Tasks
 
 ### Just shortcuts

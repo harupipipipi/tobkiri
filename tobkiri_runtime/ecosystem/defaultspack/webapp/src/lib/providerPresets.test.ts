@@ -4,11 +4,21 @@ import { BUILTIN_API_PROVIDER_IDS } from "../features/apiKeys/apiKeySetup";
 
 import {
   CUSTOM_PROVIDER_ID,
+  isLocalOpenAICompatibleProtocol,
+  LOCAL_OPENAI_COMPATIBLE_PROTOCOL,
   isCustomProviderSetup,
   providerSetupLabel,
   providerSetupPreset,
   supportsSimpleProviderSetup,
 } from "./providerPresets";
+
+test("local OpenAI-compatible protocol is distinct from hosted adapters", () => {
+  assert.equal(
+    isLocalOpenAICompatibleProtocol(LOCAL_OPENAI_COMPATIBLE_PROTOCOL),
+    true,
+  );
+  assert.equal(isLocalOpenAICompatibleProtocol("openai-compatible"), false);
+});
 
 test("known hosted providers resolve their catalog endpoint and adapter", () => {
   assert.deepEqual(providerSetupPreset("openai"), {

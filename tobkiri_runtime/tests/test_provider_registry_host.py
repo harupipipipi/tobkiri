@@ -151,3 +151,27 @@ def test_registry_reader_cannot_select_foreign_profile_or_mutate(tmp_path: Path)
             with pytest.raises(PermissionError):
                 reader.invoke(reader.operation_id, payload, None)
     assert not (tmp_path / "packs").exists()
+
+
+def test_registry_projects_validated_local_connection_as_not_requiring_credentials(
+    tmp_path: Path,
+) -> None:
+    contribution = _capture(tmp_path)[0]
+    payload = {
+        "operation": "save",
+        "expected_revision": 0,
+        "record": {
+            "provider_instance_id": "provider.local",
+            "adapter_id": "local-openai-compatible",
+            "endpoint": "http://[::1]:1234/v1/",
+            "credential_handle": None,
+        },
+    }
+    saved = contribution.invoke(contribution.operation_id, payload, None)
+    assert saved["provider"]["endpoint"] == "http://[::1]:1234/v1"
+    reader = next(
+        item for item in _capture(tmp_path, readonly=True)
+        if item.operation_id.endswith("provider-registry-resource")
+    )
+    projected = reader.invoke(reader.operation_id, {}, None)
+    assert projected["providers"][0]["credential_status"] == "not_required"

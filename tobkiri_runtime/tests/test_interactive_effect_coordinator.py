@@ -149,6 +149,27 @@ def _prepared_presentation(payload: Mapping[str, Any]) -> Any:
     )
 
 
+def test_local_provider_approval_describes_a_connection_without_credentials() -> None:
+    """Local configuration must not promise or display a stored API key."""
+    request = {
+        "connection_name": "local", "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1", "key_value": "",
+    }
+    plan = {
+        "profile_id": "defaults", "provider_instance_id": "provider.local",
+        "adapter_id": request["protocol"], "endpoint": request["endpoint"],
+        "expected_revision": 0, "request_digest": canonical_digest(request),
+    }
+    spec = INTERACTIVE_EFFECT_SPECS["provider_configure"]
+    payload = _execute_payload(spec, request, plan)
+    presentation = _presentation_metadata(spec, _prepared_presentation(payload))
+    assert "without an API key" in presentation["summary"]
+    assert "Credential: not required" in presentation["detail"]
+    assert request["endpoint"] in presentation["detail"]
+    assert "encrypted" not in str(presentation)
+    assert presentation["confirmation_phrase"] == "EXECUTE"
+
+
 @pytest.mark.parametrize(
     ("effect_kind", "payload", "expected_action", "expected_detail", "forbidden"),
     (

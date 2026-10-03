@@ -16,6 +16,8 @@ from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 
+from .local_endpoint import local_openai_endpoint
+
 STORE_VERSION = "rumi.provider-registry.store.v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 
@@ -205,7 +207,11 @@ class ProviderRegistry:
         for record in value["providers"].values():
             if not isinstance(record, Mapping):
                 raise ValueError("provider registry record is invalid")
-            _provider_endpoint(record.get("endpoint"), record.get("credential_handle"))
+            _provider_endpoint(
+                record.get("endpoint"),
+                record.get("credential_handle"),
+                record.get("adapter_id"),
+            )
         return value
 
     def _write(self, state: Mapping[str, Any]) -> None:
@@ -229,7 +235,9 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
         ("credential:", "opaque:")
     ):
         raise ValueError("provider credential must be an opaque handle")
-    endpoint_text = _provider_endpoint(value.get("endpoint"), credential_handle)
+    endpoint_text = _provider_endpoint(
+        value.get("endpoint"), credential_handle, adapter_id,
+    )
 
     health = value.get("health_evidence")
     health = health if isinstance(health, Mapping) else {}
@@ -250,8 +258,16 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _provider_endpoint(endpoint: Any, credential_handle: Any) -> str | None:
+def _provider_endpoint(
+    endpoint: Any,
+    credential_handle: Any,
+    adapter_id: Any,
+) -> str | None:
     """Validate one provider endpoint, requiring TLS whenever credentials exist."""
+    if adapter_id == "local-openai-compatible":
+        if credential_handle is not None:
+            raise ValueError("local provider credentials are not permitted")
+        return local_openai_endpoint(endpoint)
     endpoint_text = str(endpoint) if endpoint is not None else None
     if endpoint_text is not None:
         parsed_endpoint = urllib.parse.urlsplit(endpoint_text)

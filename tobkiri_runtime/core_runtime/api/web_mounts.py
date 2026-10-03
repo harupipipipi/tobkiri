@@ -127,6 +127,10 @@ class WebMountMixin(_HTTPHandlerBase):
                 self._MIME_TYPES.get(target.suffix.lower(), "application/octet-stream"),
             )
             self.send_header("Content-Length", str(len(data)))
+            if selected["auth_required"]:
+                # Authenticated UI has stable asset URLs across runtime builds.
+                # A persisted webview must not reuse code from another capture.
+                self.send_header("Cache-Control", "no-store")
             origin = self._get_cors_origin(self.headers.get("Origin", ""))
             if origin:
                 self.send_header("Access-Control-Allow-Origin", origin)

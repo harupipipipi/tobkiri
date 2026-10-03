@@ -5,6 +5,7 @@ import { ErrorNotice } from "../../../components/ErrorNotice";
 import { cn } from "../../../lib/cn";
 import { allowCleartextMobileQr } from "../../../lib/mobileCleartextQr";
 import {
+  apiKeySetupSaveEnabled,
   apiKeySaveResource,
   buildApiKeySavePayload,
   collectApiProviderOptions,
@@ -15,6 +16,8 @@ import {
   type ApiProviderProtocol,
 } from "../../../features/apiKeys/apiKeySetup";
 import {
+  isLocalOpenAICompatibleProtocol,
+  LOCAL_OPENAI_COMPATIBLE_PROTOCOL,
   providerSetupLabel,
   supportsSimpleProviderSetup,
 } from "../../../lib/providerPresets";
@@ -57,7 +60,14 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [apiName, setApiName] = useState("main");
   const [secret, setSecret] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
-  const [protocol, setProtocol] = useState<ApiProviderProtocol>("openai-compatible");
+  const configuredProtocol = String((field as unknown as Record<string, unknown>).protocol ?? "");
+  const [protocol, setProtocol] = useState<ApiProviderProtocol>(
+    configuredProtocol === "anthropic"
+      ? "anthropic"
+      : configuredProtocol === LOCAL_OPENAI_COMPATIBLE_PROTOCOL
+        ? LOCAL_OPENAI_COMPATIBLE_PROTOCOL
+        : "openai-compatible",
+  );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
   const [availability, setAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
@@ -74,6 +84,16 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
     providerId,
     selectedKind,
   );
+  const localOpenAICompatible = customLlmProtocolRequired
+    && isLocalOpenAICompatibleProtocol(protocol);
+  const saveEnabled = apiKeySetupSaveEnabled({
+    provider_id: providerId,
+    name: apiName,
+    value: secret,
+    kind: selectedKind,
+    protocol,
+    base_url: baseUrl,
+  });
   const credentialTransferEnabled = allowCleartextMobileQr();
   const feedback = saveState === "saved" ? availabilityCopy(availability) : null;
 
@@ -97,7 +117,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       kind: selectedKind,
       protocol: customLlmProtocolRequired ? protocol : undefined,
       base_url: customLlmProtocolRequired ? baseUrl : undefined,
-      credential_mode: "api_key",
+      credential_mode: localOpenAICompatible ? "none" : "api_key",
     });
     if (!payload) return;
     setSaveState("saving");
@@ -165,7 +185,9 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           <p className="text-xs leading-5 text-zinc-500">
             {savesExternalToken
               ? "外部サービスを選び、識別用の名前とトークンを入力します。"
-              : customLlmProtocolRequired
+              : localOpenAICompatible
+                ? "ローカルで起動したOpenAI-compatibleサーバーのURLと接続名を入力します。APIキーは保存しません。"
+                : customLlmProtocolRequired
                 ? "Customの接続先とプロトコルを指定して、識別用の名前とAPIキーを入力します。"
                 : "使いたいAIプロバイダーを選び、識別用の名前とAPIキーを入力します。接続先は自動で設定されます。"}
           </p>
@@ -196,36 +218,40 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                   setApiName(event.target.value);
                   resetFeedback();
                 }}
-                placeholder="名前 (例: main, work)"
+                placeholder={localOpenAICompatible
+                  ? "接続名 (例: gemma3-1b)"
+                  : "名前 (例: main, work)"}
                 className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
               />
-              <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={secret}
-                  onChange={(event) => {
-                    setSecret(event.target.value);
-                    resetFeedback();
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    void handleSubmit();
-                  }}
-                  placeholder={savesExternalToken
-                    ? `${providerId || "provider"} token`
-                    : `${providerId || "provider"} API key`}
-                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-zinc-200 outline-none"
-                />
-              </div>
+              {!localOpenAICompatible && (
+                <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={secret}
+                    onChange={(event) => {
+                      setSecret(event.target.value);
+                      resetFeedback();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      void handleSubmit();
+                    }}
+                    placeholder={savesExternalToken
+                      ? `${providerId || "provider"} token`
+                      : `${providerId || "provider"} API key`}
+                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-zinc-200 outline-none"
+                  />
+                </div>
+              )}
               <button
                 type="button"
-                disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || !secret.trim() || (customLlmProtocolRequired && !baseUrl.trim())}
+                disabled={saveState === "saving" || !saveEnabled}
                 onClick={() => void handleSubmit()}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-xs transition-colors",
-                  saveState !== "saving" && providerId.trim() && apiName.trim() && secret.trim() && (!customLlmProtocolRequired || baseUrl.trim())
+                  saveState !== "saving" && saveEnabled
                     ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                     : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
                 )}
@@ -249,22 +275,35 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                       aria-label="Custom LLM protocol"
                       value={protocol}
                       onChange={(event) => {
-                        setProtocol(event.target.value === "anthropic" ? "anthropic" : "openai-compatible");
+                        setProtocol(
+                          event.target.value === "anthropic"
+                            ? "anthropic"
+                            : event.target.value === LOCAL_OPENAI_COMPATIBLE_PROTOCOL
+                              ? LOCAL_OPENAI_COMPATIBLE_PROTOCOL
+                              : "openai-compatible",
+                        );
                         resetFeedback();
                       }}
                       className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
                     >
                       <option value="openai-compatible">OpenAI-compatible</option>
                       <option value="anthropic">Anthropic Messages</option>
+                      <option value={LOCAL_OPENAI_COMPATIBLE_PROTOCOL}>
+                        Local OpenAI-compatible (認証なし)
+                      </option>
                     </select>
                   </label>
                   <label className="space-y-1 text-[11px] text-zinc-500">
-                    <span>HTTPS 接続先 URL</span>
+                    <span>{localOpenAICompatible ? "ローカル接続先 URL" : "HTTPS 接続先 URL"}</span>
                     <input
                       value={baseUrl}
                       onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }}
-                      placeholder="https://api.example.com/v1"
-                      aria-label="Provider HTTPS base URL"
+                      placeholder={localOpenAICompatible
+                        ? "http://127.0.0.1:1234/v1"
+                        : "https://api.example.com/v1"}
+                      aria-label={localOpenAICompatible
+                        ? "Local OpenAI-compatible base URL"
+                        : "Provider HTTPS base URL"}
                       className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
                     />
                   </label>

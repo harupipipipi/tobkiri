@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  apiKeySetupSaveEnabled,
   apiKeySaveResource,
   buildApiKeySavePayload,
   collectApiProviderOptions,
@@ -153,6 +154,47 @@ test("buildApiKeySavePayload accepts an explicit loopback no-key connection", ()
   assert.equal(payload?.value, "");
   assert.equal(payload?.options.credentialMode, "none");
   assert.equal(payload?.options.baseUrl, "http://127.0.0.1:8000/v1");
+});
+
+test("local OpenAI-compatible setup sends an empty key with no credential mode", () => {
+  const payload = buildApiKeySavePayload({
+    provider_id: "openai_compatible",
+    name: "gemma3-1b",
+    value: "",
+    kind: "llm",
+    protocol: "local-openai-compatible",
+    base_url: "http://127.0.0.1:1234/v1",
+    credential_mode: "none",
+  });
+
+  assert.equal(payload?.value, "");
+  assert.equal(payload?.options.protocol, "local-openai-compatible");
+  assert.equal(payload?.options.credentialMode, "none");
+});
+
+test("local setup enables save from a connection name and URL without an API key", () => {
+  assert.equal(apiKeySetupSaveEnabled({
+    provider_id: "openai_compatible",
+    name: "gemma3-1b",
+    value: "",
+    kind: "llm",
+    protocol: "local-openai-compatible",
+    base_url: "http://127.0.0.1:1234/v1",
+  }), true);
+  assert.equal(apiKeySetupSaveEnabled({
+    provider_id: "openai_compatible",
+    name: "gemma3-1b",
+    value: "",
+    kind: "llm",
+    protocol: "local-openai-compatible",
+    base_url: "",
+  }), false);
+  assert.equal(apiKeySetupSaveEnabled({
+    provider_id: "openai",
+    name: "main",
+    value: "",
+    kind: "llm",
+  }), false);
 });
 
 test("summarizeApiKeySetupForDiagnostics never exposes secret values", () => {

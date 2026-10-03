@@ -624,15 +624,20 @@ def _presentation_metadata(
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
         _execute_payload(spec, request, plan)
         # Never render the request, key, request digest, or arbitrary metadata.
+        local = plan["adapter_id"] == "local-openai-compatible"
         return _presentation(
             action="Configure Provider connection",
-            summary="Store an encrypted API key and update the Provider connection.",
+            summary=(
+                "Connect a local model server without an API key."
+                if local else
+                "Store an encrypted API key and update the Provider connection."
+            ),
             detail=(
                 f"Provider: {plan['provider_instance_id']}\n"
                 f"Profile: {plan['profile_id']}\n"
                 f"Protocol: {plan['adapter_id']}\n"
                 f"Endpoint: {plan['endpoint']}\n"
-                f"Credential: {_REDACTED}"
+                f"Credential: {'not required' if local else _REDACTED}"
             ),
         )
     if spec.kind == "shell_execute":
