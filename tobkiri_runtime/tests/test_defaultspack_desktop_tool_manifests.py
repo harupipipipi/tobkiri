@@ -79,3 +79,30 @@ def test_desktop_access_manifests_expose_request_and_grant_identity() -> None:
     assert grant_parameters["required"] == ["request_id"]
     assert {"seat_id"} in [set(item["required"]) for item in grant_parameters["anyOf"]]
     assert {"desktop_id"} in [set(item["required"]) for item in grant_parameters["anyOf"]]
+
+
+def test_desktop_frame_evidence_is_a_separate_approval_gated_write_tool() -> None:
+    manifest_path = (
+        DEFAULTSPACK_ROOT / "tools" / "desktop_frame_evidence" / "manifest.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))["config"]
+    parameters = manifest["schema"]["parameters"]
+
+    assert manifest["action_type"] == "write"
+    assert manifest["write_action"] is True
+    assert manifest["requires_approval"] is True
+    assert manifest["risk"] == "high"
+    assert parameters["additionalProperties"] is False
+    assert set(parameters["properties"]["action"]["enum"]) == {
+        "persist",
+        "export",
+        "delete",
+        "cleanup_run",
+    }
+    assert set(parameters["properties"]["purpose"]["enum"]) == {
+        "visual_qa",
+        "bug_report",
+        "accessibility_qa",
+    }
+    assert manifest["ui"]["composer_label"] == "Desktop Frame Evidence"
+    assert "private" in manifest["ui"]["composer_description"].lower()
