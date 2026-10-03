@@ -4417,15 +4417,30 @@ export const api = {
       },
     );
     const mutationId = crypto.randomUUID();
-    return request<{ kind: string; value: unknown; revision: number; mutation_id: string; receipt: string }>(
+    return request<{
+      kind: string;
+      value: unknown;
+      revision: number;
+      document_revision: number;
+      mutation_id: string;
+      receipt: string;
+    }>(
       defaultspackContractRoute("api/ui/model-state"), {
         method: "PUT",
         body: JSON.stringify({ kind, value, expected_revision: snapshot.revision, mutation_id: mutationId }),
       },
-      (candidate): candidate is { kind: string; value: unknown; revision: number; mutation_id: string; receipt: string } => {
+      (candidate): candidate is {
+        kind: string;
+        value: unknown;
+        revision: number;
+        document_revision: number;
+        mutation_id: string;
+        receipt: string;
+      } => {
         const record = objectRecord(candidate);
         return record?.kind === kind && record.value === value && record.mutation_id === mutationId
           && record.revision === snapshot.revision + 1
+          && Number.isSafeInteger(record.document_revision) && (record.document_revision as number) >= 0
           && typeof record.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt);
       },
     );

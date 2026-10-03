@@ -1566,7 +1566,7 @@
             {
               "entrypoint_id": "agent-runtime-control",
               "id": "rumi_agent_runtime_service_pack.agent-runtime-control",
-              "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716"
+              "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9"
             }
           ],
           "owner": "rumi_agent_runtime_service_pack",
@@ -1600,7 +1600,7 @@
             {
               "entrypoint_id": "agent-turn-job-adapter",
               "id": "rumi_agent_runtime_service_pack.agent-turn-job-adapter",
-              "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716"
+              "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9"
             }
           ],
           "owner": "rumi_agent_runtime_service_pack",
@@ -1632,7 +1632,7 @@
             {
               "entrypoint_id": "agent-runtime-resource",
               "id": "rumi_agent_runtime_service_pack.agent-runtime-resource",
-              "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716"
+              "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9"
             }
           ],
           "owner": "rumi_agent_runtime_service_pack",
@@ -1716,7 +1716,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+          "digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
           "kind": "executable",
           "path": "runtime/runtime.py"
         }

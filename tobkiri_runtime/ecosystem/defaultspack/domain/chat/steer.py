@@ -15,6 +15,29 @@ from core_runtime.global_contract_dispatch import (
 TURN_RESOURCE = "tobkiri.resource.turn.v1"
 TURN_ACTION = "tobkiri.action.turn.lifecycle.v1"
 CONVERSATION_RESOURCE = "tobkiri.resource.conversation.v1"
+TURN_RESOURCE_OPERATION = "rumi_turn_runtime_pack.turn-resource"
+TURN_ACTION_OPERATION = "rumi_turn_runtime_pack.turn-lifecycle"
+CONVERSATION_RESOURCE_OPERATION = (
+    "rumi_conversation_store_pack.conversation-resource"
+)
+_CONTRACT_OPERATIONS = {
+    TURN_RESOURCE: (TURN_RESOURCE_OPERATION, frozenset({"get", "list"})),
+    TURN_ACTION: (
+        TURN_ACTION_OPERATION,
+        frozenset(
+            {
+                "begin",
+                "cancel_guidance",
+                "consume_guidance",
+                "steer",
+            }
+        ),
+    ),
+    CONVERSATION_RESOURCE: (
+        CONVERSATION_RESOURCE_OPERATION,
+        frozenset({"get"}),
+    ),
+}
 _TERMINAL = {"completed", "failed", "cancelled"}
 
 
@@ -330,12 +353,24 @@ def _legacy_item(
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
+    """Invoke one finite captured contract route with its logical operation."""
+
     registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise RuntimeError("global turn runtime is unavailable")
+    binding = _CONTRACT_OPERATIONS.get(contract_id)
+    if binding is None or operation not in binding[1]:
+        raise PermissionError("global turn operation is unavailable")
+    request = dict(payload)
+    if {"operation", "profile_id"} & request.keys():
+        raise PermissionError("global turn request contains reserved fields")
     return invoke_global_contract(
         registry,
         contract_id,
-        operation,
-        {"profile_id": captured_profile_id(registry), **dict(payload)},
+        binding[0],
+        {
+            "profile_id": captured_profile_id(registry),
+            "operation": operation,
+            **request,
+        },
     )

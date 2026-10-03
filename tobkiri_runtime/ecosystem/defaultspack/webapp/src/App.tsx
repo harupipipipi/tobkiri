@@ -2468,6 +2468,49 @@ export function keepSelectedToolsAfterSend(settingsValues: Record<string, Record
   return parseCommandBoolean(settingsValues.tools?.keep_selected_tools_after_send, false);
 }
 
+type ModelStateMutationKind = "preferred_model" | "thinking_level" | "strategy_reference";
+
+export type ModelStateMutationForSetting = {
+  kind: ModelStateMutationKind;
+  value: unknown;
+  modelsPatch: Record<string, unknown>;
+};
+
+/**
+ * Route model controls through the captured model-state owner. Main Model and
+ * Preferred Model are one durable preference, so their presentation fields
+ * must remain synchronized while the owner records the preferred-model value.
+ */
+export function modelStateMutationForSetting(
+  sectionId: string,
+  fieldId: string,
+  value: unknown,
+  models: Record<string, unknown> | undefined,
+): ModelStateMutationForSetting | null {
+  if (sectionId !== "models") return null;
+  if (fieldId === "main_model" || fieldId === "preferred_model") {
+    const selectedModel = String(value ?? "").trim();
+    if (!selectedModel) return null;
+    const modelSlots = models?.model_slots;
+    const currentSlots = modelSlots && typeof modelSlots === "object" && !Array.isArray(modelSlots)
+      ? modelSlots as Record<string, unknown>
+      : {};
+    return {
+      kind: "preferred_model",
+      value: selectedModel,
+      modelsPatch: {
+        main_model: selectedModel,
+        preferred_model: selectedModel,
+        model_slots: { ...currentSlots, main: selectedModel },
+      },
+    };
+  }
+  if (fieldId === "thinking_level" || fieldId === "strategy_reference") {
+    return { kind: fieldId, value, modelsPatch: { [fieldId]: value } };
+  }
+  return null;
+}
+
 function commandSearchText(command: ComposerCommandItem): string {
   return [
     command.id,
@@ -2545,6 +2588,7 @@ export function ChatApp() {
   const settingsValuesRef = useRef(settingsValues);
   const pinnedPlacementSaveRevisionRef = useRef(0);
   const settingsSaveRevisionRef = useRef(0);
+  const settingsDocumentMutationRevisionRef = useRef(0);
   const settingsDocumentRevisionRef = useRef<number | null>(null);
   const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const settingsDirtyKeysRef = useRef<string[]>([]);
@@ -3594,7 +3638,7 @@ export function ChatApp() {
   useEffect(() => {
     if (!isSettingsOpen) return;
     let cancelled = false;
-    const saveRevisionAtRead = settingsSaveRevisionRef.current;
+    const documentMutationRevisionAtRead = settingsDocumentMutationRevisionRef.current;
     // The bootstrap response deliberately omits dynamic provider metadata.  Fetch
     // the full registry when Settings opens so built-in Provider/API controls do
     // not look like empty extension slots while the shell is still settling.
@@ -3605,7 +3649,7 @@ export function ChatApp() {
         setSettingsSections(settings.sections);
         // A full refresh can finish after a failed/queued save. Do not replace
         // the user's recoverable local edits with an older server snapshot.
-        if (settingsDirtyKeysRef.current.length === 0 && saveRevisionAtRead === settingsSaveRevisionRef.current) {
+        if (settingsDirtyKeysRef.current.length === 0 && documentMutationRevisionAtRead === settingsDocumentMutationRevisionRef.current) {
           const nextValues = withCalendarSettingsValues(settings.values);
           settingsDocumentRevisionRef.current = settings.document_revision;
           settingsValuesRef.current = nextValues;
@@ -3747,7 +3791,7 @@ export function ChatApp() {
 
   async function refreshCatalog(): Promise<CatalogRefreshResult | null> {
     const requestSequence = ++refreshCatalogSequenceRef.current;
-    const saveRevisionAtRead = settingsSaveRevisionRef.current;
+    const documentMutationRevisionAtRead = settingsDocumentMutationRevisionRef.current;
     setSettingsLoadState({ status: "loading" });
     setModelProfilesLoadState({ status: "loading" });
     // The three presentation-dependent reads own distinct Broker reservations
@@ -3783,7 +3827,7 @@ export function ChatApp() {
       setSettingsSections(nextSettings.sections);
       // Provider/OAuth refreshes run independently of settings saves. Preserve
       // dirty values until the existing save/retry flow has resolved them.
-      if (settingsDirtyKeysRef.current.length === 0 && saveRevisionAtRead === settingsSaveRevisionRef.current) {
+      if (settingsDirtyKeysRef.current.length === 0 && documentMutationRevisionAtRead === settingsDocumentMutationRevisionRef.current) {
         const nextValues = withCalendarSettingsValues(nextSettings.values);
         settingsDocumentRevisionRef.current = nextSettings.document_revision;
         settingsValuesRef.current = nextValues;
@@ -4459,6 +4503,7 @@ export function ChatApp() {
     explicitPatches?: Array<{ section: string; field: string; value: unknown }>,
   ) => {
     const revision = ++settingsSaveRevisionRef.current;
+    settingsDocumentMutationRevisionRef.current += 1;
     const dirtyKeys = [...new Set([
       ...settingsDirtyKeysRef.current,
       ...(dirtyKey ? [dirtyKey] : []),
@@ -4510,6 +4555,30 @@ export function ChatApp() {
     return saveRequest;
   };
 
+  const persistModelState = (mutation: ModelStateMutationForSetting) => {
+    settingsDocumentMutationRevisionRef.current += 1;
+    const saveRequest = settingsSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => api.updateModelState(mutation.kind, mutation.value))
+      .then((result) => {
+        // Model-state writes share the frontend settings document with ordinary
+        // preferences. The captured owner receipt is the only authoritative
+        // global revision; guessing from a previous UI read races a later CAS.
+        settingsDocumentRevisionRef.current = result.document_revision;
+        const persisted = withCalendarSettingsValues({
+          ...settingsValuesRef.current,
+          models: {
+            ...(settingsValuesRef.current.models ?? {}),
+            ...mutation.modelsPatch,
+          },
+        });
+        applySettingsValues(persisted);
+        return result;
+      });
+    settingsSaveQueueRef.current = saveRequest.then(() => undefined, () => undefined);
+    return saveRequest;
+  };
+
   const retrySettingsSave = () => {
     if (settingsDirtyKeysRef.current.length === 0) return;
     void persistSettingsValues(settingsValuesRef.current).catch(() => undefined);
@@ -4551,16 +4620,13 @@ export function ChatApp() {
         ...(current[sectionId] ?? {}),
         [fieldId]: fieldType === "secret" || fieldType === "api_keys" || fieldType === "api_key_setup" || fieldType === "external_tokens" ? "" : value,
       };
-      if (sectionId === "models" && fieldId === "preferred_model") {
-        const preferredModel = String(value ?? "").trim();
-        if (preferredModel) {
-          sectionPatch.main_model = preferredModel;
-          sectionPatch.model_slots = {
-            ...((current.models?.model_slots as Record<string, unknown> | undefined) ?? {}),
-            main: preferredModel,
-          };
-        }
-      }
+      const modelStateMutation = modelStateMutationForSetting(
+        sectionId,
+        fieldId,
+        sectionPatch[fieldId],
+        current.models,
+      );
+      if (modelStateMutation) Object.assign(sectionPatch, modelStateMutation.modelsPatch);
       if (sectionId === "external_input" && fieldId === "input_provider") {
         const provider = String(value ?? "line");
         const template = firstExternalIoTemplateForProvider(catalog, "input", provider)
@@ -4729,20 +4795,11 @@ export function ChatApp() {
         const changedPatches = Object.entries(sectionPatch)
           .filter(([field, nextValue]) => currentSection[field] !== nextValue)
           .map(([field, nextValue]) => ({ section: sectionId, field, value: nextValue }));
-        const modelStateKind = sectionId === "models"
-          ? fieldId === "preferred_model"
-            ? "preferred_model"
-            : fieldId === "thinking_level" || fieldId === "strategy_reference"
-              ? fieldId
-              : null
-          : null;
-        if (modelStateKind) {
-          void api.updateModelState(
-            modelStateKind,
-            sectionPatch[fieldId],
-          ).catch((modelError) => {
+        if (modelStateMutation) {
+          void persistModelState(modelStateMutation).catch((modelError) => {
             setError(settingsErrorMessage(modelError, "Failed to save model state."));
           });
+          return;
         } else {
           void persistSettingsValues(
             next,
@@ -4784,9 +4841,17 @@ export function ChatApp() {
           ? ["strategy_reference", normalizedUpdates.strategy_reference] as const
           : null;
     if (modelMutation) {
-      void api.updateModelState(modelMutation[0], modelMutation[1]).catch((modelError) => {
-        setError(settingsErrorMessage(modelError, "Failed to save model state."));
-      });
+      const mutation = modelStateMutationForSetting(
+        "models",
+        modelMutation[0],
+        modelMutation[1],
+        current.models,
+      );
+      if (mutation) {
+        void persistModelState(mutation).catch((modelError) => {
+          setError(settingsErrorMessage(modelError, "Failed to save model state."));
+        });
+      }
     }
   };
 

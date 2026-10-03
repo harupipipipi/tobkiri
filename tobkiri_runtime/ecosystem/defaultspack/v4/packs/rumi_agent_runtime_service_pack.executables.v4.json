@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_agent_runtime_service_pack",
-  "source_identity": "sha256:ccf8c1d17387b24a6b5f5a8644cd27445d02515ef9e335853d9a24ccf388418c",
+  "source_identity": "sha256:677422065df593b7f57a20b12a393b64d122b7a98c4cbe62d23ea07a18c85903",
   "variants": [
     {
       "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.control.python",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
       "implementation_path": "runtime/runtime.py",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.status.python",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
       "implementation_path": "runtime/runtime.py",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn.python",
       "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
       "implementation_path": "runtime/runtime.py",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -106,6 +106,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:77c95204c0635bf514a555304792c66cb8a458d460ae17f6b9a9164fc99a42c6",
-  "catalog_digest": "sha256:1fd5e397147df1619c1e91897c6822f6cca466e7e2fc022b14e063e2985f523e"
+  "materialization_catalog_digest": "sha256:d34914d25e808da7c081a112010789c690f223be573ad329a7cea8a2f3ffc637",
+  "catalog_digest": "sha256:bcf137493bc3e64f4ff965993b625987de1a809ddcb55b3d39d5f40e858c98b2"
 }

@@ -14,9 +14,14 @@ AUTHORITY = "rumi.service.host.authorize.v1"
 AGENT_STATE_RESOURCE = "rumi.resource.agent.state.v1"
 AGENT_STATE_ACTION = "rumi.action.agent.state.v1"
 CONVERSATION_RESOURCE = "tobkiri.resource.conversation.v1"
+CONVERSATION_RESOURCE_OPERATION = (
+    "rumi_conversation_store_pack.conversation-resource"
+)
 MESSAGE_ACTION = "rumi.action.message.manage.v1"
 TURN_RESOURCE = "tobkiri.resource.turn.v1"
 TURN_ACTION = "tobkiri.action.turn.lifecycle.v1"
+TURN_RESOURCE_OPERATION = "rumi_turn_runtime_pack.turn-resource"
+TURN_ACTION_OPERATION = "rumi_turn_runtime_pack.turn-lifecycle"
 CONTEXT = "rumi.service.context.v1"
 AI_GENERATE = "rumi.service.ai.generate.v1"
 TOOL_INVOKE = "rumi.service.tool.invoke.v1"
@@ -452,11 +457,10 @@ class AgentRuntime:
         run = result["run"]
         turn = self._turn_get(str(run.get("turn_id") or ""))
         if turn:
-            self.client.invoke(
+            self._invoke_turn_contract(
                 TURN_ACTION,
                 "steer",
                 {
-                    "profile_id": self.profile_id,
                     "turn_id": turn["id"],
                     "expected_revision": turn["revision"],
                     "guidance": arguments["guidance"],
@@ -472,11 +476,10 @@ class AgentRuntime:
         run = result["run"]
         turn = self._turn_get(str(run.get("turn_id") or ""))
         if turn:
-            self.client.invoke(
+            self._invoke_turn_contract(
                 TURN_ACTION,
                 "handoff",
                 {
-                    "profile_id": self.profile_id,
                     "turn_id": turn["id"],
                     "expected_revision": turn["revision"],
                     "target": arguments["target"],
@@ -495,10 +498,10 @@ class AgentRuntime:
         return dict(value)
 
     def _conversation(self, conversation_id: str) -> dict[str, Any]:
-        value = self.client.invoke(
+        value = self._invoke_turn_contract(
             CONVERSATION_RESOURCE,
             "get",
-            {"profile_id": self.profile_id, "conversation_id": conversation_id},
+            {"conversation_id": conversation_id},
         )
         if not isinstance(value, Mapping):
             raise KeyError("agent conversation is unknown")
@@ -581,11 +584,10 @@ class AgentRuntime:
             if turn is None:
                 raise KeyError("agent turn is unknown")
             return turn
-        return self.client.invoke(
+        return self._invoke_turn_contract(
             TURN_ACTION,
             "begin",
             {
-                "profile_id": self.profile_id,
                 "turn_id": str(uuid.uuid4()),
                 "request_id": arguments["idempotency_key"],
                 "conversation_id": conversation["id"],
@@ -596,10 +598,10 @@ class AgentRuntime:
     def _turn_get(self, turn_id: str) -> dict[str, Any] | None:
         if not turn_id:
             return None
-        value = self.client.invoke(
+        value = self._invoke_turn_contract(
             TURN_RESOURCE,
             "get",
-            {"profile_id": self.profile_id, "turn_id": turn_id},
+            {"turn_id": turn_id},
         )
         return dict(value) if isinstance(value, Mapping) else None
 
@@ -609,15 +611,49 @@ class AgentRuntime:
         status: str,
         details: Mapping[str, Any],
     ) -> dict[str, Any]:
-        return self.client.invoke(
+        return self._invoke_turn_contract(
             TURN_ACTION,
             "transition",
             {
-                "profile_id": self.profile_id,
                 "turn_id": turn["id"],
                 "expected_revision": turn["revision"],
                 "status": status,
                 "details": dict(details),
+            },
+        )
+
+    def _invoke_turn_contract(
+        self,
+        contract_id: str,
+        operation: str,
+        payload: Mapping[str, Any],
+    ) -> Any:
+        """Invoke one captured turn route without accepting route substitution."""
+
+        bindings = {
+            CONVERSATION_RESOURCE: (
+                CONVERSATION_RESOURCE_OPERATION,
+                frozenset({"get"}),
+            ),
+            TURN_RESOURCE: (TURN_RESOURCE_OPERATION, frozenset({"get"})),
+            TURN_ACTION: (
+                TURN_ACTION_OPERATION,
+                frozenset({"begin", "handoff", "steer", "transition"}),
+            ),
+        }
+        binding = bindings.get(contract_id)
+        if binding is None or operation not in binding[1]:
+            raise PermissionError("agent turn operation is unavailable")
+        request = dict(payload)
+        if {"operation", "profile_id"} & request.keys():
+            raise PermissionError("agent turn request contains reserved fields")
+        return self.client.invoke(
+            contract_id,
+            binding[0],
+            {
+                "profile_id": self.profile_id,
+                "operation": operation,
+                **request,
             },
         )
 

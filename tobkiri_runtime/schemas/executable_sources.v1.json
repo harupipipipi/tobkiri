@@ -3074,7 +3074,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3088,7 +3088,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+          "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -3127,7 +3127,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3141,7 +3141,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+          "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -3180,7 +3180,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
-      "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3194,7 +3194,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:94a0eeee4c37a89bdc8b000f82001d2cedbd491ac85c91eb28bb668c8ee63716",
+          "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -18290,7 +18290,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:7465e2bd31727924a21d308efcfaa7e2a8f7c94160e9e5ef7ab4cc022efe943a",
+    "input_digest": "sha256:8e870371d0bd41b16c590381ec2b2748e6b253736029b416b008fab789355774",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -18556,7 +18556,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:047f3752467407a4db4cad3f49b261e9a64c29c819414972d627e061698db44b",
+        "digest": "sha256:861fd29b0a196eda96607d21e677550c2ed302a933919728e177a82e2ffaf859",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json"
       },
@@ -19046,7 +19046,7 @@
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
       {
-        "digest": "sha256:f6a7779d14bc5c5398ccb7e707710972accd5099e13304eb29a42a72fcc34d97",
+        "digest": "sha256:c0355f204831e130e2d45c611efd6a592ec2de3fd5d6600d1b859938009380c5",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/rumi.pack.v3.json"
       },

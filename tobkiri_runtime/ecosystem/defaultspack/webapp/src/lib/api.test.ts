@@ -18,6 +18,7 @@ import {
   frontendCommandArgs,
   highRiskResumeDisposition,
   keepSelectedToolsAfterSend,
+  modelStateMutationForSetting,
   parseCommandBoolean,
   parseSlashCommandInput,
   resolveMimoCodingModel,
@@ -1461,6 +1462,140 @@ test("updateUiSettingsPatches sends field-scoped settings mutations", async () =
   assert.deepEqual(body, {
     changes: { general: { composer_placeholder: "Hello" } }, expected_revision: 7,
   });
+});
+
+test("Main Model is a captured preferred-model mutation with synchronized local fields", () => {
+  const mutation = modelStateMutationForSetting(
+    "models",
+    "main_model",
+    " gemma1b-local ",
+    { model_slots: { lightweight: "stub/default" } },
+  );
+
+  assert.deepEqual(mutation, {
+    kind: "preferred_model",
+    value: "gemma1b-local",
+    modelsPatch: {
+      main_model: "gemma1b-local",
+      preferred_model: "gemma1b-local",
+      model_slots: { lightweight: "stub/default", main: "gemma1b-local" },
+    },
+  });
+  assert.deepEqual(modelStateMutationForSetting("models", "thinking_level", "high", {}), {
+    kind: "thinking_level",
+    value: "high",
+    modelsPatch: { thinking_level: "high" },
+  });
+  assert.equal(modelStateMutationForSetting("models", "lightweight_model", "gemma1b-local", {}), null);
+});
+
+test("model-state saves use the owner endpoint and accept its receipt", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ target: string; method: string; body: unknown }> = [];
+  try {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ target: requestTarget(input), method: init?.method ?? "GET", body });
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          status: "ok",
+          data: { namespace: "model-state", revision: 4, values: { preferred_model: "stub/default" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      const mutation = body as { kind: string; value: unknown; mutation_id: string };
+      return new Response(JSON.stringify({
+        status: "ok",
+        data: {
+          kind: mutation.kind,
+          value: mutation.value,
+          revision: 5,
+          document_revision: 12,
+          mutation_id: mutation.mutation_id,
+          receipt: `sha256:${"a".repeat(64)}`,
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    const result = await api.updateModelState("preferred_model", "gemma1b-local");
+    assert.equal(result.kind, "preferred_model");
+    assert.equal(result.value, "gemma1b-local");
+    assert.equal(result.document_revision, 12);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(requests.map(({ target, method }) => ({ target, method })), [
+    { target: "/api/ui/model-state", method: "GET" },
+    { target: "/api/ui/model-state", method: "PUT" },
+  ]);
+  const write = requests[1]?.body as Record<string, unknown>;
+  assert.deepEqual({ ...write, mutation_id: "[generated]" }, {
+    kind: "preferred_model",
+    value: "gemma1b-local",
+    expected_revision: 4,
+    mutation_id: "[generated]",
+  });
+  assert.match(String(write.mutation_id), /^[0-9a-f-]{36}$/i);
+  assert.equal(requests.some((request) => request.target === "/api/ui/settings"), false);
+});
+
+test("model-state receipts require the authoritative document revision", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(JSON.stringify({
+          status: "ok",
+          data: { namespace: "model-state", revision: 4, values: { preferred_model: "stub/default" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      const mutation = JSON.parse(String(init?.body)) as { kind: string; value: unknown; mutation_id: string };
+      return new Response(JSON.stringify({
+        status: "ok",
+        data: {
+          kind: mutation.kind,
+          value: mutation.value,
+          revision: 5,
+          mutation_id: mutation.mutation_id,
+          receipt: `sha256:${"a".repeat(64)}`,
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    await assert.rejects(api.updateModelState("preferred_model", "gemma1b-local"));
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model-state failures do not fall back to the UI preferences write", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ target: string; method: string }> = [];
+  try {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ target: requestTarget(input), method: init?.method ?? "GET" });
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          status: "ok",
+          data: { namespace: "model-state", revision: 4, values: { preferred_model: "stub/default" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ status: "error", error: "model state unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await assert.rejects(api.updateModelState("preferred_model", "gemma1b-local"), /HTTP 503/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(requests, [
+    { target: "/api/ui/model-state", method: "GET" },
+    { target: "/api/ui/model-state", method: "PUT" },
+  ]);
 });
 
 test("settings patches confirm nested model preferences after a JSON round trip", async () => {
