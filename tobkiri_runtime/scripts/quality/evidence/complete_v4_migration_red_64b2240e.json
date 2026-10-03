@@ -636,6 +636,9 @@
       },
       {
         "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
           "runtime_receipt_operation_execution_missing"
         ],
         "line": 1,
@@ -1684,6 +1687,9 @@
         },
         {
           "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
             "runtime_receipt_operation_execution_missing"
           ],
           "line": 1,
@@ -4149,8 +4155,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "4769ab63bce8bd0ff013292eb6821cf99ef5f534",
-    "semantic_digest": "sha256:621e0ce2e47cdec61d0d82b3e7960162dbf0815fafe6dc66234f87fce6b8b605",
+    "observed_head_sha": "f28570e0787f0bbf60c9f603b557e9ee34b90fc8",
+    "semantic_digest": "sha256:4c5adae06eb0bb69bca4f02d17986aad11c41f386fc0a2829656fe8b2c2cf073",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
