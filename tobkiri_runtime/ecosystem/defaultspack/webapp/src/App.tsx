@@ -1356,6 +1356,18 @@ export function shouldAutoCompactHistory(width: number): boolean {
   return width < 760;
 }
 
+export function advanceSettingsDocumentMutationGeneration(generation: number): number {
+  return generation + 1;
+}
+
+export function settingsReadMayApply(
+  dirtyKeyCount: number,
+  generationAtRead: number,
+  currentGeneration: number,
+): boolean {
+  return dirtyKeyCount === 0 && generationAtRead === currentGeneration;
+}
+
 function writeJsonLocalStorage<T>(key: string, value: T) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -3649,7 +3661,11 @@ export function ChatApp() {
         setSettingsSections(settings.sections);
         // A full refresh can finish after a failed/queued save. Do not replace
         // the user's recoverable local edits with an older server snapshot.
-        if (settingsDirtyKeysRef.current.length === 0 && documentMutationRevisionAtRead === settingsDocumentMutationRevisionRef.current) {
+        if (settingsReadMayApply(
+          settingsDirtyKeysRef.current.length,
+          documentMutationRevisionAtRead,
+          settingsDocumentMutationRevisionRef.current,
+        )) {
           const nextValues = withCalendarSettingsValues(settings.values);
           settingsDocumentRevisionRef.current = settings.document_revision;
           settingsValuesRef.current = nextValues;
@@ -3827,7 +3843,11 @@ export function ChatApp() {
       setSettingsSections(nextSettings.sections);
       // Provider/OAuth refreshes run independently of settings saves. Preserve
       // dirty values until the existing save/retry flow has resolved them.
-      if (settingsDirtyKeysRef.current.length === 0 && documentMutationRevisionAtRead === settingsDocumentMutationRevisionRef.current) {
+      if (settingsReadMayApply(
+        settingsDirtyKeysRef.current.length,
+        documentMutationRevisionAtRead,
+        settingsDocumentMutationRevisionRef.current,
+      )) {
         const nextValues = withCalendarSettingsValues(nextSettings.values);
         settingsDocumentRevisionRef.current = nextSettings.document_revision;
         settingsValuesRef.current = nextValues;
@@ -4503,7 +4523,9 @@ export function ChatApp() {
     explicitPatches?: Array<{ section: string; field: string; value: unknown }>,
   ) => {
     const revision = ++settingsSaveRevisionRef.current;
-    settingsDocumentMutationRevisionRef.current += 1;
+    settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+      settingsDocumentMutationRevisionRef.current,
+    );
     const dirtyKeys = [...new Set([
       ...settingsDirtyKeysRef.current,
       ...(dirtyKey ? [dirtyKey] : []),
@@ -4532,6 +4554,9 @@ export function ChatApp() {
       .then((result) => {
         // Even an earlier queued save advances the owner's revision. It must
         // not replace newer local edits while the next save waits in the queue.
+        settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+          settingsDocumentMutationRevisionRef.current,
+        );
         settingsDocumentRevisionRef.current = result.document_revision;
         if (revision !== settingsSaveRevisionRef.current) return result;
         const persisted = withCalendarSettingsValues({
@@ -4556,7 +4581,9 @@ export function ChatApp() {
   };
 
   const persistModelState = (mutation: ModelStateMutationForSetting) => {
-    settingsDocumentMutationRevisionRef.current += 1;
+    settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+      settingsDocumentMutationRevisionRef.current,
+    );
     const saveRequest = settingsSaveQueueRef.current
       .catch(() => undefined)
       .then(() => api.updateModelState(mutation.kind, mutation.value))
@@ -4564,6 +4591,9 @@ export function ChatApp() {
         // Model-state writes share the frontend settings document with ordinary
         // preferences. The captured owner receipt is the only authoritative
         // global revision; guessing from a previous UI read races a later CAS.
+        settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+          settingsDocumentMutationRevisionRef.current,
+        );
         settingsDocumentRevisionRef.current = result.document_revision;
         const persisted = withCalendarSettingsValues({
           ...settingsValuesRef.current,

@@ -27,7 +27,11 @@ import {
   resolveUltraYoloModeState,
   resolvedFrontendCommandArgs,
 } from "../App";
-import { shouldAutoCompactHistory } from "../App";
+import {
+  advanceSettingsDocumentMutationGeneration,
+  settingsReadMayApply,
+  shouldAutoCompactHistory,
+} from "../App";
 import { ImportedConversationNotice, shareImportDestination, sharePreviewSummary, shareTokenFromPath } from "../pages/ConversationShareLanding";
 import type { ConversationShareRecord } from "./api";
 
@@ -1302,6 +1306,15 @@ test("history sidebar auto-compacts on narrow screens", () => {
   assert.equal(shouldAutoCompactHistory(390), true);
   assert.equal(shouldAutoCompactHistory(759), true);
   assert.equal(shouldAutoCompactHistory(760), false);
+});
+
+test("a Settings read begun during a write cannot overwrite its settled receipt", () => {
+  const generationAtRead = advanceSettingsDocumentMutationGeneration(0);
+  assert.equal(settingsReadMayApply(0, generationAtRead, generationAtRead), true);
+
+  const generationAfterReceipt = advanceSettingsDocumentMutationGeneration(generationAtRead);
+  assert.equal(settingsReadMayApply(0, generationAtRead, generationAfterReceipt), false);
+  assert.equal(settingsReadMayApply(1, generationAfterReceipt, generationAfterReceipt), false);
 });
 
 test("command protocol catalog is authoritative and invocation preserves its envelope", async () => {
