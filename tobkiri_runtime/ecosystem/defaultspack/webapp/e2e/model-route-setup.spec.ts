@@ -1,4 +1,25 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  DEFAULTSPACK_CONTRACT_ENDPOINT,
+  defaultspackContractRoute,
+  defaultspackContractUrl,
+} from "../src/lib/api";
+
+const contractRoutes = {
+  providerRead: {
+    method: "GET",
+    path: defaultspackContractUrl(defaultspackContractRoute("api/connections/status")),
+  },
+  modelRead: {
+    method: "GET",
+    path: defaultspackContractUrl(defaultspackContractRoute("api/ai/profiles")),
+  },
+  modelCreate: {
+    method: "POST",
+    path: defaultspackContractUrl(defaultspackContractRoute("api/ai/profiles"), "POST"),
+  },
+};
+type ContractOperation = keyof typeof contractRoutes;
 
 const providerId = "connection/openai:main";
 const provider = {
@@ -7,8 +28,15 @@ const provider = {
   reachability: "unknown", observed_at: null,
 };
 
-function target(route: Route): string {
-  return decodeURIComponent(new URL(route.request().url()).pathname);
+function contractOperation(route: Route): ContractOperation {
+  const request = route.request();
+  const pathname = new URL(request.url()).pathname;
+  for (const [operation, identity] of Object.entries(contractRoutes)) {
+    if (request.method() === identity.method && pathname === identity.path) {
+      return operation as ContractOperation;
+    }
+  }
+  throw new Error(`Unexpected fixture contract request: ${request.method()} ${pathname}`);
 }
 
 async function reply(route: Route, data: unknown, status = 200) {
@@ -20,8 +48,8 @@ async function reply(route: Route, data: unknown, status = 200) {
   });
 }
 
-async function mount(page: Page, handle: (route: Route) => Promise<void>) {
-  await page.route("**/api/contracts/defaultspack/**", handle);
+async function mount(page: Page, handle: (route: Route, operation: ContractOperation) => Promise<void>) {
+  await page.route(`**${DEFAULTSPACK_CONTRACT_ENDPOINT}**`, (route) => handle(route, contractOperation(route)));
   await page.route("**/model-route-test", (route) => route.fulfill({
     contentType: "text/html",
     body: `<div id="model-route-root"></div><script type="module">
@@ -62,9 +90,9 @@ async function settledReply(page: Page, route: Route, data: unknown, status = 20
 test("overlapping mount and event reads cannot overwrite the newest provider revision", async ({ page }) => {
   const reads: Route[] = [];
   const writes: Record<string, unknown>[] = [];
-  await mount(page, async (route) => {
-    if (target(route).includes("/api/connections/status")) { reads.push(route); return; }
-    if (route.request().method() === "POST") {
+  await mount(page, async (route, operation) => {
+    if (operation === "providerRead") { reads.push(route); return; }
+    if (operation === "modelCreate") {
       writes.push(route.request().postDataJSON());
       await reply(route, { profiles: [{
         profile_id: "daily", model_id: "provider/model", provider_id: providerId,
@@ -102,8 +130,8 @@ for (const recovery of ["current", "removed", "disabled", "failed-refresh", "los
   test(`stale save refreshes providers and requires confirmed replay (${recovery})`, async ({ page }) => {
     let reads = 0;
     const writes: Record<string, unknown>[] = [];
-    await mount(page, async (route) => {
-      if (target(route).includes("/api/connections/status")) {
+    await mount(page, async (route, operation) => {
+      if (operation === "providerRead") {
         reads += 1;
         if (reads === 2 && recovery === "failed-refresh") { await reply(route, null, 503); return; }
         await reply(route, {
@@ -111,7 +139,7 @@ for (const recovery of ["current", "removed", "disabled", "failed-refresh", "los
           providers: reads === 1 || reads > 2 || recovery === "current" || recovery === "lost-response" ? [provider]
             : recovery === "disabled" ? [{ ...provider, enabled: false }] : [],
         });
-      } else if (route.request().method() === "POST") {
+      } else if (operation === "modelCreate") {
         writes.push(route.request().postDataJSON());
         if (writes.length === 1 && recovery === "lost-response") {
           // The owner accepted the route, but its reply never reached the UI.
@@ -171,9 +199,9 @@ for (const recovery of ["current", "removed", "disabled", "failed-refresh", "los
 test("an event refresh invalidates retry confirmation and supersedes save-recovery reads", async ({ page }) => {
   const reads: Route[] = [];
   let writes = 0;
-  await mount(page, async (route) => {
-    if (target(route).includes("/api/connections/status")) { reads.push(route); return; }
-    if (route.request().method() === "POST") { writes += 1; await reply(route, null, 409); }
+  await mount(page, async (route, operation) => {
+    if (operation === "providerRead") { reads.push(route); return; }
+    if (operation === "modelCreate") { writes += 1; await reply(route, null, 409); }
     else { await reply(route, { profiles: [], count: 0, registry_revision: 0 }); }
   });
   await expect.poll(() => reads.length).toBe(1);
@@ -199,10 +227,10 @@ test("an event refresh invalidates retry confirmation and supersedes save-recove
 test("repeated submit events cannot start two saves before the busy render", async ({ page }) => {
   const writes: Route[] = [];
   let modelReads = 0;
-  await mount(page, async (route) => {
-    if (target(route).includes("/api/connections/status")) {
+  await mount(page, async (route, operation) => {
+    if (operation === "providerRead") {
       await reply(route, { revision: 1, providers: [provider] });
-    } else if (route.request().method() === "POST") { writes.push(route); }
+    } else if (operation === "modelCreate") { writes.push(route); }
     else { modelReads += 1; await reply(route, { profiles: [], count: 0, registry_revision: 0 }); }
   });
   await expect(page.getByLabel("Provider connection ID")).toBeEnabled();
