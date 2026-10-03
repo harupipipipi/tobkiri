@@ -625,6 +625,10 @@ def _presentation_metadata(
         _execute_payload(spec, request, plan)
         # Never render the request, key, request digest, or arbitrary metadata.
         local = plan["adapter_id"] == "local-openai-compatible"
+        key_detail = (
+            "API key is not required."
+            if local else f"Credential: {_REDACTED}"
+        )
         return _presentation(
             action="Configure Provider connection",
             summary=(
@@ -637,7 +641,7 @@ def _presentation_metadata(
                 f"Profile: {plan['profile_id']}\n"
                 f"Protocol: {plan['adapter_id']}\n"
                 f"Endpoint: {plan['endpoint']}\n"
-                f"Credential: {'not required' if local else _REDACTED}"
+                f"{key_detail}"
             ),
         )
     if spec.kind == "shell_execute":

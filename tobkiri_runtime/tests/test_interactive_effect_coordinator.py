@@ -164,7 +164,7 @@ def test_local_provider_approval_describes_a_connection_without_credentials() ->
     payload = _execute_payload(spec, request, plan)
     presentation = _presentation_metadata(spec, _prepared_presentation(payload))
     assert "without an API key" in presentation["summary"]
-    assert "Credential: not required" in presentation["detail"]
+    assert "API key is not required." in presentation["detail"]
     assert request["endpoint"] in presentation["detail"]
     assert "encrypted" not in str(presentation)
     assert presentation["confirmation_phrase"] == "EXECUTE"
