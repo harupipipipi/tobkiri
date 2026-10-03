@@ -346,6 +346,14 @@ class OpencodeZenProvider(AnthropicProvider):
                                 "id": current.get("id", ""),
                                 "name": current.get("name", ""),
                             }
+                    # A non-empty OpenAI ``finish_reason`` is the terminal
+                    # boundary for this choice.  OpenCode Zen can delay the
+                    # optional ``[DONE]`` sentinel (or socket EOF) after that
+                    # boundary, which otherwise leaves a completed MiMo answer
+                    # presented as an active tool-preparation run.  Close the
+                    # response immediately; usage is best-effort and is kept
+                    # when the terminal choice includes it.
+                    break
             if finish_reason == "tool_calls" and not any(
                 current.get("started") for current in tool_call_state.values()
             ):
