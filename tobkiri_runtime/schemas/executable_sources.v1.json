@@ -11229,7 +11229,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -11243,7 +11243,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -11282,7 +11282,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -11296,7 +11296,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -11335,7 +11335,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -11348,7 +11348,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -11369,7 +11369,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -11389,7 +11389,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "implementation_digest": "sha256:6e53f060a5fa5f1579e0dc3bd79a4f7d4896f06764860c6bd56c7638047bb92e",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18290,7 +18290,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:788b0f16871633b29f591cc3297b91f2d1bbe15cf9354c2623923b7ccb32c75d",
+    "input_digest": "sha256:57ffb9490f73e74deea677ec909db11c2fdb7a9951bf1281983bf724718a4501",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -18866,7 +18866,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_evals_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:493bbb34937dcbfa88f51efde14e9b0ed11767a3df813fa33a2a368e57d0dc8c",
+        "digest": "sha256:03ff381e5b1f895d3c1400d5bee5ed871359baf94f94c519b1bdd1b191a4d352",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/artifact-manifest.json"
       },
@@ -19356,7 +19356,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_evals_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:a34337e3bd897f3387f42036cde57786ccf6475f353eb81befa99c2e0fa1dd21",
+        "digest": "sha256:e4f6ad1fd976c19b5e6f263bb0e0a3a4b34897b0e207cfc3838b60f183ea9c72",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/rumi.pack.v3.json"
       },

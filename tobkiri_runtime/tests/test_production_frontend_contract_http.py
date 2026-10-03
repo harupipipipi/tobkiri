@@ -3014,9 +3014,11 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     assert payload["data"]["code"] == "invalid_contract_payload"
 
 
+@pytest.mark.parametrize("provider_in_requirements", [False, True])
 def test_model_profile_save_http_rejects_authority_and_stale_revision(
     production_server,
     tmp_path: Path,
+    provider_in_requirements: bool,
 ) -> None:
     """Save a selectable model through the signed Defaults edge and real owner."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -3091,6 +3093,34 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
     status, result, _ = post(payload)
     assert status != 200, result
     assert registry.path.read_bytes() == before
+
+    # Repeated creation must preserve fields absent from the selector projection.
+    rich = {
+        **stored,
+        "requirements": {"tool_calling": True},
+        "parameters": {"temperature": 0.3},
+        "credential_handle": "opaque:model-binding",
+        "metadata": {**stored["metadata"], "purpose": "daily coding"},
+    }
+    if provider_in_requirements:
+        rich["metadata"].pop("provider_connection_id")
+        rich["requirements"]["preferred_provider_instance_id"] = "provider.fixture"
+    registry.save(rich, expected_revision=1)
+    before = registry.path.read_bytes()
+    status, result, _ = post({**payload, "expected_revision": 2})
+    assert status == 200, result
+    assert registry.path.read_bytes() == before
+    assert result["data"]["registry_revision"] == 2
+    assert result["data"]["profiles"][0]["provider_id"] == "provider.fixture"
+    assert "opaque:model-binding" not in str(result)
+    assert "temperature" not in str(result)
+
+    registry.save({**rich, "enabled": False}, expected_revision=2)
+    before = registry.path.read_bytes()
+    status, result, _ = post({**payload, "expected_revision": 3})
+    assert status != 200, result
+    assert registry.path.read_bytes() == before
+    assert registry.get("daily")["enabled"] is False
 
 
 def test_model_search_map_route_and_profile_edges_are_exact() -> None:

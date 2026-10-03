@@ -2182,7 +2182,7 @@ test("searchConversations serializes spotlight search filters", async () => {
   });
 });
 
-test("createModelProfile uses revisioned model writes and reconciles existing identity", async () => {
+test("createModelProfile revalidates identical projected identities through the owner", async () => {
   const originalFetch = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
   const input = {
@@ -2211,6 +2211,32 @@ test("createModelProfile uses revisioned model writes and reconciles existing id
       { ...input, expected_revision: 0 },
       { ...input, expected_revision: 1 },
     ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("createModelProfile defers hidden ID conflicts to the owner", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  const input = {
+    model_profile_id: "hidden", model_id: "model-1",
+    provider_instance_id: "provider.fixture", display_name: "Hidden",
+    provider_registry_revision: 4,
+  };
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ status: "error", error: "model profile ID is already reserved" }), {
+        status: 409, headers: { "Content-Type": "application/json" },
+      });
+    }
+    // Disabled profiles remain absent from the safe selector projection.
+    return new Response(JSON.stringify({ status: "ok", data: {
+      profiles: [], count: 0, registry_revision: 7,
+    } }), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(api.createModelProfile(input), /HTTP 409/);
+    assert.deepEqual(bodies, [{ ...input, expected_revision: 7 }]);
   } finally { globalThis.fetch = originalFetch; }
 });
 

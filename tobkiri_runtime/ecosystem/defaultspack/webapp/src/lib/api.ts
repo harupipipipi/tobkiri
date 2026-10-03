@@ -4341,6 +4341,9 @@ export const api = {
     if (!Number.isInteger(current.registry_revision) || current.registry_revision! < 0) {
       throw new Error("モデル設定のrevisionを確認できません。");
     }
+    // The selector omits disabled records and full configuration. Only the
+    // owner's create operation can confirm identity and revalidate the provider
+    // without replacing a rich profile, so matching identities still POST.
     const saved = await request<{ profiles: ModelProfile[]; count: number }>(
       defaultspackContractRoute("api/ai/profiles"), {
         method: "POST", body: JSON.stringify({ ...input, expected_revision: current.registry_revision }),
