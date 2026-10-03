@@ -10,13 +10,13 @@
         "contract_id": "tobkiri.action.turn.lifecycle.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
+        "implementation_digest": "sha256:7708e695b185877d9ea88f64c733ef1036248a85472ccd6833e666a85443b60b",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-lifecycle"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -26,13 +26,13 @@
         "contract_id": "tobkiri.resource.turn.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
+        "implementation_digest": "sha256:7708e695b185877d9ea88f64c733ef1036248a85472ccd6833e666a85443b60b",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-resource"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -42,13 +42,13 @@
         "contract_id": "tobkiri.event.turn.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
+        "implementation_digest": "sha256:7708e695b185877d9ea88f64c733ef1036248a85472ccd6833e666a85443b60b",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-events"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",

@@ -413,6 +413,20 @@ class OwnedCancellationBinding:
                 for active in self._registry._active
             )
 
+    def can_request(self, reference: str) -> bool:
+        """Authorize this stop scope for one exact owned live execution."""
+
+        key = self._key(reference)
+        registry = self._registry
+        with registry._lock:
+            self._guard()
+            return (
+                self._role == "stop"
+                and not registry._closed
+                and key in registry._active
+                and key in registry._records
+            )
+
     def request(self, reference: str) -> CancellationObservation:
         """Signal one owned live execution and expose only its scope-exit event."""
         key = self._key(reference)

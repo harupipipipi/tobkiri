@@ -55,7 +55,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -1949,13 +1949,308 @@ function isActivityStreamEvent(event: ChatStreamEvent): event is ChatToolStreamE
   );
 }
 
-function isConversationSteerItem(value: unknown): value is ConversationSteerItem {
-  return Boolean(
-    value
-    && typeof value === "object"
-    && "id" in value
-    && "prompt" in value
+const TERMINAL_SAVED_TURN_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const ACTIVE_SAVED_TURN_STATUSES = new Set(["queued", "running", "waiting"]);
+
+export type PendingSavedTurnChain =
+  | { state: "active"; root: SavedTurn; active: SavedTurn; lineage: SavedTurn[] }
+  | { state: "settled"; root: SavedTurn }
+  | { state: "unsettled"; root: SavedTurn | null };
+
+function savedTurnStatus(turn: SavedTurn): string {
+  return turn.status.trim().toLowerCase();
+}
+
+function isAutomaticGuidanceForConversation(
+  guidance: NonNullable<SavedTurn["guidance"]>[number],
+  conversationId: string,
+): boolean {
+  return guidance.value.auto_send === true
+    && guidance.value.target_type === "conversation"
+    && guidance.value.target_id === conversationId
+    && guidance.value.conversation_id === conversationId;
+}
+
+function exactGuidanceFollowup(
+  parent: SavedTurn,
+  child: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+): boolean {
+  const guidanceId = child.guidance_id;
+  const sourceId = child.guidance_source_turn_id;
+  if (child.guidance_parent_turn_id !== parent.id || !guidanceId || !sourceId
+    || child.conversation_id !== conversationId) return false;
+  const source = turnsById.get(sourceId);
+  if (!source || source.conversation_id !== conversationId) return false;
+  return (parent.guidance ?? []).filter((guidance) => (
+    guidance.id === guidanceId
+    && guidance.followup_turn_id === child.id
+    && guidance.followup_source_turn_id === sourceId
+    && isAutomaticGuidanceForConversation(guidance, conversationId)
+  )).length === 1;
+}
+
+function boundLineageForActiveTurn(
+  root: SavedTurn,
+  active: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+): SavedTurn[] | null {
+  const lineage = [active];
+  const seen = new Set([active.id]);
+  let current = active;
+  while (current.id !== root.id) {
+    const parentId = current.guidance_parent_turn_id;
+    if (!parentId || seen.has(parentId)) return null;
+    const parent = turnsById.get(parentId);
+    if (!parent || savedTurnStatus(parent) !== "completed"
+      || !exactGuidanceFollowup(parent, current, turnsById, conversationId)) return null;
+    seen.add(parent.id);
+    lineage.push(parent);
+    current = parent;
+  }
+  return lineage.reverse();
+}
+
+function completedGuidanceLineageIsSettled(
+  turn: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+  seen: Set<string> = new Set(),
+): boolean {
+  if (seen.has(turn.id) || savedTurnStatus(turn) !== "completed") return false;
+  seen.add(turn.id);
+  for (const guidance of turn.guidance ?? []) {
+    if (guidance.value.auto_send !== true) continue;
+    if (!isAutomaticGuidanceForConversation(guidance, conversationId)) return false;
+    const guidanceStatus = guidance.status.trim().toLowerCase();
+    if (guidanceStatus !== "sent" && guidanceStatus !== "failed") return false;
+    const children = [...turnsById.values()].filter((child) => (
+      child.guidance_parent_turn_id === turn.id
+      && child.guidance_id === guidance.id
+      && exactGuidanceFollowup(turn, child, turnsById, conversationId)
+    ));
+    if (children.length !== 1) return false;
+    const [child] = children;
+    const childStatus = savedTurnStatus(child);
+    if (!TERMINAL_SAVED_TURN_STATUSES.has(childStatus)) return false;
+    if ((guidanceStatus === "sent") !== (childStatus === "completed")) return false;
+    if (childStatus === "completed"
+      && !completedGuidanceLineageIsSettled(child, turnsById, conversationId, seen)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function pendingSavedTurnChainForConversation(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+): PendingSavedTurnChain {
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (conversationTurns.length !== turnsById.size) return { state: "unsettled", root: null };
+  const root = turnsById.get(rootTurnId) ?? null;
+  if (!root) return { state: "unsettled", root: null };
+
+  const nonterminalTurns = conversationTurns.filter(
+    (turn) => !TERMINAL_SAVED_TURN_STATUSES.has(savedTurnStatus(turn)),
   );
+  const rootStatus = savedTurnStatus(root);
+  if (ACTIVE_SAVED_TURN_STATUSES.has(rootStatus)) {
+    return nonterminalTurns.length === 1 && nonterminalTurns[0].id === root.id
+      ? { state: "active", root, active: root, lineage: [root] }
+      : { state: "unsettled", root };
+  }
+  if (rootStatus !== "completed") return { state: "unsettled", root };
+  if (nonterminalTurns.length === 0) {
+    return completedGuidanceLineageIsSettled(root, turnsById, conversationId)
+      ? { state: "settled", root }
+      : { state: "unsettled", root };
+  }
+  if (nonterminalTurns.length !== 1) return { state: "unsettled", root };
+  const active = nonterminalTurns[0];
+  if (!ACTIVE_SAVED_TURN_STATUSES.has(savedTurnStatus(active))) {
+    return { state: "unsettled", root };
+  }
+  const lineage = boundLineageForActiveTurn(root, active, turnsById, conversationId);
+  return lineage
+    ? { state: "active", root, active, lineage }
+    : { state: "unsettled", root };
+}
+
+export function pendingSavedTurnForConversation(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  turnId: string,
+): SavedTurn | null {
+  const chain = pendingSavedTurnChainForConversation(turns, conversationId, turnId);
+  return chain.state === "active" ? chain.root : null;
+}
+
+export function savedTurnChainGuidanceItems(chain: Extract<PendingSavedTurnChain, { state: "active" }>): ConversationSteerItem[] {
+  return chain.lineage.flatMap(savedTurnGuidanceItems);
+}
+
+function sameGuidanceJsonValue(left: unknown, right: unknown): boolean {
+  if (left === null || typeof left !== "object") return Object.is(left, right);
+  if (right === null || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameGuidanceJsonValue(value, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && sameGuidanceJsonValue(leftRecord[key], rightRecord[key]));
+}
+
+function savedTurnGuidanceMatchesRequest(
+  guidance: NonNullable<SavedTurn["guidance"]>[number],
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  const keys = [
+    "auto_send", "conversation_id", "metadata", "prompt", "target_id", "target_type", "visible",
+  ];
+  const valueKeys = Object.keys(guidance.value).sort();
+  return guidance.id === guidanceId
+    && valueKeys.length === keys.length
+    && valueKeys.every((key, index) => key === keys[index])
+    && guidance.value.prompt === expected.prompt
+    && guidance.value.target_type === expected.target_type
+    && guidance.value.target_id === expected.target_id
+    && guidance.value.conversation_id === expected.conversation_id
+    && guidance.value.visible === expected.visible
+    && guidance.value.auto_send === expected.auto_send
+    && sameGuidanceJsonValue(guidance.value.metadata, expected.metadata);
+}
+
+export function savedTurnRootLineageContainsGuidance(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  const resolution = pendingSavedTurnChainForConversation(
+    turns,
+    conversationId,
+    rootTurnId,
+  );
+  if (resolution.state === "unsettled") return false;
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (turnsById.size !== conversationTurns.length) return false;
+  const root = turnsById.get(rootTurnId);
+  if (!root) return false;
+
+  const boundTurns: SavedTurn[] = [];
+  const pending = [root];
+  const seen = new Set<string>();
+  while (pending.length) {
+    const turn = pending.pop()!;
+    if (seen.has(turn.id)) return false;
+    seen.add(turn.id);
+    boundTurns.push(turn);
+    for (const child of turnsById.values()) {
+      if (exactGuidanceFollowup(turn, child, turnsById, conversationId)) {
+        pending.push(child);
+      }
+    }
+  }
+  const matches = boundTurns.flatMap((turn) => (
+    (turn.guidance ?? []).filter((guidance) => (
+      savedTurnGuidanceMatchesRequest(guidance, guidanceId, expected)
+    ))
+  ));
+  return matches.length === 1;
+}
+
+export function settlePendingSteerGuidanceId(
+  pendingIds: Map<string, string>,
+  mutationKey: string,
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  if (!savedTurnRootLineageContainsGuidance(
+    turns,
+    conversationId,
+    rootTurnId,
+    guidanceId,
+    expected,
+  )) return false;
+  pendingIds.delete(mutationKey);
+  return true;
+}
+
+export function savedTurnGuidanceItems(turn: SavedTurn): ConversationSteerItem[] {
+  return (turn.guidance ?? []).flatMap((guidance) => {
+    const prompt = typeof guidance.value.prompt === "string"
+      ? guidance.value.prompt.trim()
+      : "";
+    if (!prompt) return [];
+    const metadata = guidance.value.metadata;
+    return [{
+      id: guidance.id,
+      turn_id: turn.id,
+      turn_revision: turn.revision,
+      prompt,
+      target_type: typeof guidance.value.target_type === "string"
+        ? guidance.value.target_type
+        : "conversation",
+      target_id: typeof guidance.value.target_id === "string"
+        ? guidance.value.target_id
+        : turn.conversation_id,
+      conversation_id: typeof guidance.value.conversation_id === "string"
+        ? guidance.value.conversation_id
+        : turn.conversation_id,
+      status: guidance.status,
+      visible: guidance.value.visible !== false,
+      auto_send: guidance.value.auto_send !== false,
+      metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata as Record<string, unknown>
+        : {},
+    }];
+  });
+}
+
+export function steerGuidanceMutationKey(
+  turnId: string,
+  guidance: SavedTurnGuidanceRequest["guidance"],
+): string {
+  return JSON.stringify({ turn_id: turnId, guidance });
+}
+
+export function stableSteerGuidanceId(
+  pendingIds: Map<string, string>,
+  mutationKey: string,
+  createId: () => string,
+): string {
+  const known = pendingIds.get(mutationKey);
+  if (known) return known;
+  const guidanceId = createId();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(guidanceId)) {
+    throw new Error("追加指示の安定IDを作成できません。");
+  }
+  pendingIds.set(mutationKey, guidanceId);
+  return guidanceId;
+}
+
+function createSteerGuidanceId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `guidance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function activeComposerSteerItems(items: ConversationSteerItem[], isRunning: boolean): ConversationSteerItem[] {
@@ -2720,6 +3015,7 @@ export function ChatApp() {
   const highRiskPrepareInFlightRef = useRef(false);
   const highRiskResumeStartedRef = useRef(new Set<string>());
   const highRiskCancelStartedRef = useRef(new Set<string>());
+  const pendingSteerGuidanceIdsRef = useRef(new Map<string, string>());
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
@@ -4218,6 +4514,7 @@ export function ChatApp() {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
             if (disposed) return;
           }
+          setSteerItems(savedTurnGuidanceItems(turn));
           const terminalNotice = savedTurnTerminalNotice(
             turn,
             activeConversationId,
@@ -4236,6 +4533,75 @@ export function ChatApp() {
             setIsGenerating(false);
             void refreshConversations(activeConversationId);
             return;
+          }
+          if (turn.status === "completed") {
+            let chain = pendingSavedTurnChainForConversation(
+              await api.listSavedTurns(activeConversationId),
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            if (disposed) return;
+            if (chain.state === "unsettled") {
+              setSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
+              updatePendingRequests((current) => {
+                const entry = current[activeConversationId];
+                const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+                return entry && entry.status !== status
+                  ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+              });
+              return;
+            }
+            if (chain.state === "active") {
+              setSteerItems(savedTurnChainGuidanceItems(chain));
+              let activeTurn = (
+                await api.getSavedTurnEvents(chain.active.id, activeConversationId)
+              ).turn;
+              if (disposed) return;
+              if (activeTurn.status === "running" || activeTurn.status === "waiting") {
+                activeTurn = await api.reconcileSavedTurn(activeTurn.id, activeConversationId);
+                if (disposed) return;
+              }
+              if (!TERMINAL_SAVED_TURN_STATUSES.has(savedTurnStatus(activeTurn))) {
+                const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+                  if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+                  throw error;
+                });
+                if (disposed) return;
+                const progress = savedTurnProgressState(
+                  activeTurn,
+                  conversation,
+                  activeConversationId,
+                  activeTurn.id,
+                );
+                const status = savedTurnProgressNotice(progress);
+                if (conversation) setActiveConversation(conversation);
+                updatePendingRequests((current) => {
+                  const entry = current[activeConversationId];
+                  return entry && entry.status !== status
+                    ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+                });
+                return;
+              }
+              chain = pendingSavedTurnChainForConversation(
+                await api.listSavedTurns(activeConversationId),
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+              if (disposed) return;
+              if (chain.state !== "settled") {
+                setSteerItems(chain.state === "active"
+                  ? savedTurnChainGuidanceItems(chain)
+                  : chain.root ? savedTurnGuidanceItems(chain.root) : []);
+                updatePendingRequests((current) => {
+                  const entry = current[activeConversationId];
+                  const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+                  return entry && entry.status !== status
+                    ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+                });
+                return;
+              }
+            }
+            setSteerItems(savedTurnGuidanceItems(chain.root));
           }
           if (turn.status !== "completed") {
             const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
@@ -4960,68 +5326,113 @@ export function ChatApp() {
     setError("Vision対応モデルが見つかりません。Model設定から追加してください。");
   }, [handleModelProfileSelect, preferredVisionCandidate]);
 
-  const refreshSteerQueue = useCallback(async (conversationIdOverride?: string) => {
-    const conversationId = conversationIdOverride ?? activeConversationId;
-    if (!conversationId) {
+  const refreshSteerQueue = useCallback(async () => {
+    const conversationId = activeConversationId;
+    const pendingTurnId = pendingRequest?.savedTurn
+      ? pendingRequest.operationId
+      : null;
+    if (!conversationId || !pendingTurnId) {
       setSteerItems([]);
-      return;
+      setModelSteerStatus(null);
+      return null;
     }
     setModelSteerBusy(true);
     try {
-      const result = await api.conversationSteer({
-        action: "list",
-        conversation_id: conversationId,
-      });
-      const items = "items" in result && Array.isArray(result.items) ? result.items : [];
+      const turns = await api.listSavedTurns(conversationId);
+      const chain = pendingSavedTurnChainForConversation(
+        turns,
+        conversationId,
+        pendingTurnId,
+      );
+      if (chain.state === "unsettled") {
+        setSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
+        setModelSteerStatus({
+          kind: "error",
+          message: "追加指示の連鎖を確認できません。実行結果を照合中です。",
+        });
+        return { chain, turns };
+      }
+      const items = chain.state === "active"
+        ? savedTurnChainGuidanceItems(chain)
+        : savedTurnGuidanceItems(chain.root);
       setSteerItems(items);
       const queuedCount = items.filter((item) => item.status === "queued").length;
       setModelSteerStatus(queuedCount ? {
         kind: "success",
         message: `${queuedCount}件のステアが待機中`,
       } : null);
+      return { chain, turns };
     } catch (steerError) {
       setModelSteerStatus({
         kind: "error",
         message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
       });
+      return null;
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, pendingRequest?.operationId, pendingRequest?.savedTurn]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
     if (!activeConversationId || !prompt) return;
     setModelSteerBusy(true);
     try {
-      await api.conversationSteer({
-        action: "enqueue",
+      const initial = await refreshSteerQueue();
+      if (!initial || initial.chain.state !== "active") {
+        throw new Error("実行中の保存済みturnを確認できません。入力は保持されています。");
+      }
+      const root = initial.chain.root;
+      const guidance = {
         prompt,
-        target_type: "conversation",
+        target_type: "conversation" as const,
         target_id: activeConversationId,
         conversation_id: activeConversationId,
         visible: true,
         auto_send: true,
-        metadata: {
-          source: "composer_steer",
-          live: isGenerating || isConversationPending,
-        },
+        metadata: { source: "composer_steer" },
+      };
+      const mutationKey = steerGuidanceMutationKey(root.id, guidance);
+      const guidanceId = stableSteerGuidanceId(
+        pendingSteerGuidanceIdsRef.current,
+        mutationKey,
+        createSteerGuidanceId,
+      );
+      await api.steerSavedTurn({
+        turn_id: root.id,
+        expected_revision: root.revision,
+        guidance_id: guidanceId,
+        guidance,
       });
+      const refreshed = await refreshSteerQueue();
+      if (!refreshed || !settlePendingSteerGuidanceId(
+        pendingSteerGuidanceIdsRef.current,
+        mutationKey,
+        refreshed.turns,
+        activeConversationId,
+        root.id,
+        guidanceId,
+        guidance,
+      )) {
+        throw new Error("追加指示の受領を確認できません。入力は保持されています。");
+      }
       setInput("");
       setModelSteerStatus({
         kind: "success",
-        message: isGenerating || isConversationPending ? "ステアを送りました" : "ステアを予約しました",
+        message: "追加指示を待機列に追加しました",
       });
-      await refreshSteerQueue();
     } catch (steerError) {
+      await refreshSteerQueue();
       setModelSteerStatus({
         kind: "error",
-        message: steerError instanceof Error ? steerError.message : "Steer queue failed",
+        message: steerError instanceof Error
+          ? `${steerError.message} 入力は保持されています。`
+          : "追加指示を待機列へ追加できませんでした。入力は保持されています。",
       });
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput]);
+  }, [activeConversationId, input, refreshSteerQueue, setInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;

@@ -11,8 +11,8 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb");
-  assert.equal(result.runtimeMap.routes.length, 63);
+  assert.equal(result.rawDigest, "sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619");
+  assert.equal(result.runtimeMap.routes.length, 65);
   const strategies = result.runtimeMap.routes.find(
     (route) => route.method === "GET" && route.path === "/api/ai/strategies",
   );
@@ -35,6 +35,23 @@ test("the checked-in generated map is deterministic and current", async () => {
     function_id: "rumi_turn_runtime_pack.turn-runtime.stop",
     allowed_payload_keys: ["turn_id"],
   }]);
+  const guidance = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn/steer",
+  );
+  assert.deepEqual(guidance?.targets, [{
+    contribution_id: "defaults.conversations.turn.steer",
+    contract_id: "tobkiri.action.turn.guidance.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-guidance",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.guidance",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.guidance",
+    allowed_payload_keys: ["turn_id", "expected_revision", "guidance_id", "guidance"],
+  }]);
+  assert.ok(!result.runtimeMap.routes.some((route) => route.path === "/api/chat/steer"));
+  const turns = result.runtimeMap.routes.find(
+    (route) => route.method === "GET" && route.path === "/api/chat/turns",
+  );
+  assert.equal(turns?.targets[0]?.contract_id, "tobkiri.resource.turn.v1");
+  assert.deepEqual(turns?.targets[0]?.allowed_payload_keys, ["conversation_id"]);
   const reconcile = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/chat/turn/reconcile",
   );

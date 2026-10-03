@@ -18182,7 +18182,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18203,6 +18203,65 @@
         },
         {
           "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.guidance.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-guidance",
+              "id": "rumi_turn_runtime_pack.turn-guidance",
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+          "required_capabilities": [
+            "turn.manage"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "expected_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "guidance": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "auto_send": {"type": "boolean"},
+                    "conversation_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+                    "metadata": {"type": "object"},
+                    "prompt": {"maxLength": 20480, "minLength": 1, "type": "string"},
+                    "target_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+                    "target_type": {"const": "conversation"},
+                    "visible": {"type": "boolean"}
+                  },
+                  "required": ["prompt", "target_type", "target_id", "conversation_id", "visible", "auto_send", "metadata"],
+                  "type": "object"
+                },
+                "guidance_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+                "profile_id": {"minLength": 1, "type": "string"},
+                "turn_id": {"maxLength": 256, "minLength": 1, "type": "string"}
+              },
+              "required": ["profile_id", "turn_id", "expected_revision", "guidance_id", "guidance"],
+              "type": "object"
+            },
+            "output": {"type": "object"}
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "tobkiri.event.turn.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
@@ -18215,7 +18274,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18248,7 +18307,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18281,7 +18340,7 @@
             {
               "entrypoint_id": "turn-stop",
               "id": "rumi_turn_runtime_pack.turn-stop",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18387,7 +18446,7 @@
             {
               "entrypoint_id": "turn-reconcile",
               "id": "rumi_turn_runtime_pack.turn-reconcile",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18451,7 +18510,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de"
+              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18779,22 +18838,22 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de",
+          "digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
           "kind": "executable",
           "path": "runtime/host.py"
         },
         {
-          "digest": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
+          "digest": "sha256:7708e695b185877d9ea88f64c733ef1036248a85472ccd6833e666a85443b60b",
           "kind": "executable",
           "path": "runtime/turns.py"
         },
         {
-          "digest": "sha256:8a4c4899f4dd4988bc2f77c404d0b94dcf77a7c9214af5193da0967d95abaf39",
+          "digest": "sha256:39ad8c1ae13a0a9a4eef4bdafc1225f86dd90ca3fc5ffe9d33bb46cdb0054988",
           "kind": "executable",
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:17381c0209197e7a23c675a67368a446a9977cb287d41dd867fb7288026b7c43",
+          "digest": "sha256:53da12fba8f375b04fd1e779d2844da5e282bdb961d9f2934cae6c5f87e05d1f",
           "kind": "executable",
           "path": "runtime/saved.py"
         }
@@ -18807,7 +18866,7 @@
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:da5008dd310378123c69ff7029aa8acd9ece581f1113fe479a01753a03c694a0",
+          "digest": "sha256:baaa44d90aa88b9955ab600354fa9b02717518c9dc208973d80e6a54341a4f6c",
           "path": "ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }

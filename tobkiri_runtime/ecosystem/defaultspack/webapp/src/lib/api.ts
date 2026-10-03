@@ -205,25 +205,54 @@ export function admittedStrategyContributions(value: unknown): StrategyContribut
   return contributions;
 }
 
+export type SavedTurnGuidance = {
+  id: string;
+  status: string;
+  value: Record<string, unknown>;
+  followup_turn_id?: string;
+  followup_source_turn_id?: string;
+};
+
+export type SavedTurnGuidanceRequest = {
+  turn_id: string;
+  expected_revision: number;
+  guidance_id: string;
+  guidance: {
+    prompt: string;
+    target_type: "conversation";
+    target_id: string;
+    conversation_id: string;
+    visible: boolean;
+    auto_send: boolean;
+    metadata: Record<string, unknown>;
+  };
+};
+
+export type SavedTurn = {
+  id: string;
+  conversation_id: string;
+  status: string;
+  revision: number;
+  guidance?: SavedTurnGuidance[];
+  guidance_parent_turn_id?: string;
+  guidance_id?: string;
+  guidance_source_turn_id?: string;
+  events?: Array<{
+    name?: string;
+    details?: Record<string, unknown>;
+  }>;
+  result_reference?: {
+    conversation_id: string;
+    conversation_revision: number;
+    user_message_id: string;
+    assistant_message_id: string;
+    outcome_digest: string;
+  };
+};
+
 export type SavedTurnResult = {
   status: "completed" | "existing" | "reconciliation_required";
-  turn: {
-    id: string;
-    conversation_id: string;
-    status: string;
-    revision: number;
-    events?: Array<{
-      name?: string;
-      details?: Record<string, unknown>;
-    }>;
-    result_reference?: {
-      conversation_id: string;
-      conversation_revision: number;
-      user_message_id: string;
-      assistant_message_id: string;
-      outcome_digest: string;
-    };
-  };
+  turn: SavedTurn;
 };
 
 export type SavedTurnEventSnapshot = {
@@ -1750,15 +1779,6 @@ export type ConversationSteerItem = {
   [key: string]: unknown;
 };
 
-export type ConversationSteerResponse =
-  | ConversationSteerItem
-  | {
-    items?: ConversationSteerItem[];
-    processed?: ConversationSteerItem[];
-    cancelled?: boolean;
-    item?: ConversationSteerItem | null;
-  };
-
 export type Conversation = {
   id: string;
   conversation_revision?: number;
@@ -2530,6 +2550,52 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+const SAVED_TURN_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+function isSavedTurnGuidance(value: unknown): value is SavedTurnGuidance {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && typeof record.id === "string"
+    && SAVED_TURN_IDENTIFIER.test(record.id)
+    && typeof record.status === "string"
+    && record.status.trim()
+    && objectRecord(record.value)
+    && (record.followup_turn_id === undefined
+      || (typeof record.followup_turn_id === "string"
+        && SAVED_TURN_IDENTIFIER.test(record.followup_turn_id)))
+    && (record.followup_source_turn_id === undefined
+      || (typeof record.followup_source_turn_id === "string"
+        && SAVED_TURN_IDENTIFIER.test(record.followup_source_turn_id))),
+  );
+}
+
+function isSavedTurn(value: unknown): value is SavedTurn {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && typeof record.id === "string"
+    && SAVED_TURN_IDENTIFIER.test(record.id)
+    && typeof record.conversation_id === "string"
+    && SAVED_TURN_IDENTIFIER.test(record.conversation_id)
+    && typeof record.status === "string"
+    && record.status.trim()
+    && Number.isSafeInteger(record.revision)
+    && Number(record.revision) >= 1
+    && (record.guidance_parent_turn_id === undefined
+      || (typeof record.guidance_parent_turn_id === "string"
+        && SAVED_TURN_IDENTIFIER.test(record.guidance_parent_turn_id)))
+    && (record.guidance_id === undefined
+      || (typeof record.guidance_id === "string"
+        && SAVED_TURN_IDENTIFIER.test(record.guidance_id)))
+    && (record.guidance_source_turn_id === undefined
+      || (typeof record.guidance_source_turn_id === "string"
+        && SAVED_TURN_IDENTIFIER.test(record.guidance_source_turn_id)))
+    && (record.guidance === undefined
+      || (Array.isArray(record.guidance) && record.guidance.every(isSavedTurnGuidance))),
+  );
 }
 
 function hasNonEmptyString(record: Record<string, unknown>, key: string): boolean {
@@ -4103,15 +4169,97 @@ export const api = {
   },
 
   async getSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+    if (!SAVED_TURN_IDENTIFIER.test(turnId)) {
       throw new Error("A stable turn ID is required for reconciliation.");
     }
     const turn = await request<SavedTurnResult["turn"]>(
       withQuery(defaultspackContractRoute("api/chat/turn"), { turn_id: turnId }),
       { cache: "no-store" },
+      isSavedTurn,
     );
     if (turn?.id !== turnId || turn.conversation_id !== conversationId) {
       throw new Error("Saved turn read does not match the pending conversation.");
+    }
+    return turn;
+  },
+
+  async listSavedTurns(conversationId: string): Promise<SavedTurn[]> {
+    if (!SAVED_TURN_IDENTIFIER.test(conversationId)) {
+      throw new Error("A stable conversation ID is required for turn reads.");
+    }
+    const result = await request<{ turns: SavedTurn[] }>(
+      withQuery(defaultspackContractRoute("api/chat/turns"), {
+        conversation_id: conversationId,
+      }),
+      { cache: "no-store" },
+      (value): value is { turns: SavedTurn[] } => {
+        const record = objectRecord(value);
+        return Boolean(
+          record
+          && Object.keys(record).length === 1
+          && Array.isArray(record.turns)
+          && record.turns.every(isSavedTurn),
+        );
+      },
+    );
+    if (result.turns.some((turn) => turn.conversation_id !== conversationId)) {
+      throw new Error("Saved turn list does not match the active conversation.");
+    }
+    return result.turns;
+  },
+
+  async steerSavedTurn(value: SavedTurnGuidanceRequest): Promise<SavedTurn> {
+    const keys = ["expected_revision", "guidance", "guidance_id", "turn_id"];
+    const guidanceKeys = [
+      "auto_send", "conversation_id", "metadata", "prompt", "target_id", "target_type", "visible",
+    ];
+    if (
+      !value || typeof value !== "object"
+      || Object.keys(value).sort().join(",") !== keys.join(",")
+      || !SAVED_TURN_IDENTIFIER.test(value.turn_id)
+      || !Number.isSafeInteger(value.expected_revision)
+      || value.expected_revision < 1
+      || !SAVED_TURN_IDENTIFIER.test(value.guidance_id)
+      || !value.guidance
+      || typeof value.guidance !== "object"
+      || Object.keys(value.guidance).sort().join(",") !== guidanceKeys.join(",")
+      || typeof value.guidance.prompt !== "string"
+      || !value.guidance.prompt.trim()
+      || new TextEncoder().encode(value.guidance.prompt).length > 20 * 1024
+      || value.guidance.target_type !== "conversation"
+      || !SAVED_TURN_IDENTIFIER.test(value.guidance.target_id)
+      || value.guidance.target_id !== value.guidance.conversation_id
+      || !SAVED_TURN_IDENTIFIER.test(value.guidance.conversation_id)
+      || typeof value.guidance.visible !== "boolean"
+      || typeof value.guidance.auto_send !== "boolean"
+      || objectRecord(value.guidance.metadata) === null
+    ) {
+      throw new Error("Saved turn guidance is invalid.");
+    }
+    const guidanceBytes = new TextEncoder().encode(JSON.stringify(value.guidance)).length;
+    if (guidanceBytes > 32 * 1024) {
+      throw new Error("Saved turn guidance exceeds the supported size.");
+    }
+    const turn = await request<SavedTurn>(
+      defaultspackContractRoute("api/chat/turn/steer"),
+      { method: "POST", body: JSON.stringify(value) },
+      isSavedTurn,
+    );
+    const guidance = turn.guidance?.find((item) => item.id === value.guidance_id);
+    const isRootReceipt = turn.id === value.turn_id;
+    // A descendant receipt is only provisional: the UI re-reads the
+    // canonical turn list before treating it as attached to the requested
+    // root. The response itself carries only its immediate parent.
+    const isBoundFollowupReceipt = turn.guidance_parent_turn_id !== undefined
+      && turn.guidance_id !== undefined
+      && turn.guidance_source_turn_id !== undefined
+      && SAVED_TURN_IDENTIFIER.test(turn.guidance_parent_turn_id)
+      && SAVED_TURN_IDENTIFIER.test(turn.guidance_id)
+      && SAVED_TURN_IDENTIFIER.test(turn.guidance_source_turn_id);
+    if ((!isRootReceipt && !isBoundFollowupReceipt)
+      || turn.conversation_id !== value.guidance.conversation_id
+      || !guidance || guidance.value.prompt !== value.guidance.prompt) {
+      throw new Error("Saved turn guidance receipt does not match the pending turn.");
     }
     return turn;
   },
@@ -4358,13 +4506,6 @@ export const api = {
     return request<ModelSearchResponse>(defaultspackContractRoute("api/ai/models/search"), {
       method: "POST",
       body: JSON.stringify(filters),
-    });
-  },
-
-  conversationSteer(payload: Record<string, unknown>) {
-    return request<ConversationSteerResponse>(defaultspackContractRoute("api/chat/steer"), {
-      method: "POST",
-      body: JSON.stringify(payload),
     });
   },
 

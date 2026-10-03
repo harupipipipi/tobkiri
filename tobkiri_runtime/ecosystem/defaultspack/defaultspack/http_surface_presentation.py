@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from pathlib import PurePosixPath
@@ -18,7 +19,7 @@ from core_runtime.pack_api_server import (
     DispatchSession,
     WorkspaceBindingResolver,
 )
-from tobkiri_protocol.canonical import canonical_digest, strict_loads
+from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .model_profile_presentation import (
@@ -120,6 +121,26 @@ _MODEL_SEARCH_FILTER_KEYS = frozenset(
         "min_knowledge_level",
         "max_results",
         "offset",
+    }
+)
+
+TURN_LIST_TARGET = (
+    "defaults.conversations.turn.list", "tobkiri.resource.turn.v1",
+    "rumi_turn_runtime_pack.turn-resource",
+    "rumi_turn_runtime_pack.turn-runtime.resource",
+    "rumi_turn_runtime_pack.turn-runtime.resource",
+)
+TURN_GUIDANCE_TARGET = (
+    "defaults.conversations.turn.steer", "tobkiri.action.turn.guidance.v1",
+    "rumi_turn_runtime_pack.turn-guidance",
+    "rumi_turn_runtime_pack.turn-runtime.guidance",
+    "rumi_turn_runtime_pack.turn-runtime.guidance",
+)
+_TURN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_GUIDANCE_KEYS = frozenset(
+    {
+        "prompt", "target_type", "target_id", "conversation_id",
+        "visible", "auto_send", "metadata",
     }
 )
 
@@ -344,6 +365,80 @@ class DefaultspackHTTPPresentation:
             return normalize_turn_event_read(
                 payload, profile_id=str(getattr(session, "profile_id", "")),
             )
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == TURN_LIST_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            conversation_id = payload.get("conversation_id")
+            if (
+                not profile_id
+                or set(payload) != {"conversation_id"}
+                or not isinstance(conversation_id, str)
+                or _TURN_ID.fullmatch(conversation_id) is None
+            ):
+                raise ValueError("turn list requires one stable conversation ID")
+            return {
+                "profile_id": profile_id,
+                "operation": "list",
+                "conversation_id": conversation_id,
+            }
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == TURN_GUIDANCE_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            turn_id = payload.get("turn_id")
+            revision = payload.get("expected_revision")
+            guidance_id = payload.get("guidance_id")
+            guidance = payload.get("guidance")
+            if (
+                not profile_id
+                or set(payload)
+                != {"turn_id", "expected_revision", "guidance_id", "guidance"}
+                or not isinstance(turn_id, str)
+                or _TURN_ID.fullmatch(turn_id) is None
+                or not isinstance(guidance_id, str)
+                or _TURN_ID.fullmatch(guidance_id) is None
+                or type(revision) is not int
+                or revision < 1
+                or not isinstance(guidance, Mapping)
+                or set(guidance) != _GUIDANCE_KEYS
+            ):
+                raise ValueError("turn guidance request is invalid")
+            prompt = guidance.get("prompt")
+            conversation_id = guidance.get("conversation_id")
+            target_id = guidance.get("target_id")
+            metadata = guidance.get("metadata")
+            try:
+                guidance_size = len(canonical_json(dict(guidance)))
+            except (TypeError, ValueError) as error:
+                raise ValueError("turn guidance request is invalid") from error
+            if (
+                not isinstance(prompt, str)
+                or not prompt.strip()
+                or len(prompt.encode("utf-8")) > 20 * 1024
+                or guidance.get("target_type") != "conversation"
+                or not isinstance(conversation_id, str)
+                or _TURN_ID.fullmatch(conversation_id) is None
+                or target_id != conversation_id
+                or type(guidance.get("visible")) is not bool
+                or type(guidance.get("auto_send")) is not bool
+                or not isinstance(metadata, Mapping)
+                or guidance_size > 32 * 1024
+            ):
+                raise ValueError("turn guidance request is invalid")
+            return {
+                "profile_id": profile_id,
+                "turn_id": turn_id,
+                "expected_revision": revision,
+                "guidance_id": guidance_id,
+                "guidance": dict(guidance),
+            }
 
         if (
             target.contribution_id, target.contract_id, target.operation_id,

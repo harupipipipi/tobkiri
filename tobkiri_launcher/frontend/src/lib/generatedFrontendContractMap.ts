@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb
+// Raw source digest: sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb",
+  "artifact_digest": "sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619",
   "routes": [
     {
       "method": "GET",
@@ -151,6 +151,43 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
           "allowed_payload_keys": [
             "turn_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/turns",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.list",
+          "contract_id": "tobkiri.resource.turn.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "allowed_payload_keys": [
+            "conversation_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/steer",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.steer",
+          "contract_id": "tobkiri.action.turn.guidance.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+          "allowed_payload_keys": [
+            "turn_id",
+            "expected_revision",
+            "guidance_id",
+            "guidance"
           ]
         }
       ]
@@ -1353,6 +1390,39 @@ const EXPECTED_ROUTES = {
         "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
         "allowed_payload_keys": [
           "turn_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/chat/turns": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.list",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "allowed_payload_keys": [
+          "conversation_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/chat/turn/steer": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.steer",
+        "contract_id": "tobkiri.action.turn.guidance.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+        "allowed_payload_keys": [
+          "turn_id",
+          "expected_revision",
+          "guidance_id",
+          "guidance"
         ]
       }
     ]

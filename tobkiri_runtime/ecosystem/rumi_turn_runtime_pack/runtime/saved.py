@@ -78,6 +78,7 @@ def execute_saved_turn(
     client: GlobalContractClient,
     guard: Callable[[], None],
     track_execution: Callable[[str], AbstractContextManager[None]] = lambda _: nullcontext(),
+    _guidance_depth: int = 0,
 ) -> dict[str, Any]:
     """Dispatch only a claim winner through a captured, restricted client.
 
@@ -154,7 +155,12 @@ def execute_saved_turn(
         # A running snapshot may still have a live executor. Do not rewrite it
         # as terminal or treat a repeat request as a restart/recovery signal.
         recovered = _reconcile(store, claim["turn"], client, guard)
-        return recovered or {"status": "existing", "turn": claim["turn"]}
+        result = recovered or {"status": "existing", "turn": claim["turn"]}
+        if result["turn"].get("status") == "completed":
+            return _drain_guidance(
+                store, result, client, guard, track_execution, _guidance_depth,
+            )
+        return result
     record = claim["turn"]
     try:
         with track_execution(record["id"]):
@@ -201,7 +207,132 @@ def execute_saved_turn(
         )
     if failure is not None:
         return _settle(store, record, *failure)
-    return _settle(store, record, "completed", {"result_reference": reference})
+    guard()
+    settled = store.settle_saved_from_receipt(
+        record["id"],
+        input_digest=record["input_digest"],
+        result_reference=reference,
+    )
+    return _drain_guidance(
+        store,
+        {"status": "completed", "turn": settled},
+        client,
+        guard,
+        track_execution,
+        _guidance_depth,
+    )
+
+
+def _drain_guidance(
+    store: DurableTurnRuntime,
+    result: dict[str, Any],
+    client: GlobalContractClient,
+    guard: Callable[[], None],
+    track_execution: Callable[[str], AbstractContextManager[None]],
+    depth: int,
+) -> dict[str, Any]:
+    """Run bounded, durable guidance children after an acknowledged turn."""
+
+    if depth >= 8:
+        return result
+    parent_id = str(result["turn"]["id"])
+    source_id = parent_id
+    parent = store.get(parent_id)
+    if parent is None:
+        raise ValueError("saved guidance parent is unavailable")
+    attempts = 0
+    for item in parent.get("guidance", []):
+        value = item.get("value")
+        if not isinstance(value, Mapping) or value.get("auto_send") is not True:
+            continue
+        if item.get("status") in {"sent", "failed"}:
+            child_id = item.get("followup_turn_id")
+            if isinstance(child_id, str):
+                child = store.get(child_id)
+                if child is not None and child.get("status") == "completed":
+                    source_id = _latest_completed_guidance_source(store, child_id)
+                    continue
+            break
+        attempts += 1
+        if attempts > 8:
+            break
+        source = store.get(source_id)
+        if source is None or source.get("status") != "completed":
+            break
+        reference = source.get("result_reference")
+        if not isinstance(reference, Mapping):
+            break
+        guidance_id = str(item.get("id") or "")
+        child_id = "steer:" + canonical_digest(
+            {"parent_turn_id": parent_id, "guidance_id": guidance_id}
+        ).removeprefix("sha256:")
+        followup = item.get("followup_input")
+        if not isinstance(followup, Mapping):
+            followup = {
+                "request": {
+                    "turn_id": child_id,
+                    "conversation_id": parent["conversation_id"],
+                    "conversation_revision": reference["conversation_revision"],
+                    "content": str(value.get("prompt") or ""),
+                }
+            }
+        guard()
+        store.reserve_guidance_followup(
+            parent_id, guidance_id, source_id, followup,
+        )
+        child_result = execute_saved_turn(
+            store,
+            followup,
+            client=client,
+            guard=guard,
+            track_execution=track_execution,
+            _guidance_depth=depth + 1,
+        )
+        child = child_result.get("turn")
+        if not isinstance(child, Mapping):
+            break
+        store.confirm_guidance_followup(parent_id, guidance_id, child_id)
+        if child.get("status") != "completed":
+            break
+        source_id = _latest_completed_guidance_source(store, child_id)
+        refreshed = store.get(parent_id)
+        if refreshed is not None:
+            result = {"status": "completed", "turn": refreshed}
+    return result
+
+
+def _latest_completed_guidance_source(
+    store: DurableTurnRuntime, turn_id: str,
+) -> str:
+    """Resolve the last receipt-bearing descendant through persisted links."""
+
+    visited: set[str] = set()
+
+    def walk(owner_id: str, source_id: str, depth: int) -> str:
+        if depth > 8:
+            raise ValueError("saved guidance source depth exceeded")
+        if owner_id in visited:
+            raise ValueError("saved guidance followup cycle detected")
+        visited.add(owner_id)
+        owner = store.get(owner_id)
+        if owner is None or owner.get("status") != "completed":
+            raise ValueError("saved guidance source is not completed")
+        for item in owner.get("guidance", []):
+            if item.get("status") != "sent":
+                continue
+            child_id = item.get("followup_turn_id")
+            if (
+                item.get("followup_source_turn_id") != source_id
+                or not isinstance(child_id, str)
+            ):
+                raise ValueError("saved guidance source chain is invalid")
+            child = store.get(child_id)
+            if child is None or child.get("status") != "completed":
+                raise ValueError("saved guidance source child is not completed")
+            source_id = walk(child_id, child_id, depth + 1)
+        return source_id
+
+    return walk(turn_id, turn_id, 0)
 
 
 def _validate_begun_turn(
@@ -244,9 +375,37 @@ def _validate_saved_claim(
     _validate_begun_turn(store.profile_id, initial, record)
     if claim["claimed"] and record.get("status") != "running":
         raise ValueError("saved lifecycle claim response is invalid")
-    if store.get(initial["request"]["turn_id"]) != record:
+    current = store.get(initial["request"]["turn_id"])
+    if (
+        not isinstance(current, Mapping)
+        or any(
+            current.get(key) != record.get(key)
+            for key in (
+                "id", "request_id", "conversation_id", "conversation_revision",
+                "input_digest",
+            )
+        )
+    ):
         raise ValueError("saved lifecycle claim state is unconfirmed")
-    return claim
+    if claim["claimed"] and (
+        current.get("status") != "running"
+        or not any(
+            event.get("name") == "turn.running"
+            and event.get("details", {}).get("phase")
+            == "saved_execution_claimed"
+            for event in current.get("events", [])
+        )
+        or any(
+            event.get("name") == "turn.cancellation_requested"
+            for event in current.get("events", [])
+        )
+    ):
+        raise ValueError("saved lifecycle claim state is unconfirmed")
+    if not claim["claimed"] and current.get("status") not in {
+        "queued", "running", "waiting", "completed", "failed", "cancelled",
+    }:
+        raise ValueError("saved lifecycle claim state is unconfirmed")
+    return {"claimed": claim["claimed"], "turn": current}
 
 
 def _reconcile(

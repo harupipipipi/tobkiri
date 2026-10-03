@@ -1349,12 +1349,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:516f197864208afd6839e9f1df8a1845bc764c015bdd7a5a96572f1127968137"
+      "digest": "sha256:179b4960873df63395dbb4492ec2cfaeeb46554ddc85cead76fc6790d266dead"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:9f948ebc464335360282399c1692a81fb4c3670ad74d876cd42acb3194e2d743"
+      "digest": "sha256:678a1abd71013ddba272a293faeecdc13c5866ad89f2a396b33831319ad658b2"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",
@@ -1394,7 +1394,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2fb19a925afc3cfe2ba6a47f0d409d28a4b2986dec53f40b000cb0323c01ef89"
+      "digest": "sha256:7bd5450983aceacf8eb14fa4d83f2de8ba5a9c88aa3b98bd6a1b4a0fd52d597c"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1474,7 +1474,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:37471b76a6be37ef9ddfddab3b3ea917daa9c7f141c17bd51e7265a8422803e3"
+      "digest": "sha256:e8914d27d4a1b5293f20355f16bd2a6847dbdad0bd051006ebb01f3917a32680"
     }
   ]
 }

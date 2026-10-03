@@ -13,6 +13,13 @@ import {
   MIMO_CODING_DEFAULT_FAST_MODEL,
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
+  pendingSavedTurnChainForConversation,
+  pendingSavedTurnForConversation,
+  savedTurnChainGuidanceItems,
+  savedTurnRootLineageContainsGuidance,
+  settlePendingSteerGuidanceId,
+  stableSteerGuidanceId,
+  steerGuidanceMutationKey,
   commandSupportsMode,
   composerExtensionItems,
   frontendCommandArgs,
@@ -26,6 +33,7 @@ import {
   resolveMimoVisionModel,
   resolveUltraYoloModeState,
   resolvedFrontendCommandArgs,
+  savedTurnGuidanceItems,
 } from "../App";
 import {
   advanceSettingsDocumentMutationGeneration,
@@ -101,6 +109,378 @@ test("saved turn reconciliation is a read with no replay or caller Profile", asy
   await assert.rejects(api.getSavedTurn("turn-1", "other"), /does not match/);
   await assert.rejects(api.getSavedTurn("../bad", "conversation-1"), /stable turn ID/);
   assert.equal(calls, 2);
+});
+
+test("saved turn list is conversation-bound and projects only the exact pending turn guidance", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const pendingTurn = {
+    id: "turn-1",
+    conversation_id: "conversation-1",
+    status: "running",
+    revision: 3,
+    guidance: [{
+      id: "guidance-1",
+      status: "queued",
+      value: {
+        prompt: "Continue with the implementation",
+        target_type: "conversation",
+        target_id: "conversation-1",
+        conversation_id: "conversation-1",
+        visible: true,
+        auto_send: true,
+        metadata: { source: "composer_steer" },
+      },
+    }],
+  };
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent(
+      "GET /api/chat/turns?conversation_id=conversation-1",
+    )}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: { turns: [pendingTurn] } }));
+  };
+
+  const turns = await api.listSavedTurns("conversation-1");
+  const active = pendingSavedTurnForConversation(turns, "conversation-1", "turn-1");
+  assert.deepEqual(active, pendingTurn);
+  assert.equal(pendingSavedTurnForConversation(turns, "conversation-1", "other-turn"), null);
+  assert.deepEqual(savedTurnGuidanceItems(active!), [{
+    id: "guidance-1",
+    turn_id: "turn-1",
+    turn_revision: 3,
+    prompt: "Continue with the implementation",
+    target_type: "conversation",
+    target_id: "conversation-1",
+    conversation_id: "conversation-1",
+    status: "queued",
+    visible: true,
+    auto_send: true,
+    metadata: { source: "composer_steer" },
+  }]);
+});
+
+test("saved turn list rejects a foreign turn instead of selecting it", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: true, data: {
+    turns: [{ id: "turn-1", conversation_id: "foreign", status: "running", revision: 3 }],
+  } }));
+  await assert.rejects(
+    api.listSavedTurns("conversation-1"),
+    /does not match the active conversation/,
+  );
+});
+
+test("saved turn chains retain the root through one exact active nested followup", () => {
+  const guidanceValue = {
+    prompt: "Continue with the implementation",
+    target_type: "conversation",
+    target_id: "conversation-1",
+    conversation_id: "conversation-1",
+    visible: true,
+    auto_send: true,
+    metadata: { source: "composer_steer" },
+  };
+  const root = {
+    id: "turn-root",
+    conversation_id: "conversation-1",
+    status: "completed",
+    revision: 7,
+    guidance: [{
+      id: "guidance-root",
+      status: "sent",
+      value: guidanceValue,
+      followup_turn_id: "turn-child",
+      followup_source_turn_id: "turn-root",
+    }],
+  };
+  const child = {
+    id: "turn-child",
+    conversation_id: "conversation-1",
+    status: "completed",
+    revision: 4,
+    guidance_parent_turn_id: "turn-root",
+    guidance_id: "guidance-root",
+    guidance_source_turn_id: "turn-root",
+    guidance: [{
+      id: "guidance-child",
+      status: "consumed",
+      value: { ...guidanceValue, prompt: "Continue with more detail" },
+      followup_turn_id: "turn-grandchild",
+      followup_source_turn_id: "turn-child",
+    }],
+  };
+  const grandchild = {
+    id: "turn-grandchild",
+    conversation_id: "conversation-1",
+    status: "running",
+    revision: 2,
+    guidance_parent_turn_id: "turn-child",
+    guidance_id: "guidance-child",
+    guidance_source_turn_id: "turn-child",
+  };
+  const turns = [root, child, grandchild];
+  const chain = pendingSavedTurnChainForConversation(
+    turns,
+    "conversation-1",
+    "turn-root",
+  );
+  assert.equal(chain.state, "active");
+  if (chain.state !== "active") throw new Error("expected an active saved turn chain");
+  assert.equal(chain.root.id, "turn-root");
+  assert.equal(chain.root.revision, 7);
+  assert.equal(chain.active.id, "turn-grandchild");
+  assert.deepEqual(chain.lineage.map((turn) => turn.id), [
+    "turn-root", "turn-child", "turn-grandchild",
+  ]);
+  assert.equal(
+    pendingSavedTurnForConversation(turns, "conversation-1", "turn-root")?.id,
+    "turn-root",
+  );
+  assert.deepEqual(
+    savedTurnChainGuidanceItems(chain).map((item) => item.id),
+    ["guidance-root", "guidance-child"],
+  );
+  const submittedGuidance = {
+    prompt: "Continue with more detail",
+    target_type: "conversation" as const,
+    target_id: "conversation-1",
+    conversation_id: "conversation-1",
+    visible: true,
+    auto_send: true,
+    metadata: { source: "composer_steer" },
+  };
+  assert.equal(
+    savedTurnRootLineageContainsGuidance(
+      turns,
+      "conversation-1",
+      "turn-root",
+      "guidance-child",
+      submittedGuidance,
+    ),
+    true,
+  );
+  const mutationKey = steerGuidanceMutationKey("turn-root", submittedGuidance);
+  const pendingIds = new Map([[mutationKey, "guidance-child"]]);
+  const foreignChild = {
+    id: "turn-foreign",
+    conversation_id: "conversation-1",
+    status: "running",
+    revision: 1,
+    guidance_parent_turn_id: "foreign-root",
+    guidance_id: "guidance-foreign",
+    guidance_source_turn_id: "foreign-root",
+    guidance: [{ id: "guidance-child", status: "queued", value: submittedGuidance }],
+  };
+  assert.equal(
+    settlePendingSteerGuidanceId(
+      pendingIds,
+      mutationKey,
+      [...turns, foreignChild],
+      "conversation-1",
+      "turn-root",
+      "guidance-child",
+      submittedGuidance,
+    ),
+    false,
+  );
+  assert.equal(pendingIds.get(mutationKey), "guidance-child");
+  assert.equal(
+    settlePendingSteerGuidanceId(
+      pendingIds,
+      mutationKey,
+      turns,
+      "conversation-1",
+      "turn-root",
+      "guidance-child",
+      submittedGuidance,
+    ),
+    true,
+  );
+  assert.equal(pendingIds.has(mutationKey), false);
+  const unreadableIds = new Map([[mutationKey, "guidance-child"]]);
+  assert.equal(
+    settlePendingSteerGuidanceId(
+      unreadableIds,
+      mutationKey,
+      [],
+      "conversation-1",
+      "turn-root",
+      "guidance-child",
+      submittedGuidance,
+    ),
+    false,
+  );
+  assert.equal(unreadableIds.get(mutationKey), "guidance-child");
+
+  assert.equal(
+    pendingSavedTurnChainForConversation(
+      [root, child, { ...grandchild, guidance_parent_turn_id: "foreign-root" }],
+      "conversation-1",
+      "turn-root",
+    ).state,
+    "unsettled",
+  );
+  assert.equal(
+    pendingSavedTurnChainForConversation(
+      [{ ...root, guidance: [{
+        ...root.guidance[0], status: "queued", followup_turn_id: undefined,
+        followup_source_turn_id: undefined,
+      }] }],
+      "conversation-1",
+      "turn-root",
+    ).state,
+    "unsettled",
+  );
+  assert.equal(
+    pendingSavedTurnChainForConversation(
+      [{ ...root, guidance: [] }],
+      "conversation-1",
+      "turn-root",
+    ).state,
+    "settled",
+  );
+});
+
+test("saved turn guidance uses the bounded lifecycle endpoint and never retries a stale receipt", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const request = {
+    turn_id: "turn-1",
+    expected_revision: 3,
+    guidance_id: "guidance-1",
+    guidance: {
+      prompt: "Continue with the implementation",
+      target_type: "conversation" as const,
+      target_id: "conversation-1",
+      conversation_id: "conversation-1",
+      visible: true,
+      auto_send: true,
+      metadata: { source: "composer_steer" },
+    },
+  };
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn/steer")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), request);
+    return new Response(JSON.stringify({ success: true, data: {
+      id: "turn-1", conversation_id: "conversation-1", status: "running", revision: 4,
+      guidance: [{
+        id: "guidance-1", status: "queued", value: request.guidance,
+      }],
+    } }));
+  };
+  assert.deepEqual(await api.steerSavedTurn(request), {
+    id: "turn-1", conversation_id: "conversation-1", status: "running", revision: 4,
+    guidance: [{ id: "guidance-1", status: "queued", value: request.guidance }],
+  });
+  assert.equal(calls, 1);
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: false, error: "STALE_REVISION" }), { status: 409 });
+  };
+  await assert.rejects(api.steerSavedTurn(request), /STALE_REVISION/);
+  assert.equal(calls, 2);
+});
+
+test("saved turn guidance accepts the owner-selected active followup receipt", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const request = {
+    turn_id: "turn-root",
+    expected_revision: 7,
+    guidance_id: "guidance-next",
+    guidance: {
+      prompt: "Continue with the implementation",
+      target_type: "conversation" as const,
+      target_id: "conversation-1",
+      conversation_id: "conversation-1",
+      visible: true,
+      auto_send: true,
+      metadata: { source: "composer_steer" },
+    },
+  };
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn/steer")}`);
+    assert.deepEqual(JSON.parse(String(init?.body)), request);
+    return new Response(JSON.stringify({ success: true, data: {
+      id: "turn-child",
+      conversation_id: "conversation-1",
+      status: "running",
+      revision: 5,
+      guidance_parent_turn_id: "turn-root",
+      guidance_id: "guidance-root",
+      guidance_source_turn_id: "turn-root",
+      guidance: [{ id: "guidance-next", status: "queued", value: request.guidance }],
+    } }));
+  };
+  const receipt = await api.steerSavedTurn(request);
+  assert.equal(receipt.id, "turn-child");
+  assert.equal(receipt.guidance_parent_turn_id, "turn-root");
+});
+
+test("saved turn guidance rejects malformed or oversized input before sending", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
+  const request = {
+    turn_id: "turn-1",
+    expected_revision: 3,
+    guidance_id: "guidance-1",
+    guidance: {
+      prompt: "Continue",
+      target_type: "conversation" as const,
+      target_id: "conversation-1",
+      conversation_id: "conversation-1",
+      visible: true,
+      auto_send: true,
+      metadata: {},
+    },
+  };
+  await assert.rejects(api.steerSavedTurn({
+    ...request,
+    guidance: { ...request.guidance, target_id: "foreign" },
+  }), /invalid/);
+  await assert.rejects(api.steerSavedTurn({
+    ...request,
+    guidance: { ...request.guidance, prompt: "x".repeat(20 * 1024 + 1) },
+  }), /invalid/);
+  await assert.rejects(api.steerSavedTurn({ ...request, approved: true } as never), /invalid/);
+  assert.equal(calls, 0);
+});
+
+test("uncertain guidance retries retain one stable ID for the exact pending mutation", () => {
+  const ids = new Map<string, string>();
+  const guidance = {
+    prompt: "Continue",
+    target_type: "conversation" as const,
+    target_id: "conversation-1",
+    conversation_id: "conversation-1",
+    visible: true,
+    auto_send: true,
+    metadata: { source: "composer_steer" },
+  };
+  const key = steerGuidanceMutationKey("turn-1", guidance);
+  let generated = 0;
+  const createId = () => `guidance-${++generated}`;
+  assert.equal(stableSteerGuidanceId(ids, key, createId), "guidance-1");
+  assert.equal(stableSteerGuidanceId(ids, key, createId), "guidance-1");
+  assert.equal(generated, 1);
+  assert.equal(
+    stableSteerGuidanceId(
+      ids,
+      steerGuidanceMutationKey("turn-1", { ...guidance, prompt: "Different" }),
+      createId,
+    ),
+    "guidance-2",
+  );
 });
 
 test("saved turn event polling is finite, identity-bound, and never resends", async (context) => {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -14,6 +15,8 @@ from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     RECEIPT_CONTRACT, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
 )
+from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+from tobkiri_protocol.canonical import canonical_json
 
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
@@ -23,6 +26,7 @@ _CONTRACTS = {
     "saved": ("tobkiri.action.turn.saved.v1", "turn-saved"),
     "reconcile": ("tobkiri.action.turn.reconcile.v1", "turn-reconcile"),
     "stop": ("tobkiri.action.turn.stop.v1", "turn-stop"),
+    "guidance": ("tobkiri.action.turn.guidance.v1", "turn-guidance"),
 }
 _MUTATIONS = {
     "transition": ({"status"}, {"details"}),
@@ -30,6 +34,11 @@ _MUTATIONS = {
     "handoff": ({"target"}, set()),
     "consume_guidance": (set(), {"guidance_ids"}),
     "cancel_guidance": ({"guidance_id"}, set()),
+}
+_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_GUIDANCE_KEYS = {
+    "prompt", "target_type", "target_id", "conversation_id",
+    "visible", "auto_send", "metadata",
 }
 
 
@@ -74,11 +83,122 @@ class TurnHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
+            if self.kind == "guidance":
+                invocation.assert_current()
+                values = {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "_session_id"
+                }
+                if (
+                    operation_id != self.operation_id
+                    or set(values)
+                    != {
+                        "profile_id", "turn_id", "expected_revision",
+                        "guidance_id", "guidance",
+                    }
+                    or values.get("profile_id") != store.profile_id
+                ):
+                    raise PermissionError("guidance request does not match capture")
+                turn_id = values.get("turn_id")
+                revision = values.get("expected_revision")
+                guidance_id = values.get("guidance_id")
+                guidance = values.get("guidance")
+                if (
+                    not isinstance(turn_id, str)
+                    or _ID.fullmatch(turn_id) is None
+                    or type(revision) is not int
+                    or revision < 1
+                    or not isinstance(guidance_id, str)
+                    or _ID.fullmatch(guidance_id) is None
+                    or not isinstance(guidance, Mapping)
+                    or set(guidance) != _GUIDANCE_KEYS
+                ):
+                    raise ValueError("guidance request is invalid")
+                prompt = guidance.get("prompt")
+                conversation_id = guidance.get("conversation_id")
+                try:
+                    guidance_size = len(canonical_json(dict(guidance)))
+                except (TypeError, ValueError) as error:
+                    raise ValueError("guidance request is invalid") from error
+                if (
+                    not isinstance(prompt, str)
+                    or not prompt.strip()
+                    or len(prompt.encode("utf-8")) > 20 * 1024
+                    or guidance.get("target_type") != "conversation"
+                    or not isinstance(conversation_id, str)
+                    or _ID.fullmatch(conversation_id) is None
+                    or guidance.get("target_id") != conversation_id
+                    or type(guidance.get("visible")) is not bool
+                    or type(guidance.get("auto_send")) is not bool
+                    or not isinstance(guidance.get("metadata"), Mapping)
+                    or guidance_size > 32 * 1024
+                ):
+                    raise ValueError("guidance request is invalid")
+                current = store.get(turn_id)
+                if current is None or current.get("conversation_id") != conversation_id:
+                    raise PermissionError("guidance turn does not match conversation")
+                recovered = store.recover_guidance(
+                    turn_id, guidance_id, dict(guidance),
+                )
+                if recovered is not None:
+                    invocation.assert_current()
+                    return recovered
+                mutation_turn_id = turn_id
+                mutation_revision = revision
+                if current.get("status") == "completed":
+                    active_child = store.active_guidance_followup(turn_id)
+                    if active_child is None or current.get("revision") != revision:
+                        raise TurnConflict("guidance turn is no longer active")
+                    active = store.get(active_child)
+                    if active is None or active.get("conversation_id") != conversation_id:
+                        raise PermissionError("guidance child does not match conversation")
+                    mutation_turn_id = active_child
+                    mutation_revision = active["revision"]
+                invocation.assert_current()
+                return store.mutate(
+                    "steer",
+                    mutation_turn_id,
+                    expected_revision=mutation_revision,
+                    guidance_id=guidance_id,
+                    guidance=dict(guidance),
+                )
             if self.kind == "stop":
                 values = {key: value for key, value in payload.items() if key != "_session_id"}
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
                     raise PermissionError("stop requires only an existing turn ID")
-                turn_id = _identifier(values["turn_id"])
+                requested_turn_id = _identifier(values["turn_id"])
+                prepared: Mapping[str, Any] | None = None
+                stop_active_child: str | None = None
+                observation = None
+                for _attempt in range(3):
+                    invocation.assert_current()
+                    stop_active_child = store.active_guidance_followup(requested_turn_id)
+                    if (
+                        stop_active_child is not None
+                        and not invocation.cancellation.can_request(stop_active_child)
+                    ):
+                        raise PermissionError(
+                            "operation cancellation handle is unavailable"
+                        )
+                    try:
+                        prepared = store.prepare_guidance_stop(
+                            requested_turn_id,
+                            expected_active_turn_id=stop_active_child,
+                        )
+                    except TurnConflict:
+                        continue
+                    break
+                else:
+                    raise TurnConflict("guidance stop target changed")
+                if prepared is not None and stop_active_child is None:
+                    invocation.assert_current()
+                    return {
+                        "status": "cancellation_requested",
+                        "turn_id": requested_turn_id,
+                        "stopped": False,
+                    }
+                turn_id = stop_active_child or requested_turn_id
                 try:
                     observation = invocation.cancellation.request(turn_id)
                 except PermissionError:
@@ -88,7 +208,8 @@ class TurnHostFactoryV4:
                         raise
                     observation = None
                 invocation.assert_current()
-                store.request_saved_cancellation(turn_id)
+                if stop_active_child is None:
+                    store.request_saved_cancellation(turn_id)
                 if observation is None:
                     # The tracked execution is already gone (for example a
                     # durable turn parked in waiting after its owner lost the
@@ -97,7 +218,7 @@ class TurnHostFactoryV4:
                     # the nested drain required for the cancelled terminal.
                     return {
                         "status": "cancellation_requested",
-                        "turn_id": turn_id,
+                        "turn_id": requested_turn_id,
                         "stopped": False,
                     }
                 deadline = getattr(
@@ -115,7 +236,7 @@ class TurnHostFactoryV4:
                         raise RuntimeError("saved cancellation terminal is unconfirmed")
                     return {
                         "status": "stopped_confirmed",
-                        "turn_id": turn_id,
+                        "turn_id": requested_turn_id,
                         "stopped": True,
                     }
                 # An unavailable observation, stale capture, timeout, lost
@@ -123,7 +244,7 @@ class TurnHostFactoryV4:
                 # request.  No Provider/guest detail reaches the contract.
                 return {
                     "status": "cancellation_requested",
-                    "turn_id": turn_id,
+                    "turn_id": requested_turn_id,
                     "stopped": False,
                 }
             if self.kind == "reconcile":

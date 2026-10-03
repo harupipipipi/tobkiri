@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import time
 from typing import Any, Mapping
 
 from core_runtime.profile_workspace import validate_profile_id
@@ -23,7 +24,7 @@ _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ACTIONS = {
     "transition": {"status", "details"},
-    "steer": {"guidance"},
+    "steer": {"guidance", "guidance_id"},
     "handoff": {"target"},
     "consume_guidance": {"guidance_ids"},
     "cancel_guidance": {"guidance_id"},
@@ -52,18 +53,21 @@ class DurableTurnRuntime:
 
     def begin_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Bind validated saved input without starting or retrying execution."""
+        return self.begin(self._saved_begin_payload(payload))
+
+    def _saved_begin_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         initial = validate_saved_conversation_input(payload)
         request = initial["request"]
         identity = canonical_digest({
             "profile_id": self.profile_id, "turn_id": request["turn_id"],
         }).removeprefix("sha256:")
-        return self.begin({
+        return {
             "turn_id": request["turn_id"],
             "request_id": "saved-turn." + identity,
             "conversation_id": request["conversation_id"],
             "conversation_revision": request["conversation_revision"],
             "input_digest": canonical_digest(initial),
-        })
+        }
 
     def claim_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Acquire a saved turn once, without invoking or authorizing execution.
@@ -239,6 +243,20 @@ class DurableTurnRuntime:
         This method is intentionally absent from the public lifecycle adapter.
         The coordinator must obtain the reference through its captured reader.
         """
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ValueError("saved receipt revision is invalid")
+        return self.settle_saved_from_receipt(
+            turn_id,
+            input_digest=input_digest,
+            result_reference=result_reference,
+        )
+
+    def settle_saved_from_receipt(
+        self, turn_id: str, *, input_digest: str,
+        result_reference: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Settle verified saved output while preserving concurrent guidance."""
+
         _input_digest(input_digest)
         if not self.path.exists():
             raise KeyError("turn is unknown")
@@ -255,12 +273,18 @@ class DurableTurnRuntime:
                 record.get("input_digest") != input_digest
                 or not record["request_id"].startswith("saved-turn.")
                 or record["status"] not in {"running", "waiting"}
+                or any(
+                    event.get("name") == "turn.cancellation_requested"
+                    for event in record["events"]
+                )
             ):
-                raise TurnConflict("saved receipt does not match the durable turn")
+                raise TurnConflict("saved receipt cannot settle current turn")
             runtime = self._restore(row)
             result = runtime.transition(
-                turn_id, "completed", expected_revision=expected_revision,
-                details={"result_reference": dict(result_reference), "reconciled": True},
+                turn_id,
+                "completed",
+                expected_revision=record["revision"],
+                details={"result_reference": dict(result_reference)},
                 reconciled_saved=True,
             )
             self._save(connection, result)
@@ -268,6 +292,375 @@ class DurableTurnRuntime:
             return result
         finally:
             connection.close()
+
+    def reserve_guidance_followup(
+        self,
+        parent_turn_id: str,
+        guidance_id: str,
+        source_turn_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Atomically bind queued guidance to one deterministic saved child."""
+
+        begin = self._saved_begin_payload(payload)
+        request = validate_saved_conversation_input(payload)["request"]
+        if not self.path.exists():
+            raise KeyError("turn is unknown")
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            parent_row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?",
+                (parent_turn_id,),
+            ).fetchone()
+            source_row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?",
+                (source_turn_id,),
+            ).fetchone()
+            if parent_row is None or source_row is None:
+                raise KeyError("guidance source is unavailable")
+            parent = self._record(parent_row)
+            source = self._record(source_row)
+            reference = source.get("result_reference")
+            if (
+                parent["status"] != "completed"
+                or source["status"] != "completed"
+                or not isinstance(reference, Mapping)
+                or request["conversation_id"] != parent["conversation_id"]
+                or request["conversation_id"] != source["conversation_id"]
+                or request["conversation_revision"]
+                != reference.get("conversation_revision")
+            ):
+                raise TurnConflict("guidance source is not acknowledged")
+            item = next(
+                (
+                    value for value in parent["guidance"]
+                    if value.get("id") == guidance_id
+                ),
+                None,
+            )
+            if item is None:
+                raise KeyError("guidance is unavailable")
+            child_row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?",
+                (begin["turn_id"],),
+            ).fetchone()
+            if item.get("status") in {"consumed", "sent", "failed"}:
+                if item.get("followup_turn_id") != begin["turn_id"] or child_row is None:
+                    raise TurnConflict("guidance followup identity changed")
+                child = self._record(child_row)
+                if (
+                    child.get("input_digest") != begin["input_digest"]
+                    or child.get("guidance_parent_turn_id") != parent_turn_id
+                    or child.get("guidance_id") != guidance_id
+                    or child.get("guidance_source_turn_id") != source_turn_id
+                ):
+                    raise TurnConflict("guidance followup input changed")
+                connection.rollback()
+                return child
+            value = item.get("value")
+            if (
+                item.get("status") != "queued"
+                or not isinstance(value, Mapping)
+                or value.get("auto_send") is not True
+            ):
+                raise TurnConflict("guidance is not eligible for followup")
+            if child_row is None:
+                rebound = connection.execute(
+                    "SELECT id, request_id, body FROM turns WHERE request_id = ?",
+                    (begin["request_id"],),
+                ).fetchone()
+                if rebound is not None or connection.execute(
+                    "SELECT COUNT(*) FROM turns"
+                ).fetchone()[0] >= self.max_turns:
+                    raise TurnConflict("guidance followup cannot be reserved")
+                child = TurnRuntime().begin(
+                    {**begin, "profile_id": self.profile_id}
+                )
+                child["input_digest"] = begin["input_digest"]
+                child["guidance_parent_turn_id"] = parent_turn_id
+                child["guidance_id"] = guidance_id
+                child["guidance_source_turn_id"] = source_turn_id
+                self._save(connection, child)
+            else:
+                child = self._record(child_row)
+                if (
+                    child.get("input_digest") != begin["input_digest"]
+                    or child.get("guidance_parent_turn_id") != parent_turn_id
+                    or child.get("guidance_id") != guidance_id
+                    or child.get("guidance_source_turn_id") != source_turn_id
+                ):
+                    raise TurnConflict("guidance followup input changed")
+            item["status"] = "consumed"
+            item["consumed_at"] = _now_ms()
+            item["followup_turn_id"] = child["id"]
+            item["followup_source_turn_id"] = source_turn_id
+            item["followup_input"] = validate_saved_conversation_input(payload)
+            parent["revision"] += 1
+            parent["updated_at"] = _now_ms()
+            parent["events"].append({
+                "sequence": len(parent["events"]),
+                "name": "turn.guidance_consumed",
+                "at": parent["updated_at"],
+                "details": {
+                    "guidance_ids": [guidance_id],
+                    "followup_turn_id": child["id"],
+                },
+            })
+            self._save(connection, parent)
+            connection.commit()
+            return child
+        finally:
+            connection.close()
+
+    def confirm_guidance_followup(
+        self, parent_turn_id: str, guidance_id: str, child_turn_id: str,
+    ) -> dict[str, Any]:
+        """Mark one reserved guidance item from its terminal child receipt."""
+
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = [
+                connection.execute(
+                    "SELECT id, request_id, body FROM turns WHERE id = ?", (value,),
+                ).fetchone()
+                for value in (parent_turn_id, child_turn_id)
+            ]
+            if any(row is None for row in rows):
+                raise KeyError("guidance followup is unavailable")
+            parent, child = (self._record(row) for row in rows)
+            item = next(
+                (value for value in parent["guidance"] if value.get("id") == guidance_id),
+                None,
+            )
+            if item is None or item.get("followup_turn_id") != child_turn_id:
+                raise TurnConflict("guidance followup identity changed")
+            if child["status"] not in {"completed", "failed", "cancelled"}:
+                connection.rollback()
+                return parent
+            expected = "sent" if child["status"] == "completed" else "failed"
+            if item.get("status") == expected:
+                connection.rollback()
+                return parent
+            if item.get("status") != "consumed":
+                raise TurnConflict("guidance followup status changed")
+            item["status"] = expected
+            item["updated_at"] = _now_ms()
+            parent["revision"] += 1
+            parent["updated_at"] = item["updated_at"]
+            self._save(connection, parent)
+            connection.commit()
+            return parent
+        finally:
+            connection.close()
+
+    def active_guidance_followup(self, parent_turn_id: str) -> str | None:
+        """Return the sole nonterminal descendant in a bounded guidance chain."""
+
+        frontier = [parent_turn_id]
+        visited: set[str] = set()
+        active: list[str] = []
+        for _depth in range(9):
+            next_frontier: list[str] = []
+            for owner_id in frontier:
+                if owner_id in visited:
+                    raise TurnConflict("guidance followup cycle detected")
+                visited.add(owner_id)
+                owner = self.get(owner_id)
+                if owner is None or owner.get("status") != "completed":
+                    continue
+                for item in owner.get("guidance", []):
+                    child_id = item.get("followup_turn_id")
+                    if not isinstance(child_id, str):
+                        continue
+                    child = self.get(child_id)
+                    if child is None:
+                        continue
+                    if (
+                        child.get("guidance_parent_turn_id") != owner_id
+                        or child.get("guidance_id") != item.get("id")
+                        or child.get("guidance_source_turn_id")
+                        != item.get("followup_source_turn_id")
+                    ):
+                        raise TurnConflict("guidance followup identity changed")
+                    if child.get("status") in {"queued", "running", "waiting"}:
+                        active.append(child_id)
+                    elif child.get("status") == "completed":
+                        next_frontier.append(child_id)
+            if not next_frontier:
+                break
+            frontier = next_frontier
+        else:
+            raise TurnConflict("guidance followup depth exceeded")
+        if len(active) > 1:
+            raise TurnConflict("guidance has multiple active followups")
+        return active[0] if active else None
+
+    def recover_guidance(
+        self,
+        root_turn_id: str,
+        guidance_id: str,
+        guidance: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Recover one stable guidance mutation across its bounded turn chain."""
+
+        frontier = [root_turn_id]
+        visited: set[str] = set()
+        recovered: dict[str, Any] | None = None
+        for _depth in range(9):
+            next_frontier: list[str] = []
+            for owner_id in frontier:
+                if owner_id in visited:
+                    raise TurnConflict("guidance followup cycle detected")
+                visited.add(owner_id)
+                owner = self.get(owner_id)
+                if owner is None:
+                    continue
+                for item in owner.get("guidance", []):
+                    if item.get("id") == guidance_id:
+                        if item.get("value") != dict(guidance) or recovered is not None:
+                            raise TurnConflict("guidance identity rebound")
+                        recovered = owner
+                    child_id = item.get("followup_turn_id")
+                    if not isinstance(child_id, str):
+                        continue
+                    child = self.get(child_id)
+                    if (
+                        child is None
+                        or child.get("guidance_parent_turn_id") != owner_id
+                        or child.get("guidance_id") != item.get("id")
+                        or child.get("guidance_source_turn_id")
+                        != item.get("followup_source_turn_id")
+                    ):
+                        raise TurnConflict("guidance followup identity changed")
+                    next_frontier.append(child_id)
+            if not next_frontier:
+                return recovered
+            frontier = next_frontier
+        raise TurnConflict("guidance followup depth exceeded")
+
+    def prepare_guidance_stop(
+        self,
+        parent_turn_id: str,
+        *,
+        expected_active_turn_id: str | None,
+    ) -> dict[str, Any] | None:
+        """Fence one active descendant and cancel queued chain guidance."""
+
+        if not self.path.exists():
+            raise KeyError("turn is unknown")
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            def load(turn_id: str) -> dict[str, Any] | None:
+                row = connection.execute(
+                    "SELECT id, request_id, body FROM turns WHERE id = ?",
+                    (turn_id,),
+                ).fetchone()
+                return None if row is None else self._record(row)
+
+            root = load(parent_turn_id)
+            if root is None:
+                raise KeyError("turn is unknown")
+            if root.get("status") != "completed":
+                connection.rollback()
+                return None
+            frontier = [root]
+            visited: set[str] = set()
+            owners: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+            active: list[dict[str, Any]] = []
+            for _depth in range(9):
+                next_frontier: list[dict[str, Any]] = []
+                for owner in frontier:
+                    owner_id = owner["id"]
+                    if owner_id in visited:
+                        raise TurnConflict("guidance followup cycle detected")
+                    visited.add(owner_id)
+                    queued = [
+                        item
+                        for item in owner.get("guidance", [])
+                        if item.get("status") == "queued"
+                        and isinstance(item.get("value"), Mapping)
+                        and item["value"].get("auto_send") is True
+                    ]
+                    if queued:
+                        owners.append((owner, queued))
+                    for item in owner.get("guidance", []):
+                        child_id = item.get("followup_turn_id")
+                        if not isinstance(child_id, str):
+                            continue
+                        child = load(child_id)
+                        if (
+                            child is None
+                            or child.get("guidance_parent_turn_id") != owner_id
+                            or child.get("guidance_id") != item.get("id")
+                            or child.get("guidance_source_turn_id")
+                            != item.get("followup_source_turn_id")
+                        ):
+                            raise TurnConflict("guidance followup identity changed")
+                        if child.get("status") in {"queued", "running", "waiting"}:
+                            active.append(child)
+                        if child.get("status") == "completed":
+                            next_frontier.append(child)
+                if not next_frontier:
+                    break
+                frontier = next_frontier
+            else:
+                raise TurnConflict("guidance followup depth exceeded")
+            if len(active) > 1:
+                raise TurnConflict("guidance has multiple active followups")
+            active_turn_id = active[0]["id"] if active else None
+            if active_turn_id != expected_active_turn_id:
+                raise TurnConflict("guidance active followup changed")
+            if not owners and not active:
+                connection.rollback()
+                return None
+            changed_at = _now_ms()
+            for owner, queued in owners:
+                for item in queued:
+                    item["status"] = "failed"
+                    item["updated_at"] = changed_at
+                    item["failure_reason"] = "cancelled_before_dispatch"
+                owner["revision"] += 1
+                owner["updated_at"] = changed_at
+                owner["events"].append({
+                    "sequence": len(owner["events"]),
+                    "name": "turn.guidance_cancelled",
+                    "at": changed_at,
+                    "details": {"guidance_ids": [item["id"] for item in queued]},
+                })
+                self._save(connection, owner)
+            if active:
+                active_record = active[0]
+                active_row = connection.execute(
+                    "SELECT id, request_id, body FROM turns WHERE id = ?",
+                    (active_record["id"],),
+                ).fetchone()
+                if active_row is None:
+                    raise TurnConflict("guidance active followup disappeared")
+                runtime = self._restore(active_row)
+                fenced = runtime.request_cancellation(active_record["id"])
+                self._save(connection, fenced)
+            connection.commit()
+            return {
+                "root": load(parent_turn_id),
+                "active_turn_id": active_turn_id,
+                "cancelled_guidance": sum(len(items) for _, items in owners),
+            }
+        finally:
+            connection.close()
+
+    def cancel_queued_guidance(self, parent_turn_id: str) -> dict[str, Any] | None:
+        """Cancel queued guidance when no descendant execution is active."""
+
+        prepared = self.prepare_guidance_stop(
+            parent_turn_id,
+            expected_active_turn_id=self.active_guidance_followup(parent_turn_id),
+        )
+        if prepared is None or prepared["active_turn_id"] is not None:
+            return None
+        return prepared["root"]
 
     def request_saved_cancellation(self, turn_id: str) -> dict[str, Any]:
         """Persist a stop request without treating wrapper exit as termination."""
@@ -390,3 +783,7 @@ def _input_digest(value: object) -> None:
     """Validate an input identity, never an execution or approval credential."""
     if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
         raise ValueError("turn input digest is invalid")
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)

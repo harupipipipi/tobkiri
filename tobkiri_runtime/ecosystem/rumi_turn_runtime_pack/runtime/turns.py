@@ -22,6 +22,8 @@ _ALLOWED = {
 class TurnConflict(RuntimeError):
     """Raised when a turn lifecycle mutation is stale or invalid."""
 
+    code = "stale_revision"
+
 
 class TurnRuntime:
     """Own bounded in-process turn state and emitted lifecycle events."""
@@ -175,14 +177,34 @@ class TurnRuntime:
         guidance: Mapping[str, Any],
         *,
         expected_revision: int,
+        guidance_id: str | None = None,
     ) -> dict[str, Any]:
         """Attach guidance to a nonterminal turn without storing messages."""
         with self._lock:
             turn = self._required(turn_id)
+            stable_guidance_id = _identifier(guidance_id or uuid.uuid4())
+            existing = next(
+                (
+                    item for item in turn["guidance"]
+                    if item.get("id") == stable_guidance_id
+                ),
+                None,
+            )
+            if existing is not None:
+                if existing.get("value") != guidance:
+                    raise TurnConflict("guidance identity was rebound")
+                return _copy(turn)
+            if len(turn["guidance"]) >= 8:
+                raise TurnConflict("turn guidance capacity is exhausted")
             self._assert_revision(turn, expected_revision)
             if turn["status"] in _TERMINAL:
                 raise TurnConflict("terminal turn cannot be steered")
-            item = {"id": str(uuid.uuid4()), "value": _copy(guidance)}
+            if any(
+                event.get("name") == "turn.cancellation_requested"
+                for event in turn["events"]
+            ):
+                raise TurnConflict("turn cancellation prevents guidance")
+            item = {"id": stable_guidance_id, "value": _copy(guidance)}
             item["status"] = "queued"
             turn["guidance"].append(item)
             turn["revision"] += 1

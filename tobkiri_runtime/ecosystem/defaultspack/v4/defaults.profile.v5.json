@@ -173,7 +173,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:433c30e2cfc91ba0a3f0214c76eacd7f5e863d7a67a330cb754973e695c25a64",
+    "source_digest": "sha256:3ce848cda618ef37fc6e5950da71c2878711c11d2031a4055b9b91fb63743b48",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -546,6 +546,27 @@
         "opaque": false
       },
       "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.resource"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.guidance.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:abfcbc07baf5bcba892efe50ed791ce1ac5d3a9a94ea9c3f3f15048fa530d233",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.guidance.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-guidance"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance"
     },
     {
       "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",

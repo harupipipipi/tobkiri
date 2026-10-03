@@ -233,6 +233,32 @@
       }]
     },
     {
+      "method": "GET",
+      "path": "/api/chat/turns",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.list",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "allowed_payload_keys": ["conversation_id"]
+      }]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/steer",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.steer",
+        "contract_id": "tobkiri.action.turn.guidance.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+        "allowed_payload_keys": ["turn_id", "expected_revision", "guidance_id", "guidance"]
+      }]
+    },
+    {
       "method": "POST",
       "path": "/api/chat/turn",
       "presentation": "broker_result",
