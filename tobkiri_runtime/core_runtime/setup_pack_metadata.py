@@ -384,7 +384,7 @@ def validate_setup_pack_schema(
         "marketplace",
         "signing",
         "overlap_policy",
-        "defaultspack_promotion",
+        "base_pack_promotion",
     ):
         _validate_dict_field(issues, raw, field_name, pack_id, target_pack_id)
     if "depends_on" in raw:

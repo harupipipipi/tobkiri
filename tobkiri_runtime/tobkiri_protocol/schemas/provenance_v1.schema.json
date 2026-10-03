@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/provenance.v1.schema.json",
+  "title": "Tobkiri provenance record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "source_kind",
+    "source_path",
+    "source_digest",
+    "repository_commit",
+    "repository_tree",
+    "generator",
+    "generator_version",
+    "normative",
+    "evidence"
+  ],
+  "properties": {
+    "schema": {"const": "io.tobkiri.provenance.v1"},
+    "source_kind": {"enum": ["repository", "migration", "generated", "external"]},
+    "source_path": {"type": "string", "minLength": 1},
+    "source_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "repository_commit": {"type": "string", "pattern": "^(working-tree|[0-9a-f]{40})$"},
+    "repository_tree": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "generator": {"type": "string", "minLength": 1},
+    "generator_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "normative": {"type": "boolean"},
+    "evidence": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "rule_id", "digest"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "rule_id": {"type": "string", "minLength": 1},
+          "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "line": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}

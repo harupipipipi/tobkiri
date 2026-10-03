@@ -1,0 +1,110 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:68b56dcd4bda7eb787bb18b717fea651658bdfb39837745e8924c8597db009eb",
+  "pack_id": "rumi_company_coordinator_pack",
+  "source_identity": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_company_coordinator_pack.company.coordinator",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_path": "runtime/coordinator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.company.coordinator.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_company_coordinator_pack.company-coordinator-control",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:35210adcc5c145e82b9f0139c2438037291786d6b7277da638a284c1038ffee0",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_company_coordinator_pack.company.coordinator.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_company_coordinator_pack.company.runtime",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_path": "runtime/coordinator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.company.runtime.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_company_coordinator_pack.company-runtime-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:da063e0f6f1c9e42d56406159022ab1eb5e49f9771e9014510e8d9e34d783c33",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_company_coordinator_pack.company.runtime.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_path": "runtime/coordinator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:cda76ede5258c3305d4786a5b48255737d4dff5862579f8f7befaa023c4469f3",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor.python"
+    }
+  ]
+}

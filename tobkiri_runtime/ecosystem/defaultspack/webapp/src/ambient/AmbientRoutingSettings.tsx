@@ -5,6 +5,7 @@ import type { ModelSearchItem } from "../lib/api";
 import { cn } from "../lib/cn";
 import { ModelSearchPicker } from "../features/models";
 import type { AmbientRoutingMode } from "./ambientTriggerClient";
+import { profileScreenUrlFromLocation } from "../lib/profileRoute";
 
 export function RoutingSettings({
   busy,
@@ -197,7 +198,7 @@ export function CompactRoutingControl({
 
   function openConcreteChat() {
     if (!concreteChatId) return;
-    const url = new URL("/chat", window.location.origin);
+    const url = new URL(profileScreenUrlFromLocation("/chat"), window.location.origin);
     url.searchParams.set("chat", concreteChatId);
     window.location.assign(url.toString());
   }

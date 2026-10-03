@@ -14,7 +14,7 @@ store.batch_get - Built-in Capability Handler
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 _SAFE_KEY_RE = re.compile(r"^[a-zA-Z0-9_/.-]+$")

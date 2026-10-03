@@ -1,0 +1,165 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:6185c4260f58d4b2739028c202d888eedd11c4e88e2c94dfa76466547bd0273a",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "kind": "executable",
+      "path": "runtime/server.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ],
+      "revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4"
+    },
+    {
+      "contract_id": "tobkiri.service.mcp.server.tool.call.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ],
+      "revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059",
+      "id": "rumi_mcp_server_pack.mcp-server.call",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4",
+      "id": "rumi_mcp_server_pack.mcp-server.catalog",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:cf7e9d782f5a42f460c185cd2c2a410f13215b35124c4d6df5e78ec5f3c148a4",
+    "contract_catalog_digest": "sha256:d2f2d29011c176ede2879df6e0c8c2a06437d00f578099620d717889e4c88ee5",
+    "source_identity": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.resource.mcp.server.tool.catalog.v1",
+      "rumi.service.mcp.server.tool.call.v1",
+      "rumi:ecosystem/rumi_mcp_server_pack",
+      "rumi_mcp_server_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.mcp.server.tool.call.v1",
+      "effect_ceiling": [
+        "capability:mcp.server.tool.call",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_mcp_server_pack.mcp-server-tool-call",
+      "owner": "rumi_mcp_server_pack",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.call",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "effect_ceiling": [
+        "capability:mcp.server.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_mcp_server_pack.mcp-server-tool-catalog",
+      "owner": "rumi_mcp_server_pack",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.catalog",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:cf7e9d782f5a42f460c185cd2c2a410f13215b35124c4d6df5e78ec5f3c148a4",
+    "display_name": "Rumi MCP Server",
+    "id": "rumi_mcp_server_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_mcp_server_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.mcp.server.tool.call.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ],
+      "owner": "rumi_mcp_server_pack",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.call"
+    },
+    {
+      "contract_reference": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ],
+      "owner": "rumi_mcp_server_pack",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.catalog"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "mcp.server.catalog.read",
+      "mcp.server.tool.call"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.invoke.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

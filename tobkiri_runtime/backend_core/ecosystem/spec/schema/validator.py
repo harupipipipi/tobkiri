@@ -8,11 +8,10 @@ JSON Schema 検証ユーティリティ
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 # jsonschemaライブラリを使用（なければフォールバック）
 try:
-    import jsonschema
     from jsonschema import Draft7Validator, ValidationError as JsonSchemaValidationError
     HAS_JSONSCHEMA = True
 except ImportError:
@@ -23,7 +22,7 @@ except ImportError:
 class SchemaValidationError(Exception):
     """スキーマ検証エラー"""
     
-    def __init__(self, message: str, errors: List[str] = None):
+    def __init__(self, message: str, errors: Optional[List[str]] = None):
         super().__init__(message)
         self.errors = errors or []
     
