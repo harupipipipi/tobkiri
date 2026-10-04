@@ -27,6 +27,7 @@ export type ChatUiMessage = {
   rawText: string;
   widget?: Record<string, unknown> | null;
   metadata?: {
+    deliveryState?: "pending";
     executionTime?: string;
     toolUsed?: string;
     modelName?: string;

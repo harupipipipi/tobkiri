@@ -204,6 +204,10 @@ Local connections accept only numeric loopback addresses (`127.0.0.1` or
 Keep the model server running while chatting. Hosted providers continue to
 require HTTPS and an API key.
 
+Submitted messages appear in the conversation immediately with a pending
+delivery label until the saved message is confirmed. A status check that is
+still pending does not mean the message failed to send.
+
 ## Common Tasks
 
 ### Just shortcuts

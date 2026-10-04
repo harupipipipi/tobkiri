@@ -3396,14 +3396,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 90479,
-      "sha256": "4e3ddcd6b90b59a6d62151178fbe7868c7d994662a6b36dcdf4b102a25603db6",
+      "sha256": "81c4036315a6a8e482e2a14320b3d25b9e47aa623b81f7a34b37b0c987841180",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 1106605,
-      "sha256": "fd3f4e2a98a4d340c025ea0defba176945045d42b6d2133864034ba99284923b",
+      "sha256": "ab2914bd7f0d74c471dd95a17503ededc6b7e305b4ae7185f4794047b9a5d4c0",
       "executable": false
     },
     {

@@ -1819,9 +1819,15 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 
 @media (hover: hover) and (pointer: fine) {
   .rumi-message-actions {
+    min-height: 1.5rem;
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease;
+  }
+
+  .rumi-message-actions > button {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 
   .rumi-message-row:hover .rumi-message-actions,

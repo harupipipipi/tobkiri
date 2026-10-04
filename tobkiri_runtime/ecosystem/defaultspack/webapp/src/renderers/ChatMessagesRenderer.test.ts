@@ -45,6 +45,37 @@ test("message copy text falls back to raw text", () => {
   assert.equal(messageCopyText(message({ rawText: "fallback text" })), "fallback text");
 });
 
+test("only a provisional user row announces pending delivery without changing its text", () => {
+  const pendingUser = message({
+    id: "pending-user",
+    role: "user",
+    content: [{ type: "text", text: "hello" }],
+    rawText: "hello",
+    metadata: { deliveryState: "pending" },
+  });
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null, isMessagesRegionVisible: true, isLoading: false,
+    isNewConversation: false, isGenerating: false,
+    messages: [
+      pendingUser,
+      message({ id: "saved-user", role: "user", rawText: "stored text" }),
+      message({ id: "assistant", rawText: "response", metadata: { deliveryState: "pending" } }),
+    ],
+    messagesEndRef: { current: null }, unknownBlockStrategy: "hidden",
+    showActivityInMessages: true, showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.equal((html.match(/data-chat-delivery-state="pending"/g) ?? []).length, 1);
+  assert.match(html, /aria-live="polite"[^>]*data-chat-delivery-state="pending"[^>]*role="status">送信中/);
+  assert.match(html, /data-message-id="pending-user" data-message-role="user"/);
+  assert.match(html, /<p>hello<\/p>/);
+  assert.match(html, /<p>stored text<\/p>/);
+  assert.match(html, /<p>response<\/p>/);
+  assert.doesNotMatch(html, /送信済み|保存済み|送信しました/);
+  assert.equal(messageCopyText(pendingUser), "hello");
+});
+
 test("unknown blocks fail closed in DOM and copy for legacy strategies", () => {
   const unknown = {
     type: "provider.future",

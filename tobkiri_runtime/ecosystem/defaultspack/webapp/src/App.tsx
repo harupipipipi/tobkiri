@@ -120,6 +120,16 @@ import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
 import {
+  bindOptimisticSavedTurnExpectedUserMessageId,
+  bindOptimisticSavedTurnOverlay,
+  createOptimisticSavedTurnOverlay,
+  optimisticSavedTurnOverlayHasCanonicalUserMessage,
+  SavedTurnViewFence,
+  shouldDisplayOptimisticSavedTurnOverlay,
+  type OptimisticSavedTurnOverlay,
+  type SavedTurnViewTicket,
+} from "./lib/optimisticSavedTurn";
+import {
   passiveSteerRefreshStatus,
   SteerRefreshFence,
   steerRefreshContextKey,
@@ -235,6 +245,15 @@ type SubmitOverride = {
 
 type RetryableSubmission = SubmitOverride & {
   errorMessage: string;
+};
+
+type InterruptedSavedTurnDraft = {
+  attachments: AttachedFile[];
+  clientId: string;
+  conversationId: string | null;
+  droppedWidgets: DroppedWidget[];
+  input: string;
+  workspaceTabId: string;
 };
 
 type ConversationScrollState = {
@@ -3075,6 +3094,8 @@ export function ChatApp() {
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
+  const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldFollowMessagesRef = useRef(true);
@@ -3089,6 +3110,10 @@ export function ChatApp() {
   const highRiskCancelStartedRef = useRef(new Set<string>());
   const pendingSteerGuidanceIdsRef = useRef(new Map<string, string>());
   const steerRefreshFenceRef = useRef(new SteerRefreshFence());
+  const savedTurnViewFenceRef = useRef(new SavedTurnViewFence(activeWorkspaceTabId, activeConversationId));
+  const savedTurnDraftNonceRef = useRef(new Map<string, string>());
+  const activeSavedTurnSubmissionRef = useRef<{ clientId: string; ticket: SavedTurnViewTicket } | null>(null);
+  const [savedTurnViewEpoch, setSavedTurnViewEpoch] = useState(0);
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
@@ -3169,10 +3194,32 @@ export function ChatApp() {
   const visibleSpotlightResults = spotlightQuery.trim() ? spotlightResults : recentSpotlightResults;
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
+  const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
+  const isConversationPending = Boolean(
+    pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
+  );
+  const activeSavedTurnOperationId = pendingRequest?.savedTurn
+    ? pendingRequest.operationId ?? null
+    : null;
+  const activeSavedTurnViewTicket = savedTurnViewFenceRef.current.capture();
   const orderedMessages = useMemo(
     () => activeConversation ? orderConversationMessages(activeConversation.messages) : [],
     [activeConversation?.messages],
   );
+  const visibleOptimisticSavedTurnOverlays = useMemo(() => (
+    optimisticSavedTurnOverlays.filter((overlay) => shouldDisplayOptimisticSavedTurnOverlay(overlay, {
+      activeConversationId,
+      activeOperationId: activeSavedTurnOperationId,
+      activeViewTicket: activeSavedTurnViewTicket,
+      canonicalMessages: activeConversation?.messages ?? [],
+    }))
+  ), [
+    activeConversation?.messages,
+    activeConversationId,
+    activeSavedTurnOperationId,
+    optimisticSavedTurnOverlays,
+    savedTurnViewEpoch,
+  ]);
   const conversationIntegrity = useMemo(
     () => activeConversation
       ? inspectConversationIntegrity(activeConversation.messages)
@@ -3206,7 +3253,16 @@ export function ChatApp() {
   const latestActivePendingSignature = latestActiveMessage
     ? `${latestActiveMessage.id}:${latestActiveMessage.role}:${latestActiveMessage.finish_reason ?? ""}:${String(latestActiveThinking.state ?? "")}`
     : "";
-  const messages = orderedMessages.map((message) => toUiMessage(message, activeProfile));
+  const messages = [
+    ...orderedMessages.map((message) => toUiMessage(message, activeProfile)),
+    ...visibleOptimisticSavedTurnOverlays.map((overlay) => {
+      const message = toUiMessage(overlay.message, activeProfile);
+      return {
+        ...message,
+        metadata: { ...message.metadata, deliveryState: "pending" as const },
+      };
+    }),
+  ];
   const backendConnectionBanner = backendConnectionCopy(
     backendConnectionState,
     lastHealthyAtRef.current,
@@ -3222,6 +3278,7 @@ export function ChatApp() {
   const isDesktopsWorkspace = activeWorkspaceKind === "desktops";
   const isToolsWorkspace = activeWorkspaceKind === "tools";
   const isNewConversation = activeConversation === null || activeConversation.messages.length === 0;
+  const showNewConversationStage = isNewConversation && visibleOptimisticSavedTurnOverlays.length === 0;
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
@@ -3428,10 +3485,6 @@ export function ChatApp() {
       setStoredSelectedToolIds(reconciled.selectedToolIds);
     }
   }, [droppedWidgets, input, isGenerating, selectedToolIds, setStoredSelectedToolIds]);
-  const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
-  const isConversationPending = Boolean(
-    pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
-  );
   const activeSteerRefreshContext = steerRefreshContextKey(
     activeConversationId,
     pendingRequest?.savedTurn ? pendingRequest.operationId : null,
@@ -3442,6 +3495,52 @@ export function ChatApp() {
     setModelSteerStatus(null);
     setModelSteerBusy(false);
   }, [activeSteerRefreshContext]);
+  useLayoutEffect(() => {
+    const viewFence = savedTurnViewFenceRef.current;
+    if (!viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) return;
+    setSavedTurnViewEpoch(viewFence.capture().epoch);
+    const activeSubmission = activeSavedTurnSubmissionRef.current;
+    if (!activeSubmission || viewFence.matches(activeSubmission.ticket)) return;
+    activeSavedTurnSubmissionRef.current = null;
+    setIsGenerating(false);
+    setIsNewChatLaunching(false);
+  }, [activeConversationId, activeWorkspaceTabId]);
+  useLayoutEffect(() => {
+    const interruptedDraft = interruptedSavedTurnDrafts.find((draft) => (
+      draft.workspaceTabId === activeWorkspaceTabId
+      && draft.conversationId === activeConversationId
+    ));
+    if (!interruptedDraft
+      || savedTurnDraftNonceRef.current.get(interruptedDraft.workspaceTabId) !== interruptedDraft.clientId
+      || input.trim()
+      || attachedFiles.length
+      || droppedWidgets.length
+      || activeSavedTurnOperationId) return;
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => draft.clientId !== interruptedDraft.clientId));
+    setInput(interruptedDraft.input);
+    setAttachedFiles(interruptedDraft.attachments);
+    setDroppedWidgets(interruptedDraft.droppedWidgets);
+    setError("送信開始前に画面を切り替えたため、下書きを復元しました。内容を確認して送信してください。");
+  }, [
+    activeConversationId,
+    activeSavedTurnOperationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    droppedWidgets.length,
+    input,
+    interruptedSavedTurnDrafts,
+    savedTurnViewEpoch,
+  ]);
+  useEffect(() => {
+    if (!activeConversation) return;
+    setOptimisticSavedTurnOverlays((current) => {
+      const next = current.filter((overlay) => !optimisticSavedTurnOverlayHasCanonicalUserMessage(
+        overlay,
+        activeConversation.messages,
+      ));
+      return next.length === current.length ? current : next;
+    });
+  }, [activeConversation?.id, activeConversation?.messages]);
   const rawBrowserApproval = pendingBrowserApproval(messages);
   const rawAuthorityApproval = pendingAuthorityApproval(messages);
   const rawRuntimeApproval = pendingRuntimeApproval(messages);
@@ -3862,6 +3961,61 @@ export function ChatApp() {
       writeJsonLocalStorage(pendingStorageKey, next);
       return next;
     });
+  };
+
+  const bindOptimisticSavedTurnOverlayToRequest = (
+    clientId: string,
+    conversationId: string,
+    operationId: string,
+    requestFingerprint: string,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.map((overlay) => (
+      overlay.clientId === clientId
+        ? bindOptimisticSavedTurnOverlay(overlay, {
+            conversationId,
+            operationId,
+            requestFingerprint,
+          })
+        : overlay
+    )));
+  };
+
+  const bindOptimisticSavedTurnOverlayToTurn = (
+    conversationId: string,
+    operationId: string,
+    turn: SavedTurn,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.map((overlay) => (
+      overlay.conversationId === conversationId && overlay.operationId === operationId
+        ? bindOptimisticSavedTurnExpectedUserMessageId(overlay, turn)
+        : overlay
+    )));
+  };
+
+  const discardOptimisticSavedTurnOverlay = (clientId: string) => {
+    setOptimisticSavedTurnOverlays((current) => current.filter((overlay) => overlay.clientId !== clientId));
+  };
+
+  const discardOptimisticSavedTurnOverlayForRequest = (
+    conversationId: string,
+    operationId: string,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.filter((overlay) => (
+      overlay.conversationId !== conversationId || overlay.operationId !== operationId
+    )));
+  };
+
+  const retainInterruptedSavedTurnDraft = (draft: InterruptedSavedTurnDraft) => {
+    if (savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId) return;
+    setInterruptedSavedTurnDrafts((current) => [
+      ...current.filter((currentDraft) => currentDraft.workspaceTabId !== draft.workspaceTabId),
+      draft,
+    ]);
+  };
+
+  const discardInterruptedSavedTurnDraftForWorkspace = (workspaceTabId: string) => {
+    savedTurnDraftNonceRef.current.delete(workspaceTabId);
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => draft.workspaceTabId !== workspaceTabId));
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
@@ -4593,9 +4747,19 @@ export function ChatApp() {
             )
           ).turn;
           if (disposed) return;
+          bindOptimisticSavedTurnOverlayToTurn(
+            activeConversationId,
+            pendingRequest.operationId,
+            turn,
+          );
           if (turn.status === "running" || turn.status === "waiting") {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
             if (disposed) return;
+            bindOptimisticSavedTurnOverlayToTurn(
+              activeConversationId,
+              pendingRequest.operationId,
+              turn,
+            );
           }
           setSteerItems(savedTurnGuidanceItems(turn));
           const terminalNotice = savedTurnTerminalNotice(
@@ -4611,6 +4775,7 @@ export function ChatApp() {
             if (disposed) return;
             if (conversation) setActiveConversation(conversation);
             setError(terminalNotice);
+            discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
             forgetPendingRequest(activeConversationId);
             replaceChatIdInUrl(activeConversationId, false);
             setIsGenerating(false);
@@ -4701,6 +4866,7 @@ export function ChatApp() {
               if (conversation) setActiveConversation(conversation);
               setSavedTurnCompletionNotice(null);
               setError(guidanceTerminalNotice);
+              discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
               forgetPendingRequest(activeConversationId);
               replaceChatIdInUrl(activeConversationId, false);
               setIsGenerating(false);
@@ -6118,6 +6284,7 @@ export function ChatApp() {
 
   const handleComposerInputChange = (value: string) => {
     if (value !== input) {
+      discardInterruptedSavedTurnDraftForWorkspace(activeWorkspaceTabId);
       for (const [toolId, syntaxes] of dismissedComposerMentionToolsRef.current) {
         if (!syntaxes.some((syntax) => hasUnescapedMentionSyntax(value, syntax))) {
           dismissedComposerMentionToolsRef.current.delete(toolId);
@@ -7194,6 +7361,7 @@ export function ChatApp() {
     const userText = (trimmedInput.startsWith("//") ? trimmedInput.slice(1) : trimmedInput) || "添付ファイルを確認してください。";
     const submittedAttachments = attachmentsForSubmit;
     const wasNewConversation = isNewConversation;
+    const startsWithoutConversation = !activeConversation;
     const selectionToolIdsForReconciliation = override?.toolSelectionRequest
       ? toolIdsFromSelectionRequest(override.toolSelectionRequest)
       : selectedToolIds;
@@ -7300,6 +7468,34 @@ export function ChatApp() {
     const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
     const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
     let savedSubmissionStarted = false;
+    const optimisticOverlayClientId = typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    const optimisticOverlayCreatedAt = Date.now();
+    const submissionViewTicket = savedTurnViewFenceRef.current.capture();
+    savedTurnDraftNonceRef.current.set(submissionViewTicket.workspaceTabId, optimisticOverlayClientId);
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== submissionViewTicket.workspaceTabId
+    )));
+    activeSavedTurnSubmissionRef.current = {
+      clientId: optimisticOverlayClientId,
+      ticket: submissionViewTicket,
+    };
+    const submissionUiIsCurrent = () => (
+      activeSavedTurnSubmissionRef.current?.clientId === optimisticOverlayClientId
+      && savedTurnViewFenceRef.current.matches(submissionViewTicket)
+    );
+    const retainInterruptedDraft = () => {
+      discardOptimisticSavedTurnOverlay(optimisticOverlayClientId);
+      retainInterruptedSavedTurnDraft({
+        attachments: submittedAttachments,
+        clientId: optimisticOverlayClientId,
+        conversationId: submissionViewTicket.conversationId,
+        droppedWidgets: droppedWidgetsForSubmit,
+        input: inputForSubmit,
+        workspaceTabId: submissionViewTicket.workspaceTabId,
+      });
+    };
 
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
@@ -7311,6 +7507,45 @@ export function ChatApp() {
         || toolSelectionRequest.mode === "review"
         || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
         throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
+      }
+      if (startsWithoutConversation) {
+        // A new conversation has no owner id until createConversation settles.
+        // This UI-only draft is intentionally unbound until a durable root can
+        // be selected below.
+        setOptimisticSavedTurnOverlays((current) => [
+          ...current,
+          createOptimisticSavedTurnOverlay({
+            clientId: optimisticOverlayClientId,
+            content: savedTurnContent,
+            createdAt: optimisticOverlayCreatedAt,
+            viewTicket: submissionViewTicket,
+          }),
+        ]);
+      }
+      const savedToolSelection = {
+        mode: toolSelectionRequest.mode === "manual" ? "manual" as const
+          : toolSelectionRequest.mode === "none" ? "none" as const : "auto" as const,
+        include: toolSelectionRequest.include ?? [],
+        exclude: toolSelectionRequest.exclude ?? [],
+        scope: toolSelectionRequest.scope ?? "turn" as const,
+        must_use: toolSelectionRequest.must_use ?? false,
+      };
+      const requestStartedAt = Date.now();
+      const requestFingerprintInput = JSON.stringify({
+        content: savedTurnContent,
+        tool_selection: savedToolSelection,
+        strategy_reference: strategyReference,
+        thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : undefined,
+      });
+      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
+        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
+      );
+      const requestFingerprint = requestFingerprintBytes
+        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : `unavailable:${requestStartedAt}`;
+      if (!submissionUiIsCurrent()) {
+        retainInterruptedDraft();
+        return;
       }
       let conversation = activeConversation;
       if (!conversation) {
@@ -7335,32 +7570,15 @@ export function ChatApp() {
               : {}),
           },
         });
+        if (!submissionUiIsCurrent()) {
+          retainInterruptedDraft();
+          return;
+        }
         setPendingNewTaskContext(null);
         setActiveConversationId(conversation.id);
         setActiveConversation(conversation);
       }
       submittedConversationId = conversation.id;
-      const savedToolSelection = {
-        mode: toolSelectionRequest.mode === "manual" ? "manual" as const
-          : toolSelectionRequest.mode === "none" ? "none" as const : "auto" as const,
-        include: toolSelectionRequest.include ?? [],
-        exclude: toolSelectionRequest.exclude ?? [],
-        scope: toolSelectionRequest.scope ?? "turn" as const,
-        must_use: toolSelectionRequest.must_use ?? false,
-      };
-      const requestStartedAt = Date.now();
-      const requestFingerprintInput = JSON.stringify({
-        content: savedTurnContent,
-        tool_selection: savedToolSelection,
-        strategy_reference: strategyReference,
-        thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : undefined,
-      });
-      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
-        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
-      );
-      const requestFingerprint = requestFingerprintBytes
-        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-        : `unavailable:${requestStartedAt}`;
       const recoverablePending = pendingRequests[conversation.id];
       if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
         throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
@@ -7371,6 +7589,31 @@ export function ChatApp() {
         : typeof globalThis.crypto?.randomUUID === "function"
           ? globalThis.crypto.randomUUID()
           : `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+      if (startsWithoutConversation) {
+        bindOptimisticSavedTurnOverlayToRequest(
+          optimisticOverlayClientId,
+          conversation.id,
+          operationId,
+          requestFingerprint,
+        );
+      } else {
+        setOptimisticSavedTurnOverlays((current) => [
+          ...current,
+          bindOptimisticSavedTurnOverlay(
+            createOptimisticSavedTurnOverlay({
+              clientId: optimisticOverlayClientId,
+              content: savedTurnContent,
+              createdAt: optimisticOverlayCreatedAt,
+              viewTicket: submissionViewTicket,
+            }),
+            {
+              conversationId: conversation.id,
+              operationId,
+              requestFingerprint,
+            },
+          ),
+        ]);
+      }
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
@@ -7397,6 +7640,7 @@ export function ChatApp() {
           ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
           : undefined,
       });
+      bindOptimisticSavedTurnOverlayToTurn(conversation.id, operationId, result.turn);
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
@@ -7431,23 +7675,29 @@ export function ChatApp() {
       );
       if (guidanceTerminalNotice) throw new Error(guidanceTerminalNotice);
       const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
-      setError(null);
-      setSavedTurnCompletionNotice(snapshotNotice
-        ? { ...snapshotNotice, conversationId: conversation.id }
-        : null);
-      setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
       ]);
       forgetPendingRequest(conversation.id);
-      replaceChatIdInUrl(conversation.id, false);
-      setAttachedFiles([]);
-      setDroppedWidgets([]);
-      setRetryableSubmission(null);
-      dismissedComposerMentionToolsRef.current.clear();
-      toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
+      if (submissionUiIsCurrent()) {
+        setError(null);
+        setSavedTurnCompletionNotice(snapshotNotice
+          ? { ...snapshotNotice, conversationId: conversation.id }
+          : null);
+        setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
+        replaceChatIdInUrl(conversation.id, false);
+        setAttachedFiles([]);
+        setDroppedWidgets([]);
+        setRetryableSubmission(null);
+        dismissedComposerMentionToolsRef.current.clear();
+        toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
+      }
     } catch (submitError) {
       console.error("Chat error:", submitError);
+      if (!submissionUiIsCurrent()) {
+        if (!savedSubmissionStarted) retainInterruptedDraft();
+        return;
+      }
       if (savedSubmissionStarted && submittedConversationId) {
         setRetryableSubmission(null);
         setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
@@ -7457,13 +7707,14 @@ export function ChatApp() {
         });
         return;
       }
+      discardOptimisticSavedTurnOverlay(optimisticOverlayClientId);
       if (isCancelledStreamError(submitError)) {
         if (submittedConversationId) {
           forgetPendingRequest(submittedConversationId);
           replaceChatIdInUrl(submittedConversationId, false);
           await refreshConversations(submittedConversationId).catch(console.error);
         }
-        setError(null);
+        if (submissionUiIsCurrent()) setError(null);
         return;
       }
       const preserveOperationForRetry = isLikelyTransportFailure(submitError);
@@ -7472,6 +7723,7 @@ export function ChatApp() {
         replaceChatIdInUrl(submittedConversationId, false);
         await refreshConversations(submittedConversationId).catch(console.error);
       }
+      if (!submissionUiIsCurrent()) return;
       void reportClientDiagnostic({
         source: "webapp",
         category: "chat_submit_error",
@@ -7501,10 +7753,15 @@ export function ChatApp() {
       setError(submitErrorMessage);
       setIsNewChatLaunching(false);
     } finally {
-      streamingConversationIdRef.current = null;
-      currentAbortControllerRef.current = null;
-      setIsGenerating(false);
-      setIsNewChatLaunching(false);
+      if (streamingConversationIdRef.current === submittedConversationId) {
+        streamingConversationIdRef.current = null;
+        currentAbortControllerRef.current = null;
+      }
+      if (submissionUiIsCurrent()) {
+        activeSavedTurnSubmissionRef.current = null;
+        setIsGenerating(false);
+        setIsNewChatLaunching(false);
+      }
     }
   };
 
@@ -7964,7 +8221,7 @@ export function ChatApp() {
                   setSidebarSelectionTick((value) => value + 1);
                 }}
               />
-            ) : isNewConversation && !isLoading ? (
+            ) : showNewConversationStage && !isLoading ? (
               <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
                 <div className="w-full">
                   <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
@@ -7981,7 +8238,7 @@ export function ChatApp() {
                 error={error}
                 isMessagesRegionVisible={showRegion("chat_messages")}
                 isLoading={isLoading}
-                isNewConversation={isNewConversation}
+                isNewConversation={showNewConversationStage}
                 isGenerating={isGenerating || isConversationPending}
                 pendingStatus={pendingRequest?.status ?? null}
                 pendingToolNames={pendingRequest?.toolNames ?? []}

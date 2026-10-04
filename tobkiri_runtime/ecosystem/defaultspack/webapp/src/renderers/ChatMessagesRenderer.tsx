@@ -820,7 +820,7 @@ function MessageActionBar({
   };
 
   return (
-    <div className="rumi-message-actions mt-1.5 flex min-h-8 items-center justify-start gap-1">
+    <div className={cn("rumi-message-actions mt-1 flex min-h-8 items-center gap-1", message.role === "user" ? "justify-end" : "justify-start")}>
       <button
         aria-label="コピー"
         className={cn(
@@ -1800,7 +1800,7 @@ export function ChatMessagesRenderer({
           onScroll={onMessagesScroll}
           className="rumi-messages-scroll flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 lg:px-8"
         >
-          <div className="rumi-message-column mx-auto w-full min-w-0 space-y-5">
+          <div className="rumi-message-column mx-auto w-full min-w-0 space-y-3">
             {visibleMessages.map((message) => {
               const toolActivity = showActivityInMessages && message.role === "agent"
                 ? toolActivityStateForMessage(message, activityNow)
@@ -1819,9 +1819,9 @@ export function ChatMessagesRenderer({
               };
 
               return (
-              <div key={message.id} className={cn("rumi-message-row group/message flex min-w-0 gap-3 select-text", message.role === "user" ? "flex-row-reverse sm:pr-2 lg:pr-5" : "sm:pl-1")}>
-                <div className={cn("flex min-w-0 flex-col pt-1", message.role === "user" ? "max-w-[88%] items-end sm:max-w-[78%] lg:max-w-[70%]" : "flex-1 items-start")}>
-                  <div className={cn("flex min-w-0 max-w-full flex-col", message.role === "user" ? "items-start" : "w-full items-start")}>
+              <div key={message.id} data-message-id={message.id} data-message-role={message.role} className={cn("rumi-message-row group/message flex min-w-0 select-text", message.role === "user" ? "justify-end" : "justify-start")}>
+                <div className={cn("flex min-w-0 flex-col", message.role === "user" ? "max-w-[88%] items-end sm:max-w-[78%] lg:max-w-[70%]" : "flex-1 items-start")}>
+                  <div className={cn("flex min-w-0 max-w-full flex-col", message.role === "user" ? "items-end" : "w-full items-start")}>
                     {toolActivity && (
                       <ToolActivityPanel
                         items={toolActivity.items}
@@ -1837,9 +1837,9 @@ export function ChatMessagesRenderer({
                       return (
                     <div
                       className={cn(
-                        "rumi-message-bubble relative max-w-full overflow-x-hidden rounded-2xl px-3 py-3 text-[14px] outline-none select-text sm:px-4",
+                        "rumi-message-bubble relative max-w-full overflow-x-hidden rounded-2xl text-[14px] outline-none select-text",
                         message.role === "user"
-                          ? "bg-zinc-800/80 text-zinc-100 rounded-tr-sm shadow-sm border border-zinc-700/50"
+                          ? "bg-zinc-800/80 text-zinc-100 rounded-tr-sm shadow-sm border border-zinc-700/50 px-3 py-3 sm:px-4"
                           : "w-full text-zinc-200 bg-transparent",
                       )}
                     >
@@ -1876,6 +1876,12 @@ export function ChatMessagesRenderer({
                               )
                             : <MessageMarkdown text={messageDisplayText(message, message.rawText)} mentions={message.role === "user" ? message.metadata?.mentions : undefined} />}
                       </div>
+
+                      {message.role === "user" && message.metadata?.deliveryState === "pending" && (
+                        <div aria-live="polite" className="mt-1 text-right text-[11px] leading-4 text-zinc-400" data-chat-delivery-state="pending" role="status">
+                          送信中
+                        </div>
+                      )}
 
                       {message.role === "agent" && message.metadata?.interrupted && (
                         <ErrorNotice
