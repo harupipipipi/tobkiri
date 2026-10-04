@@ -845,6 +845,45 @@ function MessageActionBar({
   );
 }
 
+const CANONICAL_SAVED_MESSAGE_ID = /^message:[a-f0-9]{64}$/;
+const STABLE_CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+function userDeliveryIndicatorState(
+  message: ChatMessagesRendererProps["messages"][number],
+): "pending" | "sent" | null {
+  if (message.role !== "user") return null;
+  if (message.metadata?.deliveryState === "pending") return "pending";
+  const conversationId = message.conversationId;
+  const ownerTurnId = message.metadata?.turn_id;
+  return CANONICAL_SAVED_MESSAGE_ID.test(message.id)
+    && typeof conversationId === "string"
+    && STABLE_CONVERSATION_ID.test(conversationId)
+    && typeof ownerTurnId === "string"
+    && STABLE_CONVERSATION_ID.test(ownerTurnId)
+    ? "sent"
+    : null;
+}
+
+function UserDeliveryIndicator({ state }: { state: "pending" | "sent" }) {
+  const pending = state === "pending";
+  const label = pending ? "送信中" : "送信済み";
+  return (
+    <span
+      aria-label={label}
+      aria-live={pending ? "polite" : undefined}
+      className="rumi-message-delivery-indicator inline-flex h-3 w-3 shrink-0 items-center justify-center text-zinc-400"
+      data-chat-delivery-indicator={state}
+      data-chat-delivery-state={state}
+      role={pending ? "status" : "img"}
+    >
+      {pending
+        ? <Clock aria-hidden="true" size={11} strokeWidth={1.75} />
+        : <Check aria-hidden="true" size={12} strokeWidth={2} />}
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 function WidgetCard({ widget }: { widget: Record<string, unknown> }) {
   if (String(widget.type ?? "") === "repository_evidence") {
     const statistics = isRecord(widget.statistics) ? widget.statistics : {};
@@ -1834,6 +1873,27 @@ export function ChatMessagesRenderer({
                     )}
                     {(() => {
                       const hasToolActivity = Boolean(toolActivity);
+                      const deliveryState = userDeliveryIndicatorState(message);
+                      const messageBody = isAuthorityPending
+                        ? (
+                            <AuthorityPendingNotice />
+                          )
+                        : message.content.length > 0 && (messageVisibleText(message) || message.content.some((block) => String(block.type ?? "text") !== "text"))
+                          ? message.content.map((block, index) => (
+                              <MessageBlock key={`${message.id}-${index}`} block={block} mentions={message.role === "user" ? message.metadata?.mentions : undefined} sanitizeText={sanitizeMessageText} unknownStrategy={unknownBlockStrategy} onOpenImagePreview={setImagePreview} />
+                            ))
+                          : shouldShowEmptyResponseWarning(message, hasToolActivity)
+                            ? (
+                                <ErrorNotice
+                                  className="rounded-lg border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100"
+                                  copyLabel="空の応答エラーをコピー"
+                                  errorIcon="empty-response"
+                                  message="レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。"
+                                  messageClassName="text-amber-100"
+                                  severity="warning"
+                                />
+                              )
+                            : <MessageMarkdown text={messageDisplayText(message, message.rawText)} mentions={message.role === "user" ? message.metadata?.mentions : undefined} />;
                       return (
                     <div
                       className={cn(
@@ -1854,34 +1914,13 @@ export function ChatMessagesRenderer({
                         </details>
                       )}
 
-                      <div className="rumi-message-content markdown-body min-w-0 max-w-full select-text space-y-4 leading-relaxed">
-                        {isAuthorityPending
-                          ? (
-                              <AuthorityPendingNotice />
-                            )
-                          : message.content.length > 0 && (messageVisibleText(message) || message.content.some((block) => String(block.type ?? "text") !== "text"))
-                          ? message.content.map((block, index) => (
-                              <MessageBlock key={`${message.id}-${index}`} block={block} mentions={message.role === "user" ? message.metadata?.mentions : undefined} sanitizeText={sanitizeMessageText} unknownStrategy={unknownBlockStrategy} onOpenImagePreview={setImagePreview} />
-                            ))
-                          : shouldShowEmptyResponseWarning(message, hasToolActivity)
-                            ? (
-                                <ErrorNotice
-                                  className="rounded-lg border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100"
-                                  copyLabel="空の応答エラーをコピー"
-                                  errorIcon="empty-response"
-                                  message="レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。"
-                                  messageClassName="text-amber-100"
-                                  severity="warning"
-                                />
-                              )
-                            : <MessageMarkdown text={messageDisplayText(message, message.rawText)} mentions={message.role === "user" ? message.metadata?.mentions : undefined} />}
+                      <div className={cn(
+                        "rumi-message-content markdown-body min-w-0 max-w-full select-text space-y-4 leading-relaxed",
+                        deliveryState && "flex items-end gap-1 space-y-0",
+                      )}>
+                        {deliveryState ? <div className="min-w-0 max-w-full space-y-4">{messageBody}</div> : messageBody}
+                        {deliveryState && <UserDeliveryIndicator state={deliveryState} />}
                       </div>
-
-                      {message.role === "user" && message.metadata?.deliveryState === "pending" && (
-                        <div aria-live="polite" className="mt-1 text-right text-[11px] leading-4 text-zinc-400" data-chat-delivery-state="pending" role="status">
-                          送信中
-                        </div>
-                      )}
 
                       {message.role === "agent" && message.metadata?.interrupted && (
                         <ErrorNotice

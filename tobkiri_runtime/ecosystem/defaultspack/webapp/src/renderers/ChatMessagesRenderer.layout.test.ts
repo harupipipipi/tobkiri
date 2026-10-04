@@ -133,7 +133,7 @@ for (const device of [
   });
 }
 
-test("hover, keyboard focus, and a pending label preserve stable message positions", async () => {
+test("hover, keyboard focus, and inline delivery indicators preserve stable message positions", async () => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   try {
     const messages = transcript();
@@ -153,9 +153,28 @@ test("hover, keyboard focus, and a pending label preserve stable message positio
     }
 
     await mount(page, transcript(true));
-    assert.equal(await page.locator('[data-chat-delivery-state="pending"]').count(), 1);
-    assert.equal(await page.locator('[data-message-id="message-2"] .rumi-message-content').innerText(), "hello");
+    assert.equal(await page.locator('[data-chat-delivery-indicator="pending"]').count(), 1);
+    assert.match(
+      await page.locator('[data-message-id="message-2"] .rumi-message-content').innerText(),
+      /^hello\s+送信中$/,
+    );
+    const inlineDeliveryGeometry = await page.locator('[data-message-id="message-2"] .rumi-message-content').evaluate((content) => {
+      const body = content.querySelector(':scope > div')?.getBoundingClientRect();
+      const indicator = content.querySelector('[data-chat-delivery-indicator]')?.getBoundingClientRect();
+      if (!body || !indicator) throw new Error("pending delivery indicator geometry is missing");
+      return {
+        bodyRight: body.right,
+        bodyBottom: body.bottom,
+        indicatorLeft: indicator.left,
+        indicatorBottom: indicator.bottom,
+        indicatorHeight: indicator.height,
+      };
+    });
+    assert.ok(inlineDeliveryGeometry.indicatorLeft >= inlineDeliveryGeometry.bodyRight);
+    assert.ok(Math.abs(inlineDeliveryGeometry.indicatorBottom - inlineDeliveryGeometry.bodyBottom) < 1);
+    assert.ok(inlineDeliveryGeometry.indicatorHeight <= 12);
     const pending = await geometry(page);
+    assert.equal(pending.rows[2].bubble.height, beforeHover.rows[2].bubble.height);
     assert.ok(Math.abs(pending.rows[0].bubble.right - pending.rows[2].bubble.right) < 1);
     assert.ok(pending.rows[2].actions.bottom <= pending.rows[3].row.top);
     measurements.push({ device: "desktop-pending", browser: browser.version(), ...pending });

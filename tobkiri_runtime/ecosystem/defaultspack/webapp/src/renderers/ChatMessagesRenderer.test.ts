@@ -4,6 +4,8 @@ import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import { remarkMessageMentions } from "../lib/messageMentions";
+import { toUiMessage } from "../App";
+import type { ChatMessage } from "../lib/api";
 
 import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
@@ -45,20 +47,68 @@ test("message copy text falls back to raw text", () => {
   assert.equal(messageCopyText(message({ rawText: "fallback text" })), "fallback text");
 });
 
-test("only a provisional user row announces pending delivery without changing its text", () => {
+function canonicalRawUser(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: `message:${"a".repeat(64)}`,
+    role: "user",
+    content: "hello",
+    created_at: 1,
+    conversation_id: "conversation-1",
+    metadata: { turn_id: "turn-1" },
+    ...overrides,
+  };
+}
+
+test("canonical user mapper preserves only a stable owner turn binding", () => {
+  assert.equal(toUiMessage(canonicalRawUser()).metadata?.turn_id, "turn-1");
+  assert.equal(toUiMessage(canonicalRawUser({ metadata: { turn_id: "../invalid" } })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ id: "local-saved-turn:client" })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ conversation_id: "../invalid" })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ conversation_id: 123 as unknown as string })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ role: "assistant" })).metadata?.turn_id, undefined);
+});
+
+test("user delivery indicators are inline, accessible, and limited to pending or canonical saved rows", () => {
   const pendingUser = message({
-    id: "pending-user",
+    id: `message:${"c".repeat(64)}`,
+    conversationId: "conversation-1",
     role: "user",
     content: [{ type: "text", text: "hello" }],
     rawText: "hello",
     metadata: { deliveryState: "pending" },
+  });
+  const canonicalSavedUser = message({
+    id: `message:${"a".repeat(64)}`,
+    conversationId: "conversation-1",
+    role: "user",
+    content: [{ type: "text", text: "stored text" }],
+    rawText: "stored text",
+    metadata: { turn_id: "turn-1" },
   });
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null, isMessagesRegionVisible: true, isLoading: false,
     isNewConversation: false, isGenerating: false,
     messages: [
       pendingUser,
-      message({ id: "saved-user", role: "user", rawText: "stored text" }),
+      canonicalSavedUser,
+      message({ id: "saved-user", conversationId: "conversation-1", role: "user", rawText: "unconfirmed text" }),
+      message({ id: `message:${"b".repeat(64)}`, conversationId: "conversation-1", role: "user", rawText: "missing owner turn" }),
+      message({ id: `message:${"d".repeat(64)}`, conversationId: "conversation-1", role: "user", rawText: "invalid owner turn", metadata: { turn_id: "../invalid" } }),
+      message({ id: `message:${"e".repeat(64)}`, role: "user", rawText: "missing context", metadata: { turn_id: "turn-1" } }),
+      message({
+        id: `message:${"f".repeat(64)}`,
+        conversationId: 123 as unknown as string,
+        role: "user",
+        rawText: "numeric context",
+        metadata: { turn_id: "turn-1" },
+      }),
+      message({
+        id: `message:${"0".repeat(64)}`,
+        conversationId: "conversation-1",
+        role: "user",
+        rawText: "numeric owner turn",
+        metadata: { turn_id: 123 as unknown as string },
+      }),
       message({ id: "assistant", rawText: "response", metadata: { deliveryState: "pending" } }),
     ],
     messagesEndRef: { current: null }, unknownBlockStrategy: "hidden",
@@ -67,13 +117,20 @@ test("only a provisional user row announces pending delivery without changing it
   }));
 
   assert.equal((html.match(/data-chat-delivery-state="pending"/g) ?? []).length, 1);
-  assert.match(html, /aria-live="polite"[^>]*data-chat-delivery-state="pending"[^>]*role="status">送信中/);
-  assert.match(html, /data-message-id="pending-user" data-message-role="user"/);
+  assert.equal((html.match(/data-chat-delivery-state="sent"/g) ?? []).length, 1);
+  assert.match(html, /data-chat-delivery-indicator="pending"[^>]*role="status"/);
+  assert.match(html, /data-chat-delivery-indicator="sent"[^>]*role="img"/);
+  assert.match(html, /data-chat-delivery-indicator="pending"[^>]*><svg[^>]*class="lucide lucide-clock"[\s\S]*?<\/svg><span class="sr-only">送信中<\/span>/);
+  assert.match(html, /data-chat-delivery-indicator="sent"[^>]*><svg[^>]*class="lucide lucide-check"[\s\S]*?<\/svg><span class="sr-only">送信済み<\/span>/);
+  assert.match(html, /data-message-id="message:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" data-message-role="user"/);
+  assert.match(html, /rumi-message-content[^>]*flex items-end gap-1[^>]*><div[^>]*><p>hello<\/p><\/div><span[^>]*data-chat-delivery-indicator="pending"/);
   assert.match(html, /<p>hello<\/p>/);
   assert.match(html, /<p>stored text<\/p>/);
   assert.match(html, /<p>response<\/p>/);
-  assert.doesNotMatch(html, /送信済み|保存済み|送信しました/);
+  assert.doesNotMatch(html, /<div[^>]*>送信中<\/div>|<div[^>]*>送信済み<\/div>/);
+  assert.doesNotMatch(html, /data-message-id="saved-user"[^]*?data-chat-delivery-indicator="sent"/);
   assert.equal(messageCopyText(pendingUser), "hello");
+  assert.equal(messageCopyText(canonicalSavedUser), "stored text");
 });
 
 test("unknown blocks fail closed in DOM and copy for legacy strategies", () => {

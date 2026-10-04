@@ -28,6 +28,8 @@ export type ChatUiMessage = {
   widget?: Record<string, unknown> | null;
   metadata?: {
     deliveryState?: "pending";
+    /** Durable owner turn binding preserved from canonical user-message metadata. */
+    turn_id?: string;
     executionTime?: string;
     toolUsed?: string;
     modelName?: string;

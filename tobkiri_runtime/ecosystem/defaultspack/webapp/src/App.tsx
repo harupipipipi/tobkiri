@@ -1528,7 +1528,22 @@ function chatMessageMetadataRecord(value: unknown): Record<string, unknown> | un
     : undefined;
 }
 
-function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
+const CANONICAL_SAVED_USER_MESSAGE_ID = /^message:[a-f0-9]{64}$/;
+const STABLE_OWNER_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+function canonicalOwnerTurnId(message: ChatMessage): string | undefined {
+  const turnId = message.metadata?.turn_id;
+  return message.role === "user"
+    && CANONICAL_SAVED_USER_MESSAGE_ID.test(message.id)
+    && typeof message.conversation_id === "string"
+    && STABLE_OWNER_TURN_ID.test(message.conversation_id)
+    && typeof turnId === "string"
+    && STABLE_OWNER_TURN_ID.test(turnId)
+    ? turnId
+    : undefined;
+}
+
+export function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
   const isUser = message.role === "user";
   const metadata = message.metadata ?? {};
   const thinking = metadata.thinking as Record<string, unknown> | undefined;
@@ -1552,8 +1567,13 @@ function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatU
     ? composerMentionMetadataFromWidgets(metadata.dropped_widgets as DroppedWidget[])
     : [];
   const mentions = explicitMentions.length > 0 ? explicitMentions : fallbackMentions;
-  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0
-    ? { ...displayMetadata, ...(mentions.length > 0 ? { mentions } : {}) }
+  const ownerTurnId = canonicalOwnerTurnId(message);
+  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0 || ownerTurnId
+    ? {
+        ...displayMetadata,
+        ...(mentions.length > 0 ? { mentions } : {}),
+        ...(ownerTurnId ? { turn_id: ownerTurnId } : {}),
+      }
     : undefined;
   return {
     id: message.id,
