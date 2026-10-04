@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -83,7 +83,7 @@ import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewMo
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
-import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
+import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./lib/conversationView";
 import { cn } from "./lib/cn";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
 import {
@@ -3060,7 +3060,8 @@ export function ChatApp() {
     () => createWidgetConversationContext(activeConversationId),
     [activeConversationId],
   );
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [activeConversation, setActiveConversationState] = useState<Conversation | null>(null);
+  const loadedConversationViewsRef = useRef(new Map<string, Conversation>());
   const [activeHistoryCompanyId, setActiveHistoryCompanyId] = useState<string | null>(null);
   const [input, setInput] = useLocalStorage("rumi-input", "");
   const [customHomeTitle, setCustomHomeTitle] = useLocalStorage(
@@ -3174,6 +3175,7 @@ export function ChatApp() {
   const pendingSteerGuidanceIdsRef = useRef(new Map<string, string>());
   const steerRefreshFenceRef = useRef(new SteerRefreshFence());
   const savedTurnViewFenceRef = useRef(new SavedTurnViewFence(activeWorkspaceTabId, activeConversationId));
+  const conversationViewLoaderRef = useRef(new ConversationViewLoader(savedTurnViewFenceRef.current));
   const savedTurnDraftNonceRef = useRef(new Map<string, string>());
   const activeSavedTurnSubmissionRef = useRef<{ clientId: string; ticket: SavedTurnViewTicket } | null>(null);
   const savedTurnStopAcknowledgementRef = useRef<SavedTurnStopAcknowledgement | null>(null);
@@ -3183,6 +3185,16 @@ export function ChatApp() {
     errorGeneration: number;
   } | null>(null);
   const [savedTurnViewEpoch, setSavedTurnViewEpoch] = useState(0);
+  const setActiveConversation = useCallback((value: SetStateAction<Conversation | null>) => {
+    const ticket = savedTurnViewFenceRef.current.capture();
+    setActiveConversationState((current) => {
+      if (!savedTurnViewFenceRef.current.matches(ticket)) return current;
+      const next = typeof value === "function" ? value(current) : value;
+      if (next && next.id !== ticket.conversationId) return current;
+      if (next) loadedConversationViewsRef.current.set(next.id, next);
+      return next;
+    });
+  }, []);
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
@@ -3367,7 +3379,12 @@ export function ChatApp() {
   );
   const { isNewConversation, showConversationComposer, showNewConversationStage } = savedTurnComposer;
   useEffect(() => {
+    const ticket = savedTurnViewFenceRef.current.capture();
+    if (!conversationOwnsSelectedView(
+      ticket, activeWorkspaceTabId, activeConversationId, activeConversation?.id ?? null,
+    )) return;
     setWorkspaceTabs((current) => current.map((tab) => {
+      if (!savedTurnViewFenceRef.current.matches(ticket)) return tab;
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
       const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
       if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
@@ -3377,7 +3394,7 @@ export function ChatApp() {
         title: nextTitle,
       };
     }));
-  }, [activeChatTitle, activeConversationId, activeWorkspaceTabId]);
+  }, [activeChatTitle, activeConversation?.id, activeConversationId, activeWorkspaceTabId]);
   const activePromptUsage = latestActiveMetadata.prompt_usage && typeof latestActiveMetadata.prompt_usage === "object" && !Array.isArray(latestActiveMetadata.prompt_usage)
     ? latestActiveMetadata.prompt_usage as PromptUsageSummary
     : null;
@@ -3584,8 +3601,9 @@ export function ChatApp() {
   }, [activeSteerRefreshContext]);
   useLayoutEffect(() => {
     const viewFence = savedTurnViewFenceRef.current;
-    if (!viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) return;
-    setSavedTurnViewEpoch(viewFence.capture().epoch);
+    if (viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) {
+      setSavedTurnViewEpoch(viewFence.capture().epoch);
+    }
     const activeSubmission = activeSavedTurnSubmissionRef.current;
     if (!activeSubmission || viewFence.matches(activeSubmission.ticket)) return;
     activeSavedTurnSubmissionRef.current = null;
@@ -4313,10 +4331,12 @@ export function ChatApp() {
       if ((payload as Record<string, unknown>).type === "rumi_human_operator_sync") {
         const conversationId = String((payload as Record<string, unknown>).conversation_id ?? "").trim();
         if (conversationId && conversationId === activeConversationId) {
+          const ticket = conversationViewLoaderRef.current.capture();
           void api.getConversation(conversationId)
             .then((conversation) => {
+              if (!conversationViewLoaderRef.current.matches(ticket)) return;
               setActiveConversation(conversation);
-              void refreshPreview(conversationId);
+              void refreshPreview(conversationId, ticket);
             })
             .catch(console.error);
         }
@@ -4620,7 +4640,13 @@ export function ChatApp() {
     }
   }
 
-  async function refreshPreview(conversationId: string | null) {
+  async function refreshPreview(
+    conversationId: string | null,
+    ticket = conversationViewLoaderRef.current.capture(),
+  ) {
+    const ownsPreview = () => conversationViewLoaderRef.current.matches(ticket)
+      && ticket.conversationId === conversationId;
+    if (!ownsPreview()) return;
     if (!conversationId) {
       setPreviews([]);
       setActivePreviewId(null);
@@ -4628,6 +4654,7 @@ export function ChatApp() {
     }
     try {
       const result = await api.conversationPreview(conversationId);
+      if (!ownsPreview()) return;
       const limit = Number(settingsValues.preview?.max_items ?? 12);
       const nextPreviews = result.previews.slice(0, limit);
       setPreviews(nextPreviews);
@@ -4636,52 +4663,79 @@ export function ChatApp() {
         setShowPreview(true);
       }
     } catch (previewError) {
+      if (!ownsPreview()) return;
       console.error(previewError);
       setPreviews([]);
       setActivePreviewId(null);
     }
   }
 
-  async function loadConversation(conversationId: string | null, updateUrl = true) {
-    if (!conversationId) {
-      setActiveConversationId(null);
-      setActiveConversation(null);
-      void refreshPreview(null);
-      if (updateUrl) replaceChatIdInUrl(null, false);
-      return;
-    }
-    const conversation = await api.getConversation(conversationId);
-    const supersededTargetId = resolveSupersededConversationRedirect(conversation, conversationId);
-    if (supersededTargetId) {
-      await loadConversation(supersededTargetId, updateUrl);
-      return;
-    }
-    setActiveConversationId(conversationId);
-    setActiveConversation(conversation);
-    if (updateUrl) replaceChatIdInUrl(conversationId);
-    void refreshPreview(conversationId);
+  function publishConversationSelection(ticket: ConversationLoadTicket) {
+    const conversationId = ticket.conversationId;
+    const loaded = conversationId ? loadedConversationViewsRef.current.get(conversationId) ?? null : null;
+    setActiveConversationId(ticket.conversationId);
+    setSavedTurnViewEpoch(ticket.epoch);
+    setActiveConversation(loaded);
+    const knownTitle = loaded?.title
+      ?? conversations.find((conversation) => conversation.id === conversationId)?.title;
+    setWorkspaceTabs((current) => current.map((tab) => {
+      if (!conversationViewLoaderRef.current.matches(ticket)
+        || tab.id !== ticket.workspaceTabId || tab.kind !== "chat") return tab;
+      const title = conversationId ? knownTitle
+        ?? (tab.conversationId === conversationId ? tab.title : "Conversation") : "New Conversation";
+      return tab.conversationId === conversationId && tab.title === title
+        ? tab : { ...tab, conversationId, title };
+    }));
+    setPreviews([]);
+    setActivePreviewId(null);
   }
 
-  async function refreshConversations(preferredId?: string | null) {
-    const result = await api.listConversations();
-    setConversations(result.conversations);
-    await loadConversationForRefresh({
-      preferredId,
-      activeConversationId,
-      locationChatId: chatIdFromLocation(),
-      listedConversations: result.conversations,
-      loadConversation,
+  async function loadConversation(
+    conversationId: string | null,
+    updateUrl = true,
+    workspaceTabId = savedTurnViewFenceRef.current.capture().workspaceTabId,
+    onViewLoad?: (ticket: ConversationLoadTicket) => void,
+  ) {
+    await conversationViewLoaderRef.current.load({
+      workspaceTabId,
+      conversationId,
+      readConversation: api.getConversation,
+      publishSelection: (ticket) => {
+        publishConversationSelection(ticket);
+        onViewLoad?.(ticket);
+      },
+      publishConversation: setActiveConversation,
+      publishRoute: updateUrl ? (id) => replaceChatIdInUrl(id, false) : undefined,
+      refreshPreview: (id, ticket) => { void refreshPreview(id, ticket); },
     });
   }
 
-  useEffect(() => subscribeAuthorityApprovalSettlements((event) => {
-    setSettledRuntimeApprovalIds((ids) => (
-      ids.includes(event.requestId) ? ids : [...ids, event.requestId].slice(-50)
-    ));
-    if (event.conversationId && event.conversationId === activeConversationId) {
-      void refreshConversations(event.conversationId);
-    }
-  }), [activeConversationId]);
+  async function refreshConversations(
+    preferredId?: string | null,
+    ticket = conversationViewLoaderRef.current.capture(),
+    onViewLoad?: (ticket: ConversationLoadTicket) => void,
+  ) {
+    return conversationViewLoaderRef.current.refresh({
+      ticket, preferredId, onViewLoad,
+      readList: api.listConversations,
+      publishList: setConversations,
+      locationConversationId: chatIdFromLocation,
+      loadConversation: (id, workspaceTabId, onSelection) => loadConversation(id, true, workspaceTabId, onSelection),
+    });
+  }
+
+  useEffect(() => {
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    return subscribeAuthorityApprovalSettlements((event) => {
+      setSettledRuntimeApprovalIds((ids) => (
+        ids.includes(event.requestId) ? ids : [...ids, event.requestId].slice(-50)
+      ));
+      if (event.conversationId && event.conversationId === viewTicket.conversationId
+        && savedTurnViewFenceRef.current.matches(viewTicket)) {
+        void refreshConversations(event.conversationId, conversationViewLoaderRef.current.capture());
+      }
+    });
+  }, [activeConversationId, activeWorkspaceTabId, savedTurnViewEpoch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4814,6 +4868,8 @@ export function ChatApp() {
     const handlePopState = () => {
       setError(null);
       const routeKind = workspaceKindForPathname(window.location.pathname) ?? "chat";
+      const selectedTabId = routeKind !== "chat"
+        ? `workspace-tab-route-${routeKind}` : DEFAULT_WORKSPACE_TAB_ID;
       if (routeKind !== "chat") {
         const routeTabId = `workspace-tab-route-${routeKind}`;
         setWorkspaceTabs((current) => (
@@ -4827,7 +4883,7 @@ export function ChatApp() {
         setActiveWorkspaceTabId(DEFAULT_WORKSPACE_TAB_ID);
         setMode("agent");
       }
-      void loadConversation(chatIdFromLocation(), false).catch((loadError) => {
+      void loadConversation(chatIdFromLocation(), false, selectedTabId).catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : "会話の読み込みに失敗しました。");
       });
     };
@@ -4913,7 +4969,7 @@ export function ChatApp() {
       if (disposed || polling) return;
       polling = true;
       void (async () => {
-        if (disposed) return;
+        if (!pollUiIsCurrent()) return;
         if (pendingRequest?.savedTurn) {
           if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
           let turn = (
@@ -4922,7 +4978,7 @@ export function ChatApp() {
               activeConversationId,
             )
           ).turn;
-          if (disposed) return;
+          if (!pollUiIsCurrent()) return;
           if (pollUiIsCurrent()) {
             updatePendingRequests((current) => markSavedTurnOwnerObserved(
               current,
@@ -4939,7 +4995,7 @@ export function ChatApp() {
           );
           if (turn.status === "running" || turn.status === "waiting") {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
-            if (disposed) return;
+            if (!pollUiIsCurrent()) return;
             bindOptimisticSavedTurnOverlayToTurn(
               activeConversationId,
               pendingRequest.operationId,
@@ -4957,7 +5013,7 @@ export function ChatApp() {
               if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
               throw error;
             });
-            if (disposed) return;
+            if (!pollUiIsCurrent()) return;
             const recoveryDraft = unwrittenSavedTurnDrafts.find((draft) => (
               draft.conversationId === activeConversationId
               && draft.operationId === pendingRequest.operationId
@@ -5001,7 +5057,7 @@ export function ChatApp() {
               activeConversationId,
               pendingRequest.operationId,
             );
-            if (disposed) return;
+            if (!pollUiIsCurrent()) return;
             if (chain.state === "unsettled") {
               setCurrentSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
               updatePendingRequests((current) => {
@@ -5017,7 +5073,7 @@ export function ChatApp() {
               let activeTurn = (
                 await api.getSavedTurnEvents(chain.active.id, activeConversationId)
               ).turn;
-              if (disposed) return;
+              if (!pollUiIsCurrent()) return;
               if (pollUiIsCurrent()) {
                 // `chain` was built by pendingSavedTurnChainForConversation,
                 // which has already verified the complete root-to-child
@@ -5034,14 +5090,14 @@ export function ChatApp() {
               }
               if (activeTurn.status === "running" || activeTurn.status === "waiting") {
                 activeTurn = await api.reconcileSavedTurn(activeTurn.id, activeConversationId);
-                if (disposed) return;
+                if (!pollUiIsCurrent()) return;
               }
               if (!TERMINAL_SAVED_TURN_STATUSES.has(savedTurnStatus(activeTurn))) {
                 const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
                   if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
                   throw error;
                 });
-                if (disposed) return;
+                if (!pollUiIsCurrent()) return;
                 const progress = savedTurnProgressState(
                   activeTurn,
                   conversation,
@@ -5063,7 +5119,7 @@ export function ChatApp() {
                 activeConversationId,
                 pendingRequest.operationId,
               );
-              if (disposed) return;
+              if (!pollUiIsCurrent()) return;
               if (chain.state !== "settled") {
                 setCurrentSteerItems(chain.state === "active"
                   ? savedTurnChainGuidanceItems(chain)
@@ -5088,7 +5144,7 @@ export function ChatApp() {
                 if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
                 throw error;
               });
-              if (disposed) return;
+              if (!pollUiIsCurrent()) return;
               if (conversation) setActiveConversation(conversation);
               setSavedTurnCompletionNotice(null);
               setError(guidanceTerminalNotice);
@@ -5105,7 +5161,7 @@ export function ChatApp() {
               if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
               throw error;
             });
-            if (disposed) return;
+            if (!pollUiIsCurrent()) return;
             const progress = savedTurnProgressState(
               turn,
               conversation,
@@ -5125,7 +5181,7 @@ export function ChatApp() {
             if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
             throw error;
           });
-          if (disposed) return;
+          if (!pollUiIsCurrent()) return;
           const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
           if (state === "pending") {
             throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
@@ -5143,7 +5199,7 @@ export function ChatApp() {
           return;
         }
         const conversation = await api.getConversation(activeConversationId);
-        if (disposed) return;
+        if (!pollUiIsCurrent()) return;
         setActiveConversation(conversation);
         const latest = conversation.messages[conversation.messages.length - 1];
         if (shouldClearPendingAfterConversationRefresh(latest, pendingRequest, Date.now())) {
@@ -5153,7 +5209,7 @@ export function ChatApp() {
           void refreshConversations(conversation.id);
         }
       })().catch((pollError) => {
-        if (disposed) return;
+        if (!pollUiIsCurrent()) return;
         console.error(pollError);
         if (!pendingRequest?.savedTurn && shouldForgetPendingAfterPollError(pollError)) {
           forgetPendingRequest(activeConversationId);
@@ -5227,8 +5283,7 @@ export function ChatApp() {
     if (nextContext?.workspaceId) {
       setMode("coding");
     }
-    setActiveConversationId(null);
-    setActiveConversation(null);
+    conversationViewLoaderRef.current.select(nextTab.id, null, publishConversationSelection);
     setPreviews([]);
     setError(null);
     setIsGenerating(false);
@@ -5252,6 +5307,12 @@ export function ChatApp() {
 
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    const selectedTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    if (viewTicket.workspaceTabId !== activeWorkspaceTabId
+      || viewTicket.conversationId !== conversationId
+      || (selectedTab?.conversationId ?? null) !== conversationId
+      || (activeConversation && activeConversation.id !== conversationId)) return;
     if (conversationId && pendingRequests[conversationId]?.savedTurn) {
       const pendingSavedTurn = pendingRequests[conversationId];
       if (pendingSavedTurn.ownerTurnObserved !== true) return;
@@ -5338,6 +5399,7 @@ export function ChatApp() {
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    let targetTabId = activeWorkspaceTabId;
     if (!workspaceTabsEnabled) {
       setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId
         ? { ...tab, kind: "chat", title: "AI Chat", conversationId }
@@ -5348,18 +5410,25 @@ export function ChatApp() {
       const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
       setWorkspaceTabs((current) => [...current, nextTab]);
       setActiveWorkspaceTabId(nextTab.id);
+      targetTabId = nextTab.id;
     }
-    void loadConversation(conversationId);
+    void loadConversation(conversationId, true, targetTabId);
   };
 
   const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
+    const ticket = conversationViewLoaderRef.current.capture();
     setError(null);
     void api.updateConversation(conversationId, updates as Partial<Conversation>, conversations.find((item) => item.id === conversationId)?.conversation_revision)
       .then((conversation) => {
         setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
-        if (activeConversationId === conversation.id) setActiveConversation(conversation);
+        if (conversationViewLoaderRef.current.matches(ticket)
+          && ticket.conversationId === conversation.id) setActiveConversation(conversation);
       })
-      .catch((updateError) => setError(updateError instanceof Error ? updateError.message : "会話メタデータの更新に失敗しました。"));
+      .catch((updateError) => {
+        if (conversationViewLoaderRef.current.matches(ticket)) {
+          setError(updateError instanceof Error ? updateError.message : "会話メタデータの更新に失敗しました。");
+        }
+      });
   };
 
   const handleHistoryGroupSelect = (group: ChatGroup) => {
@@ -5389,14 +5458,17 @@ export function ChatApp() {
     }
 
     setError(null);
+    const ticket = conversationViewLoaderRef.current.capture();
     void api.updateConversation(activeConversationId, {
       group_id: project?.id ?? null,
       metadata,
     }, activeConversation.conversation_revision).then((conversation) => {
       setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
       setActiveConversation(conversation);
       if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
     }).catch((updateError) => {
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
       setError(updateError instanceof Error ? updateError.message : "Project update failed.");
     });
   };
@@ -5815,6 +5887,7 @@ export function ChatApp() {
   };
 
   const handleModelProfileSelect = (profileId: string) => {
+    const ticket = conversationViewLoaderRef.current.capture();
     updateModelSettings({ preferred_model: profileId });
     // New-conversation placeholders have no persisted conversation id yet, but
     // still carry the bootstrap model (usually stub/default). Keep that local
@@ -5823,8 +5896,8 @@ export function ChatApp() {
     setActiveConversation((current) => current ? { ...current, model: profileId } : current);
     if (activeConversationId) {
       void api.updateConversation(activeConversationId, { model: profileId }, activeConversation?.conversation_revision).then((conversation) => {
-        setActiveConversation(conversation);
-        void refreshConversations(conversation.id);
+        if (conversationViewLoaderRef.current.matches(ticket)) setActiveConversation(conversation);
+        void refreshConversations(conversation.id, ticket);
       }).catch(console.error);
     }
   };
@@ -6049,7 +6122,10 @@ export function ChatApp() {
     action: string | undefined,
     command: ComposerCommandItem,
     args: Record<string, unknown>,
+    ticket = conversationViewLoaderRef.current.capture(),
   ) => {
+    if (!conversationViewLoaderRef.current.matches(ticket)
+      && action !== "fork_conversation" && action !== "rename_conversation") return;
     switch (action) {
       case "open_model_picker": {
         const query = String(args.query ?? "").trim().toLowerCase();
@@ -6250,7 +6326,7 @@ export function ChatApp() {
         return;
       case "fork_conversation":
         if (!activeConversationId) {
-          setError("forkする会話がありません。");
+          if (conversationViewLoaderRef.current.matches(ticket)) setError("forkする会話がありません。");
           return;
         }
         void api.createConversation({
@@ -6258,10 +6334,9 @@ export function ChatApp() {
           parent_conversation_id: activeConversationId,
           metadata: { forked_from: activeConversationId },
         }).then((conversation) => {
-          setActiveConversationId(conversation.id);
-          void loadConversation(conversation.id, false);
-          void refreshConversations(conversation.id);
+          void refreshConversations(conversation.id, ticket);
         }).catch((forkError) => {
+          if (!conversationViewLoaderRef.current.matches(ticket)) return;
           setError(forkError instanceof Error ? forkError.message : "会話のforkに失敗しました。");
         });
         return;
@@ -6276,13 +6351,14 @@ export function ChatApp() {
       case "rename_conversation": {
         const title = String(args.title ?? "").replace(/\s+/g, " ").trim();
         if (!activeConversationId || !title) {
-          setError("現在の会話と新しいtitleを指定してください。");
+          if (conversationViewLoaderRef.current.matches(ticket)) setError("現在の会話と新しいtitleを指定してください。");
           return;
         }
         void api.updateConversation(activeConversationId, { title }, activeConversation?.conversation_revision).then((conversation) => {
-          setActiveConversation(conversation);
-          void refreshConversations(conversation.id);
+          if (conversationViewLoaderRef.current.matches(ticket)) setActiveConversation(conversation);
+          void refreshConversations(conversation.id, ticket);
         }).catch((renameError) => {
+          if (!conversationViewLoaderRef.current.matches(ticket)) return;
           setError(renameError instanceof Error ? renameError.message : "会話名の変更に失敗しました。");
         });
         return;
@@ -6384,18 +6460,23 @@ export function ChatApp() {
     return applied.appliedPaths;
   };
 
-  const followCommandProgress = async (invocationId: string) => {
+  const followCommandProgress = async (invocationId: string, ticket: ConversationLoadTicket) => {
     try {
       for await (const event of api.streamCommandInvocationEvents(invocationId)) {
-        setCommandProgressEvents((current) => [...current, event].slice(-12));
+        if (conversationViewLoaderRef.current.matches(ticket)) {
+          setCommandProgressEvents((current) => [...current, event].slice(-12));
+        }
       }
     } catch (streamError) {
       if (streamError instanceof DOMException && streamError.name === "AbortError") return;
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
       setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
     }
   };
 
   const executeComposerCommand = async (commandId: string, rawInput = `/${commandId}`): Promise<boolean | void> => {
+    let ticket = conversationViewLoaderRef.current.capture();
+    const commandUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     const parsed = parseSlashCommandInput(rawInput, effectiveCommandCatalog) ?? {
       command: effectiveCommandCatalog.find((command) => command.id === commandId || command.name === commandId),
       args: {},
@@ -6447,17 +6528,17 @@ export function ChatApp() {
           });
           highRiskApprovalWindowOpenedRequestRef.current = prepared.approval_request_id;
           const opened = await openAuthorityApprovalWindow(prepared.approval_request_id);
-          if (!opened) {
+          if (!opened && commandUiIsCurrent()) {
             setError("専用の承認ウィンドウを開けませんでした。下の承認待ち表示から再試行してください。");
           }
-          return true;
+          return commandUiIsCurrent();
         } finally {
           highRiskPrepareInFlightRef.current = false;
         }
       }
       if (isRegisteredSlashCommand(parsed.command) && !parsed.command.canonical_id) {
         const frontendAction = parsed.command.execution.type === "frontend" ? parsed.command.execution.action : undefined;
-        runFrontendCommandAction(frontendAction, parsed.command, parsed.args);
+        runFrontendCommandAction(frontendAction, parsed.command, parsed.args, ticket);
         return true;
       }
       const commandArgs = { ...parsed.args };
@@ -6467,7 +6548,7 @@ export function ChatApp() {
       }
       const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
       const invocationId = createCommandInvocationId(parsed.command.id);
-      void followCommandProgress(invocationId);
+      void followCommandProgress(invocationId, ticket);
       const result: ComposerCommandExecuteResult = await api.executeResolvedUiCommand({
         command: resolvedCommandName,
         args: commandArgs,
@@ -6492,11 +6573,12 @@ export function ChatApp() {
               : "coding",
           });
         }
-        setError(feedbackMessage ?? `/${parsed.command.name} は approval center 経由で実行してください。`);
+        if (commandUiIsCurrent()) setError(feedbackMessage ?? `/${parsed.command.name} は approval center 経由で実行してください。`);
         return;
       }
       if (isModelCommand(parsed.command)) {
         if (result.action === "show_model_candidates") {
+          if (!commandUiIsCurrent()) return false;
           setComposerCandidateMenu({
             mode: "model",
             query: String(result.args?.query ?? commandArgs.query ?? "").trim(),
@@ -6506,6 +6588,7 @@ export function ChatApp() {
           return false;
         }
         if (result.action === "open_model_picker") {
+          if (!commandUiIsCurrent()) return false;
           setComposerCandidateMenu(null);
           setModelPickerRequestId((value) => value + 1);
           if (feedbackMessage) setError(feedbackMessage);
@@ -6513,18 +6596,20 @@ export function ChatApp() {
         }
         if (result.executed) {
           const selectedProfileId = selectedModelProfileId(result.selected_model);
-          setComposerCandidateMenu(null);
-          setInput("");
-          if (feedbackMessage) setError(feedbackMessage);
+          if (commandUiIsCurrent()) {
+            setComposerCandidateMenu(null);
+            setInput("");
+            if (feedbackMessage) setError(feedbackMessage);
+          }
           await refreshCatalog();
           if (activeConversationId && selectedProfileId) {
             const conversation = await api.updateConversation(activeConversationId, { model: selectedProfileId }, activeConversation?.conversation_revision);
-            setActiveConversation(conversation);
-            await refreshConversations(conversation.id);
+            if (commandUiIsCurrent()) setActiveConversation(conversation);
+            await refreshConversations(conversation.id, ticket, (next) => { ticket = next; });
           } else if (activeConversationId) {
-            await refreshConversations(activeConversationId);
+            await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; });
           }
-          return true;
+          return commandUiIsCurrent();
         }
       }
 
@@ -6534,12 +6619,13 @@ export function ChatApp() {
           result.action ?? frontendAction,
           parsed.command,
           resolvedFrontendCommandArgs(parsed.command, parsed.args, result.args),
+          ticket,
         );
       }
       if (parsed.command.execution.type === "rumi_function" && appliedStatePaths.length === 0) {
         await refreshCatalog();
       }
-      if (feedbackMessage) {
+      if (feedbackMessage && commandUiIsCurrent()) {
         const tone = composerCommandFeedbackTone(result);
         if (tone === "error") {
           setError(feedbackMessage);
@@ -6553,8 +6639,9 @@ export function ChatApp() {
         }
       }
     } catch (commandError) {
-      setError(commandError instanceof Error ? commandError.message : "command execution に失敗しました。");
+      if (commandUiIsCurrent()) setError(commandError instanceof Error ? commandError.message : "command execution に失敗しました。");
     }
+    if (!commandUiIsCurrent()) return false;
   };
 
   const handleComposerCommand = (commandId: string, rawInput?: string) => {
@@ -6615,9 +6702,12 @@ export function ChatApp() {
     if (tab.kind === "chat") {
       handleModeChange("agent", false);
       pushWorkspaceRoute("chat", tab.conversationId ?? null);
-      void loadConversation(tab.conversationId ?? null, false);
+      void loadConversation(tab.conversationId ?? null, false, tab.id);
       return;
     }
+    conversationViewLoaderRef.current.select(tab.id, activeConversationId, (ticket) => {
+      setSavedTurnViewEpoch(ticket.epoch);
+    });
     if (tab.kind === "coding") {
       handleModeChange("coding", false);
       pushWorkspaceRoute("coding", activeConversationId);
@@ -7011,6 +7101,8 @@ export function ChatApp() {
     if (!browserApproval) return;
     if (!activeConversationId) return;
     const currentApproval = browserApproval;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     // Bind the continuation to the exact pending saved turn, if any, so its
     // packets can never be projected onto a different turn.
     const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
@@ -7061,27 +7153,27 @@ export function ChatApp() {
       );
       settleBrowserApproval(currentApproval);
       settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
-      replaceChatIdInUrl(activeConversationId, false);
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+      ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
     } catch (approvalError) {
       settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
         settleBrowserApproval(currentApproval);
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
-      setIsGenerating(false);
+      if (approvalUiIsCurrent()) setIsGenerating(false);
     }
   };
 
   const denyBrowserAction = async () => {
     if (!browserApproval) return;
     const currentApproval = browserApproval;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     const actionKey = browserApprovalSettlementKey(currentApproval);
     if (activeBrowserApprovalActionRef.current === actionKey) return;
     activeBrowserApprovalActionRef.current = actionKey;
@@ -7092,17 +7184,16 @@ export function ChatApp() {
       }
       settleBrowserApproval(currentApproval);
       if (activeConversationId) {
-        await loadConversation(activeConversationId, false);
-        await refreshConversations(activeConversationId);
+        ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
       }
     } catch (approvalError) {
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
         settleBrowserApproval(currentApproval);
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
       activeBrowserApprovalActionRef.current = null;
@@ -7113,6 +7204,8 @@ export function ChatApp() {
     if (!runtimeApproval) return;
     if (!activeConversationId) return;
     if (activeRuntimeApprovalActionRef.current === runtimeApproval.requestId) return;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     activeRuntimeApprovalActionRef.current = runtimeApproval.requestId;
     // Bind the continuation to the exact pending saved turn, if any, so its
     // packets can never be projected onto a different turn.
@@ -7161,9 +7254,7 @@ export function ChatApp() {
         pendingTurnId,
       );
       settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
-      replaceChatIdInUrl(activeConversationId, false);
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+      ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
     } catch (approvalError) {
       settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = approvalStaleUiMessage(approvalError);
@@ -7171,20 +7262,23 @@ export function ChatApp() {
         setSettledRuntimeApprovalIds((ids) => (
           ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
         ));
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
       activeRuntimeApprovalActionRef.current = null;
-      setIsGenerating(false);
+      if (approvalUiIsCurrent()) setIsGenerating(false);
     }
   };
 
   const approveCommandAction = async () => {
     if (!pendingCommandApproval) return;
     const pending = pendingCommandApproval;
+    const ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket)
+      && ticket.conversationId === pending.conversationId;
     setError(null);
     try {
       const decision = pending.approvalKind === "authority"
@@ -7213,32 +7307,36 @@ export function ChatApp() {
         invocation_id: pending.invocationId,
       });
       if (resumed.status === "approval_required" && resumed.approval?.request_id) {
-        setPendingCommandApproval({
+        const nextApproval = {
           ...pending,
           requestId: resumed.approval.request_id,
           approvalKind: resumed.approval.kind === "authority"
-            ? "authority"
-            : "coding",
+            ? "authority" as const
+            : "coding" as const,
           authorityRequestId,
           authorityToken,
           codingToken,
-        });
+        };
+        setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+          && current.requestId === pending.requestId ? nextApproval : current);
         return;
       }
       if (resumed.status !== "succeeded" || !resumed.legacy_result) {
         throw new Error(resumed.error?.message || "command resume failed");
       }
       applyAuthoritativeCommandState(resumed.legacy_result);
-      if (resumed.legacy_result.executed !== true) {
+      if (resumed.legacy_result.executed !== true && ticket.conversationId === pending.conversationId) {
         runFrontendCommandAction(
           resumed.legacy_result.action,
           pending.command,
           resumed.legacy_result.args ?? pending.args,
+          ticket,
         );
       }
-      setPendingCommandApproval(null);
+      setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+        && current.requestId === pending.requestId ? null : current);
     } catch (approvalError) {
-      setError(
+      if (approvalUiIsCurrent()) setError(
         approvalError instanceof Error
           ? approvalError.message
           : "コマンドの承認再開に失敗しました。",
@@ -7249,6 +7347,7 @@ export function ChatApp() {
   const denyCommandAction = async () => {
     if (!pendingCommandApproval) return;
     const pending = pendingCommandApproval;
+    const ticket = conversationViewLoaderRef.current.capture();
     try {
       if (pending.approvalKind === "authority") {
         await api.denyAuthorityApproval(
@@ -7269,9 +7368,11 @@ export function ChatApp() {
         action: "deny",
         reason: "Denied from the command approval card",
       });
-      setPendingCommandApproval(null);
+      setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+        && current.requestId === pending.requestId ? null : current);
     } catch (approvalError) {
-      setError(
+      if (conversationViewLoaderRef.current.matches(ticket)
+        && ticket.conversationId === pending.conversationId) setError(
         approvalError instanceof Error
           ? approvalError.message
           : "コマンドの拒否に失敗しました。",
@@ -7283,6 +7384,7 @@ export function ChatApp() {
     if (!runtimeApproval) return;
     if (!activeConversationId) return;
     if (activeRuntimeApprovalActionRef.current === runtimeApproval.requestId) return;
+    let ticket = conversationViewLoaderRef.current.capture();
     activeRuntimeApprovalActionRef.current = runtimeApproval.requestId;
     setError(null);
     try {
@@ -7290,11 +7392,10 @@ export function ChatApp() {
       setSettledRuntimeApprovalIds((ids) => (
         ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
       ));
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+      await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; });
     } catch (approvalError) {
       console.error(approvalError);
-      setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
     } finally {
       activeRuntimeApprovalActionRef.current = null;
     }
@@ -7349,6 +7450,7 @@ export function ChatApp() {
   };
 
   const handleStartOperationsCompany = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     setOperationsBusy(true);
     setError(null);
     try {
@@ -7358,9 +7460,9 @@ export function ChatApp() {
         model: preferredOperationsModel(),
       });
       setOperationsStatus(status);
-      await refreshConversations(status.conversation_id ?? null);
+      await refreshConversations(status.conversation_id ?? null, ticket, (next) => { ticket = next; });
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "Operations Company の起動に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(startError instanceof Error ? startError.message : "Operations Company の起動に失敗しました。");
     } finally {
       setOperationsBusy(false);
     }
@@ -7423,6 +7525,7 @@ export function ChatApp() {
   };
 
   const handleStartMimoCodingCompany = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     setMimoCodingBusy(true);
     setError(null);
     try {
@@ -7442,25 +7545,25 @@ export function ChatApp() {
         run_initial_review_now: settingsValues.mimo_coding_company?.run_initial_review_now !== false,
       });
       setMimoCodingStatus(status);
-      await refreshConversations(status.conversation_id ?? null);
+      await refreshConversations(status.conversation_id ?? null, ticket, (next) => { ticket = next; });
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "MiMo Coding Company の起動に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(startError instanceof Error ? startError.message : "MiMo Coding Company の起動に失敗しました。");
     } finally {
       setMimoCodingBusy(false);
     }
   };
 
   const handleOpenMimoCodingChat = async () => {
+    const ticket = conversationViewLoaderRef.current.capture();
     if (!mimoCodingStatus?.conversation_id) {
       await handleStartMimoCodingCompany();
       const refreshed = await api.getMimoCodingCompanyStatus();
       setMimoCodingStatus(refreshed);
-      if (refreshed.conversation_id) {
+      if (refreshed.conversation_id && conversationViewLoaderRef.current.matches(ticket)) {
         setError(null);
         handleHistoryClick(refreshed.conversation_id);
-        return refreshed.conversation_id;
       }
-      return null;
+      return refreshed.conversation_id ?? null;
     }
     setError(null);
     handleHistoryClick(mimoCodingStatus.conversation_id);
@@ -7468,23 +7571,24 @@ export function ChatApp() {
   };
 
   const handleTriggerOperationsHeartbeat = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     const heartbeat = operationsHeartbeatSchedule();
     if (!heartbeat?.id) return;
     setOperationsBusy(true);
     setError(null);
     try {
       const result = await api.triggerSchedule(String(heartbeat.id));
-      pushActionPreview(
+      if (conversationViewLoaderRef.current.matches(ticket)) pushActionPreview(
         { id: "operations.heartbeat", label: "Operations Heartbeat", icon: "activity" },
         "operations-heartbeat",
         result,
       );
       await refreshOperationsStatus();
       if (operationsStatus?.conversation_id) {
-        await refreshConversations(operationsStatus.conversation_id);
+        await refreshConversations(operationsStatus.conversation_id, ticket, (next) => { ticket = next; });
       }
     } catch (heartbeatError) {
-      setError(heartbeatError instanceof Error ? heartbeatError.message : "Operations Company heartbeat に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(heartbeatError instanceof Error ? heartbeatError.message : "Operations Company heartbeat に失敗しました。");
     } finally {
       setOperationsBusy(false);
     }
@@ -7610,6 +7714,13 @@ export function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    if (!conversationOwnsSelectedView(
+      savedTurnViewFenceRef.current.capture(), activeWorkspaceTabId,
+      activeConversationId, activeConversation?.id ?? null,
+    )) {
+      setError("会話を読み込んでいます。完了してから送信してください。");
+      return;
+    }
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
       setError("前の送信結果を確認中です。新しいturnとして再送しません。");
       return;
@@ -7641,8 +7752,9 @@ export function ChatApp() {
 
     const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
     if (commandInput) {
+      const commandTicket = conversationViewLoaderRef.current.capture();
       const shouldClearInput = await executeComposerCommand(commandInput.command.id, commandInput.raw);
-      if (shouldClearInput !== false) setInput("");
+      if (conversationViewLoaderRef.current.matches(commandTicket) && shouldClearInput !== false) setInput("");
       return;
     }
 

@@ -2,11 +2,263 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
+test("actual ChatApp tab loads keep selected identity and Stop scoped through delayed B and A return", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const base = smokeConversation();
+  const settled = {
+    ...base, title: "Settled B", conversation_revision: 1,
+    conversation_kind: null, tags: [], metadata: {},
+    messages: base.messages.map((message, index) => ({
+      ...message, content: [{ type: "text", text: index ? "Settled B reply" : "hello B" }],
+      raw_text: index ? "Settled B reply" : "hello B", metadata: {},
+    })),
+  };
+  const active = {
+    ...settled, id: "c-pending-a", title: "Pending A", messages: [],
+  };
+  let releaseB!: () => void;
+  const delayedB = new Promise<void>((resolve) => { releaseB = resolve; });
+  let releaseStart!: () => void;
+  const inflightStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+  let delayB = false;
+  let delayedBReads = 0;
+  let operationId: string | null = null;
+  const stopped: string[] = [];
+  const turn = () => ({
+    id: operationId, conversation_id: active.id, status: "running", revision: 2,
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const target = requestTarget(url);
+    const method = request.method();
+    if (target === "/api/chat/conversations" && method === "GET") {
+      return route.fulfill({ json: ok({ conversations: [{ ...settled, messages: [] }], total: 1, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversations" && method === "POST") {
+      return route.fulfill({ json: ok(active) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === settled.id && method === "GET") {
+      if (delayB) { delayedBReads += 1; await delayedB; }
+      return route.fulfill({ json: ok(settled) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === active.id && method === "GET") {
+      return route.fulfill({ json: ok(active) });
+    }
+    if (target === "/api/chat/turn" && method === "POST") {
+      operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+      await inflightStart;
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/events") {
+      if (!operationId) return route.fulfill({ status: 404, json: { status: "error", error: { message: "not yet registered" } } });
+      return route.fulfill({ json: ok({
+        turn_id: operationId, operation_id: operationId, conversation_id: active.id,
+        request_id: "saved-turn.ui-regression", turn_revision: 2, status: "running",
+        turn: turn(), events: [], terminal: null,
+      }) });
+    }
+    if (target === "/api/chat/turn/reconcile") {
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/stop") {
+      const id = (request.postDataJSON() as { turn_id: string }).turn_id;
+      stopped.push(id);
+      return route.fulfill({ json: ok({ turn_id: id, status: "cancellation_requested", stopped: false }) });
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat");
+    await expect(page.getByText("Settled B reply", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).fill("Keep pending A separate");
+    await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).press("Enter");
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toBeEnabled();
+    await expect(page.getByRole("tab", { name: "Pending A", exact: true })).toBeVisible();
+    delayB = true;
+    await page.getByRole("tab", { name: "Settled B", exact: true }).click();
+    await expect.poll(() => delayedBReads).toBeGreaterThan(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${settled.id}`));
+    await expect(page.getByText("Settled B reply", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" })).toBeEnabled();
+    await page.getByRole("tab", { name: "Pending A", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`chat=${active.id}`));
+    await expect(page.getByText("Keep pending A separate", { exact: true })).toBeVisible();
+    const lateResponse = page.waitForResponse((response) => requestConversationId(new URL(response.url())) === settled.id);
+    releaseB();
+    await lateResponse;
+    await expect(page.getByRole("tab", { name: "Pending A", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Settled B", exact: true })).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByText("Settled B reply", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Keep pending A separate", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`chat=${active.id}`));
+    await page.getByRole("button", { name: "生成を停止", exact: true }).click();
+    await expect.poll(() => stopped).toEqual([operationId]);
+  } finally {
+    releaseB();
+    releaseStart();
+  }
+});
+
+test("actual ChatApp preserves an uncached selected root and draft while its record loads", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const a = { ...smokeConversation(), title: "Loaded A", conversation_kind: null, tags: [], metadata: {}, conversation_revision: 1 };
+  const b = { ...a, id: "c-uncached-b", title: "Uncached B", messages: [] };
+  let releaseB!: () => void;
+  const delayedB = new Promise<void>((resolve) => { releaseB = resolve; });
+  let bReads = 0;
+  const writes: string[] = [];
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const target = requestTarget(url);
+    if (target === "/api/chat/conversations" && request.method() === "GET") {
+      return route.fulfill({ json: ok({ conversations: [a, b].map((item) => ({ ...item, messages: [] })), total: 2, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === a.id && request.method() === "GET") {
+      return route.fulfill({ json: ok(a) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === b.id && request.method() === "GET") {
+      bReads += 1;
+      await delayedB;
+      return route.fulfill({ json: ok(b) });
+    }
+    if (["/api/chat/conversations", "/api/chat/turn"].includes(target) && request.method() === "POST") {
+      writes.push(target);
+      return route.abort();
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto(`/p/defaults/chat?chat=${a.id}`);
+    await expect(page.getByTestId(`history-chat-card-${b.id}`)).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Loaded A", exact: true })).toBeVisible();
+    await page.getByTestId(`history-chat-card-${b.id}`).click();
+    await expect.poll(() => bReads).toBeGreaterThan(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+    await expect(page.getByRole("tab", { name: "Uncached B", exact: true })).toHaveAttribute("aria-selected", "true");
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await expect(composer).toBeEnabled();
+    await composer.fill("Keep this draft for B");
+    await composer.press("Enter");
+    await expect(page.getByText("会話を読み込んでいます。完了してから送信してください。", { exact: true })).toBeVisible();
+    await expect(composer).toHaveValue("Keep this draft for B");
+    expect(writes).toEqual([]);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+    const response = page.waitForResponse((result) => requestConversationId(new URL(result.url())) === b.id);
+    releaseB();
+    await response;
+    await expect(page.getByRole("tab", { name: "Uncached B", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(composer).toHaveValue("Keep this draft for B");
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+  } finally {
+    releaseB();
+  }
+});
+
 // These specs exercise mocked UI contracts only. Live MCP proof is covered by
 // the Python integration tests that assert tool_logs and tool_call events.
 const now = 1_785_000_000_000;
 const approvalDigest = "a".repeat(64);
 const historyChatDropMime = "application/rumi-history-chat";
+
+for (const switchToB of [false, true]) {
+  test(`actual ChatApp delayed model completion ${switchToB ? "preserves B tab body URL and draft" : "refreshes its owning A normally"}`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    const conversation = (id: string, title: string, text: string) => ({
+      ...smokeConversation(), id, title, conversation_revision: 1,
+      conversation_kind: null, tags: [], metadata: {},
+      messages: smokeConversation().messages.map((message, index) => ({
+        ...message, conversation_id: id, metadata: {}, events: [], tool_logs: [],
+        content: [{ type: "text", text: index ? text : `hello ${title}` }],
+        raw_text: index ? text : `hello ${title}`,
+      })),
+    });
+    let a = conversation("c-model-a", "Model A", "Original A reply");
+    const b = conversation("c-model-b", "Model B", "B stays visible");
+    let releaseCommand!: () => void;
+    const commandGate = new Promise<void>((resolve) => { releaseCommand = resolve; });
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>((resolve) => { releaseMutation = resolve; });
+    let commandSeen = false;
+    const mutations: Array<Record<string, unknown>> = [];
+    let completedMutation = false;
+    let listsAfterMutation = 0;
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const target = requestTarget(url);
+      if (target === "/api/chat/conversations" && request.method() === "GET") {
+        if (completedMutation) listsAfterMutation += 1;
+        return route.fulfill({ json: ok({ conversations: [a, b], total: 2, store_revision: 1 }) });
+      }
+      if (target === "/api/chat/conversation" && request.method() === "GET") {
+        return route.fulfill({ json: ok(requestConversationId(url) === a.id ? a : b) });
+      }
+      if (target === "/api/command-protocol/v1/invoke") {
+        expect((request.postDataJSON() as Record<string, unknown>).conversation_id).toBe(a.id);
+        commandSeen = true;
+        await commandGate;
+        return route.fulfill({ json: ok({
+          status: "succeeded", operation_id: "command-model-a",
+          legacy_result: { executed: true, requires_approval: false, selected_model: googleProfile.profile_id },
+        }) });
+      }
+      if (/\/api\/command-protocol\/v1\/invocations\/[^/]+\/events$/.test(target)) {
+        return fulfillStreamEvents(route, [{ type: "completed", sequence: 1 }]);
+      }
+      if (target === "/api/chat/conversation" && request.method() === "PUT") {
+        const mutation = request.postDataJSON() as Record<string, unknown>;
+        mutations.push(mutation);
+        await mutationGate;
+        a = { ...conversation(a.id, "Model A updated", "Updated A reply"), model: googleProfile.profile_id, conversation_revision: 2 };
+        completedMutation = true;
+        return route.fulfill({ json: ok(a) });
+      }
+      return route.fallback();
+    });
+    try {
+      await page.goto(`/p/defaults/chat?chat=${a.id}`);
+      await expect(page.getByText("Original A reply", { exact: true })).toBeVisible();
+      const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+      await composer.fill(`/model ${googleProfile.profile_id}`);
+      await composer.press("Enter");
+      await expect.poll(() => commandSeen).toBe(true);
+      if (switchToB) {
+        await page.getByRole("button", { name: "New Chat", exact: true }).click();
+        await page.getByTestId(`history-chat-card-${b.id}`).click();
+        await expect(page.getByText("B stays visible", { exact: true })).toBeVisible();
+        await composer.fill("B draft survives A completion");
+      }
+      releaseCommand();
+      await expect.poll(() => mutations.length).toBe(1);
+      expect(mutations[0]).toMatchObject({ conversation_id: a.id, expected_conversation_revision: 1, updates: { model: googleProfile.profile_id } });
+      if (switchToB) await expect(composer).toHaveValue("B draft survives A completion");
+      releaseMutation();
+      await expect.poll(() => listsAfterMutation).toBeGreaterThan(0);
+      if (switchToB) {
+        await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+        await expect(page.getByRole("tab", { name: "Model B", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("B stays visible", { exact: true })).toBeVisible();
+        await expect(page.getByText("Updated A reply", { exact: true })).toHaveCount(0);
+        await expect(composer).toHaveValue("B draft survives A completion");
+        await expect(composer).toBeEnabled();
+        await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+      } else {
+        await expect(page).toHaveURL(new RegExp(`chat=${a.id}`));
+        await expect(page.getByRole("tab", { name: "Model A updated", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("Updated A reply", { exact: true })).toBeVisible();
+        await expect(composer).toHaveValue("");
+      }
+    } finally {
+      releaseCommand();
+      releaseMutation();
+    }
+  });
+}
 
 function routeKey(path: string): string {
   return `/${path}`;
@@ -20,6 +272,13 @@ function requestTarget(url: URL): string {
   const target = separator < 0 ? operation : operation.slice(separator + 1);
   const queryIndex = target.indexOf("?");
   return queryIndex < 0 ? target : target.slice(0, queryIndex);
+}
+
+function requestConversationId(url: URL): string | null {
+  const operation = decodeURIComponent(url.pathname.split("/api/contracts/defaultspack/")[1] ?? url.pathname);
+  const separator = operation.indexOf(" ");
+  const target = separator < 0 ? operation : operation.slice(separator + 1);
+  return new URL(target, url.origin).searchParams.get("conversation_id");
 }
 
 test("bootstrap loading state uses the Tobkiri Launcher animation and honors reduced motion", async ({ page }) => {
@@ -102,6 +361,7 @@ test("verified Pack v4 conversation boots from the dynamic-host catalog", async 
 });
 
 type ApiMockOptions = {
+  applicationChat?: boolean;
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
@@ -232,7 +492,7 @@ function smokeConversation() {
  * fixture keeps the production /chat route on the same verified-contribution
  * contract as the Host instead of silently falling back to legacy UI.
  */
-function dynamicHostCatalog() {
+function dynamicHostCatalog(applicationChat = false) {
   const profileId = "defaults";
   const profileRevision = "e2e-profile-revision";
   const activationId = "e2e-activation";
@@ -243,10 +503,12 @@ function dynamicHostCatalog() {
     profile_revision: profileRevision,
     activation_id: activationId,
     plan_hash: planHash,
+    selected_entry_route: "/chat",
     contributions: [{
       contribution_id: "defaults.conversation.complete",
       kind: "route" as const,
-      mode: "declarative" as const,
+      mode: applicationChat ? "application_builtin" as const : "declarative" as const,
+      ...(applicationChat ? { implementation: "defaultspack.chat" } : {}),
       label: "Tobkiri Conversation",
       description: "Start a conversation with Tobkiri.",
       priority: 0,
@@ -643,6 +905,9 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 }
 
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
+  if (options.applicationChat) {
+    await page.route("**/health", (route) => fulfill(route, { status: "ok" }));
+  }
   await page.addInitScript(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -776,7 +1041,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
-        dynamic_host: dynamicHostCatalog(),
+        dynamic_host: dynamicHostCatalog(options.applicationChat),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
@@ -832,7 +1097,25 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/ui/settings")) {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, {
+        sections: settingsSections, values: currentSettingsValues,
+        ...(options.applicationChat ? { document_revision: 1 } : {}),
+      });
+    }
+
+    if (options.applicationChat && path === routeKey("api/ai/strategies")) {
+      return fulfill(route, {
+        api_version: "strategy.catalog.v1", strategies: [], count: 0,
+        catalog_revision: "fixture-r1", diagnostics: [], quarantined_pack_ids: [],
+      });
+    }
+
+    if (options.applicationChat && path === routeKey("api/projects")) {
+      return fulfill(route, { namespace: "defaultspack.projects.v1", revision: 0, projects: [] });
+    }
+
+    if (options.applicationChat && /^\/api\/ui\/conversations\/[^/]+\/preview$/.test(path)) {
+      return fulfill(route, { conversation_id: path.split("/")[4], previews: [], summary: {} });
     }
 
     if (path === routeKey("api/command-protocol/v1/catalog")) {
@@ -874,6 +1157,13 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         commands: [
           protocolCommand("coding", "Coding Mode", "low", "set_mode_coding"),
           protocolCommand("yolo", "Full Access (YOLO)", "medium", "toggle_ultra_yolo"),
+          ...(options.applicationChat ? [{
+            ...protocolCommand("model", "Model", "low", "open_model_picker"),
+            presentation: {
+              ...protocolCommand("model", "Model", "low", "open_model_picker").presentation,
+              input: { kind: "search_select", datasource_ref: "tobkiri:model_catalog", argument: "query" },
+            },
+          }] : []),
         ],
         state_snapshots: [],
         diagnostics: [],
