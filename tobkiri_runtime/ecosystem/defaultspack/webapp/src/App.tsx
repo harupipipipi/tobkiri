@@ -7472,7 +7472,7 @@ export function ChatApp() {
       ? globalThis.crypto.randomUUID()
       : `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
     const optimisticOverlayCreatedAt = Date.now();
-    const submissionViewTicket = savedTurnViewFenceRef.current.capture();
+    let submissionViewTicket = savedTurnViewFenceRef.current.capture();
     savedTurnDraftNonceRef.current.set(submissionViewTicket.workspaceTabId, optimisticOverlayClientId);
     setInterruptedSavedTurnDrafts((current) => current.filter((draft) => (
       draft.workspaceTabId !== submissionViewTicket.workspaceTabId
@@ -7574,6 +7574,19 @@ export function ChatApp() {
           retainInterruptedDraft();
           return;
         }
+        const adoptedTicket = savedTurnViewFenceRef.current.adoptConversation(
+          submissionViewTicket,
+          conversation.id,
+        );
+        if (!adoptedTicket) {
+          retainInterruptedDraft();
+          return;
+        }
+        submissionViewTicket = adoptedTicket;
+        activeSavedTurnSubmissionRef.current = {
+          clientId: optimisticOverlayClientId,
+          ticket: submissionViewTicket,
+        };
         setPendingNewTaskContext(null);
         setActiveConversationId(conversation.id);
         setActiveConversation(conversation);

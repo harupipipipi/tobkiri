@@ -50,6 +50,21 @@ export class SavedTurnViewFence {
       && this.conversationId === ticket.conversationId
       && this.epoch === ticket.epoch;
   }
+
+  adoptConversation(
+    ticket: SavedTurnViewTicket,
+    conversationId: string,
+  ): SavedTurnViewTicket | null {
+    if (
+      ticket.conversationId !== null
+      || this.conversationId !== null
+      || !STABLE_TURN_ID.test(conversationId)
+      || !this.matches(ticket)
+    ) return null;
+    this.conversationId = conversationId;
+    this.epoch += 1;
+    return this.capture();
+  }
 }
 
 export function createOptimisticSavedTurnOverlay({

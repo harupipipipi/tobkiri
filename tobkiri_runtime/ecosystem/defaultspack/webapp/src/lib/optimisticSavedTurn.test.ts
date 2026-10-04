@@ -69,6 +69,21 @@ test("new-conversation draft is displayable before a durable conversation id exi
   assert.equal(draft.message.conversation_id, "");
 });
 
+test("fresh conversation adoption renews the submitting view ticket without a tab switch", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const draftTicket = fence.capture();
+
+  const adoptedTicket = fence.adoptConversation(draftTicket, conversationId);
+
+  assert.ok(adoptedTicket);
+  assert.equal(fence.matches(draftTicket), false);
+  assert.equal(fence.matches(adoptedTicket), true);
+  assert.equal(fence.adoptConversation(adoptedTicket, "conversation-2"), null);
+  assert.equal(fence.adoptConversation(draftTicket, conversationId), null);
+  fence.synchronize("workspace-b", null);
+  assert.equal(fence.matches(adoptedTicket), false);
+});
+
 test("only the claimed exact root user id replaces the optimistic overlay", () => {
   const bound = bindOptimisticSavedTurnExpectedUserMessageId(overlay(), runningTurn());
   assert.equal(bound.expectedUserMessageId, userMessageId);

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "9b205d49a10c64c1f0b16f9e81f01da591c8f92894d4295ad9b66e0fc6a7d872",
+    "digest": "b8c75a7f52fcc8664bd24c9a400d332696b2c7d72c44af6e979b2a7ae333304b",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 381659,
-        "sha256": "d4383306835e5595ef0144b87b39da49962918b931e75b37a3f9e5c69bc76e3c"
+        "size": 382093,
+        "sha256": "ffe40de366b6517ffa1e733cb2d00f2f0932d0a35a2f790aac7fa205b368f6df"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1560,13 +1560,13 @@
       },
       {
         "path": "src/lib/optimisticSavedTurn.test.ts",
-        "size": 6602,
-        "sha256": "4b9d06459bdc616b8c5eb28eb891970302a1adf8848e803169368fbb4bf333df"
+        "size": 7268,
+        "sha256": "1772b0e6eb40b3079fa4acd44c8597837e8c6b7f5c7f56cd665b75d3fd52278e"
       },
       {
         "path": "src/lib/optimisticSavedTurn.ts",
-        "size": 6391,
-        "sha256": "3ee14fcafd74b180a825cbcf1382b927f2d747e97254761ba8f55c8b5391b675"
+        "size": 6782,
+        "sha256": "348044784b2b4eaa0a6238e24e130a9688acfb72e5ef48df6ccf05c14621588b"
       },
       {
         "path": "src/lib/pendingChat.test.ts",
@@ -2046,7 +2046,7 @@
     ]
   },
   "bundle": {
-    "digest": "4b6497e9a86554c378644d513f1dc8193f93a65e6b17fbb003ca4da99668485f",
+    "digest": "de9648cff46fb6039937bfd29d8c28309ad9c90f368d3417de7e33675b8c9eec",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2060,8 +2060,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2278783,
-        "sha256": "5784673c0ab9dc3441bffffab557c79fb776456af576000a042333e0964459fb"
+        "size": 2279057,
+        "sha256": "62ee56196031a3d50a336fe9697c6485bfb09a1cf519e6cb3eecdd3ca738370c"
       },
       {
         "path": "shell-rolldown-runtime.js",
