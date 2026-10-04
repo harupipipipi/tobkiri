@@ -211,8 +211,10 @@ beside the text. The clock changes to a single check mark when the saved
 message is confirmed. The check mark indicates saved delivery, not a read
 receipt. A status check that is still pending does not mean the message failed
 to send.
-After a new conversation is created, its input remains available during the
-first reply so you can send additional instructions.
+The input remains visible as soon as you submit a new conversation. It briefly
+shows `会話を準備しています。` with its controls disabled while the conversation
+and saved turn are registered. Once registration completes, you can send
+additional instructions during the first reply.
 
 If a saved turn fails before either message is persisted, the error stays
 visible. If you have not changed the composer since sending and it is still

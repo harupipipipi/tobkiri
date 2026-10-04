@@ -2975,6 +2975,7 @@ export function ComposerRenderer({
   keyboardButtonNavigation = true,
   steerStatus = null,
   steerBusy = false,
+  steerControlsReady = true,
   steerQueuedCount = 0,
   steerPreviewItems = [],
   suppressPopovers = false,
@@ -3178,7 +3179,8 @@ export function ComposerRenderer({
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
-  const isSteerMode = isGenerating && !isNewConversation;
+  const steeringControlsPending = isGenerating && !steerControlsReady;
+  const isSteerMode = isGenerating && steerControlsReady && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
     mode,
@@ -3879,6 +3881,7 @@ export function ComposerRenderer({
     (event: React.SyntheticEvent) => {
       event.preventDefault();
       if (isGenerating) {
+        if (!steerControlsReady) return;
         const prompt = input.trim();
         if (prompt && !steerBusy) {
           onSteerSubmit?.(prompt);
@@ -3898,7 +3901,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy],
+    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerControlsReady],
   );
 
   const handleSendButtonClick = useCallback(
@@ -4572,23 +4575,27 @@ export function ComposerRenderer({
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "生成を停止")
+            ? (steeringControlsPending
+              ? "会話を準備中"
+              : input.trim() ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={!isGenerating && (
+          disabled={steeringControlsPending || (!isGenerating && (
             pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
-          )}
+          ))}
           title={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "停止")
+            ? (steeringControlsPending
+              ? "会話を準備中"
+              : input.trim() ? "追加指示を送る" : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
           className={`rumi-send-button flex flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 disabled:cursor-not-allowed ${
             "h-8 min-h-8 w-8 min-w-8"
           } ${
-            isGenerating
+            isGenerating && !steeringControlsPending
               ? input.trim()
                 ? "bg-zinc-100 text-zinc-950 hover:bg-white"
                 : "bg-zinc-100 text-zinc-900 hover:bg-white"
@@ -4597,7 +4604,9 @@ export function ComposerRenderer({
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}
         >
-          {isGenerating && !input.trim() ? (
+          {steeringControlsPending ? (
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          ) : isGenerating && !input.trim() ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
           ) : isGenerating ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
@@ -4984,6 +4993,18 @@ export function ComposerRenderer({
             />
           )}
 
+          {steeringControlsPending && (
+            <div
+              id="composer-submission-preparing"
+              role="status"
+              aria-live="polite"
+              data-composer-controls="preparing"
+              className="mx-4 mt-2 text-xs text-zinc-500 max-[640px]:mx-3"
+            >
+              会話を準備しています。
+            </div>
+          )}
+
           {toolSelectionReview && (
             <ToolSelectionReviewCard
               review={toolSelectionReview}
@@ -5070,11 +5091,13 @@ export function ComposerRenderer({
                       }}
                       placeholder={effectiveComposerPlaceholder}
                       aria-label="Tobkiriにメッセージを送信"
+                      aria-describedby={steeringControlsPending ? "composer-submission-preparing" : undefined}
                       aria-autocomplete="list"
                       aria-controls={activeComposerListboxId}
                       aria-activedescendant={activeComposerOptionId}
                       aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                       role="combobox"
+                      disabled={steeringControlsPending}
                       className={`rumi-composer-input-new rumi-composer-textarea relative rumi-layer-panel block min-h-[44px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-0 py-2.5 text-[16px] font-medium leading-[24px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-9" : ""}`}
                       onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
                       onFocus={(event) => {
@@ -5174,11 +5197,13 @@ export function ComposerRenderer({
                     }}
                     placeholder={effectiveComposerPlaceholder}
                     aria-label="Tobkiriにメッセージを送信"
+                    aria-describedby={steeringControlsPending ? "composer-submission-preparing" : undefined}
                     aria-autocomplete="list"
                     aria-controls={activeComposerListboxId}
                     aria-activedescendant={activeComposerOptionId}
                     aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                     role="combobox"
+                    disabled={steeringControlsPending}
                     className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
                     onFocus={(event) => {

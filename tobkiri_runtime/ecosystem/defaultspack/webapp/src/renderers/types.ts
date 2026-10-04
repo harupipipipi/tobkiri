@@ -239,6 +239,7 @@ export type ComposerRendererProps = {
   keyboardButtonNavigation?: boolean;
   steerStatus?: ComposerSteerStatus | null;
   steerBusy?: boolean;
+  steerControlsReady?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
   suppressPopovers?: boolean;

@@ -7,6 +7,7 @@ import {
   createOptimisticSavedTurnOverlay,
   expectedSavedTurnUserMessageId,
   SavedTurnViewFence,
+  savedTurnComposerControlsReady,
   savedTurnComposerPresentation,
   shouldDisplayOptimisticSavedTurnOverlay,
   shouldRestoreUnwrittenSavedTurnDraft,
@@ -53,7 +54,7 @@ function runningTurn() {
   };
 }
 
-test("fresh pending saved roots keep the conversation composer without changing idle welcome", () => {
+test("a current pending overlay keeps the lower composer visible through fresh creation and root registration", () => {
   const presentation = (patch: Partial<Parameters<typeof savedTurnComposerPresentation>[0]> = {}) => (
     savedTurnComposerPresentation({
       activeConversationId: conversationId,
@@ -82,14 +83,93 @@ test("fresh pending saved roots keep the conversation composer without changing 
     activeSavedTurnOperationId: null,
   }), {
     isNewConversation: true,
-    showConversationComposer: false,
+    showConversationComposer: true,
     showNewConversationStage: false,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: null,
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: "other-turn",
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
   });
   assert.deepEqual(presentation({ canonicalMessageCount: 1, visibleOverlayCount: 0 }), {
     isNewConversation: false,
     showConversationComposer: true,
     showNewConversationStage: false,
   });
+});
+
+test("composer control readiness follows only the filtered current saved submission", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const draft = createOptimisticSavedTurnOverlay({
+    clientId: "controls-draft",
+    content: "hello",
+    createdAt: 1,
+    viewTicket: fence.capture(),
+  });
+  const visibleUnbound = shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleUnbound, true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleUnbound),
+  }), false);
+
+  const bound = bindOptimisticSavedTurnOverlay(draft, {
+    conversationId,
+    operationId,
+    requestFingerprint: "sha256:request",
+  });
+  const visibleBound = shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: new SavedTurnViewFence("workspace-a", conversationId).capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleBound, true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: conversationId,
+    activeSavedTurnOperationId: operationId,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleBound),
+  }), true);
+
+  fence.synchronize("workspace-b", null);
+  const visibleAfterAba = shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleAfterAba, false);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleAfterAba),
+  }), true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: conversationId,
+    activeSavedTurnOperationId: "other-turn",
+    canonicalMessageCount: 0,
+    visibleOverlayCount: 0,
+  }), true);
 });
 
 test("new-conversation draft is displayable before a durable conversation id exists", () => {

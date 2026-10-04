@@ -125,6 +125,7 @@ import {
   createOptimisticSavedTurnOverlay,
   optimisticSavedTurnOverlayHasCanonicalUserMessage,
   SavedTurnViewFence,
+  savedTurnComposerControlsReady,
   savedTurnComposerPresentation,
   shouldDisplayOptimisticSavedTurnOverlay,
   shouldRestoreUnwrittenSavedTurnDraft,
@@ -3311,12 +3312,14 @@ export function ChatApp() {
   const isCanvasWorkspace = activeWorkspaceKind === "canvas";
   const isDesktopsWorkspace = activeWorkspaceKind === "desktops";
   const isToolsWorkspace = activeWorkspaceKind === "tools";
-  const savedTurnComposer = savedTurnComposerPresentation({
+  const savedTurnComposerInput = {
     activeConversationId,
     activeSavedTurnOperationId,
     canonicalMessageCount: activeConversation?.messages.length ?? 0,
     visibleOverlayCount: visibleOptimisticSavedTurnOverlays.length,
-  });
+  };
+  const savedTurnComposer = savedTurnComposerPresentation(savedTurnComposerInput);
+  const steerControlsReady = savedTurnComposerControlsReady(savedTurnComposerInput);
   const { isNewConversation, showConversationComposer, showNewConversationStage } = savedTurnComposer;
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
@@ -8170,6 +8173,7 @@ export function ChatApp() {
       keyboardButtonNavigation={keyboardButtonNavigation}
       steerStatus={modelSteerStatus}
       steerBusy={modelSteerBusy}
+      steerControlsReady={steerControlsReady}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}

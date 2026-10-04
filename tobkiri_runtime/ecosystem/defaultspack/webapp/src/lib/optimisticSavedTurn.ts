@@ -99,36 +99,55 @@ export function shouldRestoreUnwrittenSavedTurnDraft(
     && conversationIsEmpty;
 }
 
+export type SavedTurnComposerPresentationInput = {
+  activeConversationId: string | null;
+  activeSavedTurnOperationId: string | null;
+  canonicalMessageCount: number;
+  visibleOverlayCount: number;
+};
+
 /**
- * Keeps the ordinary composer available after a fresh conversation has a
- * durable root and a visible pending overlay, but before the owner has
- * appended its first canonical message. This is presentation-only: it does
- * not create, alter, or replay a saved turn.
+ * Keeps controls inert only while the current fresh saved submission has a
+ * visible local overlay but has not yet acquired both a conversation and an
+ * operation ID. Other generating paths retain their existing controls.
+ */
+export function savedTurnComposerControlsReady({
+  activeConversationId,
+  activeSavedTurnOperationId,
+  canonicalMessageCount,
+  visibleOverlayCount,
+}: SavedTurnComposerPresentationInput): boolean {
+  return !(
+    canonicalMessageCount === 0
+    && visibleOverlayCount > 0
+    && (!activeConversationId || !activeSavedTurnOperationId)
+  );
+}
+
+/**
+ * Keeps the ordinary composer available while the current view owns a
+ * visible pending overlay. This includes the short creation interval before
+ * a fresh conversation has an ID, as well as the interval after its durable
+ * root is registered but before the owner appends a canonical message. This
+ * is presentation-only: it does not create, alter, or replay a saved turn.
  */
 export function savedTurnComposerPresentation({
   activeConversationId,
   activeSavedTurnOperationId,
   canonicalMessageCount,
   visibleOverlayCount,
-}: {
-  activeConversationId: string | null;
-  activeSavedTurnOperationId: string | null;
-  canonicalMessageCount: number;
-  visibleOverlayCount: number;
-}): {
+}: SavedTurnComposerPresentationInput): {
   isNewConversation: boolean;
   showConversationComposer: boolean;
   showNewConversationStage: boolean;
 } {
   const isNewConversation = activeConversationId === null || canonicalMessageCount === 0;
-  const hasVisibleActiveSavedRoot = activeConversationId !== null
-    && canonicalMessageCount === 0
-    && activeSavedTurnOperationId !== null
+  const hasVisiblePendingSubmission = canonicalMessageCount === 0
     && visibleOverlayCount > 0;
   return {
     isNewConversation,
-    showConversationComposer: !isNewConversation || hasVisibleActiveSavedRoot,
-    showNewConversationStage: isNewConversation && visibleOverlayCount === 0,
+    showConversationComposer: !isNewConversation || hasVisiblePendingSubmission,
+    showNewConversationStage: isNewConversation && !hasVisiblePendingSubmission,
   };
 }
 

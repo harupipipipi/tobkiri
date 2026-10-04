@@ -1606,12 +1606,13 @@ test("composer model drop selects the model instead of creating a widget chip", 
   assert.deepEqual(action, { type: "select_model", profileId: "openai/gpt-4.1" });
 });
 
-test("composer uses the main input as steer while generating", () => {
+test("ordinary generating composer keeps steer controls when saved registration is not pending", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {
       input: "次は短くして",
       placeholder: "メッセージを入力...",
       isGenerating: true,
+      steerControlsReady: true,
       selectedProfile: {
         profile_id: "stub/default",
         display_name: "Stub Default",
@@ -1634,11 +1635,47 @@ test("composer uses the main input as steer while generating", () => {
   assert.match(html, /追加の指示を入力/);
   assert.match(html, /Enterで追加指示を送信/);
   assert.match(html, /title="追加指示を送る"/);
+  assert.doesNotMatch(html, /data-composer-controls="preparing"/);
+  assert.doesNotMatch(html, /aria-label="Tobkiriにメッセージを送信"[^>]*disabled=""/);
   assert.doesNotMatch(html, /実行中のAIへステアを入力/);
   assert.doesNotMatch(html, /AI実行中/);
   assert.doesNotMatch(html, /textarea[^>]*disabled/);
   assert.doesNotMatch(html, /これがステア/);
   assert.doesNotMatch(html, /フォローアップの変更を求める/);
+});
+
+test("composer stays visible but disables input and steer controls before a saved root is registered", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "次の入力",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      steerControlsReady: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+      onSteerSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-composer-controls="preparing"/);
+  assert.match(html, /会話を準備しています。/);
+  assert.match(html, /aria-label="会話を準備中"/);
+  assert.match(html, /aria-label="Tobkiriにメッセージを送信"[^>]*disabled=""/);
+  assert.doesNotMatch(html, /追加の指示を入力/);
+  assert.doesNotMatch(html, /追加指示を送る/);
 });
 
 test("composer renders the current steer above the main input", () => {
