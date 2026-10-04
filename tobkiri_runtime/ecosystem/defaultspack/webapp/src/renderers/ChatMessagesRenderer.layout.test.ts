@@ -47,7 +47,11 @@ function transcript(pending = false): ChatUiMessage[] {
   }));
 }
 
-async function mount(page: Page, messages: ChatUiMessage[]): Promise<void> {
+async function mount(
+  page: Page,
+  messages: ChatUiMessage[],
+  { pauseAnimations = false }: { pauseAnimations?: boolean } = {},
+): Promise<void> {
   const markup = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null, isMessagesRegionVisible: true, isLoading: false,
     isNewConversation: false, isGenerating: false, messages,
@@ -62,7 +66,10 @@ async function mount(page: Page, messages: ChatUiMessage[]): Promise<void> {
     { base: path.join(webappRoot, "src"), onDependency: () => undefined },
   );
   await page.route("**/*", (route) => route.abort());
-  await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${compiler.build(classes)}</style><main style="display:flex;flex-direction:column;height:900px">${markup}</main>`);
+  const pausedAnimationStyle = pauseAnimations
+    ? "<style>* { animation-play-state: paused !important; }</style>"
+    : "";
+  await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${compiler.build(classes)}</style>${pausedAnimationStyle}<main style="display:flex;flex-direction:column;height:900px">${markup}</main>`);
 }
 
 type LayoutRect = {
@@ -99,6 +106,37 @@ async function geometry(page: Page): Promise<LayoutGeometry> {
     return { column: rect(column), rows, overflow: document.documentElement.scrollWidth > window.innerWidth };
   })()`);
 }
+
+test("message rows remain paint-visible when browser animations are paused", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    reducedMotion: "no-preference",
+  });
+  try {
+    await mount(page, transcript(), { pauseAnimations: true });
+    const rows = await page.locator(".rumi-message-row").evaluateAll((elements) => (
+      elements.map((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          opacity: style.opacity,
+          text: element.textContent?.trim() ?? "",
+          visibility: style.visibility,
+          width: rect.width,
+        };
+      })
+    ));
+    assert.equal(rows.length, 4);
+    for (const row of rows) {
+      assert.equal(row.opacity, "1");
+      assert.equal(row.visibility, "visible");
+      assert.ok(row.width > 0);
+      assert.ok(row.text.length > 0);
+    }
+  } finally {
+    await page.close();
+  }
+});
 
 for (const device of [
   { name: "desktop", width: 1440, height: 900, hasTouch: false, isMobile: false, controlSize: 24 },
