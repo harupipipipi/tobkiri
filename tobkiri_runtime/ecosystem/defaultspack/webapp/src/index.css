@@ -242,10 +242,6 @@ body {
   }
 }
 
-.rumi-new-chat-stage {
-  animation: rumi-stage-enter 520ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
-}
-
 .rumi-new-chat-stage.is-launching {
   pointer-events: none;
 }
@@ -280,7 +276,6 @@ body {
 }
 
 .rumi-greeting {
-  animation: rumi-greeting-enter 520ms 40ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
   letter-spacing: -0.035em;
   text-shadow: 0 14px 42px rgba(0, 0, 0, 0.4);
 }
@@ -344,10 +339,6 @@ body {
     0 18px 50px rgba(0, 0, 0, 0.46),
     0 0 0 3px rgba(99, 102, 241, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.rumi-composer-new {
-  animation: rumi-composer-enter 620ms 90ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
 }
 
 .rumi-composer-main-panel {

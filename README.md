@@ -215,6 +215,8 @@ The input remains visible as soon as you submit a new conversation. It briefly
 shows `会話を準備しています。` with its controls disabled while the conversation
 and saved turn are registered. Once registration completes, you can send
 additional instructions during the first reply.
+The new-chat welcome screen and input also remain visible after a confirmed
+stop, even when the native window pauses its animations.
 
 If a saved turn fails before either message is persisted, the error stays
 visible. If you have not changed the composer since sending and it is still

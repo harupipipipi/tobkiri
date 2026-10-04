@@ -72,6 +72,23 @@ async function mount(
   await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${compiler.build(classes)}</style>${pausedAnimationStyle}<main style="display:flex;flex-direction:column;height:900px">${markup}</main>`);
 }
 
+async function mountWelcomeStage(page: Page): Promise<void> {
+  const markup = [
+    '<section class="rumi-new-chat-stage">',
+    '<h1 class="rumi-greeting">Welcome to Tobkiri</h1>',
+    '<div class="rumi-composer-new">Message composer</div>',
+    '</section>',
+  ].join("");
+  const classes = [...new Set([...markup.matchAll(/class="([^"]+)"/g)]
+    .flatMap((match) => match[1].split(/\s+/)))];
+  const compiler = await compile(
+    await readFile(path.join(webappRoot, "src/index.css"), "utf8"),
+    { base: path.join(webappRoot, "src"), onDependency: () => undefined },
+  );
+  await page.route("**/*", (route) => route.abort());
+  await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${compiler.build(classes)}</style><style>* { animation-play-state: paused !important; }</style>${markup}`);
+}
+
 type LayoutRect = {
   left: number;
   right: number;
@@ -132,6 +149,39 @@ test("message rows remain paint-visible when browser animations are paused", asy
       assert.equal(row.visibility, "visible");
       assert.ok(row.width > 0);
       assert.ok(row.text.length > 0);
+    }
+  } finally {
+    await page.close();
+  }
+});
+
+test("welcome and its composer remain paint-visible when animation frames do not advance", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    reducedMotion: "no-preference",
+  });
+  try {
+    await mountWelcomeStage(page);
+    const mandatoryContent = await page.locator(
+      ".rumi-new-chat-stage, .rumi-greeting, .rumi-composer-new",
+    ).evaluateAll((elements) => elements.map((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        animationName: style.animationName,
+        opacity: style.opacity,
+        text: element.textContent?.trim() ?? "",
+        visibility: style.visibility,
+        width: rect.width,
+      };
+    }));
+    assert.equal(mandatoryContent.length, 3);
+    for (const element of mandatoryContent) {
+      assert.equal(element.animationName, "none");
+      assert.equal(element.opacity, "1");
+      assert.equal(element.visibility, "visible");
+      assert.ok(element.width > 0);
+      assert.ok(element.text.length > 0);
     }
   } finally {
     await page.close();
