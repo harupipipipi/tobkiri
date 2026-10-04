@@ -1,4 +1,4 @@
-import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurnResult } from "./api";
+import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurn, SavedTurnResult } from "./api";
 
 const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
@@ -302,6 +302,12 @@ export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
   savedTurn?: boolean;
+  /**
+   * A successful exact saved-turn event read, scoped to the view that started
+   * this request. Until this is true, the UI must not issue Stop or guidance
+   * control requests against an operation ID that the owner has not exposed.
+  */
+  ownerTurnObserved?: boolean;
   requestFingerprint?: string;
   startedAt: number;
   status: string;
@@ -315,6 +321,126 @@ export type ActiveGenerationViewTicket = {
   epoch: number;
   workspaceTabId: string;
 };
+
+function sameGenerationViewTicket(
+  left: ActiveGenerationViewTicket | undefined,
+  right: ActiveGenerationViewTicket | undefined,
+): boolean {
+  return Boolean(
+    left
+    && right
+    && left.workspaceTabId === right.workspaceTabId
+    && left.conversationId === right.conversationId
+    && left.epoch === right.epoch,
+  );
+}
+
+function validSavedTurnRegistrationView(
+  ticket: ActiveGenerationViewTicket | undefined,
+  conversationId: string,
+): ticket is ActiveGenerationViewTicket {
+  return Boolean(
+    ticket
+    && ticket.conversationId === conversationId
+    && stableSavedTurnIdentity(ticket.workspaceTabId)
+    && Number.isSafeInteger(ticket.epoch)
+    && ticket.epoch >= 0,
+  );
+}
+
+function isReadableActiveSavedTurn(
+  turn: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+  request: PendingChatRequest,
+  activeGuidanceTurn?: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+): boolean {
+  const rootMatches = request.savedTurn === true
+    && stableSavedTurnIdentity(request.conversationId)
+    && stableSavedTurnIdentity(request.operationId)
+    && stableSavedTurnIdentity(request.requestFingerprint)
+    && turn.id === request.operationId
+    && turn.conversation_id === request.conversationId;
+  if (!rootMatches) return false;
+  const status = turn.status.trim().toLowerCase();
+  if (status === "queued" || status === "running" || status === "waiting") return true;
+  if (status !== "completed" || !activeGuidanceTurn) return false;
+  const childStatus = activeGuidanceTurn.status.trim().toLowerCase();
+  return activeGuidanceTurn.id !== turn.id
+    && stableSavedTurnIdentity(activeGuidanceTurn.id)
+    && activeGuidanceTurn.conversation_id === request.conversationId
+    && (childStatus === "queued" || childStatus === "running" || childStatus === "waiting");
+}
+
+/**
+ * Marks a saved root as control-ready only after the canonical events read
+ * exposes that exact active root in the same request and view. A locally
+ * generated operation ID, a stale view, terminal result, or retried root is
+ * not authority to issue a Stop or guidance mutation. A completed root may
+ * only use an active guidance turn supplied after its exact root-to-child
+ * lineage has already been verified by the caller.
+ */
+export function markSavedTurnOwnerObserved(
+  current: Record<string, PendingChatRequest>,
+  expected: PendingChatRequest | null | undefined,
+  observedTurn: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+  readViewTicket: ActiveGenerationViewTicket,
+  currentViewTicket: ActiveGenerationViewTicket,
+  activeGuidanceTurn?: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+): Record<string, PendingChatRequest> {
+  if (!expected
+    || !isReadableActiveSavedTurn(observedTurn, expected, activeGuidanceTurn)
+    || !sameGenerationViewTicket(readViewTicket, currentViewTicket)) return current;
+  const request = current[expected.conversationId];
+  if (!request
+    || request.savedTurn !== true
+    || request.conversationId !== expected.conversationId
+    || request.operationId !== expected.operationId
+    || request.requestFingerprint !== expected.requestFingerprint
+    || !validSavedTurnRegistrationView(
+      currentViewTicket,
+      request.conversationId,
+    )
+    || request.ownerTurnObserved === true) return current;
+  return {
+    ...current,
+    [request.conversationId]: {
+      ...request,
+      ownerTurnObserved: true,
+    },
+  };
+}
+
+/**
+ * Keeps the ordinary composer contract intact while withholding saved-turn
+ * control actions until the owner has exposed the exact active root.
+ */
+export function savedTurnControlActionsReady(
+  presentationControlsReady: boolean,
+  request: PendingChatRequest | null | undefined,
+): boolean {
+  return presentationControlsReady
+    && (!request?.savedTurn || request.ownerTurnObserved === true);
+}
+
+/**
+ * Saved pending requests survive reloads for reconciliation, but a prior
+ * session's event read cannot authorize a new session's control mutation.
+ * The first current-view canonical event read must grant readiness again.
+ */
+export function resetPersistedSavedTurnOwnerObservations(
+  current: Record<string, PendingChatRequest>,
+): Record<string, PendingChatRequest> {
+  let changed = false;
+  const next: Record<string, PendingChatRequest> = {};
+  for (const [conversationId, request] of Object.entries(current)) {
+    if (request.savedTurn === true && request.ownerTurnObserved === true) {
+      next[conversationId] = { ...request, ownerTurnObserved: false };
+      changed = true;
+    } else {
+      next[conversationId] = request;
+    }
+  }
+  return changed ? next : current;
+}
 
 /**
  * `isGenerating` is process-wide while a chat tab is view-scoped. Keep a

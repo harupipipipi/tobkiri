@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -40,6 +41,8 @@ _GUIDANCE_KEYS = {
     "prompt", "target_type", "target_id", "conversation_id",
     "visible", "auto_send", "metadata",
 }
+_STOP_REGISTRATION_WAIT_SECONDS = 3.0
+_STOP_REGISTRATION_POLL_SECONDS = 0.02
 
 
 class TurnHostFactoryV4:
@@ -168,6 +171,26 @@ class TurnHostFactoryV4:
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
                     raise PermissionError("stop requires only an existing turn ID")
                 requested_turn_id = _identifier(values["turn_id"])
+                registered = _await_saved_stop_registration(
+                    store,
+                    requested_turn_id,
+                    invocation,
+                )
+                if registered is None:
+                    raise KeyError("turn is unknown")
+                if registered.get("status") == "queued":
+                    # A queued saved turn has no authenticated execution scope
+                    # to cancel yet.  Never persist an intent which its later
+                    # claim could miss.
+                    raise TurnConflict("saved turn is not execution-ready")
+                if (
+                    registered.get("status") == "running"
+                    and invocation.cancellation.active_for(requested_turn_id)
+                    and not invocation.cancellation.can_request(requested_turn_id)
+                ):
+                    raise PermissionError(
+                        "operation cancellation handle is unavailable"
+                    )
                 prepared: Mapping[str, Any] | None = None
                 stop_active_child: str | None = None
                 observation = None
@@ -363,6 +386,41 @@ def _fields(
 ) -> None:
     if not required <= set(values) or set(values) - required - (optional or set()):
         raise PermissionError("turn operation fields are invalid")
+
+
+def _await_saved_stop_registration(
+    store: DurableTurnRuntime,
+    turn_id: str,
+    invocation: HostProviderInvocationContextV4,
+) -> Mapping[str, Any] | None:
+    """Wait briefly for one exact saved turn and its live cancellation handle."""
+
+    started = time.monotonic()
+    deadline = started + _STOP_REGISTRATION_WAIT_SECONDS
+    envelope_deadline = getattr(
+        getattr(invocation, "envelope", None), "deadline_monotonic", None
+    )
+    if isinstance(envelope_deadline, (int, float)) and not isinstance(
+        envelope_deadline, bool
+    ):
+        deadline = min(deadline, float(envelope_deadline))
+    record: Mapping[str, Any] | None = None
+    while True:
+        invocation.assert_current()
+        record = store.get(turn_id)
+        if record is not None:
+            status = record.get("status")
+            if status not in {"queued", "running"}:
+                return record
+            if (
+                status == "running"
+                and invocation.cancellation.active_for(turn_id)
+            ):
+                return record
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return record
+        time.sleep(min(_STOP_REGISTRATION_POLL_SECONDS, remaining))
 
 
 def _identifier(value: Any) -> str:

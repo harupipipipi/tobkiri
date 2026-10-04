@@ -123,7 +123,10 @@ import {
   canClearSavedTurnStopFailureError,
   isGenerationActiveForView,
   isSavedTurnCancellationPropagationError,
+  markSavedTurnOwnerObserved,
+  resetPersistedSavedTurnOwnerObservations,
   savedTurnCanRestoreUnwrittenDraft,
+  savedTurnControlActionsReady,
   savedTurnProgressNotice,
   savedTurnProgressState,
   savedTurnSnapshotState,
@@ -3358,7 +3361,10 @@ export function ChatApp() {
     visibleOverlayCount: visibleOptimisticSavedTurnOverlays.length,
   };
   const savedTurnComposer = savedTurnComposerPresentation(savedTurnComposerInput);
-  const steerControlsReady = savedTurnComposerControlsReady(savedTurnComposerInput);
+  const steerControlsReady = savedTurnControlActionsReady(
+    savedTurnComposerControlsReady(savedTurnComposerInput),
+    pendingRequest,
+  );
   const { isNewConversation, showConversationComposer, showNewConversationStage } = savedTurnComposer;
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
@@ -4192,6 +4198,10 @@ export function ChatApp() {
     });
   };
 
+  useLayoutEffect(() => {
+    updatePendingRequests(resetPersistedSavedTurnOwnerObservations);
+  }, []);
+
   const loadCodingWorkspaces = useCallback(async () => {
     const result = await api.listCodingWorkspaces();
     setCodingWorkspaces(result.workspaces);
@@ -4888,7 +4898,7 @@ export function ChatApp() {
       setIsGenerating(false);
       return;
     }
-    if (streamingConversationIdRef.current === activeConversationId) return;
+    if (streamingConversationIdRef.current === activeConversationId && !pendingRequest?.savedTurn) return;
     setIsGenerating(true);
     let disposed = false;
     const pollViewTicket = savedTurnViewFenceRef.current.capture();
@@ -4913,6 +4923,15 @@ export function ChatApp() {
             )
           ).turn;
           if (disposed) return;
+          if (pollUiIsCurrent()) {
+            updatePendingRequests((current) => markSavedTurnOwnerObserved(
+              current,
+              pendingRequest,
+              turn,
+              pollViewTicket,
+              savedTurnViewFenceRef.current.capture(),
+            ));
+          }
           bindOptimisticSavedTurnOverlayToTurn(
             activeConversationId,
             pendingRequest.operationId,
@@ -4999,6 +5018,20 @@ export function ChatApp() {
                 await api.getSavedTurnEvents(chain.active.id, activeConversationId)
               ).turn;
               if (disposed) return;
+              if (pollUiIsCurrent()) {
+                // `chain` was built by pendingSavedTurnChainForConversation,
+                // which has already verified the complete root-to-child
+                // lineage. A completed root can therefore become
+                // control-ready only through this exact active child read.
+                updatePendingRequests((current) => markSavedTurnOwnerObserved(
+                  current,
+                  pendingRequest,
+                  turn,
+                  pollViewTicket,
+                  savedTurnViewFenceRef.current.capture(),
+                  activeTurn,
+                ));
+              }
               if (activeTurn.status === "running" || activeTurn.status === "waiting") {
                 activeTurn = await api.reconcileSavedTurn(activeTurn.id, activeConversationId);
                 if (disposed) return;
@@ -5221,6 +5254,7 @@ export function ChatApp() {
     const conversationId = activeConversationId;
     if (conversationId && pendingRequests[conversationId]?.savedTurn) {
       const pendingSavedTurn = pendingRequests[conversationId];
+      if (pendingSavedTurn.ownerTurnObserved !== true) return;
       const turnId = pendingSavedTurn.operationId;
       if (!turnId) {
         setError("送信の操作IDを確認できないため、停止要求は送信していません。");
@@ -5900,7 +5934,8 @@ export function ChatApp() {
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
-    if (!activeConversationId || !prompt) return;
+    if (!activeConversationId || !prompt
+      || (pendingRequest?.savedTurn && pendingRequest.ownerTurnObserved !== true)) return;
     const queueTicket = steerRefreshFenceRef.current.capture(activeSteerRefreshContext);
     const canApply = () => steerRefreshFenceRef.current.matches(queueTicket);
     if (!queueTicket) {
@@ -5972,7 +6007,7 @@ export function ChatApp() {
     } finally {
       if (canApply()) setModelSteerBusy(false);
     }
-  }, [activeConversationId, activeSteerRefreshContext, input, refreshSteerQueue, setInput]);
+  }, [activeConversationId, activeSteerRefreshContext, input, pendingRequest?.ownerTurnObserved, pendingRequest?.savedTurn, refreshSteerQueue, setInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -7906,6 +7941,7 @@ export function ChatApp() {
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
+        ownerTurnObserved: false,
         requestFingerprint,
         savedTurn: true,
         startedAt: requestStartedAt,

@@ -217,8 +217,9 @@ receipt. A status check that is still pending does not mean the message failed
 to send.
 The input remains visible as soon as you submit a new conversation. It briefly
 shows `会話を準備しています。` with its controls disabled while the conversation
-and saved turn are registered. Once registration completes, you can send
-additional instructions during the first reply.
+and saved turn are registered. Stop and additional instructions become
+available only after the saved turn is readable from its owner; assigning a
+local request ID alone does not enable them.
 The new-chat welcome screen and input also remain visible after a confirmed
 stop, even when the native window pauses its animations.
 A Stop acknowledgement remains pending until the execution result is confirmed.

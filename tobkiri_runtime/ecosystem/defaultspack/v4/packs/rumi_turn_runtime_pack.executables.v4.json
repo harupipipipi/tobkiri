@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:06d45d3b36141c0ca005d274c3fbfeb21ffd6a65462a1d60b8ce2d308aabf5f6",
+  "source_identity": "sha256:d15d0f4971b6248cd10cd95c24e35c6bf1f7bf0cac06c7f83569a4681b93daef",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.guidance.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -145,7 +145,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -179,7 +179,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -241,7 +241,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -275,7 +275,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -586,7 +586,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -687,6 +687,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:b5411c0ee2cdbd04838ce939ff8c701761599907eda2136ba10198368d8a7e3f",
-  "catalog_digest": "sha256:61e1a0838b05671938df0a291da71223dd4ebf8f709770e5224b6d041757397d"
+  "materialization_catalog_digest": "sha256:2da38a7b420814bab52f6824710975845243e640f2f9b5a5c190ef1deb2730c3",
+  "catalog_digest": "sha256:15c5aaf5363559f250181c7162f5ce619a3567485fce14933f730780bfafab48"
 }

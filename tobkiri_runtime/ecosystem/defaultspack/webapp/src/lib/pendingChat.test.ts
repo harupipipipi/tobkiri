@@ -7,6 +7,9 @@ import {
   canClearSavedTurnStopFailureError,
   chatContinuationPacketMatchesTurn,
   isGenerationActiveForView,
+  markSavedTurnOwnerObserved,
+  resetPersistedSavedTurnOwnerObservations,
+  savedTurnControlActionsReady,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
@@ -85,6 +88,196 @@ test("generation state belongs to the selected pending root or matching view tic
     ...input,
     submissionViewTicket: { ...activeViewTicket },
   }), true);
+});
+
+test("saved-turn controls wait for a readable exact active root", () => {
+  const registrationTicket = {
+    workspaceTabId: "workspace-a",
+    conversationId: "c1",
+    epoch: 4,
+  };
+  const request: PendingChatRequest = {
+    ...pending(1000),
+    operationId: "turn-1",
+    ownerTurnObserved: false,
+    requestFingerprint: "sha256:request-1",
+    savedTurn: true,
+  };
+  const current = { c1: request };
+  const runningRoot = { id: "turn-1", conversation_id: "c1", status: "running" };
+
+  assert.equal(savedTurnControlActionsReady(true, request), false);
+  const observed = markSavedTurnOwnerObserved(
+    current,
+    request,
+    runningRoot,
+    registrationTicket,
+    registrationTicket,
+  );
+  assert.notEqual(observed, current);
+  assert.equal(observed.c1.ownerTurnObserved, true);
+  assert.equal(savedTurnControlActionsReady(true, observed.c1), true);
+  assert.equal(savedTurnControlActionsReady(true, { ...request, savedTurn: false }), true);
+});
+
+test("saved-turn registration rejects foreign, retried, stale-view, and terminal observations", () => {
+  const registrationTicket = {
+    workspaceTabId: "workspace-a",
+    conversationId: "c1",
+    epoch: 4,
+  };
+  const request: PendingChatRequest = {
+    ...pending(1000),
+    operationId: "turn-1",
+    ownerTurnObserved: false,
+    requestFingerprint: "sha256:request-1",
+    savedTurn: true,
+  };
+  const current = { c1: request };
+  const cases: Array<{
+    label: string;
+    expected?: PendingChatRequest;
+    turn: { id: string; conversation_id: string; status: string };
+    ticket?: typeof registrationTicket;
+    currentTicket?: typeof registrationTicket;
+  }> = [
+    {
+      label: "wrong root",
+      turn: { id: "turn-2", conversation_id: "c1", status: "running" },
+    },
+    {
+      label: "wrong conversation",
+      turn: { id: "turn-1", conversation_id: "c2", status: "running" },
+    },
+    {
+      label: "retried root",
+      expected: { ...request, operationId: "turn-2" },
+      turn: { id: "turn-2", conversation_id: "c1", status: "running" },
+    },
+    {
+      label: "old view",
+      turn: { id: "turn-1", conversation_id: "c1", status: "running" },
+      ticket: registrationTicket,
+      currentTicket: { ...registrationTicket, epoch: registrationTicket.epoch + 1 },
+    },
+    {
+      label: "terminal root",
+      turn: { id: "turn-1", conversation_id: "c1", status: "completed" },
+    },
+  ];
+  for (const testCase of cases) {
+    assert.equal(
+      markSavedTurnOwnerObserved(
+        current,
+        testCase.expected ?? request,
+        testCase.turn,
+        testCase.ticket ?? registrationTicket,
+        testCase.currentTicket ?? testCase.ticket ?? registrationTicket,
+      ),
+      current,
+      testCase.label,
+    );
+  }
+});
+
+test("a fresh current-view root read restores readiness after a tab ABA", () => {
+  const originalTicket = {
+    workspaceTabId: "workspace-a",
+    conversationId: "c1",
+    epoch: 4,
+  };
+  const returnedTicket = { ...originalTicket, epoch: 6 };
+  const request: PendingChatRequest = {
+    ...pending(1000),
+    operationId: "turn-1",
+    ownerTurnObserved: false,
+    requestFingerprint: "sha256:request-1",
+    savedTurn: true,
+  };
+  const current = { c1: request };
+  const root = { id: "turn-1", conversation_id: "c1", status: "waiting" };
+
+  assert.equal(
+    markSavedTurnOwnerObserved(current, request, root, originalTicket, returnedTicket),
+    current,
+    "an old pending read cannot mark the returned view",
+  );
+  const observed = markSavedTurnOwnerObserved(
+    current,
+    request,
+    root,
+    returnedTicket,
+    returnedTicket,
+  );
+  assert.equal(observed.c1.ownerTurnObserved, true);
+  assert.equal(savedTurnControlActionsReady(true, observed.c1), true);
+});
+
+test("a restored saved request requires a fresh current-view root read", () => {
+  const ticket = { workspaceTabId: "workspace-a", conversationId: "c1", epoch: 4 };
+  const persisted: Record<string, PendingChatRequest> = {
+    c1: {
+      ...pending(1000),
+      operationId: "turn-1",
+      ownerTurnObserved: true,
+      requestFingerprint: "sha256:request-1",
+      savedTurn: true,
+    },
+  };
+  const restored = resetPersistedSavedTurnOwnerObservations(persisted);
+  assert.notEqual(restored, persisted);
+  assert.equal(restored.c1.ownerTurnObserved, false);
+  assert.equal(savedTurnControlActionsReady(true, restored.c1), false);
+
+  const observed = markSavedTurnOwnerObserved(
+    restored,
+    restored.c1,
+    { id: "turn-1", conversation_id: "c1", status: "queued" },
+    ticket,
+    ticket,
+  );
+  assert.equal(observed.c1.ownerTurnObserved, true);
+});
+
+test("a completed root becomes control-ready only through its exact active guidance child", () => {
+  const ticket = { workspaceTabId: "workspace-a", conversationId: "c1", epoch: 4 };
+  const request: PendingChatRequest = {
+    ...pending(1000),
+    operationId: "turn-root",
+    ownerTurnObserved: false,
+    requestFingerprint: "sha256:request-1",
+    savedTurn: true,
+  };
+  const current = { c1: request };
+  const completedRoot = { id: "turn-root", conversation_id: "c1", status: "completed" };
+  const activeChild = { id: "turn-child", conversation_id: "c1", status: "running" };
+
+  assert.equal(
+    markSavedTurnOwnerObserved(current, request, completedRoot, ticket, ticket),
+    current,
+    "a terminal root without a verified active child stays inert",
+  );
+  assert.equal(
+    markSavedTurnOwnerObserved(
+      current,
+      request,
+      completedRoot,
+      ticket,
+      ticket,
+      { ...activeChild, conversation_id: "c2" },
+    ),
+    current,
+    "a foreign child cannot authorize controls",
+  );
+  const observed = markSavedTurnOwnerObserved(
+    current,
+    request,
+    completedRoot,
+    ticket,
+    ticket,
+    activeChild,
+  );
+  assert.equal(observed.c1.ownerTurnObserved, true);
 });
 
 test("pre-create generation requires an exact owned ticket and rejects ABA or foreign views", () => {

@@ -93,7 +93,11 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
         )
 
     invocation = SimpleNamespace(
-        cancellation=SimpleNamespace(request=request),
+        cancellation=SimpleNamespace(
+            active_for=lambda turn_id: turn_id == "saved-turn",
+            can_request=lambda turn_id: turn_id == "saved-turn",
+            request=request,
+        ),
         assert_current=lambda: fences.append("checked"),
         envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
     )
@@ -110,7 +114,7 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
     assert requests == ["saved-turn"]
     # The stop Host checks capture freshness before durable resolution and
     # again after requesting the scoped cancellation handle.
-    assert fences == ["checked", "checked"]
+    assert fences == ["checked", "checked", "checked"]
     observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
     assert observed["status"] == "running"
     assert observed["events"][-1] == {
@@ -139,7 +143,11 @@ def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
         )
 
     invocation = SimpleNamespace(
-        cancellation=SimpleNamespace(request=request),
+        cancellation=SimpleNamespace(
+            active_for=lambda turn_id: turn_id == "saved-turn",
+            can_request=lambda turn_id: turn_id == "saved-turn",
+            request=request,
+        ),
         assert_current=lambda: fences.append("checked"),
         envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
     )
@@ -155,7 +163,7 @@ def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
     }
     assert requests == ["saved-turn"]
     # Confirmation adds a final freshness check before committing cancelled.
-    assert fences == ["checked", "checked", "checked"]
+    assert fences == ["checked"] * 4
     observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
     assert observed["status"] == "cancelled"
     assert [event["name"] for event in observed["events"][-2:]] == [
@@ -246,9 +254,267 @@ def test_queued_guidance_stop_rechecks_capture_after_durable_mutation(
     with pytest.raises(TimeoutError, match="expired"):
         invoke(factory.operation_id, {"turn_id": "turn"}, invocation)
 
-    assert checks == 2
+    assert checks == 3
     observed = _invoke(tmp_path, "resource", operation="get", turn_id="turn")
     assert observed["guidance"][0]["status"] == "failed"
+
+
+def test_stop_waits_for_exact_saved_registration_and_live_handle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stop arriving before its saved turn targets that same later owner."""
+
+    from ecosystem.rumi_turn_runtime_pack.runtime import host as host_module
+
+    registered = False
+    handle_active = False
+    requests: list[str] = []
+    fences: list[str] = []
+
+    def sleep(_seconds: float) -> None:
+        nonlocal handle_active, registered
+        if not registered:
+            _seed_running_saved_turn(tmp_path)
+            registered = True
+        elif not handle_active:
+            handle_active = True
+
+    def request(turn_id: str) -> Any:
+        requests.append(turn_id)
+        return SimpleNamespace(
+            wait_for_verified_drain=lambda _deadline: False,
+        )
+
+    monkeypatch.setattr(host_module.time, "sleep", sleep)
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda turn_id: handle_active and turn_id == "saved-turn",
+            can_request=lambda turn_id: handle_active and turn_id == "saved-turn",
+            request=request,
+        ),
+        assert_current=lambda: fences.append("checked"),
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    result = invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert result == {
+        "status": "cancellation_requested",
+        "turn_id": "saved-turn",
+        "stopped": False,
+    }
+    assert requests == ["saved-turn"]
+    assert fences == ["checked"] * 5
+    observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
+    assert observed["status"] == "running"
+    assert [event["name"] for event in observed["events"]][-1] == (
+        "turn.cancellation_requested"
+    )
+
+
+def test_stop_rejects_unknown_or_queued_turn_without_durable_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bounded registration miss never fabricates a cancellation intent."""
+
+    from ecosystem.rumi_turn_runtime_pack.runtime import host as host_module
+
+    monkeypatch.setattr(host_module, "_STOP_REGISTRATION_WAIT_SECONDS", 0.0)
+    requests: list[str] = []
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda _turn_id: False,
+            can_request=lambda _turn_id: False,
+            request=lambda turn_id: requests.append(turn_id),
+        ),
+        assert_current=lambda: None,
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    with pytest.raises(KeyError, match="turn is unknown"):
+        invoke(factory.operation_id, {"turn_id": "missing-turn"}, invocation)
+
+    queued = _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT)
+    with pytest.raises(TurnConflict, match="not execution-ready"):
+        invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert requests == []
+    observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
+    assert observed == queued
+    assert observed["status"] == "queued"
+    assert all(
+        event["name"] != "turn.cancellation_requested"
+        for event in observed["events"]
+    )
+
+
+def test_stop_registration_wait_rejects_stale_invocation_without_mutation(
+    tmp_path: Path,
+) -> None:
+    """An expired capture cannot wait, resolve, or mutate a saved turn."""
+
+    checks = 0
+
+    def assert_current() -> None:
+        nonlocal checks
+        checks += 1
+        raise TimeoutError("captured stop invocation expired")
+
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda _turn_id: False,
+            can_request=lambda _turn_id: False,
+            request=lambda _turn_id: pytest.fail("request must not run"),
+        ),
+        assert_current=assert_current,
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    with pytest.raises(TimeoutError, match="expired"):
+        invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert checks == 1
+    assert not (
+        tmp_path
+        / "packs"
+        / "rumi_turn_runtime_pack"
+        / "profiles"
+        / "defaults"
+        / "turns.sqlite3"
+    ).exists()
+
+
+def test_stop_timeout_without_live_handle_records_one_unconfirmed_intent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A registered owner without a handle remains unconfirmed and idempotent."""
+
+    from ecosystem.rumi_turn_runtime_pack.runtime import host as host_module
+
+    _seed_running_saved_turn(tmp_path)
+    monkeypatch.setattr(host_module, "_STOP_REGISTRATION_WAIT_SECONDS", 0.0)
+    requests: list[str] = []
+
+    def request(turn_id: str) -> Any:
+        requests.append(turn_id)
+        raise PermissionError("operation cancellation handle is unavailable")
+
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda _turn_id: False,
+            can_request=lambda _turn_id: False,
+            request=request,
+        ),
+        assert_current=lambda: None,
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    first = invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+    after_first = _invoke(
+        tmp_path, "resource", operation="get", turn_id="saved-turn"
+    )
+    second = invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+    after_second = _invoke(
+        tmp_path, "resource", operation="get", turn_id="saved-turn"
+    )
+
+    assert first == second == {
+        "status": "cancellation_requested",
+        "turn_id": "saved-turn",
+        "stopped": False,
+    }
+    assert requests == ["saved-turn", "saved-turn"]
+    assert after_second == after_first
+    assert after_second["status"] == "running"
+    assert [
+        event["name"] for event in after_second["events"]
+    ].count("turn.cancellation_requested") == 1
+
+
+def test_stop_rejects_foreign_live_owner_without_durable_intent(
+    tmp_path: Path,
+) -> None:
+    """A live handle outside the exact captured scope cannot mutate the turn."""
+
+    _seed_running_saved_turn(tmp_path)
+    before = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda turn_id: turn_id == "saved-turn",
+            can_request=lambda _turn_id: False,
+            request=lambda _turn_id: pytest.fail("foreign request must not run"),
+        ),
+        assert_current=lambda: None,
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    with pytest.raises(PermissionError, match="handle is unavailable"):
+        invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert _invoke(
+        tmp_path, "resource", operation="get", turn_id="saved-turn"
+    ) == before
+
+
+def test_stop_registration_wait_honours_envelope_deadline_and_freshness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Polling stops at the envelope bound and rechecks capture freshness."""
+
+    from ecosystem.rumi_turn_runtime_pack.runtime import host as host_module
+
+    stale = False
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        nonlocal stale
+        sleeps.append(seconds)
+        stale = True
+
+    def assert_current() -> None:
+        if stale:
+            raise TimeoutError("captured stop invocation expired")
+
+    monkeypatch.setattr(host_module.time, "sleep", sleep)
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(
+            active_for=lambda _turn_id: False,
+            can_request=lambda _turn_id: False,
+            request=lambda _turn_id: pytest.fail("request must not run"),
+        ),
+        assert_current=assert_current,
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 0.01),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    with pytest.raises(TimeoutError, match="expired"):
+        invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert len(sleeps) == 1
+    assert 0 < sleeps[0] <= 0.01
+    assert not (
+        tmp_path
+        / "packs"
+        / "rumi_turn_runtime_pack"
+        / "profiles"
+        / "defaults"
+        / "turns.sqlite3"
+    ).exists()
 
 
 def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) -> None:
