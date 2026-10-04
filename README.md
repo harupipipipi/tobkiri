@@ -89,11 +89,13 @@ its Defaults Shell, and the PackVM helper from the checkout. It signs the local
 application and helper ad hoc, verifies their manifests, and then starts the
 application. No signing certificate or cloud API key is required.
 
-Allow at least 12 GiB of free space for the first build and PackVM setup. The
-build and provisioning flows check available space before proceeding. PackVM
-setup downloads a pinned 3 GiB Debian image after you approve the displayed
-plan in the Launcher. The VM and its per-operation sandbox enforce the normal
-isolation and network policy.
+Allow at least 17 GiB of free space before the first build and PackVM setup.
+This includes build space, the pinned 3 GiB Debian image, and separate isolated
+domains for the application UI and the first saved conversation. The build
+and provisioning flows check available space before proceeding. PackVM setup
+downloads the image after you approve the displayed plan in the Launcher.
+The VM and its per-operation sandbox enforce the normal isolation and network
+policy.
 
 ### Clone and install
 
@@ -209,6 +211,13 @@ beside the text. The clock changes to a single check mark when the saved
 message is confirmed. The check mark indicates saved delivery, not a read
 receipt. A status check that is still pending does not mean the message failed
 to send.
+
+If a saved turn fails before either message is persisted, the error stays
+visible. If you have not changed the composer since sending and it is still
+empty, the submitted text is restored. It is never sent again automatically.
+`PACKVM_HOST_CAPACITY_INSUFFICIENT`
+means the host needs more free disk space before a conversation VM can start;
+free space, then retry the restored message.
 
 ## Common Tasks
 
