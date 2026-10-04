@@ -488,6 +488,36 @@ def _saved_terminal_code(exc: BaseException, *, default: str) -> str | None:
     return None
 
 
+def _saved_terminal_details(exc: BaseException) -> dict[str, int]:
+    """Return bounded capacity counters from a typed deterministic refusal."""
+
+    seen: set[int] = set()
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        required = getattr(current, "required_bytes", None)
+        available = getattr(current, "available_bytes", None)
+        if (
+            getattr(current, "code", None)
+            == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+            and type(required) is int
+            and type(available) is int
+            and required > available >= 0
+        ):
+            return {
+                "required_bytes": required,
+                "available_bytes": available,
+            }
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return {}
+
+
 class MacOSVZDomainAllocator(Protocol):
     """Create/release one unique private COW disk and EFI store per domain."""
 
@@ -721,6 +751,7 @@ class MacOSVZSupervisorDriver:
                 raise SavedTurnRejectedError(
                     "macOS VZ domain allocation failed",
                     error_code=code,
+                    terminal_details=_saved_terminal_details(exc),
                 ) from exc
             raise BackendUnavailableError("macOS VZ domain allocation failed") from exc
         if (
@@ -889,6 +920,7 @@ class MacOSVZSupervisorDriver:
                         raise SavedTurnRejectedError(
                             "macOS VZ saved preflight rejected request",
                             error_code=code,
+                            terminal_details=_saved_terminal_details(exc),
                         ) from exc
                     raise BackendUnavailableError("macOS VZ saved preflight rejected request") from exc
                 self._require_saved_budget(request, active)

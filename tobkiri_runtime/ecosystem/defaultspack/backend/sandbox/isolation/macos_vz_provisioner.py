@@ -124,6 +124,14 @@ _MAX_ARTIFACT_SEED_BYTES = (
 # user-visible preflight; the ordinary Host reserve remains available for the
 # EFI store, the agent seed, ISO metadata/alignment, and COW writes.
 VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES = 2 * _MAX_ARTIFACT_SEED_BYTES
+# A normal Defaults session needs one presentation domain before the first
+# saved conversation receives its own isolated domain. At the second
+# allocation peak the first CIDATA artifact seed remains resident while the
+# second seed exists both as its private framing file and in the new CIDATA
+# image. The shared Host reserve covers EFI stores, the fixed agent seeds,
+# ISO alignment, and early COW writes for both domains.
+VZ_DEFAULT_INTERACTIVE_DOMAIN_COUNT = 2
+VZ_DEFAULT_INTERACTIVE_SEED_COPIES = 3
 # The guest image starts cloud-final after network-online.target.  A VZ
 # domain deliberately has no physical NIC, which makes an empty NoCloud
 # configuration wait for the image's networkd-wait-online timeout.  This
@@ -136,6 +144,38 @@ _NOCLOUD_LOCAL_ONLY_NETWORK_CONFIG = (
     b"  tobkiri0:\n"
     b"    addresses: [192.0.2.1/32]\n"
 )
+
+
+class PackVMHostCapacityError(ValueError):
+    """Report a deterministic Host-storage refusal without exposing paths."""
+
+    code = "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+
+    def __init__(self, *, required_bytes: int, available_bytes: int) -> None:
+        if (
+            type(required_bytes) is not int
+            or type(available_bytes) is not int
+            or required_bytes <= 0
+            or available_bytes < 0
+            or available_bytes >= required_bytes
+        ):
+            raise ValueError("PackVM capacity counters are invalid")
+        super().__init__(
+            "PackVM requires more host storage before this conversation can start"
+        )
+        self.required_bytes = required_bytes
+        self.available_bytes = available_bytes
+
+    def to_dict(self) -> dict[str, int | str]:
+        """Return bounded counters suitable for a terminal receipt or audit."""
+
+        return {
+            "code": self.code,
+            "required_bytes": self.required_bytes,
+            "available_bytes": self.available_bytes,
+        }
+
+
 _DIGEST_PREFIX = "sha256:"
 _DIRECT_IMAGE_URL = (
     "https://gemmei.ftp.acc.umu.se/images/cloud/trixie/20260819-2575/"
@@ -2739,10 +2779,12 @@ class MacOSVZProvisioner:
         )
 
     def _required_host_space(self, download_bytes: int) -> int:
+        """Budget the base image, presentation, and first saved domain peak."""
+
         return (
-            VZ_RAW_EFI_IMAGE_DECLARED_BYTES
+            (VZ_DEFAULT_INTERACTIVE_DOMAIN_COUNT * VZ_RAW_EFI_IMAGE_DECLARED_BYTES)
             + VZ_HOST_STORAGE_RESERVE_BYTES
-            + VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES
+            + (VZ_DEFAULT_INTERACTIVE_SEED_COPIES * _MAX_ARTIFACT_SEED_BYTES)
             + download_bytes
         )
 
@@ -2772,16 +2814,28 @@ class MacOSVZProvisioner:
         return available, None
 
     def _require_host_capacity(self, download_bytes: int) -> None:
-        _available, reason = self._host_capacity(self._required_host_space(download_bytes))
+        required = self._required_host_space(download_bytes)
+        available, reason = self._host_capacity(required)
         if reason is not None:
-            raise ValueError(reason)
+            if not reason.startswith("PackVM VZ provisioning requires at least "):
+                raise ValueError(reason)
+            raise PackVMHostCapacityError(
+                required_bytes=required,
+                available_bytes=available,
+            )
 
     def _require_allocation_capacity(self, artifact: MaterializedPackArtifact) -> None:
         """Recheck current free space for the exact artifact before mutation."""
 
-        _available, reason = self._host_capacity(self._required_allocation_space(artifact))
+        required = self._required_allocation_space(artifact)
+        available, reason = self._host_capacity(required)
         if reason is not None:
-            raise ValueError(reason)
+            if not reason.startswith("PackVM VZ provisioning requires at least "):
+                raise ValueError(reason)
+            raise PackVMHostCapacityError(
+                required_bytes=required,
+                available_bytes=available,
+            )
 
     def _ensure_state_root(self) -> None:
         if (

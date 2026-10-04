@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Mapping
+
 
 class HostCoreError(Exception):
     """Base class with a stable, non-provider-controlled error code."""
@@ -52,11 +54,25 @@ class SavedTurnRejectedError(BackendUnavailableError):
 
     code = "saved_turn_rejected"
 
-    def __init__(self, reason: str, *, error_code: str = "BACKEND_UNAVAILABLE") -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        error_code: str = "BACKEND_UNAVAILABLE",
+        terminal_details: Mapping[str, int] | None = None,
+    ) -> None:
         if not isinstance(error_code, str) or not 0 < len(error_code) <= 64:
             raise ValueError("saved terminal error code is invalid")
+        details = dict(terminal_details or {})
+        if details and (
+            set(details) != {"required_bytes", "available_bytes"}
+            or any(type(value) is not int or value < 0 for value in details.values())
+            or details["required_bytes"] <= details["available_bytes"]
+        ):
+            raise ValueError("saved terminal details are invalid")
         super().__init__(reason)
         self.saved_terminal_error_code = error_code
+        self.saved_terminal_details = details
 
 
 class AuthorizationError(HostCoreError):

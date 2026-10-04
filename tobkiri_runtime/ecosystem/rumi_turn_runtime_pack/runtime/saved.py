@@ -173,26 +173,35 @@ def execute_saved_turn(
             if failure is None:
                 reference = _completed_reference(initial["request"], outcome)
     except Exception as error:
-        terminal_code = _terminal_rejection(error)
-        if terminal_code is not None:
+        terminal_rejection = _terminal_rejection(error)
+        if terminal_rejection is not None:
+            terminal_code, terminal_details = terminal_rejection
+            terminal_message = (
+                "More host storage is required before this conversation can start."
+                if terminal_code == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+                else "Saved conversation did not complete."
+            )
             # The supervisor only marks rejections that provably precede any
             # guest-visible effect (preflight denial or deterministic domain
             # allocation refusal), so no outcome receipt can exist; settle
             # failed with the diagnostic code instead of wedging on waiting.
+            details: dict[str, Any] = {
+                "phase": "saved_execution_failed",
+                "error_code": terminal_code,
+                "error": {
+                    "code": terminal_code,
+                    "message": terminal_message,
+                },
+                "user_persistence": "not_written",
+                "assistant_persistence": "not_written",
+            }
+            if terminal_details:
+                details["capacity"] = terminal_details
             return _settle(
                 store,
                 record,
                 "failed",
-                {
-                    "phase": "saved_execution_failed",
-                    "error_code": terminal_code,
-                    "error": {
-                        "code": terminal_code,
-                        "message": "Saved conversation did not complete.",
-                    },
-                    "user_persistence": "not_written",
-                    "assistant_persistence": "not_written",
-                },
+                details,
             )
         # Dispatch may have committed effects before raising or losing its
         # reply. Never retry it or expose provider/parser exception contents.
@@ -550,7 +559,9 @@ def _settle(
     }
 
 
-def _terminal_rejection(error: BaseException) -> str | None:
+def _terminal_rejection(
+    error: BaseException,
+) -> tuple[str, dict[str, int]] | None:
     """Return the surfaced code when dispatch provably never reached the guest.
 
     Only Host-side rejections that precede any guest-visible effect carry a
@@ -566,7 +577,22 @@ def _terminal_rejection(error: BaseException) -> str | None:
             return None
         code = getattr(current, "saved_terminal_error_code", None)
         if type(code) is str and 0 < len(code) <= 64:
-            return code
+            raw_details = getattr(current, "saved_terminal_details", None)
+            details: dict[str, int] = {}
+            if isinstance(raw_details, Mapping):
+                required = raw_details.get("required_bytes")
+                available = raw_details.get("available_bytes")
+                if (
+                    set(raw_details) == {"required_bytes", "available_bytes"}
+                    and type(required) is int
+                    and type(available) is int
+                    and required > available >= 0
+                ):
+                    details = {
+                        "required_bytes": required,
+                        "available_bytes": available,
+                    }
+            return code, details
         current = current.__cause__ or current.__context__
     return None
 

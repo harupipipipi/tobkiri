@@ -25,6 +25,7 @@ import ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner as 
 from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
     MacOSVZAssetManifest,
     MacOSVZProvisioner,
+    PackVMHostCapacityError,
     VZ_ASSET_MANIFEST_SCHEMA,
     VZ_BUNDLE_MANIFEST_SCHEMA,
     VZ_RAW_EFI_IMAGE_DECLARED_BYTES,
@@ -1682,9 +1683,12 @@ def test_prepare_declares_three_gib_download_without_downloading(
     assert plan.image_size_bytes == VZ_RAW_EFI_IMAGE_DECLARED_BYTES
     assert plan.disk_size_bytes == VZ_RAW_EFI_IMAGE_DECLARED_BYTES
     assert plan.host_free_space_required_bytes == (
-        2 * VZ_RAW_EFI_IMAGE_DECLARED_BYTES
+        3 * VZ_RAW_EFI_IMAGE_DECLARED_BYTES
         + macos_vz_provisioner.VZ_HOST_STORAGE_RESERVE_BYTES
-        + macos_vz_provisioner.VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES
+        + (
+            macos_vz_provisioner.VZ_DEFAULT_INTERACTIVE_SEED_COPIES
+            * macos_vz_provisioner._MAX_ARTIFACT_SEED_BYTES
+        )
     )
 
 
@@ -1696,9 +1700,12 @@ def test_prepare_reserves_exact_raw_cow_size_when_the_image_is_cached(
 
     provisioner, manifest, _base = provisioner_fixture
     required = (
-        VZ_RAW_EFI_IMAGE_DECLARED_BYTES
+        2 * VZ_RAW_EFI_IMAGE_DECLARED_BYTES
         + macos_vz_provisioner.VZ_HOST_STORAGE_RESERVE_BYTES
-        + macos_vz_provisioner.VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES
+        + (
+            macos_vz_provisioner.VZ_DEFAULT_INTERACTIVE_SEED_COPIES
+            * macos_vz_provisioner._MAX_ARTIFACT_SEED_BYTES
+        )
     )
     monkeypatch.setattr(provisioner, "_load_manifest_for_plan", lambda: (manifest, None))
     monkeypatch.setattr(
@@ -1735,7 +1742,7 @@ def test_allocate_rechecks_exact_artifact_peak_capacity_before_mutation(
         lambda _path: SimpleNamespace(free=required - 1),
     )
 
-    with pytest.raises(ValueError, match="provisioning requires at least"):
+    with pytest.raises(PackVMHostCapacityError) as raised:
         provisioner.allocate(
             domain_id="domain.capacity",
             reservation_id="reservation-capacity",
@@ -1747,8 +1754,41 @@ def test_allocate_rechecks_exact_artifact_peak_capacity_before_mutation(
             artifact=artifact,
         )
 
+    assert raised.value.to_dict() == {
+        "code": "PACKVM_HOST_CAPACITY_INSUFFICIENT",
+        "required_bytes": required,
+        "available_bytes": required - 1,
+    }
+
     domains = provisioner._state_dir / "domains"
     assert not domains.exists()
+
+
+def test_prepare_accepts_exact_two_domain_capacity(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cached setup accepts the exact presentation-plus-saved capacity floor."""
+
+    provisioner, manifest, _base = provisioner_fixture
+    required = provisioner._required_host_space(0)
+    monkeypatch.setattr(provisioner, "_load_manifest_for_plan", lambda: (manifest, None))
+    monkeypatch.setattr(
+        provisioner.image_cache,
+        "status",
+        lambda _authority: ("verified_source", None),
+    )
+    monkeypatch.setattr(
+        provisioner,
+        "_disk_usage",
+        lambda _path: SimpleNamespace(free=required),
+    )
+
+    plan = provisioner.prepare()
+
+    assert plan.launcher_reason is None
+    assert plan.host_free_space_required_bytes == required
+    assert required == 8_640_266_360
 
 
 def test_direct_terminate_keeps_domain_owned_until_stop_and_diagnostics_close() -> None:

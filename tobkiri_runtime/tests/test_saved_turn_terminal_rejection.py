@@ -103,12 +103,14 @@ def test_terminal_allocation_refusal_settles_failed(tmp_path: Path) -> None:
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
 
     def reject() -> None:
-        provisioning = ValueError(
-            "PackVM VZ provisioning requires at least 3.50 GiB free"
-        )
+        provisioning = ValueError("PackVM host capacity is insufficient")
         transport = SavedTurnRejectedError(
             "macOS VZ domain allocation failed",
-            error_code="BACKEND_UNAVAILABLE",
+            error_code="PACKVM_HOST_CAPACITY_INSUFFICIENT",
+            terminal_details={
+                "required_bytes": 3_758_950_778,
+                "available_bytes": 3_572_781_056,
+            },
         )
         transport.__cause__ = provisioning
         raise ProviderExecutionError("provider execution failed") from transport
@@ -117,7 +119,14 @@ def test_terminal_allocation_refusal_settles_failed(tmp_path: Path) -> None:
     result = _run(store, session)
     turn = result["turn"]
     assert turn["status"] == "failed"
-    assert turn["events"][-1]["details"]["error_code"] == "BACKEND_UNAVAILABLE"
+    assert turn["error"] == {
+        "code": "PACKVM_HOST_CAPACITY_INSUFFICIENT",
+        "message": "More host storage is required before this conversation can start.",
+    }
+    assert turn["events"][-1]["details"]["capacity"] == {
+        "required_bytes": 3_758_950_778,
+        "available_bytes": 3_572_781_056,
+    }
     assert session.conversations.get("conversation-1")["messages"] == []
 
 
@@ -243,15 +252,28 @@ def test_supervisor_marks_deterministic_allocation_refusal(
     """A provisioning ValueError is terminal; the guest never ran."""
     driver, allocator = _driver(tmp_path)
 
+    class CapacityError(ValueError):
+        code = "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+
+        required_bytes = 3_758_950_778
+        available_bytes = 3_572_781_056
+
     def refuse(**kwargs: Any) -> Any:
-        raise ValueError("PackVM VZ provisioning requires at least 3.50 GiB free")
+        raise CapacityError("PackVM host capacity is insufficient")
 
     allocator.allocate = refuse  # type: ignore[method-assign]
     with pytest.raises(
         SavedTurnRejectedError, match="domain allocation failed"
     ) as raised:
         _launch(driver)
-    assert raised.value.saved_terminal_error_code == "BACKEND_UNAVAILABLE"
+    assert (
+        raised.value.saved_terminal_error_code
+        == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+    )
+    assert raised.value.saved_terminal_details == {
+        "required_bytes": 3_758_950_778,
+        "available_bytes": 3_572_781_056,
+    }
 
 
 def test_supervisor_keeps_gate_contention_retryable(tmp_path: Path) -> None:
