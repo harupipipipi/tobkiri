@@ -118,7 +118,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnCanRestoreUnwrittenDraft, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
 import {
   bindOptimisticSavedTurnExpectedUserMessageId,
   bindOptimisticSavedTurnOverlay,
@@ -126,6 +126,7 @@ import {
   optimisticSavedTurnOverlayHasCanonicalUserMessage,
   SavedTurnViewFence,
   shouldDisplayOptimisticSavedTurnOverlay,
+  shouldRestoreUnwrittenSavedTurnDraft,
   type OptimisticSavedTurnOverlay,
   type SavedTurnViewTicket,
 } from "./lib/optimisticSavedTurn";
@@ -253,6 +254,17 @@ type InterruptedSavedTurnDraft = {
   conversationId: string | null;
   droppedWidgets: DroppedWidget[];
   input: string;
+  workspaceTabId: string;
+};
+
+type UnwrittenSavedTurnDraft = {
+  attachments: AttachedFile[];
+  clientId: string;
+  conversationId: string;
+  droppedWidgets: DroppedWidget[];
+  input: string;
+  operationId: string;
+  viewTicket: SavedTurnViewTicket;
   workspaceTabId: string;
 };
 
@@ -3115,6 +3127,7 @@ export function ChatApp() {
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
   const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
+  const [unwrittenSavedTurnDrafts, setUnwrittenSavedTurnDrafts] = useState<UnwrittenSavedTurnDraft[]>([]);
   const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -3550,6 +3563,61 @@ export function ChatApp() {
     input,
     interruptedSavedTurnDrafts,
     savedTurnViewEpoch,
+  ]);
+  useLayoutEffect(() => {
+    const draft = unwrittenSavedTurnDrafts.find((candidate) => (
+      candidate.workspaceTabId === activeWorkspaceTabId
+      && candidate.conversationId === activeConversationId
+    ));
+    if (!draft
+      || savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId
+      || !shouldRestoreUnwrittenSavedTurnDraft(draft, {
+        activeConversationId,
+        activeOperationId: activeSavedTurnOperationId,
+        activeViewTicket: savedTurnViewFenceRef.current.capture(),
+        composerIsEmpty: !input.trim()
+          && attachedFiles.length === 0
+          && droppedWidgets.length === 0
+          && composerEntityReferences.length === 0
+          && pendingMentionAttachmentPaths.length === 0,
+        conversationIsEmpty: activeConversation?.messages.length === 0,
+      })) return;
+    setUnwrittenSavedTurnDrafts((current) => current.filter((candidate) => (
+      candidate.clientId !== draft.clientId
+    )));
+    setInput(draft.input);
+    setAttachedFiles(draft.attachments);
+    setDroppedWidgets(draft.droppedWidgets);
+    setError("送信は失敗で終了しました。メッセージは保存されていません。下書きを復元しました。内容を確認してから送信してください。");
+  }, [
+    activeConversation?.messages.length,
+    activeConversationId,
+    activeSavedTurnOperationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    pendingMentionAttachmentPaths.length,
+    savedTurnViewEpoch,
+    unwrittenSavedTurnDrafts,
+  ]);
+  useEffect(() => {
+    if (!input.trim()
+      && attachedFiles.length === 0
+      && droppedWidgets.length === 0
+      && composerEntityReferences.length === 0
+      && pendingMentionAttachmentPaths.length === 0) return;
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== activeWorkspaceTabId
+    )));
+  }, [
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    pendingMentionAttachmentPaths.length,
   ]);
   useEffect(() => {
     if (!activeConversation) return;
@@ -4033,9 +4101,31 @@ export function ChatApp() {
     ]);
   };
 
+  const retainUnwrittenSavedTurnDraft = (draft: UnwrittenSavedTurnDraft) => {
+    if (savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId) return;
+    setUnwrittenSavedTurnDrafts((current) => [
+      ...current.filter((currentDraft) => currentDraft.workspaceTabId !== draft.workspaceTabId),
+      draft,
+    ]);
+  };
+
+  const discardUnwrittenSavedTurnDraft = (clientId: string) => {
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => draft.clientId !== clientId));
+  };
+
+  const discardUnwrittenSavedTurnDraftForRequest = (
+    conversationId: string,
+    operationId: string,
+  ) => {
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.conversationId !== conversationId || draft.operationId !== operationId
+    )));
+  };
+
   const discardInterruptedSavedTurnDraftForWorkspace = (workspaceTabId: string) => {
     savedTurnDraftNonceRef.current.delete(workspaceTabId);
     setInterruptedSavedTurnDrafts((current) => current.filter((draft) => draft.workspaceTabId !== workspaceTabId));
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => draft.workspaceTabId !== workspaceTabId));
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
@@ -4752,6 +4842,13 @@ export function ChatApp() {
     if (streamingConversationIdRef.current === activeConversationId) return;
     setIsGenerating(true);
     let disposed = false;
+    const pollViewTicket = savedTurnViewFenceRef.current.capture();
+    const pollUiIsCurrent = () => (
+      !disposed && savedTurnViewFenceRef.current.matches(pollViewTicket)
+    );
+    const setCurrentSteerItems = (items: ConversationSteerItem[]) => {
+      if (pollUiIsCurrent()) setSteerItems(items);
+    };
     let polling = false;
     const pollPendingConversation = () => {
       if (disposed || polling) return;
@@ -4781,7 +4878,7 @@ export function ChatApp() {
               turn,
             );
           }
-          setSteerItems(savedTurnGuidanceItems(turn));
+          setCurrentSteerItems(savedTurnGuidanceItems(turn));
           const terminalNotice = savedTurnTerminalNotice(
             turn,
             activeConversationId,
@@ -4793,13 +4890,40 @@ export function ChatApp() {
               throw error;
             });
             if (disposed) return;
-            if (conversation) setActiveConversation(conversation);
-            setError(terminalNotice);
+            const recoveryDraft = unwrittenSavedTurnDrafts.find((draft) => (
+              draft.conversationId === activeConversationId
+              && draft.operationId === pendingRequest.operationId
+            ));
+            const canRestoreUnwrittenDraft = Boolean(recoveryDraft)
+              && savedTurnViewFenceRef.current.matches(recoveryDraft!.viewTicket)
+              && !input.trim()
+              && attachedFiles.length === 0
+              && droppedWidgets.length === 0
+              && composerEntityReferences.length === 0
+              && pendingMentionAttachmentPaths.length === 0
+              && savedTurnCanRestoreUnwrittenDraft(
+                turn,
+                conversation,
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+            if (recoveryDraft && !canRestoreUnwrittenDraft) {
+              discardUnwrittenSavedTurnDraftForRequest(
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+            }
             discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
             forgetPendingRequest(activeConversationId);
-            replaceChatIdInUrl(activeConversationId, false);
-            setIsGenerating(false);
-            void refreshConversations(activeConversationId);
+            if (pollUiIsCurrent()) {
+              if (conversation) setActiveConversation(conversation);
+              setError(canRestoreUnwrittenDraft
+                ? "送信は失敗で終了しました。メッセージは保存されていません。"
+                : terminalNotice);
+              replaceChatIdInUrl(activeConversationId, false);
+              setIsGenerating(false);
+              void refreshConversations(activeConversationId);
+            }
             return;
           }
           if (turn.status === "completed") {
@@ -4811,7 +4935,7 @@ export function ChatApp() {
             );
             if (disposed) return;
             if (chain.state === "unsettled") {
-              setSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
+              setCurrentSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
               updatePendingRequests((current) => {
                 const entry = current[activeConversationId];
                 const status = "追加指示の連鎖を照合中です。自動再送はしません。";
@@ -4821,7 +4945,7 @@ export function ChatApp() {
               return;
             }
             if (chain.state === "active") {
-              setSteerItems(savedTurnChainGuidanceItems(chain));
+              setCurrentSteerItems(savedTurnChainGuidanceItems(chain));
               let activeTurn = (
                 await api.getSavedTurnEvents(chain.active.id, activeConversationId)
               ).turn;
@@ -4859,7 +4983,7 @@ export function ChatApp() {
               );
               if (disposed) return;
               if (chain.state !== "settled") {
-                setSteerItems(chain.state === "active"
+                setCurrentSteerItems(chain.state === "active"
                   ? savedTurnChainGuidanceItems(chain)
                   : chain.root ? savedTurnGuidanceItems(chain.root) : []);
                 updatePendingRequests((current) => {
@@ -4871,7 +4995,7 @@ export function ChatApp() {
                 return;
               }
             }
-            setSteerItems(savedTurnGuidanceItems(chain.root));
+            setCurrentSteerItems(savedTurnGuidanceItems(chain.root));
             const guidanceTerminalNotice = savedTurnGuidanceTerminalNotice(
               listedTurns,
               activeConversationId,
@@ -4975,7 +5099,19 @@ export function ChatApp() {
     pollPendingConversation();
     const interval = window.setInterval(pollPendingConversation, 1500);
     return () => { disposed = true; window.clearInterval(interval); };
-  }, [activeConversationId, isConversationPending, latestActivePendingSignature, pendingRequest]);
+  }, [
+    activeConversationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    isConversationPending,
+    latestActivePendingSignature,
+    pendingMentionAttachmentPaths.length,
+    pendingRequest,
+    unwrittenSavedTurnDrafts,
+  ]);
 
   useEffect(() => {
     const staleIds = Object.entries(pendingRequests)
@@ -7497,6 +7633,9 @@ export function ChatApp() {
     setInterruptedSavedTurnDrafts((current) => current.filter((draft) => (
       draft.workspaceTabId !== submissionViewTicket.workspaceTabId
     )));
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== submissionViewTicket.workspaceTabId
+    )));
     activeSavedTurnSubmissionRef.current = {
       clientId: optimisticOverlayClientId,
       ticket: submissionViewTicket,
@@ -7647,6 +7786,18 @@ export function ChatApp() {
           ),
         ]);
       }
+      if (startsWithoutConversation) {
+        retainUnwrittenSavedTurnDraft({
+          attachments: submittedAttachments,
+          clientId: optimisticOverlayClientId,
+          conversationId: conversation.id,
+          droppedWidgets: droppedWidgetsForSubmit,
+          input: inputForSubmit,
+          operationId,
+          viewTicket: submissionViewTicket,
+          workspaceTabId: submissionViewTicket.workspaceTabId,
+        });
+      }
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
@@ -7712,6 +7863,7 @@ export function ChatApp() {
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
       ]);
       forgetPendingRequest(conversation.id);
+      discardUnwrittenSavedTurnDraft(optimisticOverlayClientId);
       if (submissionUiIsCurrent()) {
         setError(null);
         setSavedTurnCompletionNotice(snapshotNotice
@@ -8257,6 +8409,11 @@ export function ChatApp() {
             ) : showNewConversationStage && !isLoading ? (
               <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
                 <div className="w-full">
+                  {error && (
+                    <div className="mx-auto mb-4 max-w-[720px] rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm leading-relaxed text-red-100" role="alert">
+                      {error}
+                    </div>
+                  )}
                   <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
                     {composerHomeTitle}
                   </h1>

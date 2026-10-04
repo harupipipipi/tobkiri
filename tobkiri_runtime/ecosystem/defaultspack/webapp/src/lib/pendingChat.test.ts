@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { ChatMessage, SavedTurnResult } from "./api";
+import type { ChatMessage, Conversation, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
   chatContinuationPacketMatchesTurn,
@@ -9,6 +9,7 @@ import {
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
   savedTurnProgressState,
+  savedTurnCanRestoreUnwrittenDraft,
   savedTurnTerminalNotice,
   updateSavedTurnNotice,
   isAssistantMessageStillRunning,
@@ -214,6 +215,75 @@ test("only matching terminal saved turns stop reconciliation", () => {
   ]) {
     assert.equal(savedTurnTerminalNotice(candidate, "c1", "turn-1"), null);
   }
+});
+
+test("only an exact root receipt proving no persistence permits draft restoration", () => {
+  const userMessageId = `message:${"a".repeat(64)}`;
+  const assistantMessageId = `message:${"b".repeat(64)}`;
+  const noMessages: Pick<Conversation, "id" | "messages"> = { id: "c1", messages: [] };
+  const failed: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "failed", revision: 3,
+    events: [
+      {
+        name: "turn.running",
+        details: {
+          phase: "saved_execution_claimed",
+          user_message_id: userMessageId,
+          assistant_message_id: assistantMessageId,
+        },
+      },
+      {
+        name: "turn.failed",
+        details: {
+          phase: "saved_execution_failed",
+          user_persistence: "not_written",
+          assistant_persistence: "not_written",
+        },
+      },
+    ],
+  };
+  const canRestore = (
+    turn: SavedTurnResult["turn"],
+    conversation: typeof noMessages | null = noMessages,
+  ) => savedTurnCanRestoreUnwrittenDraft(turn, conversation, "c1", "turn-1");
+
+  assert.equal(canRestore(failed), true);
+  assert.equal(canRestore({
+    ...failed,
+    status: "cancelled",
+    events: [failed.events![0], {
+      name: "turn.cancelled",
+      details: {
+        phase: "saved_execution_cancelled",
+        user_persistence: "not_written",
+        assistant_persistence: "not_written",
+      },
+    }],
+  }), true);
+  assert.equal(canRestore({ ...failed, id: "other" }), false);
+  assert.equal(canRestore({ ...failed, result_reference: {
+    conversation_id: "c1", conversation_revision: 2, user_message_id: userMessageId,
+    assistant_message_id: assistantMessageId, outcome_digest: `sha256:${"c".repeat(64)}`,
+  } }), false);
+  assert.equal(canRestore({ ...failed, guidance_parent_turn_id: "parent" }), false);
+  assert.equal(canRestore({ ...failed, guidance: [{ id: "guidance-1", status: "queued", value: {} }] }), false);
+  assert.equal(canRestore({ ...failed, events: [failed.events![0]] }), false);
+  assert.equal(canRestore({
+    ...failed,
+    events: [...failed.events!, failed.events![1]],
+  }), false);
+  assert.equal(canRestore(failed, {
+    id: "c1",
+    messages: [message({
+      id: userMessageId,
+      role: "user",
+      metadata: { turn_id: "turn-1" },
+    })],
+  }), false);
+  assert.equal(canRestore(failed, {
+    id: "c1",
+    messages: [message({ id: assistantMessageId, role: "assistant", metadata: null })],
+  }), false);
 });
 
 test("stale user-only pending is cleared after reload grace", () => {

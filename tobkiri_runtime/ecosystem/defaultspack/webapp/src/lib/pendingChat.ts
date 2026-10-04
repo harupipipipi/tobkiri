@@ -157,6 +157,61 @@ export function savedTurnTerminalNotice(
   return null;
 }
 
+/**
+ * Returns whether a terminal saved root proves that neither canonical message
+ * was written. This is deliberately narrower than a terminal error: a lost
+ * reply, a completed receipt, or a guidance descendant must keep the normal
+ * reconciliation path and must never restore a draft for resubmission.
+ */
+export function savedTurnCanRestoreUnwrittenDraft(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): boolean {
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || (turn.status !== "failed" && turn.status !== "cancelled")
+    || turn.result_reference
+    || (turn.guidance?.length ?? 0) > 0
+    || turn.guidance_parent_turn_id
+    || turn.guidance_id
+    || turn.guidance_source_turn_id
+    || conversation === null
+    || conversation.id !== conversationId) return false;
+  const terminalName = turn.status === "failed" ? "turn.failed" : "turn.cancelled";
+  const terminalPhase = turn.status === "failed"
+    ? "saved_execution_failed"
+    : "saved_execution_cancelled";
+  const terminalEvents = (turn.events ?? []).filter(
+    (event) => event.name === terminalName,
+  );
+  const claims = (turn.events ?? []).filter(
+    (event) => event.name === "turn.running"
+      && event.details?.phase === "saved_execution_claimed",
+  );
+  if (terminalEvents.length !== 1 || claims.length !== 1) return false;
+  const claim = claims[0].details;
+  const terminal = terminalEvents[0].details;
+  const claimedUserMessageId = claim?.user_message_id;
+  const claimedAssistantMessageId = claim?.assistant_message_id;
+  if (typeof claimedUserMessageId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(claimedUserMessageId)
+    || typeof claimedAssistantMessageId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(claimedAssistantMessageId)
+    || terminal?.phase !== terminalPhase
+    || terminal.user_persistence !== "not_written"
+    || terminal.assistant_persistence !== "not_written") return false;
+  return !conversation.messages.some((message) => (
+    message.id === claimedUserMessageId
+    || message.id === claimedAssistantMessageId
+    || (
+      message.conversation_id === conversationId
+      && message.metadata?.turn_id === turnId
+      && (message.role === "user" || message.role === "assistant")
+    )
+  ));
+}
+
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;

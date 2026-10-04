@@ -8,6 +8,7 @@ import {
   expectedSavedTurnUserMessageId,
   SavedTurnViewFence,
   shouldDisplayOptimisticSavedTurnOverlay,
+  shouldRestoreUnwrittenSavedTurnDraft,
 } from "./optimisticSavedTurn";
 
 const conversationId = "conversation-1";
@@ -82,6 +83,35 @@ test("fresh conversation adoption renews the submitting view ticket without a ta
   assert.equal(fence.adoptConversation(draftTicket, conversationId), null);
   fence.synchronize("workspace-b", null);
   assert.equal(fence.matches(adoptedTicket), false);
+});
+
+test("unwritten fresh-root drafts restore only in the exact empty adopted view", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const initialTicket = fence.capture();
+  const adoptedTicket = fence.adoptConversation(initialTicket, conversationId)!;
+  const draft = {
+    conversationId,
+    operationId,
+    viewTicket: adoptedTicket,
+  };
+  const canRestore = (patch: Partial<Parameters<typeof shouldRestoreUnwrittenSavedTurnDraft>[1]> = {}) => (
+    shouldRestoreUnwrittenSavedTurnDraft(draft, {
+      activeConversationId: conversationId,
+      activeOperationId: null,
+      activeViewTicket: fence.capture(),
+      composerIsEmpty: true,
+      conversationIsEmpty: true,
+      ...patch,
+    })
+  );
+
+  assert.equal(canRestore(), true);
+  assert.equal(canRestore({ activeOperationId: operationId }), false);
+  assert.equal(canRestore({ composerIsEmpty: false }), false);
+  assert.equal(canRestore({ conversationIsEmpty: false }), false);
+  fence.synchronize("workspace-b", null);
+  fence.synchronize("workspace-a", conversationId);
+  assert.equal(canRestore(), false);
 });
 
 test("only the claimed exact root user id replaces the optimistic overlay", () => {
@@ -215,4 +245,19 @@ test("terminal references provide an expected id only with an exact completed ro
     ...completed,
     result_reference: { ...completed.result_reference, outcome_digest: "invalid" },
   }, conversationId, operationId), null);
+});
+
+test("a stale poll ticket cannot apply steer previews after a tab change", () => {
+  const fence = new SavedTurnViewFence("workspace-a", conversationId);
+  const stalePollTicket = fence.capture();
+  const previews: string[] = [];
+  const applyPreview = (value: string) => {
+    if (fence.matches(stalePollTicket)) previews.push(value);
+  };
+
+  applyPreview("root-guidance");
+  fence.synchronize("workspace-b", null);
+  applyPreview("stale-guidance");
+
+  assert.deepEqual(previews, ["root-guidance"]);
 });

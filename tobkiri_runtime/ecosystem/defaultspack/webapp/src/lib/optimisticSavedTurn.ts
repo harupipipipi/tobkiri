@@ -67,6 +67,38 @@ export class SavedTurnViewFence {
   }
 }
 
+/**
+ * Allows recovery of a failed fresh-conversation draft only in the exact view
+ * that adopted its durable root. A later tab/conversation transition, a live
+ * pending root, or new composer state always wins over the old draft.
+ */
+export function shouldRestoreUnwrittenSavedTurnDraft(
+  draft: Pick<OptimisticSavedTurnOverlay, "conversationId" | "operationId" | "viewTicket">,
+  {
+    activeConversationId,
+    activeOperationId,
+    activeViewTicket,
+    composerIsEmpty,
+    conversationIsEmpty,
+  }: {
+    activeConversationId: string | null;
+    activeOperationId: string | null;
+    activeViewTicket: SavedTurnViewTicket;
+    composerIsEmpty: boolean;
+    conversationIsEmpty: boolean;
+  },
+): boolean {
+  return draft.conversationId !== null
+    && draft.operationId !== null
+    && draft.conversationId === activeConversationId
+    && activeOperationId === null
+    && draft.viewTicket.workspaceTabId === activeViewTicket.workspaceTabId
+    && draft.viewTicket.conversationId === activeViewTicket.conversationId
+    && draft.viewTicket.epoch === activeViewTicket.epoch
+    && composerIsEmpty
+    && conversationIsEmpty;
+}
+
 export function createOptimisticSavedTurnOverlay({
   clientId,
   content,
