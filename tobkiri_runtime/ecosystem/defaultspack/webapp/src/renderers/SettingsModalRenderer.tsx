@@ -4753,14 +4753,15 @@ export function SettingsModalRenderer({
     </aside>
   );
 
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <div ref={layerRef} className="fixed inset-0 rumi-layer-modal flex items-center justify-center" data-testid="settings-modal-layer">
+  // The fixed modal layer must leave the DOM in the same commit that closes
+  // Settings. Native WebKit can pause exit animation frames while the window
+  // is backgrounded; retaining this layer through AnimatePresence would then
+  // keep an opaque, input-blocking Settings surface above the live chat.
+  return isOpen ? (
+    <div ref={layerRef} className="fixed inset-0 rumi-layer-modal flex items-center justify-center" data-testid="settings-modal-layer">
           <motion.div
             initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.16 }}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={requestClose}
@@ -4774,7 +4775,6 @@ export function SettingsModalRenderer({
             aria-labelledby="rumi-settings-dialog-title"
             initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.98, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.98, y: 8 }}
             transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 34 }}
             className="relative flex h-[min(920px,calc(100dvh-20px))] w-[min(1480px,calc(100vw-16px))] min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60 max-sm:h-[calc(100dvh-4px)] max-sm:w-screen max-sm:rounded-none max-sm:border-x-0"
           >
@@ -5202,8 +5202,6 @@ export function SettingsModalRenderer({
               ) : null}
             </AnimatePresence>
           </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-  );
+    </div>
+  ) : null;
 }
