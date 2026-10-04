@@ -31,7 +31,9 @@ class CancellationObservation:
 class _TrackedChild:
     """One private nested Broker request registered by a live Host scope."""
 
+    envelope: RequestEnvelope
     future: Future[object] | None = None
+    cancellation_eligible: bool = False
     backend_cancelled: bool = False
     queued_cancelled: bool = False
     completed: bool = False
@@ -67,30 +69,41 @@ class _NestedCancellationProof:
         self._next_child_id = 0
         self._verified_drained = threading.Event()
 
-    def matches_outer(
+    def matches_invocation(
         self,
         envelope: RequestEnvelope,
         owner_principal: str,
         owner_session: str,
     ) -> bool:
-        """Return whether this private proof belongs to the exact outer call."""
-
-        return (
-            envelope is self._envelope
-            and owner_principal == self._owner_principal
-            and owner_session == self._owner_session
-        )
-
-    def validate_parent(self, cancellation_requested: threading.Event) -> None:
-        """Require the exact live outer cancellation signal without mutation."""
+        """Match only this live root or an exact registered, still-active child."""
 
         with self._registry._lock:
             if (
-                self._registry._records.get(self._key) is not self
-                or self._scope_exited
-                or self._cancellation_requested
+                owner_principal != self._owner_principal
+                or owner_session != self._owner_session
+                or not self._parent_available_locked()
+            ):
+                return False
+            if envelope is self._envelope:
+                return not self._scope_exited
+            return any(
+                child.envelope is envelope
+                and self._child_active(child)
+                and (
+                    envelope.cancellation_requested
+                    is self._envelope.cancellation_requested
+                )
+                and self._matches_child_context(envelope)
+                for child in self._children.values()
+            )
+
+    def validate_parent(self, cancellation_requested: threading.Event) -> None:
+        """Require the exact live tree cancellation signal without mutation."""
+
+        with self._registry._lock:
+            if (
+                not self._parent_available_locked()
                 or cancellation_requested is not self._envelope.cancellation_requested
-                or cancellation_requested.is_set()
             ):
                 raise PermissionError("nested cancellation parent is unavailable")
 
@@ -101,7 +114,7 @@ class _NestedCancellationProof:
             self._require_live_child(envelope)
             self._next_child_id += 1
             child_id = self._next_child_id
-            self._children[child_id] = _TrackedChild()
+            self._children[child_id] = _TrackedChild(envelope=envelope)
             return child_id
 
     def abandon_child(self, child_id: int) -> None:
@@ -120,9 +133,17 @@ class _NestedCancellationProof:
             raise PermissionError("nested cancellation future is invalid")
         with self._registry._lock:
             child = self._children.get(child_id)
-            if child is None or child.future is not None:
+            if (
+                child is None
+                or child.future is not None
+                or any(current.future is future for current in self._children.values())
+            ):
                 raise PermissionError("nested cancellation child is unavailable")
             child.future = future
+            if self._cancellation_requested:
+                # A late-bound, already-done Future has no observable ordering
+                # against Stop intent.  Only still-pending work can prove drain.
+                child.cancellation_eligible = not future.done()
 
         def complete(completed_future: Future[object]) -> None:
             with self._registry._lock:
@@ -183,6 +204,11 @@ class _NestedCancellationProof:
         """Start the private drain condition before signalling the outer request."""
 
         with self._registry._lock:
+            if not self._cancellation_requested:
+                for child in self._children.values():
+                    child.cancellation_eligible = (
+                        child.future is not None and not child.future.done()
+                    )
             self._cancellation_requested = True
             self._refresh_verified_drain_locked()
 
@@ -212,11 +238,10 @@ class _NestedCancellationProof:
 
     def _require_live_child(self, envelope: RequestEnvelope) -> None:
         if (
-            self._registry._records.get(self._key) is not self
-            or self._scope_exited
-            or self._cancellation_requested
-            or self._envelope.cancellation_requested.is_set()
+            not isinstance(envelope, RequestEnvelope)
+            or not self._parent_available_locked()
             or envelope is self._envelope
+            or any(child.envelope is envelope for child in self._children.values())
             or (
                 envelope.cancellation_requested
                 is not self._envelope.cancellation_requested
@@ -237,7 +262,32 @@ class _NestedCancellationProof:
             and child.profile_authority_digest == outer.profile_authority_digest
             and child.security_epoch == outer.security_epoch
             and child.fencing_token == outer.fencing_token
+            and type(envelope.deadline_monotonic) in (int, float)
+            and math.isfinite(envelope.deadline_monotonic)
+            and envelope.deadline_monotonic > time.monotonic()
             and envelope.deadline_monotonic <= self._envelope.deadline_monotonic
+        )
+
+    @staticmethod
+    def _child_active(child: _TrackedChild) -> bool:
+        # Submission may enter the child before bind_child attaches its Future.
+        return not child.completed and (
+            child.future is None or not child.future.done()
+        )
+
+    def _parent_available_locked(self) -> bool:
+        return (
+            self._registry._records.get(self._key) is self
+            and not self._registry._closed
+            and not self._cancellation_requested
+            and not self._envelope.cancellation_requested.is_set()
+            and type(self._envelope.deadline_monotonic) in (int, float)
+            and math.isfinite(self._envelope.deadline_monotonic)
+            and self._envelope.deadline_monotonic > time.monotonic()
+            and (
+                not self._scope_exited
+                or any(self._child_active(child) for child in self._children.values())
+            )
         )
 
     def _child_for_future_locked(
@@ -254,13 +304,22 @@ class _NestedCancellationProof:
             and self._scope_exited
             and bool(self._children)
             and all(
-                (child.backend_cancelled or child.queued_cancelled)
+                child.cancellation_eligible
+                and (child.backend_cancelled or child.queued_cancelled)
                 and child.completed
                 and child.resource_drained
                 for child in self._children.values()
             )
         ):
             self._verified_drained.set()
+        # A root can leave before its exact nested Futures finish.  Retain the
+        # private proof for those children, then release it after resource drain.
+        if self._scope_exited and all(
+            child.completed and child.resource_drained
+            for child in self._children.values()
+        ):
+            if self._registry._records.get(self._key) is self:
+                del self._registry._records[self._key]
 
 
 _active_nested_cancellation_proof: (
@@ -275,10 +334,10 @@ def nested_cancellation_proof_for(
     owner_principal: str,
     owner_session: str,
 ) -> _NestedCancellationProof | None:
-    """Return the current exact Host scope's private nested-cancellation proof."""
+    """Return the current exact root or enrolled child's private Host proof."""
 
     proof = _active_nested_cancellation_proof.get()
-    if proof is None or not proof.matches_outer(
+    if proof is None or not proof.matches_invocation(
         envelope, owner_principal, owner_session
     ):
         return None
@@ -347,6 +406,8 @@ class OwnedCancellationHandles:
             self._closed = True
             for signal, _completed in self._active.values():
                 signal.set()
+            for proof in self._records.values():
+                proof._envelope.cancellation_requested.set()
 
 
 class OwnedCancellationBinding:
@@ -379,7 +440,8 @@ class OwnedCancellationBinding:
             # Lock contention may outlive the captured invocation.
             self._guard()
             if (
-                self._role != "execute" or registry._closed or key in registry._active
+                self._role != "execute" or registry._closed
+                or key in registry._active or key in registry._records
                 or self._signal.is_set()
             ):
                 raise PermissionError("operation cancellation handle is unavailable")
@@ -401,7 +463,6 @@ class OwnedCancellationBinding:
                     proof.close_scope()
                     completed.set()
                     del registry._active[key]
-                    registry._records.pop(key, None)
 
     def active_for(self, reference: str) -> bool:
         """Report whether any owner still tracks this reference in this group."""

@@ -13812,7 +13812,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8"
+              "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -13848,7 +13848,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8"
+              "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -13884,7 +13884,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8"
+              "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -13920,7 +13920,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8"
+              "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -13958,7 +13958,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:ac3530d43da1452c0ed993e5d91ad8c53c42984f2d16598057a051957ab44ec8",
+          "digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
           "kind": "executable",
           "path": "runtime/adapter.py"
         }

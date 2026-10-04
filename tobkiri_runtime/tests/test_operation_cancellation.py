@@ -3,6 +3,7 @@
 from dataclasses import replace
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import nullcontext
+import contextvars
 import threading
 import time
 
@@ -360,3 +361,407 @@ def test_verified_drain_never_waits_past_stop_deadline() -> None:
     with execute.track("turn"):
         observation = cancel.request("turn")
     assert not observation.wait_for_verified_drain(time.monotonic() + 0.001)
+
+
+def test_nested_host_futures_require_grandchild_exit_and_resource_drain() -> None:
+    """An exited gateway cannot confirm Stop while its adapter still owns work."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    gateway = _child_envelope(execution)
+    adapter = _child_envelope(gateway)
+    gateway_ready, adapter_entered, release_adapter = (
+        threading.Event() for _ in range(3)
+    )
+    adapter_work: list[tuple[int, Future[object]]] = []
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        try:
+            with execute.track("turn"):
+                proof = nested_cancellation_proof_for(execution, "owner", "session")
+                assert proof is not None
+
+                def invoke_adapter() -> None:
+                    assert nested_cancellation_proof_for(
+                        adapter, "owner", "session"
+                    ) is proof
+                    adapter_entered.set()
+                    assert release_adapter.wait(2), "adapter was not released"
+
+                def invoke_gateway() -> None:
+                    nested = nested_cancellation_proof_for(
+                        gateway, "owner", "session"
+                    )
+                    assert nested is proof
+                    nested.validate_parent(gateway.cancellation_requested)
+                    adapter_id = nested.reserve_child(adapter)
+                    adapter_context = contextvars.copy_context()
+                    adapter_future = pool.submit(adapter_context.run, invoke_adapter)
+                    nested.bind_child(adapter_id, adapter_future)
+                    adapter_work.append((adapter_id, adapter_future))
+                    gateway_ready.set()
+                    assert gateway.cancellation_requested.wait(2)
+
+                gateway_id = proof.reserve_child(gateway)
+                gateway_context = contextvars.copy_context()
+                gateway_future = pool.submit(gateway_context.run, invoke_gateway)
+                proof.bind_child(gateway_id, gateway_future)
+                assert gateway_ready.wait(2), "gateway did not submit its adapter"
+                assert adapter_entered.wait(2), "adapter did not enter"
+                adapter_id, adapter_future = adapter_work[0]
+                observation = cancel.request("turn")
+                proof.record_backend_cancellation(gateway_id, gateway_future)
+                proof.record_backend_cancellation(adapter_id, adapter_future)
+                gateway_future.result(timeout=2)
+                proof.record_resource_drain(gateway_future)
+                assert not adapter_future.done()
+            assert observation.completed.is_set()
+            assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+            release_adapter.set()
+            adapter_future.result(timeout=2)
+            assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+            proof.record_resource_drain(adapter_future)
+            assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+            assert not registry._records
+        finally:
+            execution.cancellation_requested.set()
+            release_adapter.set()
+
+
+def test_exact_child_can_propagate_after_root_exit_until_all_resources_drain() -> None:
+    """A copied child Host context stays enrolled after its root returns normally."""
+
+    registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    child = _child_envelope(execution)
+    child_future = Future()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(child)
+        proof.bind_child(child_id, child_future)
+        child_context = contextvars.copy_context()
+    assert not registry._active
+    assert child_context.run(
+        nested_cancellation_proof_for, execution, "owner", "session"
+    ) is None
+    nested = child_context.run(
+        nested_cancellation_proof_for, child, "owner", "session"
+    )
+    assert nested is proof
+    nested.validate_parent(child.cancellation_requested)
+    grandchild = _child_envelope(child)
+    grandchild_id = nested.reserve_child(grandchild)
+    grandchild_future = Future()
+    nested.bind_child(grandchild_id, grandchild_future)
+    child_future.set_result(None)
+    nested.record_resource_drain(child_future)
+    assert child_context.run(
+        nested_cancellation_proof_for, child, "owner", "session"
+    ) is None
+    assert child_context.run(
+        nested_cancellation_proof_for, grandchild, "owner", "session"
+    ) is proof
+    with pytest.raises(PermissionError):
+        with execute.track("turn"):
+            pytest.fail("a live child proof must not be replaced by a new root")
+    grandchild_future.set_result(None)
+    nested.record_resource_drain(grandchild_future)
+    assert not registry._records
+    assert child_context.run(
+        nested_cancellation_proof_for, grandchild, "owner", "session"
+    ) is None
+    with pytest.raises(PermissionError):
+        nested.validate_parent(child.cancellation_requested)
+    with execute.track("turn"):
+        assert nested_cancellation_proof_for(execution, "owner", "session") is not proof
+
+
+def test_child_lookup_requires_exact_enrollment_and_rejects_abandonment() -> None:
+    """Matching fields or a shared Event cannot impersonate a reserved child."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    child = _child_envelope(execution)
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        assert nested_cancellation_proof_for(child, "owner", "session") is None
+        child_id = proof.reserve_child(child)
+        # A worker may start before bind_child publishes its exact Future.
+        assert nested_cancellation_proof_for(child, "owner", "session") is proof
+        fabricated = replace(child)
+        assert fabricated == child and fabricated is not child
+        assert nested_cancellation_proof_for(fabricated, "owner", "session") is None
+        with pytest.raises(PermissionError):
+            proof.reserve_child(child)
+        proof.abandon_child(child_id)
+        assert nested_cancellation_proof_for(child, "owner", "session") is None
+
+
+@pytest.mark.parametrize("owner,session", [("foreign", "session"), ("owner", "other")])
+def test_exact_child_proof_rejects_foreign_presentation_owner(
+    owner: str, session: str,
+) -> None:
+    """An exact registered child still cannot cross presentation ownership."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = _child_envelope(execution)
+        proof.reserve_child(child)
+        assert nested_cancellation_proof_for(execution, owner, session) is None
+        assert nested_cancellation_proof_for(child, owner, session) is None
+
+
+@pytest.mark.parametrize("field,value", [
+    ("profile_id", "other"), ("profile_revision", digest("revision")),
+    ("activation_id", "other"), ("activation_digest", digest("activation")),
+    ("plan_digest", digest("plan")), ("profile_authority_digest", digest("authority")),
+    ("security_epoch", 10), ("fencing_token", 2),
+])
+def test_child_reservation_rejects_foreign_capture(field: str, value: object) -> None:
+    """A shared root signal cannot authorize another activation's child."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = replace(
+            _child_envelope(execution),
+            context=replace(execution.context, **{field: value}),
+        )
+        with pytest.raises(PermissionError):
+            proof.reserve_child(child)
+        assert nested_cancellation_proof_for(child, "owner", "session") is None
+
+
+@pytest.mark.parametrize("deadline", [
+    0.0, float("nan"), float("inf"), float("-inf"), True, None, "invalid",
+])
+def test_child_reservation_rejects_expired_or_invalid_deadline(
+    deadline: object,
+) -> None:
+    """Every enrolled child has a live finite deadline inside its root budget."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = replace(_child_envelope(execution), deadline_monotonic=deadline)
+        with pytest.raises(PermissionError):
+            proof.reserve_child(child)
+
+
+def test_child_reservation_rejects_foreign_signal_and_extended_deadline() -> None:
+    """A child cannot exchange the private signal or extend the root's budget."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        for child in (
+            replace(
+                _child_envelope(execution),
+                cancellation_requested=threading.Event(),
+            ),
+            replace(
+                _child_envelope(execution),
+                deadline_monotonic=execution.deadline_monotonic + 1,
+            ),
+        ):
+            with pytest.raises(PermissionError):
+                proof.reserve_child(child)
+
+
+def test_child_proof_rejects_completed_or_cancelled_identity() -> None:
+    """Exited and cancelled children cannot authorize another nested invocation."""
+
+    _registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = _child_envelope(execution)
+        child_id = proof.reserve_child(child)
+        child_future = Future()
+        proof.bind_child(child_id, child_future)
+        assert nested_cancellation_proof_for(child, "owner", "session") is proof
+        child_future.set_result(None)
+        assert nested_cancellation_proof_for(child, "owner", "session") is None
+        proof.record_resource_drain(child_future)
+        assert nested_cancellation_proof_for(child, "owner", "session") is None
+        live_child = _child_envelope(execution)
+        proof.reserve_child(live_child)
+        cancel.request("turn")
+        assert nested_cancellation_proof_for(live_child, "owner", "session") is None
+        with pytest.raises(PermissionError):
+            proof.validate_parent(live_child.cancellation_requested)
+
+
+def test_registry_close_signals_a_child_retained_after_root_exit() -> None:
+    """Shutdown revokes late child propagation even after the root handle exits."""
+
+    registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    child = _child_envelope(execution)
+    child_future = Future()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(child)
+        proof.bind_child(child_id, child_future)
+        child_context = contextvars.copy_context()
+    registry.close()
+    assert execution.cancellation_requested.is_set()
+    assert child_context.run(
+        nested_cancellation_proof_for, child, "owner", "session"
+    ) is None
+    with pytest.raises(PermissionError):
+        proof.reserve_child(_child_envelope(child))
+    child_future.set_result(None)
+    proof.record_resource_drain(child_future)
+    assert not registry._records
+
+
+def test_duplicate_or_foreign_future_cannot_supply_child_proof() -> None:
+    """One exact Future can bind only once and foreign acknowledgements fail."""
+
+    _registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        first_id = proof.reserve_child(_child_envelope(execution))
+        second_id = proof.reserve_child(_child_envelope(execution))
+        child, foreign = Future(), Future()
+        proof.bind_child(first_id, child)
+        with pytest.raises(PermissionError):
+            proof.bind_child(first_id, child)
+        with pytest.raises(PermissionError):
+            proof.bind_child(second_id, child)
+        proof.abandon_child(second_id)
+        observation = cancel.request("turn")
+        with pytest.raises(PermissionError):
+            proof.record_backend_cancellation(first_id, foreign)
+        with pytest.raises(PermissionError):
+            proof.record_queued_cancellation(first_id, foreign)
+        with pytest.raises(PermissionError):
+            proof.record_resource_drain(foreign)
+        child.set_result(None)
+        proof.record_resource_drain(child)
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+
+
+def test_exact_child_cannot_borrow_another_current_invocation_proof() -> None:
+    """An envelope enrolled in one tree never qualifies for another tree."""
+
+    registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("first"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = _child_envelope(execution)
+        child_id = proof.reserve_child(child)
+        child_future = Future()
+        proof.bind_child(child_id, child_future)
+        first_context = contextvars.copy_context()
+        second_root = replace(execution)
+        with _binding(registry, second_root, "execute").track("second"):
+            assert nested_cancellation_proof_for(child, "owner", "session") is None
+            assert nested_cancellation_proof_for(execution, "owner", "session") is None
+            assert first_context.run(
+                nested_cancellation_proof_for, child, "owner", "session"
+            ) is proof
+        child_future.set_result(None)
+        proof.record_resource_drain(child_future)
+    assert not registry._records
+
+
+def test_expired_exact_child_cannot_propagate_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deadline expiry revokes proof lookup without waiting for a Future to exit."""
+
+    _registry, execution, execute, _cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child = replace(
+            _child_envelope(execution),
+            deadline_monotonic=execution.deadline_monotonic - 1,
+        )
+        child_id = proof.reserve_child(child)
+        child_future = Future()
+        proof.bind_child(child_id, child_future)
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                "tobkiri_host.operation_cancellation.time.monotonic",
+                lambda: child.deadline_monotonic + 0.5,
+            )
+            assert nested_cancellation_proof_for(execution, "owner", "session") is proof
+            assert nested_cancellation_proof_for(child, "owner", "session") is None
+        child_future.set_result(None)
+        proof.record_resource_drain(child_future)
+
+
+@pytest.mark.parametrize("completed_before_stop", [True, False])
+def test_stop_ack_distinguishes_precompleted_child_from_prompt_cancel_exit(
+    completed_before_stop: bool,
+) -> None:
+    """A post-Stop backend ACK cannot claim work that had already completed."""
+
+    _registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        if completed_before_stop:
+            child.set_result(None)
+        observation = cancel.request("turn")
+        if not completed_before_stop:
+            # Authenticated cancellation may finish the child before its ACK.
+            child.set_result(None)
+        assert child.done()
+        proof.record_backend_cancellation(child_id, child)
+        proof.record_resource_drain(child)
+    expected = not completed_before_stop
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.01) is expected
+
+
+@pytest.mark.parametrize("completed_before_binding", [True, False])
+def test_late_future_binding_requires_observable_work_after_stop_intent(
+    completed_before_binding: bool,
+) -> None:
+    """An already-done, late-bound Future cannot prove when it completed."""
+
+    _registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        observation = cancel.request("turn")
+        child = Future()
+        if completed_before_binding:
+            child.set_result(None)
+        proof.bind_child(child_id, child)
+        if not completed_before_binding:
+            child.set_result(None)
+        proof.record_backend_cancellation(child_id, child)
+        proof.record_resource_drain(child)
+    expected = not completed_before_binding
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.01) is expected
+
+
+def test_repeated_stop_preserves_first_intent_for_prompt_child_completion() -> None:
+    """A repeated Stop cannot reclassify a child that finished after intent."""
+
+    _registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        observation = cancel.request("turn")
+        child.set_result(None)
+        assert cancel.request("turn").completed is observation.completed
+        proof.record_backend_cancellation(child_id, child)
+        proof.record_resource_drain(child)
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)

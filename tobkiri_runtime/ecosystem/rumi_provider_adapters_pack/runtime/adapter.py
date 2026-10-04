@@ -6,6 +6,7 @@ import hashlib
 import http.client
 import json
 import math
+import threading
 import time
 from typing import Any, Callable, Mapping
 import urllib.parse
@@ -20,6 +21,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.http_request_lifetime import HttpRequestLifetime
 from ecosystem.rumi_provider_registry_pack.runtime.local_endpoint import (
     local_openai_endpoint,
 )
@@ -62,7 +64,13 @@ def create_image_operation(client: GlobalContractClient):
     return _modality_operation(client, kind="image")
 
 
-def _operation(client: GlobalContractClient, *, streaming: bool):
+def _operation(
+    client: GlobalContractClient,
+    *,
+    streaming: bool,
+    cancellation: threading.Event | None = None,
+    deadline: float | None = None,
+) -> Callable[[str, Mapping[str, Any]], dict[str, Any]]:
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         allowed = {"invoke", "stream" if streaming else "generate"}
         if name not in allowed:
@@ -79,6 +87,12 @@ def _operation(client: GlobalContractClient, *, streaming: bool):
             adapter_id,
             provider_id=str(request.get("provider_id") or ""),
         )
+        # Lifetime authority comes only from the captured Host invocation.
+        # Payload fields never supply a cancellation Event or monotonic deadline.
+        local_lifetime = (
+            {"cancellation": cancellation, "deadline": deadline}
+            if adapter is _local_openai_compatible else {}
+        )
         return adapter(
             client,
             request,
@@ -86,6 +100,7 @@ def _operation(client: GlobalContractClient, *, streaming: bool):
             credential_handle,
             "ai.stream" if streaming else "ai.generate",
             streaming,
+            **local_lifetime,
         )
 
     return operation
@@ -287,6 +302,9 @@ def _local_openai_compatible(
     credential_handle: str | None,
     credential_scope: str,
     streaming: bool,
+    *,
+    cancellation: threading.Event | None = None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     """Call one registry-bound loopback OpenAI chat endpoint without a secret."""
     del client, credential_scope
@@ -304,7 +322,9 @@ def _local_openai_compatible(
     tools = request.get("tools")
     if isinstance(tools, list) and tools:
         body["tools"] = tools
-    value = _local_post(endpoint, body, request)
+    value = _local_post(
+        endpoint, body, request, cancellation=cancellation, deadline=deadline,
+    )
     choices = value.get("choices") if isinstance(value, Mapping) else None
     first = choices[0] if isinstance(choices, list) and choices else {}
     message = first.get("message") if isinstance(first, Mapping) else {}
@@ -328,6 +348,9 @@ def _local_post(
     endpoint: str,
     body: Mapping[str, Any],
     request: Mapping[str, Any],
+    *,
+    cancellation: threading.Event | None = None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     """Send bounded JSON to the finite local chat route without proxy use."""
     parsed = urllib.parse.urlsplit(local_openai_endpoint(endpoint))
@@ -339,26 +362,43 @@ def _local_post(
             "invalid_request", "local provider request is too large"
         )
     timeout = _local_timeout(request)
-    connection = http.client.HTTPConnection(
-        parsed.hostname, parsed.port, timeout=timeout,
-    )
+    lifetime: HttpRequestLifetime | None = None
+    connection: http.client.HTTPConnection | None = None
+    response: http.client.HTTPResponse | None = None
     try:
+        lifetime = HttpRequestLifetime(
+            timeout=timeout, deadline=deadline, cancellation=cancellation,
+        )
+        connection = http.client.HTTPConnection(
+            parsed.hostname, parsed.port, timeout=lifetime.remaining(),
+        )
+        connection.connect()
+        if connection.sock is None:
+            raise OSError("local provider connection socket is unavailable")
+        # HTTP/1.0 and Connection: close can clear connection.sock while the
+        # response still owns a blocked buffered reader. Retain the actual TCP
+        # socket; the watchdog only shuts it down, and this caller closes IO.
+        owned_socket = connection.sock
+        lifetime.attach(owned_socket)
+        owned_socket.settimeout(lifetime.remaining())
+        connection.auto_open = 0
+        lifetime.check()
         connection.request(
             "POST",
             "/v1/chat/completions",
             body=encoded,
             headers={**DEFAULT_JSON_HEADERS, "Content-Length": str(len(encoded))},
         )
-        if connection.sock is not None:
-            connection.sock.settimeout(_local_timeout(request))
+        owned_socket.settimeout(lifetime.remaining())
         response = connection.getresponse()
-        if connection.sock is not None:
-            connection.sock.settimeout(_local_timeout(request))
+        lifetime.check()
+        owned_socket.settimeout(lifetime.remaining())
         if response.status != 200:
             raise GlobalContractInvocationError(
                 "provider_unavailable", "local provider returned an error"
             )
         raw = response.read(_MAX_LOCAL_RESPONSE_BYTES + 1)
+        lifetime.check()
         if len(raw) > _MAX_LOCAL_RESPONSE_BYTES:
             raise GlobalContractInvocationError(
                 "invalid_response", "local provider response is too large"
@@ -370,7 +410,16 @@ def _local_post(
             "provider_unavailable", "local provider is unavailable"
         ) from None
     finally:
-        connection.close()
+        try:
+            if response is not None:
+                response.close()
+        finally:
+            try:
+                if connection is not None:
+                    connection.close()
+            finally:
+                if lifetime is not None:
+                    lifetime.close()
     try:
         value = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -385,7 +434,7 @@ def _local_post(
 
 
 def _local_timeout(request: Mapping[str, Any]) -> float:
-    """Return the remaining bounded wall-clock budget for one socket phase."""
+    """Return the initial bounded wall-clock budget for the entire request."""
     deadline = request.get("deadline")
     if deadline is None:
         return _MAX_LOCAL_TIMEOUT_SECONDS
@@ -637,7 +686,18 @@ class ProviderAdapterHostFactoryV4:
                 allowed_contract_ids=frozenset({REGISTRY_CONTRACT}),
                 consumer_pack_id="rumi_provider_adapters_pack",
             )
-            result = operation_factory(client)(operation_name, payload)
+            if operation_factory in {
+                create_generate_operation, create_stream_operation,
+            }:
+                operation = _operation(
+                    client,
+                    streaming=operation_factory is create_stream_operation,
+                    cancellation=invocation.envelope.cancellation_requested,
+                    deadline=invocation.envelope.deadline_monotonic,
+                )
+            else:
+                operation = operation_factory(client)
+            result = operation(operation_name, payload)
             invocation.assert_current()
             return result
 

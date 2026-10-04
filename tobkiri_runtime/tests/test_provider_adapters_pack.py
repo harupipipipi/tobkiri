@@ -168,6 +168,9 @@ def test_local_adapter_posts_only_to_bound_chat_route_without_credentials(
                 "usage": {"total_tokens": 3},
             }).encode()
 
+        def close(self) -> None:
+            captured["response_closed"] = True
+
     class FakeConnection:
         def __init__(self, host: str, port: int, timeout: float) -> None:
             captured.update(host=host, port=port, timeout=timeout)
@@ -176,6 +179,9 @@ def test_local_adapter_posts_only_to_bound_chat_route_without_credentials(
                     "phase_timeouts", [],
                 ).append(value)
             )
+
+        def connect(self) -> None:
+            captured["connected"] = True
 
         def request(self, method: str, path: str, **kwargs: Any) -> None:
             captured.update(method=method, path=path, **kwargs)
@@ -220,7 +226,9 @@ def test_local_adapter_posts_only_to_bound_chat_route_without_credentials(
     assert captured["method"] == "POST"
     assert captured["path"] == "/v1/chat/completions"
     assert captured["closed"] is True
-    assert len(captured["phase_timeouts"]) == 2
+    assert captured["response_closed"] is True
+    assert captured["connected"] is True
+    assert len(captured["phase_timeouts"]) == 3
     assert b"gemma-local" in captured["body"]
     assert "Authorization" not in captured["headers"]
     if streaming:
