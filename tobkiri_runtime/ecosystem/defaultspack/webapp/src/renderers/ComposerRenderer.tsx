@@ -3235,6 +3235,7 @@ export function ComposerRenderer({
     item.visible !== false && String(item.prompt ?? "").trim()
   ));
   const steerError = steerStatus?.kind === "error" ? steerStatus.message : null;
+  const steerPendingStatus = steerStatus?.kind === "pending" ? steerStatus.message : null;
   const steerSuccessStatus = steerStatus?.kind === "success" ? steerStatus.message : null;
   const currentModeMeta = MODE_META[mode];
   const ModeIcon = currentModeMeta.icon;
@@ -4959,6 +4960,17 @@ export function ComposerRenderer({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {steerPendingStatus && (
+            <div
+              aria-live="polite"
+              className="mx-2 mt-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[10px] leading-4 text-zinc-400"
+              data-steer-pending=""
+              role="status"
+            >
+              {steerPendingStatus}
             </div>
           )}
 

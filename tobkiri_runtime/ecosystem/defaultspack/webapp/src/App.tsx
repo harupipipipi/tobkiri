@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -119,6 +119,11 @@ import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSys
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
+import {
+  passiveSteerRefreshStatus,
+  SteerRefreshFence,
+  steerRefreshContextKey,
+} from "./lib/steerRefresh";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -3083,6 +3088,7 @@ export function ChatApp() {
   const highRiskResumeStartedRef = useRef(new Set<string>());
   const highRiskCancelStartedRef = useRef(new Set<string>());
   const pendingSteerGuidanceIdsRef = useRef(new Map<string, string>());
+  const steerRefreshFenceRef = useRef(new SteerRefreshFence());
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
@@ -3426,6 +3432,16 @@ export function ChatApp() {
   const isConversationPending = Boolean(
     pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
   );
+  const activeSteerRefreshContext = steerRefreshContextKey(
+    activeConversationId,
+    pendingRequest?.savedTurn ? pendingRequest.operationId : null,
+  );
+  useLayoutEffect(() => {
+    steerRefreshFenceRef.current.synchronize(activeSteerRefreshContext);
+    setSteerItems([]);
+    setModelSteerStatus(null);
+    setModelSteerBusy(false);
+  }, [activeSteerRefreshContext]);
   const rawBrowserApproval = pendingBrowserApproval(messages);
   const rawAuthorityApproval = pendingAuthorityApproval(messages);
   const rawRuntimeApproval = pendingRuntimeApproval(messages);
@@ -5419,19 +5435,19 @@ export function ChatApp() {
     setError("Vision対応モデルが見つかりません。Model設定から追加してください。");
   }, [handleModelProfileSelect, preferredVisionCandidate]);
 
-  const refreshSteerQueue = useCallback(async () => {
+  const refreshSteerQueue = useCallback(async (source: "passive" | "submission" = "passive") => {
     const conversationId = activeConversationId;
     const pendingTurnId = pendingRequest?.savedTurn
       ? pendingRequest.operationId
       : null;
-    if (!conversationId || !pendingTurnId) {
-      setSteerItems([]);
-      setModelSteerStatus(null);
-      return null;
-    }
-    setModelSteerBusy(true);
+    const refreshContext = activeSteerRefreshContext;
+    const token = steerRefreshFenceRef.current.begin(refreshContext);
+    if (!conversationId || !pendingTurnId || !refreshContext || !token) return null;
+    const canApply = () => steerRefreshFenceRef.current.isCurrent(token);
+    if (canApply()) setModelSteerBusy(true);
     try {
       const turns = await api.listSavedTurns(conversationId);
+      if (!canApply()) return null;
       const chain = pendingSavedTurnChainForConversation(
         turns,
         conversationId,
@@ -5439,10 +5455,7 @@ export function ChatApp() {
       );
       if (chain.state === "unsettled") {
         setSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
-        setModelSteerStatus({
-          kind: "error",
-          message: "追加指示の連鎖を確認できません。実行結果を照合中です。",
-        });
+        if (source === "passive") setModelSteerStatus(passiveSteerRefreshStatus("unsettled"));
         return { chain, turns };
       }
       const items = chain.state === "active"
@@ -5456,22 +5469,31 @@ export function ChatApp() {
       } : null);
       return { chain, turns };
     } catch (steerError) {
-      setModelSteerStatus({
-        kind: "error",
-        message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
-      });
+      if (canApply() && source === "passive") {
+        setModelSteerStatus(passiveSteerRefreshStatus("unavailable"));
+      }
       return null;
     } finally {
-      setModelSteerBusy(false);
+      if (canApply()) setModelSteerBusy(false);
     }
-  }, [activeConversationId, pendingRequest?.operationId, pendingRequest?.savedTurn]);
+  }, [activeConversationId, activeSteerRefreshContext, pendingRequest?.operationId, pendingRequest?.savedTurn]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
     if (!activeConversationId || !prompt) return;
-    setModelSteerBusy(true);
+    const queueTicket = steerRefreshFenceRef.current.capture(activeSteerRefreshContext);
+    const canApply = () => steerRefreshFenceRef.current.matches(queueTicket);
+    if (!queueTicket) {
+      setModelSteerStatus({
+        kind: "error",
+        message: "実行中の保存済みturnを確認できません。入力は保持されています。",
+      });
+      return;
+    }
+    if (canApply()) setModelSteerBusy(true);
     try {
-      const initial = await refreshSteerQueue();
+      const initial = await refreshSteerQueue("submission");
+      if (!canApply()) return;
       if (!initial || initial.chain.state !== "active") {
         throw new Error("実行中の保存済みturnを確認できません。入力は保持されています。");
       }
@@ -5497,7 +5519,9 @@ export function ChatApp() {
         guidance_id: guidanceId,
         guidance,
       });
-      const refreshed = await refreshSteerQueue();
+      if (!canApply()) return;
+      const refreshed = await refreshSteerQueue("submission");
+      if (!canApply()) return;
       if (!refreshed || !settlePendingSteerGuidanceId(
         pendingSteerGuidanceIdsRef.current,
         mutationKey,
@@ -5509,13 +5533,16 @@ export function ChatApp() {
       )) {
         throw new Error("追加指示の受領を確認できません。入力は保持されています。");
       }
+      if (!canApply()) return;
       setInput("");
       setModelSteerStatus({
         kind: "success",
         message: "追加指示を待機列に追加しました",
       });
     } catch (steerError) {
-      await refreshSteerQueue();
+      if (!canApply()) return;
+      await refreshSteerQueue("passive");
+      if (!canApply()) return;
       setModelSteerStatus({
         kind: "error",
         message: steerError instanceof Error
@@ -5523,9 +5550,9 @@ export function ChatApp() {
           : "追加指示を待機列へ追加できませんでした。入力は保持されています。",
       });
     } finally {
-      setModelSteerBusy(false);
+      if (canApply()) setModelSteerBusy(false);
     }
-  }, [activeConversationId, input, refreshSteerQueue, setInput]);
+  }, [activeConversationId, activeSteerRefreshContext, input, refreshSteerQueue, setInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -7222,6 +7249,8 @@ export function ChatApp() {
     cancelPendingMentionAttachments();
     setError(null);
     setSavedTurnCompletionNotice(null);
+    setModelSteerStatus(null);
+    setSteerItems([]);
     if (wasNewConversation) {
       setIsNewChatLaunching(true);
     }

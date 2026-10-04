@@ -1710,6 +1710,68 @@ test("steer errors use an assertive error notice with a separate copy action", (
   assert.doesNotMatch(html, /text-zinc-500[^>]*>Steer queue failed/);
 });
 
+test("passive steering reconciliation renders a polite pending status instead of a failure", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: {
+        kind: "pending",
+        message: "送信状況を確認しています。",
+      },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-steer-pending=""/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /送信状況を確認しています/);
+  assert.doesNotMatch(html, /追加指示を送信できませんでした/);
+  assert.doesNotMatch(html, /role="alert"/);
+});
+
+test("passive unavailable steering status remains polite and non-error", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: {
+        kind: "pending",
+        message: "接続を待っています。送信結果はまだ確認できていません。",
+      },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-steer-pending=""/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /接続を待っています。送信結果はまだ確認できていません/);
+  assert.doesNotMatch(html, /追加指示を送信できませんでした/);
+  assert.doesNotMatch(html, /role="alert"/);
+});
+
 test("vision unsupported banner appears when image input exists and selected model lacks vision", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {

@@ -101,6 +101,9 @@ export type ComposerSteerStatus = {
   kind: "success";
   message: string;
 } | {
+  kind: "pending";
+  message: string;
+} | {
   kind: "error";
   message: string;
 };
