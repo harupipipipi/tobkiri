@@ -99,6 +99,39 @@ export function shouldRestoreUnwrittenSavedTurnDraft(
     && conversationIsEmpty;
 }
 
+/**
+ * Keeps the ordinary composer available after a fresh conversation has a
+ * durable root and a visible pending overlay, but before the owner has
+ * appended its first canonical message. This is presentation-only: it does
+ * not create, alter, or replay a saved turn.
+ */
+export function savedTurnComposerPresentation({
+  activeConversationId,
+  activeSavedTurnOperationId,
+  canonicalMessageCount,
+  visibleOverlayCount,
+}: {
+  activeConversationId: string | null;
+  activeSavedTurnOperationId: string | null;
+  canonicalMessageCount: number;
+  visibleOverlayCount: number;
+}): {
+  isNewConversation: boolean;
+  showConversationComposer: boolean;
+  showNewConversationStage: boolean;
+} {
+  const isNewConversation = activeConversationId === null || canonicalMessageCount === 0;
+  const hasVisibleActiveSavedRoot = activeConversationId !== null
+    && canonicalMessageCount === 0
+    && activeSavedTurnOperationId !== null
+    && visibleOverlayCount > 0;
+  return {
+    isNewConversation,
+    showConversationComposer: !isNewConversation || hasVisibleActiveSavedRoot,
+    showNewConversationStage: isNewConversation && visibleOverlayCount === 0,
+  };
+}
+
 export function createOptimisticSavedTurnOverlay({
   clientId,
   content,

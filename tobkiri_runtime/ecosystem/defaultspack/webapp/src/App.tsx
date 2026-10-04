@@ -125,6 +125,7 @@ import {
   createOptimisticSavedTurnOverlay,
   optimisticSavedTurnOverlayHasCanonicalUserMessage,
   SavedTurnViewFence,
+  savedTurnComposerPresentation,
   shouldDisplayOptimisticSavedTurnOverlay,
   shouldRestoreUnwrittenSavedTurnDraft,
   type OptimisticSavedTurnOverlay,
@@ -3310,8 +3311,13 @@ export function ChatApp() {
   const isCanvasWorkspace = activeWorkspaceKind === "canvas";
   const isDesktopsWorkspace = activeWorkspaceKind === "desktops";
   const isToolsWorkspace = activeWorkspaceKind === "tools";
-  const isNewConversation = activeConversation === null || activeConversation.messages.length === 0;
-  const showNewConversationStage = isNewConversation && visibleOptimisticSavedTurnOverlays.length === 0;
+  const savedTurnComposer = savedTurnComposerPresentation({
+    activeConversationId,
+    activeSavedTurnOperationId,
+    canonicalMessageCount: activeConversation?.messages.length ?? 0,
+    visibleOverlayCount: visibleOptimisticSavedTurnOverlays.length,
+  });
+  const { isNewConversation, showConversationComposer, showNewConversationStage } = savedTurnComposer;
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
@@ -8454,7 +8460,7 @@ export function ChatApp() {
               />
             )}
 
-            {showRegion("composer") && isChatWorkspace && !isNewConversation && !isCalendarMode && !isKanbanMode && (
+            {showRegion("composer") && isChatWorkspace && showConversationComposer && !isCalendarMode && !isKanbanMode && (
               <div className="relative">
                 {showRegion("activity_preview") && !effectiveShowPreview && canShowCanvas && (
                   <CanvasPeek

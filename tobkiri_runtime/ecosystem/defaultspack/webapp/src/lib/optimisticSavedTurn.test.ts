@@ -7,6 +7,7 @@ import {
   createOptimisticSavedTurnOverlay,
   expectedSavedTurnUserMessageId,
   SavedTurnViewFence,
+  savedTurnComposerPresentation,
   shouldDisplayOptimisticSavedTurnOverlay,
   shouldRestoreUnwrittenSavedTurnDraft,
 } from "./optimisticSavedTurn";
@@ -51,6 +52,45 @@ function runningTurn() {
     }],
   };
 }
+
+test("fresh pending saved roots keep the conversation composer without changing idle welcome", () => {
+  const presentation = (patch: Partial<Parameters<typeof savedTurnComposerPresentation>[0]> = {}) => (
+    savedTurnComposerPresentation({
+      activeConversationId: conversationId,
+      activeSavedTurnOperationId: operationId,
+      canonicalMessageCount: 0,
+      visibleOverlayCount: 1,
+      ...patch,
+    })
+  );
+
+  assert.deepEqual(presentation(), {
+    isNewConversation: true,
+    showConversationComposer: true,
+    showNewConversationStage: false,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: null,
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
+  });
+  assert.deepEqual(presentation({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: false,
+  });
+  assert.deepEqual(presentation({ canonicalMessageCount: 1, visibleOverlayCount: 0 }), {
+    isNewConversation: false,
+    showConversationComposer: true,
+    showNewConversationStage: false,
+  });
+});
 
 test("new-conversation draft is displayable before a durable conversation id exists", () => {
   const draft = createOptimisticSavedTurnOverlay({
