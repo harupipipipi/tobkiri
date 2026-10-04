@@ -486,15 +486,24 @@ def test_company_get_and_status_project_selected_state_only(tmp_path, monkeypatc
 
     assert created["status"] == "ok"
     assert fetched["data"]["channels"]["ops-company"]["id"] == "ops-company"
-    assert "message_count" not in fetched["data"]
+    assert fetched["data"]["message_count"] == 1
+    assert fetched["data"]["task_count"] == 0
     assert "runtime_counts" not in fetched["data"]
     assert runtime_status["data"]["runtime"]["messages"] == 1
     assert runtime_status["data"]["runtime"]["tasks"] == 0
-    assert "message_count" not in runtime_status["data"]["company"]
+    assert runtime_status["data"]["company"]["message_count"] == 1
+    assert runtime_status["data"]["company"]["task_count"] == 0
 
 
 def test_company_status_counts_selected_state_records(tmp_path, monkeypatch):
-    from blocks.company import bootstrap, messages, status, tasks
+    from blocks.company import (
+        bootstrap,
+        get,
+        list as company_list,
+        messages,
+        status,
+        tasks,
+    )
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
@@ -532,6 +541,8 @@ def test_company_status_counts_selected_state_records(tmp_path, monkeypatch):
 
     listed_tasks = tasks.run({"company_id": company_id}, {})
     listed_messages = messages.run({"company_id": company_id}, {})
+    fetched = get.run({"company_id": company_id}, {})
+    listed_companies = company_list.run({"limit": 1, "offset": 0}, {})
     runtime_status = status.run({"company_id": company_id}, {})
 
     assert manual_task["status"] == "ok"
@@ -539,6 +550,11 @@ def test_company_status_counts_selected_state_records(tmp_path, monkeypatch):
     assert created_message["status"] == "ok"
     assert listed_tasks["data"]["total"] == 2
     assert listed_messages["data"]["total"] == 1
+    assert fetched["data"]["task_count"] == listed_tasks["data"]["total"]
+    assert fetched["data"]["message_count"] == listed_messages["data"]["total"]
+    assert listed_companies["data"]["total"] == 1
+    assert listed_companies["data"]["companies"][0]["task_count"] == 2
+    assert listed_companies["data"]["companies"][0]["message_count"] == 1
 
     company = runtime_status["data"]["company"]
     assert runtime_status["data"]["runtime"]["tasks"] == listed_tasks["data"]["total"]
@@ -548,8 +564,8 @@ def test_company_status_counts_selected_state_records(tmp_path, monkeypatch):
     )
     assert "tasks" not in company
     assert "messages" not in company
-    assert "task_count" not in company
-    assert "message_count" not in company
+    assert company["task_count"] == listed_tasks["data"]["total"]
+    assert company["message_count"] == listed_messages["data"]["total"]
 
 
 def test_company_get_and_status_include_selected_channels(tmp_path, monkeypatch):
@@ -589,7 +605,8 @@ def test_company_get_and_status_include_selected_channels(tmp_path, monkeypatch)
     assert listed_channel == created_channel["data"]
     assert "message_count" not in listed_channel
     assert "message_count" not in channel_get["data"]
-    assert "message_count" not in fetched["data"]
+    assert fetched["data"]["message_count"] == 1
+    assert fetched["data"]["task_count"] == 0
     assert fetched["data"]["channels"]["qa-findings"]["id"] == "qa-findings"
     assert runtime_status["data"]["runtime"]["messages"] == 1
     assert runtime_status["data"]["company"]["channels"]["qa-findings"]["id"] == "qa-findings"
