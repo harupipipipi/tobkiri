@@ -118,7 +118,26 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnCanRestoreUnwrittenDraft, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest, type SavedTurnSnapshotNotice } from "./lib/pendingChat";
+import {
+  PENDING_CHAT_REQUEST_TTL_MS,
+  canClearSavedTurnStopFailureError,
+  isGenerationActiveForView,
+  isSavedTurnCancellationPropagationError,
+  savedTurnCanRestoreUnwrittenDraft,
+  savedTurnProgressNotice,
+  savedTurnProgressState,
+  savedTurnSnapshotState,
+  savedTurnSnapshotNotice,
+  savedTurnTerminalNotice,
+  shouldClearPendingAfterConversationRefresh,
+  shouldForgetPendingAfterPollError,
+  shouldReconcileSavedTurnAfterAcknowledgedStop,
+  updateSavedTurnNotice,
+  type PendingChatRequest,
+  type SavedTurnSnapshotNotice,
+  type SavedTurnStopAcknowledgement,
+  type SavedTurnSubmissionAttempt,
+} from "./lib/pendingChat";
 import {
   bindOptimisticSavedTurnExpectedUserMessageId,
   bindOptimisticSavedTurnOverlay,
@@ -3065,7 +3084,12 @@ export function ChatApp() {
     { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
     { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
   ]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const errorGenerationRef = useRef(0);
+  const setError = useCallback((value: string | null) => {
+    errorGenerationRef.current += 1;
+    setErrorState(value);
+  }, []);
   const [savedTurnCompletionNotice, setSavedTurnCompletionNotice] = useState<(
     SavedTurnSnapshotNotice & { conversationId: string }
   ) | null>(null);
@@ -3128,6 +3152,7 @@ export function ChatApp() {
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const pendingRequestsRef = useRef<Record<string, PendingChatRequest>>(pendingRequests);
   const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
   const [unwrittenSavedTurnDrafts, setUnwrittenSavedTurnDrafts] = useState<UnwrittenSavedTurnDraft[]>([]);
   const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
@@ -3148,6 +3173,12 @@ export function ChatApp() {
   const savedTurnViewFenceRef = useRef(new SavedTurnViewFence(activeWorkspaceTabId, activeConversationId));
   const savedTurnDraftNonceRef = useRef(new Map<string, string>());
   const activeSavedTurnSubmissionRef = useRef<{ clientId: string; ticket: SavedTurnViewTicket } | null>(null);
+  const savedTurnStopAcknowledgementRef = useRef<SavedTurnStopAcknowledgement | null>(null);
+  const savedTurnStopRequestFailureRef = useRef<{
+    attempt: SavedTurnSubmissionAttempt;
+    error: unknown;
+    errorGeneration: number;
+  } | null>(null);
   const [savedTurnViewEpoch, setSavedTurnViewEpoch] = useState(0);
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
@@ -3237,6 +3268,14 @@ export function ChatApp() {
     ? pendingRequest.operationId ?? null
     : null;
   const activeSavedTurnViewTicket = savedTurnViewFenceRef.current.capture();
+  const isGeneratingForActiveView = isGenerationActiveForView({
+    activeConversationId,
+    activeViewTicket: activeSavedTurnViewTicket,
+    globalIsGenerating: isGenerating,
+    isConversationPending,
+    streamingConversationId: streamingConversationIdRef.current,
+    submissionViewTicket: activeSavedTurnSubmissionRef.current?.ticket ?? null,
+  });
   const orderedMessages = useMemo(
     () => activeConversation ? orderConversationMessages(activeConversation.messages) : [],
     [activeConversation?.messages],
@@ -3508,7 +3547,7 @@ export function ChatApp() {
     conversationPreferences: activeConversationToolPreferences,
   });
   useEffect(() => {
-    if (isGenerating) return;
+    if (isGeneratingForActiveView) return;
     const reconciled = reconcileComposerSemanticDraft({
       droppedWidgets,
       selectedToolIds,
@@ -3526,7 +3565,7 @@ export function ChatApp() {
     ) {
       setStoredSelectedToolIds(reconciled.selectedToolIds);
     }
-  }, [droppedWidgets, input, isGenerating, selectedToolIds, setStoredSelectedToolIds]);
+  }, [droppedWidgets, input, isGeneratingForActiveView, selectedToolIds, setStoredSelectedToolIds]);
   const activeSteerRefreshContext = steerRefreshContextKey(
     activeConversationId,
     pendingRequest?.savedTurn ? pendingRequest.operationId : null,
@@ -3656,7 +3695,7 @@ export function ChatApp() {
   const staleRuntimeApprovalNotice = !ultraYoloMode && !rawRuntimeApproval ? staleRuntimeApproval(messages) : null;
   const visibleBrowserApproval = !ultraYoloMode ? browserApproval : null;
   const latestAssistantFinal = useMemo(() => {
-    if (isGenerating || isConversationPending) return null;
+    if (isGeneratingForActiveView) return null;
     for (const message of [...messages].reverse()) {
       if (message.role === "user") return null;
       if (message.role !== "agent") continue;
@@ -3672,7 +3711,7 @@ export function ChatApp() {
       };
     }
     return null;
-  }, [isConversationPending, isGenerating, messages]);
+  }, [isGeneratingForActiveView, messages]);
 
   useEffect(() => {
     if (!latestAssistantFinal) return;
@@ -4055,6 +4094,7 @@ export function ChatApp() {
   const updatePendingRequests = (updater: (current: Record<string, PendingChatRequest>) => Record<string, PendingChatRequest>) => {
     setPendingRequests((current) => {
       const next = updater(current);
+      pendingRequestsRef.current = next;
       writeJsonLocalStorage(pendingStorageKey, next);
       return next;
     });
@@ -4241,7 +4281,7 @@ export function ChatApp() {
   useEffect(() => {
     if (!shouldFollowMessagesRef.current) return;
     messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [activeConversationId, messages, isGenerating]);
+  }, [activeConversationId, messages, isGeneratingForActiveView]);
 
   useEffect(() => {
     const markUnloading = () => {
@@ -5180,15 +5220,64 @@ export function ChatApp() {
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
     if (conversationId && pendingRequests[conversationId]?.savedTurn) {
-      const turnId = pendingRequests[conversationId].operationId;
+      const pendingSavedTurn = pendingRequests[conversationId];
+      const turnId = pendingSavedTurn.operationId;
       if (!turnId) {
         setError("送信の操作IDを確認できないため、停止要求は送信していません。");
         return;
       }
+      const activeSubmission = activeSavedTurnSubmissionRef.current;
+      const stopAttempt = activeSubmission
+        && activeSubmission.ticket.conversationId === conversationId
+        && savedTurnViewFenceRef.current.matches(activeSubmission.ticket)
+        && typeof pendingSavedTurn.requestFingerprint === "string"
+        && pendingSavedTurn.requestFingerprint.trim()
+        ? {
+            attemptId: activeSubmission.clientId,
+            conversationId,
+            requestFingerprint: pendingSavedTurn.requestFingerprint,
+            turnId,
+            viewTicket: {
+              conversationId,
+              epoch: activeSubmission.ticket.epoch,
+              workspaceTabId: activeSubmission.ticket.workspaceTabId,
+            },
+          } satisfies SavedTurnSubmissionAttempt
+        : null;
       const notice = (status: string) => updatePendingRequests((current) =>
         updateSavedTurnNotice(current, conversationId, turnId, status));
       notice("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
       void api.stopSavedTurn(turnId).then((receipt) => {
+        const acknowledgement = stopAttempt && receipt.turn_id === stopAttempt.turnId
+          ? { ...stopAttempt, status: receipt.status } satisfies SavedTurnStopAcknowledgement
+          : null;
+        if (acknowledgement) {
+          savedTurnStopAcknowledgementRef.current = acknowledgement;
+          const pendingFailure = savedTurnStopRequestFailureRef.current;
+          if (pendingFailure && shouldReconcileSavedTurnAfterAcknowledgedStop(
+            acknowledgement,
+            pendingFailure.attempt,
+            pendingFailure.error,
+          )) {
+            savedTurnStopRequestFailureRef.current = null;
+            const currentRequest = pendingRequestsRef.current[acknowledgement.conversationId];
+            if (
+              currentRequest?.savedTurn
+              && currentRequest.operationId === acknowledgement.turnId
+              && currentRequest.requestFingerprint === acknowledgement.requestFingerprint
+              && savedTurnViewFenceRef.current.matches(acknowledgement.viewTicket)
+            ) {
+              if (canClearSavedTurnStopFailureError(
+                pendingFailure.errorGeneration,
+                errorGenerationRef.current,
+              )) {
+                setError(null);
+                setRetryableSubmission(null);
+              }
+              setIsGenerating(true);
+            }
+          }
+        }
         notice(receipt.stopped
           ? "実行の停止を確認しました。保存結果の照合を続けます。"
           : "停止要求を受け付けました。実行・保存結果の照合を続けます。");
@@ -6457,7 +6546,7 @@ export function ChatApp() {
       }
     }
     setInput(value);
-    if (isGenerating || isConversationPending) {
+    if (isGeneratingForActiveView) {
       setComposerCandidateMenu(null);
       return;
     }
@@ -7505,7 +7594,7 @@ export function ChatApp() {
     const inputForSubmit = override?.input ?? input;
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
-    if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGenerating) return;
+    if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGeneratingForActiveView) return;
     shouldFollowMessagesRef.current = true;
     if (activeConversationId) {
       conversationScrollState.set(activeConversationId, {
@@ -7633,6 +7722,10 @@ export function ChatApp() {
     const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
     const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
     let savedSubmissionStarted = false;
+    let savedTurnStartRequestFailed = false;
+    let savedTurnStartRequestError: unknown;
+    let keepGeneratingForStopReconciliation = false;
+    let savedTurnSubmissionAttempt: SavedTurnSubmissionAttempt | null = null;
     const optimisticOverlayClientId = typeof globalThis.crypto?.randomUUID === "function"
       ? globalThis.crypto.randomUUID()
       : `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
@@ -7807,6 +7900,9 @@ export function ChatApp() {
           workspaceTabId: submissionViewTicket.workspaceTabId,
         });
       }
+      if (submissionViewTicket.conversationId !== conversation.id) {
+        throw new Error("会話の選択が変わったため、保存付き送信は開始していません。");
+      }
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
@@ -7817,6 +7913,18 @@ export function ChatApp() {
         toolNames: [],
         toolStartedAt: {},
       });
+      savedTurnSubmissionAttempt = {
+        attemptId: optimisticOverlayClientId,
+        conversationId: conversation.id,
+        requestFingerprint,
+        turnId: operationId,
+        viewTicket: {
+          conversationId: conversation.id,
+          epoch: submissionViewTicket.epoch,
+          workspaceTabId: submissionViewTicket.workspaceTabId,
+        },
+      };
+      savedTurnStopRequestFailureRef.current = null;
       replaceChatIdInUrl(conversation.id, true);
 
       // Keep the captured revision and identity; a lost reply never starts a new turn.
@@ -7832,6 +7940,10 @@ export function ChatApp() {
         thinking_level: activeProfile?.supports_thinking
           ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
           : undefined,
+      }).catch((startError: unknown) => {
+        savedTurnStartRequestFailed = true;
+        savedTurnStartRequestError = startError;
+        throw startError;
       });
       bindOptimisticSavedTurnOverlayToTurn(conversation.id, operationId, result.turn);
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
@@ -7893,8 +8005,46 @@ export function ChatApp() {
         return;
       }
       if (savedSubmissionStarted && submittedConversationId) {
+        const acknowledgedStop = savedTurnStopAcknowledgementRef.current;
+        if (savedTurnStartRequestFailed
+          && savedTurnStartRequestError === submitError
+          && shouldReconcileSavedTurnAfterAcknowledgedStop(
+            acknowledgedStop,
+            savedTurnSubmissionAttempt,
+            submitError,
+          )) {
+            savedTurnStopRequestFailureRef.current = null;
+            keepGeneratingForStopReconciliation = true;
+            updatePendingRequests((current) => {
+            const entry = current[submittedConversationId!];
+            return entry ? {
+              ...current,
+              [submittedConversationId!]: {
+                ...entry,
+                status: "停止要求を受け付けました。実行・保存結果の照合を続けます。",
+              },
+            } : current;
+          });
+          return;
+        }
+        const submitErrorMessage = submitError instanceof Error
+          ? submitError.message
+          : "送信結果を確認できません。再送せず照合を待ちます。";
+        const cancellationPropagationAttempt = savedTurnStartRequestFailed
+          && savedTurnStartRequestError === submitError
+          && savedTurnSubmissionAttempt
+          && isSavedTurnCancellationPropagationError(submitError)
+          ? savedTurnSubmissionAttempt
+          : null;
         setRetryableSubmission(null);
-        setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
+        setError(submitErrorMessage);
+        if (cancellationPropagationAttempt) {
+          savedTurnStopRequestFailureRef.current = {
+            attempt: cancellationPropagationAttempt,
+            error: submitError,
+            errorGeneration: errorGenerationRef.current,
+          };
+        }
         updatePendingRequests((current) => {
           const entry = current[submittedConversationId!];
           return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
@@ -7953,7 +8103,7 @@ export function ChatApp() {
       }
       if (submissionUiIsCurrent()) {
         activeSavedTurnSubmissionRef.current = null;
-        setIsGenerating(false);
+        if (!keepGeneratingForStopReconciliation) setIsGenerating(false);
         setIsNewChatLaunching(false);
       }
     }
@@ -7961,7 +8111,7 @@ export function ChatApp() {
 
   const handleRetryLastFailedSubmission = () => {
     const retry = retryableSubmission;
-    if (!retry || isGenerating) return;
+    if (!retry || isGeneratingForActiveView) return;
     setError(null);
     setRetryableSubmission(null);
     void handleSubmit(undefined, {
@@ -8137,7 +8287,7 @@ export function ChatApp() {
       input={input}
       placeholder={isCentered ? getNewConversationPlaceholder() : placeholder}
       isNewConversation={isCentered}
-      isGenerating={isGenerating || isConversationPending}
+      isGenerating={isGeneratingForActiveView}
       selectedProfile={activeProfile}
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
@@ -8175,7 +8325,7 @@ export function ChatApp() {
       steerBusy={modelSteerBusy}
       steerControlsReady={steerControlsReady}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
-      steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
+      steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGeneratingForActiveView)}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -8439,7 +8589,7 @@ export function ChatApp() {
                 isMessagesRegionVisible={showRegion("chat_messages")}
                 isLoading={isLoading}
                 isNewConversation={showNewConversationStage}
-                isGenerating={isGenerating || isConversationPending}
+                isGenerating={isGeneratingForActiveView}
                 pendingStatus={pendingRequest?.status ?? null}
                 pendingToolNames={pendingRequest?.toolNames ?? []}
                 pendingStartedAt={pendingRequest?.startedAt ?? null}

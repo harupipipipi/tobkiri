@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:9b7ee4393af54de3f678a1a3d550596398d0bc30ad5ab936fd15affd194860f6",
+      "digest": "sha256:dfe374c4dd3f8cd302845a855fe52c971fca6beb47d389e52cdba2c3e28865ca",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:93abde0b7b4b4167ab0b31b56250be194004ef3644806e603293b5db872ae9cd",
+      "digest": "sha256:6e6ba917714622e3c80da18bb7a96bbad07a862855b4ff4b409dd1c645b477e2",
       "kind": "executable",
       "path": "runtime/durable.py"
     },
@@ -150,9 +150,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:8d29bfab1c65d8ab36cb2901cd286935818502860534b7d5d025412d32f246be",
-    "contract_catalog_digest": "sha256:72c1a4374763bca832d1b53ebc39136ea16880253f97705f06c7139c06ad29fc",
-    "source_identity": "sha256:170c0fc3eadfc858205d7b00a58798c8f082f24343a109a76ccca14046a462ab"
+    "artifact_set_digest": "sha256:33bcea10ad94a45b55b3555a4d2e75e0f7e116315f82bee66a2f3a27e9f69945",
+    "contract_catalog_digest": "sha256:e9a24768dc52b7f218c6331434e0d03a27b005161e1e48df05a9742759e38283",
+    "source_identity": "sha256:e908bf767ff68009dc2bcf0762b0f90ced05b51b6ed138c423fd6d5693e0b5ce"
   },
   "migration": {
     "compatibility": "read_only",
@@ -246,7 +246,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:8d29bfab1c65d8ab36cb2901cd286935818502860534b7d5d025412d32f246be",
+    "artifact_digest": "sha256:33bcea10ad94a45b55b3555a4d2e75e0f7e116315f82bee66a2f3a27e9f69945",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -256,7 +256,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:170c0fc3eadfc858205d7b00a58798c8f082f24343a109a76ccca14046a462ab",
+        "digest": "sha256:e908bf767ff68009dc2bcf0762b0f90ced05b51b6ed138c423fd6d5693e0b5ce",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -267,7 +267,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:170c0fc3eadfc858205d7b00a58798c8f082f24343a109a76ccca14046a462ab",
+    "source_digest": "sha256:e908bf767ff68009dc2bcf0762b0f90ced05b51b6ed138c423fd6d5693e0b5ce",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
   },

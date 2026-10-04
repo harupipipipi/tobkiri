@@ -709,8 +709,8 @@ def test_root_stop_signals_live_child_without_claiming_unverified_drain(
         finally:
             release.set()
         future.result(timeout=10)
-    # A deliberately late ACK exists, but a recorded stop intent must win over
-    # reader-only receipt settlement even after the wrapper has exited.
+    # The stop never proved drain. The exact owner receipt is therefore the
+    # authoritative terminal and reader reconciliation must not replay work.
     assert session.conversations.saved_receipt(child_id) is not None
     recovered = reconcile_saved_turn(
         session.turns,
@@ -718,7 +718,10 @@ def test_root_stop_signals_live_child_without_claiming_unverified_drain(
         client=_client(session, reader_only=True),
         guard=_current,
     )
-    assert recovered["turn"]["status"] != "completed"
+    assert recovered["turn"]["status"] == "completed"
+    assert recovered["turn"]["result_reference"] == (
+        session.conversations.saved_receipt(child_id)["result_reference"]
+    )
     assert session.turns.get("turn-1")["status"] == "completed"
     assert len(session.model_inputs) == 2
 
@@ -745,7 +748,7 @@ def test_foreign_session_root_stop_cannot_signal_or_persist_child_intent(
 
 
 @pytest.mark.parametrize("complete_before_fence", [True, False])
-def test_root_stop_fences_child_completion_before_requesting_its_live_handle(
+def test_root_stop_preserves_exact_completion_while_fencing_descendants(
     tmp_path: Path,
     complete_before_fence: bool,
 ) -> None:
@@ -832,10 +835,10 @@ def test_root_stop_fences_child_completion_before_requesting_its_live_handle(
             assert execution.cancellation_requested.is_set()
             assert requested == [child_id]
             assert intent_before_handle == [True]
-            assert completion_fenced == [True]
+            assert completion_fenced == [False]
         assert session.turns.get(nested_id) is None
-    # A new captured request and its reader-only reconciliation must both honor
-    # durable stop intent after the old Host wrapper has left its live scope.
+    # A new captured request and reader reconciliation preserve the owner
+    # completion without dispatching another descendant.
     reconcile_saved_turn(
         session.turns,
         child_id,
@@ -845,6 +848,8 @@ def test_root_stop_fences_child_completion_before_requesting_its_live_handle(
     _run(session)
     assert len(session.model_inputs) == 2
     assert session.turns.get(nested_id) is None
-    if not complete_before_fence:
-        assert session.turns.get(child_id)["status"] != "completed"
+    child = session.turns.get(child_id)
+    assert child["status"] == "completed"
+    assert child["guidance"][0]["status"] == "failed"
+    assert child["guidance"][0]["failure_reason"] == "cancelled_before_dispatch"
     assert session.turns.get("turn-1")["status"] == "completed"

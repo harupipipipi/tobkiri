@@ -516,8 +516,14 @@ def test_saved_receipt_atomically_preserves_and_reserves_guidance(tmp_path):
     reference = {
         "conversation_id": "conversation-1",
         "conversation_revision": 3,
-        "user_message_id": "message:user",
-        "assistant_message_id": "message:assistant",
+        "user_message_id": "message:"
+        + canonical_digest(
+            ["conversation-1", "turn-1", "user"]
+        ).removeprefix("sha256:"),
+        "assistant_message_id": "message:"
+        + canonical_digest(
+            ["conversation-1", "turn-1", "assistant"]
+        ).removeprefix("sha256:"),
         "outcome_digest": "sha256:" + "0" * 64,
     }
     settled = store.settle_saved_from_receipt(

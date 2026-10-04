@@ -212,6 +212,92 @@ export function savedTurnCanRestoreUnwrittenDraft(
   ));
 }
 
+export type SavedTurnSubmissionAttempt = {
+  attemptId: string;
+  conversationId: string;
+  requestFingerprint: string;
+  turnId: string;
+  viewTicket: {
+    conversationId: string;
+    epoch: number;
+    workspaceTabId: string;
+  };
+};
+
+export type SavedTurnStopAcknowledgement = SavedTurnSubmissionAttempt & {
+  status: "cancellation_requested" | "stopped_confirmed";
+};
+
+function stableSavedTurnIdentity(value: unknown): value is string {
+  return typeof value === "string" && STABLE_ID_PATTERN.test(value);
+}
+
+function validSavedTurnSubmissionAttempt(
+  attempt: SavedTurnSubmissionAttempt | null | undefined,
+): attempt is SavedTurnSubmissionAttempt {
+  const ticket = attempt?.viewTicket;
+  return Boolean(
+    attempt
+    && ticket
+    && stableSavedTurnIdentity(attempt.attemptId)
+    && stableSavedTurnIdentity(attempt.conversationId)
+    && stableSavedTurnIdentity(attempt.requestFingerprint)
+    && stableSavedTurnIdentity(attempt.turnId)
+    && ticket.conversationId === attempt.conversationId
+    && stableSavedTurnIdentity(ticket.workspaceTabId)
+    && Number.isSafeInteger(ticket.epoch)
+    && ticket.epoch >= 0,
+  );
+}
+
+/**
+ * The owner currently exposes a cancellation-propagated saved request as a
+ * generic HTTP 503. This predicate is intentionally not sufficient on its
+ * own: callers must additionally prove an exact local stop acknowledgement
+ * for the same saved submission below.
+ */
+export function isSavedTurnCancellationPropagationError(errorValue: unknown): boolean {
+  const message = errorValue instanceof Error ? errorValue.message : String(errorValue ?? "");
+  return /(?:^|\n)HTTP 503\b/i.test(message);
+}
+
+/**
+ * A stop acknowledgement can only reclassify the original saved POST's
+ * cancellation propagation when every durable and local identity still
+ * matches. In particular, a different root, a retried client attempt, or a
+ * view-ticket ABA transition remains a normal provider error.
+ */
+export function shouldReconcileSavedTurnAfterAcknowledgedStop(
+  acknowledgement: SavedTurnStopAcknowledgement | null | undefined,
+  attempt: SavedTurnSubmissionAttempt | null | undefined,
+  errorValue: unknown,
+): boolean {
+  if (!validSavedTurnSubmissionAttempt(acknowledgement)
+    || !validSavedTurnSubmissionAttempt(attempt)
+    || !isSavedTurnCancellationPropagationError(errorValue)) return false;
+  if (acknowledgement.status !== "cancellation_requested"
+    && acknowledgement.status !== "stopped_confirmed") return false;
+  return acknowledgement.attemptId === attempt.attemptId
+    && acknowledgement.conversationId === attempt.conversationId
+    && acknowledgement.requestFingerprint === attempt.requestFingerprint
+    && acknowledgement.turnId === attempt.turnId
+    && acknowledgement.viewTicket.workspaceTabId === attempt.viewTicket.workspaceTabId
+    && acknowledgement.viewTicket.conversationId === attempt.viewTicket.conversationId
+    && acknowledgement.viewTicket.epoch === attempt.viewTicket.epoch;
+}
+
+/** A delayed receipt may only clear the exact error it was captured with. */
+export function canClearSavedTurnStopFailureError(
+  capturedErrorGeneration: number,
+  currentErrorGeneration: number,
+): boolean {
+  return Number.isSafeInteger(capturedErrorGeneration)
+    && capturedErrorGeneration >= 0
+    && Number.isSafeInteger(currentErrorGeneration)
+    && currentErrorGeneration >= 0
+    && capturedErrorGeneration === currentErrorGeneration;
+}
+
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
@@ -223,6 +309,38 @@ export type PendingChatRequest = {
   toolStartedAt?: Record<string, number>;
   recoveredFromLocation?: boolean;
 };
+
+export type ActiveGenerationViewTicket = {
+  conversationId: string | null;
+  epoch: number;
+  workspaceTabId: string;
+};
+
+/**
+ * `isGenerating` is process-wide while a chat tab is view-scoped. Keep a
+ * background saved turn from putting an unrelated, settled tab into steer or
+ * stop mode. A pending request is already keyed to the active conversation;
+ * before that request exists, only the exact submission view ticket can own
+ * the busy state.
+ */
+export function isGenerationActiveForView(input: {
+  activeConversationId: string | null;
+  activeViewTicket: ActiveGenerationViewTicket;
+  globalIsGenerating: boolean;
+  isConversationPending: boolean;
+  streamingConversationId: string | null;
+  submissionViewTicket: ActiveGenerationViewTicket | null;
+}): boolean {
+  if (input.isConversationPending) return true;
+  if (!input.globalIsGenerating) return false;
+  const submission = input.submissionViewTicket;
+  if (submission
+    && submission.workspaceTabId === input.activeViewTicket.workspaceTabId
+    && submission.conversationId === input.activeViewTicket.conversationId
+    && submission.epoch === input.activeViewTicket.epoch) return true;
+  return input.activeConversationId !== null
+    && input.streamingConversationId === input.activeConversationId;
+}
 
 export function updateSavedTurnNotice(
   current: Record<string, PendingChatRequest>, conversationId: string,

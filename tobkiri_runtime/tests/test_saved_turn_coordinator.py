@@ -24,6 +24,7 @@ from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     SAVED_CONTRACTS,
     execute_saved_turn,
 )
+from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 from tests.test_saved_conversation_steps import _owner, _setup
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT as CONTRACT,
@@ -501,6 +502,118 @@ def test_concurrent_cancellation_is_not_overwritten_by_late_success(tmp_path: Pa
     assert result["status"] == "reconciliation_required"
     assert result["turn"]["status"] == "cancelled"
     assert result["turn"]["result_reference"] is None
+
+
+def test_exact_owner_commit_wins_an_unconfirmed_cancellation_request(
+    tmp_path: Path,
+) -> None:
+    """A stop intent cannot erase output already committed by its sole owner."""
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+
+    def request_stop_after_owner_commit(value: dict) -> dict:
+        store.request_saved_cancellation("turn-1")
+        return value
+
+    session.transform = request_stop_after_owner_commit
+    result = _run(store, session)
+    receipt = session.conversations.saved_receipt("turn-1")
+
+    assert result["status"] == "completed"
+    assert result["turn"]["status"] == "completed"
+    assert result["turn"]["result_reference"] == receipt["result_reference"]
+    assert any(
+        event["name"] == "turn.cancellation_requested"
+        for event in result["turn"]["events"]
+    )
+    assert session.calls == session.ai_calls == 1
+
+
+def test_verified_cancellation_terminal_rejects_late_exact_owner_receipt(
+    tmp_path: Path,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+
+    def confirm_stop_after_owner_commit(value: dict) -> dict:
+        store.request_saved_cancellation("turn-1")
+        store.confirm_saved_cancellation("turn-1")
+        return value
+
+    session.transform = confirm_stop_after_owner_commit
+    result = _run(store, session)
+
+    assert session.conversations.saved_receipt("turn-1") is not None
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "cancelled"
+    assert result["turn"]["result_reference"] is None
+    assert session.calls == session.ai_calls == 1
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    ["input", "conversation", "revision", "user", "assistant", "outcome"],
+)
+def test_saved_settlement_rejects_mismatched_owner_reference(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    claimed = store.claim_saved(session.initial)["turn"]
+    session.invoke(CONTRACT, OPERATION, session.initial)
+    receipt = session.conversations.saved_receipt("turn-1")
+    assert receipt is not None
+    reference = deepcopy(receipt["result_reference"])
+    input_digest = claimed["input_digest"]
+    if mismatch == "input":
+        input_digest = "sha256:" + "f" * 64
+    elif mismatch == "conversation":
+        reference["conversation_id"] = "other"
+    elif mismatch == "revision":
+        reference["conversation_revision"] += 1
+    elif mismatch == "user":
+        reference["user_message_id"] = "message:" + "1" * 64
+    elif mismatch == "assistant":
+        reference["assistant_message_id"] = "message:" + "2" * 64
+    else:
+        reference["outcome_digest"] = "sha256:" + "3" * 63
+
+    with pytest.raises(TurnConflict, match="saved receipt"):
+        store.settle_saved_from_receipt(
+            "turn-1",
+            input_digest=input_digest,
+            result_reference=reference,
+        )
+    assert store.get("turn-1")["status"] == "running"
+
+
+def test_reader_reconciliation_rejects_a_stale_turn_capture(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    claimed = store.claim_saved(session.initial)["turn"]
+    session.invoke(CONTRACT, OPERATION, session.initial)
+    receipt = session.conversations.saved_receipt("turn-1")
+    assert receipt is not None
+    store.mutate(
+        "steer",
+        "turn-1",
+        expected_revision=claimed["revision"],
+        guidance_id="guidance-1",
+        guidance={"prompt": "Continue"},
+    )
+
+    with pytest.raises(TurnConflict, match="saved receipt"):
+        store.reconcile_saved(
+            "turn-1",
+            expected_revision=claimed["revision"],
+            input_digest=claimed["input_digest"],
+            result_reference=receipt["result_reference"],
+        )
+    current = store.get("turn-1")
+    assert current["status"] == "running"
+    assert current["revision"] == claimed["revision"] + 1
 
 
 @pytest.mark.parametrize("change", ["profile", "consumer", "contracts", "credential"])

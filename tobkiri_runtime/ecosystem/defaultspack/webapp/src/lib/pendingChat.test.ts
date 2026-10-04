@@ -4,14 +4,19 @@ import assert from "node:assert/strict";
 import type { ChatMessage, Conversation, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
+  canClearSavedTurnStopFailureError,
   chatContinuationPacketMatchesTurn,
+  isGenerationActiveForView,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
   savedTurnProgressState,
   savedTurnCanRestoreUnwrittenDraft,
   savedTurnTerminalNotice,
+  shouldReconcileSavedTurnAfterAcknowledgedStop,
   updateSavedTurnNotice,
+  type SavedTurnStopAcknowledgement,
+  type SavedTurnSubmissionAttempt,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
   shouldForgetPendingAfterPollError,
@@ -58,6 +63,159 @@ test("late saved stop notices stay with their original pending turn", () => {
   ];
   for (const records of stale) {
     assert.equal(updateSavedTurnNotice(records, "c1", "turn-1", "late reply"), records);
+  }
+});
+
+test("generation state belongs to the selected pending root or matching view ticket", () => {
+  const activeViewTicket = { workspaceTabId: "workspace-b", conversationId: "c2", epoch: 8 };
+  const input = {
+    activeConversationId: "c2",
+    activeViewTicket,
+    globalIsGenerating: true,
+    isConversationPending: false,
+    streamingConversationId: null,
+    submissionViewTicket: null,
+  };
+
+  // An unresolved Stop in tab A cannot put a completed tab B into steer mode.
+  assert.equal(isGenerationActiveForView(input), false);
+  assert.equal(isGenerationActiveForView({ ...input, isConversationPending: true }), true);
+  assert.equal(isGenerationActiveForView({ ...input, streamingConversationId: "c2" }), true);
+  assert.equal(isGenerationActiveForView({
+    ...input,
+    submissionViewTicket: { ...activeViewTicket },
+  }), true);
+});
+
+test("pre-create generation requires an exact owned ticket and rejects ABA or foreign views", () => {
+  const preCreateTicket = { workspaceTabId: "workspace-new", conversationId: null, epoch: 3 };
+  const input = {
+    activeConversationId: null,
+    activeViewTicket: preCreateTicket,
+    globalIsGenerating: true,
+    isConversationPending: false,
+    streamingConversationId: null,
+    submissionViewTicket: { ...preCreateTicket },
+  };
+
+  assert.equal(isGenerationActiveForView(input), true);
+  assert.equal(isGenerationActiveForView({
+    ...input,
+    submissionViewTicket: { ...preCreateTicket, workspaceTabId: "workspace-other" },
+  }), false);
+  assert.equal(isGenerationActiveForView({
+    ...input,
+    submissionViewTicket: { ...preCreateTicket, epoch: 4 },
+  }), false);
+  assert.equal(isGenerationActiveForView({
+    ...input,
+    submissionViewTicket: null,
+  }), false);
+});
+
+test("a delayed stop receipt cannot clear a newer same-view error generation", () => {
+  assert.equal(canClearSavedTurnStopFailureError(12, 12), true);
+  assert.equal(canClearSavedTurnStopFailureError(12, 13), false);
+  assert.equal(canClearSavedTurnStopFailureError(12, -1), false);
+});
+
+test("acknowledged same-root stop reclassifies only its cancellation 503 for reconciliation", () => {
+  const attempt: SavedTurnSubmissionAttempt = {
+    attemptId: "attempt-1",
+    conversationId: "c1",
+    requestFingerprint: "sha256:request-1",
+    turnId: "turn-1",
+    viewTicket: { workspaceTabId: "workspace-a", conversationId: "c1", epoch: 4 },
+  };
+  const acknowledgement: SavedTurnStopAcknowledgement = {
+    ...attempt,
+    status: "cancellation_requested",
+  };
+  const cancellation503 = new Error([
+    "HTTP 503 Service Unavailable",
+    "backend または provider 側の障害です。少し待って再試行してください。",
+    "詳細: The runtime operation is unavailable",
+  ].join("\n"));
+
+  assert.equal(
+    shouldReconcileSavedTurnAfterAcknowledgedStop(
+      acknowledgement,
+      attempt,
+      cancellation503,
+    ),
+    true,
+  );
+  assert.equal(
+    shouldReconcileSavedTurnAfterAcknowledgedStop(
+      { ...acknowledgement, status: "stopped_confirmed" },
+      attempt,
+      cancellation503,
+    ),
+    true,
+  );
+});
+
+test("unacknowledged or failed stops leave the original saved 503 as an error", () => {
+  const attempt: SavedTurnSubmissionAttempt = {
+    attemptId: "attempt-1",
+    conversationId: "c1",
+    requestFingerprint: "sha256:request-1",
+    turnId: "turn-1",
+    viewTicket: { workspaceTabId: "workspace-a", conversationId: "c1", epoch: 4 },
+  };
+  const cancellation503 = new Error([
+    "HTTP 503 Service Unavailable",
+    "backend または provider 側の障害です。少し待って再試行してください。",
+    "詳細: The runtime operation is unavailable",
+  ].join("\n"));
+
+  assert.equal(
+    shouldReconcileSavedTurnAfterAcknowledgedStop(null, attempt, cancellation503),
+    false,
+  );
+  assert.equal(
+    shouldReconcileSavedTurnAfterAcknowledgedStop(
+      { ...attempt, status: "rejected" as "cancellation_requested" },
+      attempt,
+      cancellation503,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldReconcileSavedTurnAfterAcknowledgedStop(
+      { ...attempt, status: "cancellation_requested" },
+      attempt,
+      new Error("HTTP 500 Internal Server Error"),
+    ),
+    false,
+  );
+});
+
+test("foreign roots, attempts, and view-ticket ABA stops cannot mask a provider 503", () => {
+  const attempt: SavedTurnSubmissionAttempt = {
+    attemptId: "attempt-1",
+    conversationId: "c1",
+    requestFingerprint: "sha256:request-1",
+    turnId: "turn-1",
+    viewTicket: { workspaceTabId: "workspace-a", conversationId: "c1", epoch: 4 },
+  };
+  const cancellation503 = new Error([
+    "HTTP 503 Service Unavailable",
+    "backend または provider 側の障害です。少し待って再試行してください。",
+    "詳細: The runtime operation is unavailable",
+  ].join("\n"));
+  for (const acknowledgement of [
+    { ...attempt, turnId: "turn-2", status: "cancellation_requested" as const },
+    { ...attempt, conversationId: "c2", viewTicket: { ...attempt.viewTicket, conversationId: "c2" }, status: "cancellation_requested" as const },
+    { ...attempt, requestFingerprint: "sha256:request-2", status: "cancellation_requested" as const },
+    { ...attempt, attemptId: "attempt-2", status: "cancellation_requested" as const },
+    { ...attempt, viewTicket: { ...attempt.viewTicket, epoch: 6 }, status: "cancellation_requested" as const },
+  ]) {
+    assert.equal(
+      shouldReconcileSavedTurnAfterAcknowledgedStop(acknowledgement, attempt, cancellation503),
+      false,
+      JSON.stringify(acknowledgement),
+    );
   }
 });
 

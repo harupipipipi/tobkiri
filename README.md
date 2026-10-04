@@ -94,8 +94,12 @@ This includes build space, the pinned 3 GiB Debian image, and separate isolated
 domains for the application UI and the first saved conversation. The build
 and provisioning flows check available space before proceeding. PackVM setup
 downloads the image after you approve the displayed plan in the Launcher.
-The VM and its per-operation sandbox enforce the normal isolation and network
-policy.
+Isolated Pack operations run inside the VM and its per-operation sandbox.
+Approved, shipped Host extensions provide approval, durable storage, model
+connections, and OS services in the host process; they are trusted host code,
+not VM-isolated code. External Packs cannot declare themselves Host extensions.
+An unavailable PackVM does not fall back to host execution. Local ad-hoc
+signatures identify this development build, not a verified release.
 
 ### Clone and install
 
@@ -217,6 +221,10 @@ and saved turn are registered. Once registration completes, you can send
 additional instructions during the first reply.
 The new-chat welcome screen and input also remain visible after a confirmed
 stop, even when the native window pauses its animations.
+A Stop acknowledgement remains pending until the execution result is confirmed.
+If the reply was already saved, its verified result completes the turn instead
+of remaining stuck in reconciliation. Switching chats does not carry another
+chat's generating state into the selected chat's input.
 
 If a saved turn fails before either message is persisted, the error stays
 visible. If you have not changed the composer since sending and it is still

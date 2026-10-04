@@ -247,6 +247,7 @@ class DurableTurnRuntime:
             raise ValueError("saved receipt revision is invalid")
         return self.settle_saved_from_receipt(
             turn_id,
+            expected_revision=expected_revision,
             input_digest=input_digest,
             result_reference=result_reference,
         )
@@ -254,10 +255,24 @@ class DurableTurnRuntime:
     def settle_saved_from_receipt(
         self, turn_id: str, *, input_digest: str,
         result_reference: Mapping[str, Any],
+        expected_revision: int | None = None,
     ) -> dict[str, Any]:
-        """Settle verified saved output while preserving concurrent guidance."""
+        """Settle exact owner output unless cancellation reached a terminal fence.
+
+        A cancellation request records intent; it is not proof that the guest or
+        Provider stopped before committing output.  Therefore an exact owner
+        receipt may truthfully win while the turn remains ``running`` or
+        ``waiting``.  A verified drain first moves the turn to ``cancelled``,
+        which this method never overwrites.  Reader reconciliation additionally
+        supplies its captured revision so an unrelated concurrent mutation must
+        be observed again rather than silently accepted here.
+        """
 
         _input_digest(input_digest)
+        if expected_revision is not None and (
+            type(expected_revision) is not int or expected_revision < 1
+        ):
+            raise ValueError("saved receipt revision is invalid")
         if not self.path.exists():
             raise KeyError("turn is unknown")
         connection = self._connect_write()
@@ -269,11 +284,12 @@ class DurableTurnRuntime:
             if row is None:
                 raise KeyError("turn is unknown")
             record = self._record(row)
+            reference = _saved_result_reference(record, result_reference)
             if (
                 record.get("input_digest") == input_digest
                 and record["request_id"].startswith("saved-turn.")
                 and record["status"] == "completed"
-                and record.get("result_reference") == dict(result_reference)
+                and record.get("result_reference") == reference
             ):
                 connection.rollback()
                 return record
@@ -281,18 +297,25 @@ class DurableTurnRuntime:
                 record.get("input_digest") != input_digest
                 or not record["request_id"].startswith("saved-turn.")
                 or record["status"] not in {"running", "waiting"}
-                or any(
-                    event.get("name") == "turn.cancellation_requested"
-                    for event in record["events"]
+                or (
+                    expected_revision is not None
+                    and record["revision"] != expected_revision
                 )
+                or not _has_only_unconfirmed_cancellation(record)
             ):
                 raise TurnConflict("saved receipt cannot settle current turn")
             runtime = self._restore(row)
+            current = runtime._turns[turn_id]
+            if any(
+                event.get("name") == "turn.cancellation_requested"
+                for event in current["events"]
+            ):
+                _cancel_queued_guidance_after_unconfirmed_stop(current)
             result = runtime.transition(
                 turn_id,
                 "completed",
-                expected_revision=record["revision"],
-                details={"result_reference": dict(result_reference)},
+                expected_revision=current["revision"],
+                details={"result_reference": reference},
                 reconciled_saved=True,
             )
             self._save(connection, result)
@@ -791,6 +814,99 @@ def _input_digest(value: object) -> None:
     """Validate an input identity, never an execution or approval credential."""
     if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
         raise ValueError("turn input digest is invalid")
+
+
+def _saved_result_reference(
+    record: Mapping[str, Any], value: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Validate the content-free identity committed by the conversation owner."""
+
+    if not isinstance(value, Mapping):
+        raise TurnConflict("saved receipt result identity is invalid")
+    reference = dict(value)
+    expected_fields = {
+        "conversation_id",
+        "conversation_revision",
+        "user_message_id",
+        "assistant_message_id",
+        "outcome_digest",
+    }
+    message_ids = {
+        role: "message:"
+        + canonical_digest(
+            [record["conversation_id"], record["id"], role]
+        ).removeprefix("sha256:")
+        for role in ("user", "assistant")
+    }
+    if (
+        set(reference) != expected_fields
+        or reference.get("conversation_id") != record["conversation_id"]
+        or type(reference.get("conversation_revision")) is not int
+        or reference["conversation_revision"]
+        != record["conversation_revision"] + 2
+        or reference.get("user_message_id") != message_ids["user"]
+        or reference.get("assistant_message_id") != message_ids["assistant"]
+        or not isinstance(reference.get("outcome_digest"), str)
+        or _DIGEST.fullmatch(reference["outcome_digest"]) is None
+    ):
+        raise TurnConflict("saved receipt result identity is invalid")
+    return reference
+
+
+def _has_only_unconfirmed_cancellation(record: Mapping[str, Any]) -> bool:
+    """Accept no cancellation or one exact, still-unconfirmed stop intent."""
+
+    events = record.get("events")
+    if not isinstance(events, list):
+        return False
+    requested = [
+        (index, event)
+        for index, event in enumerate(events)
+        if event.get("name") == "turn.cancellation_requested"
+    ]
+    if not requested:
+        return not any(event.get("name") == "turn.cancelled" for event in events)
+    if len(requested) != 1 or any(
+        event.get("name") == "turn.cancelled" for event in events
+    ):
+        return False
+    index, event = requested[0]
+    return (
+        index == len(events) - 1
+        and event.get("sequence") == index
+        and event.get("details") == {"phase": "nested_cancellation_requested"}
+    )
+
+
+def _cancel_queued_guidance_after_unconfirmed_stop(
+    record: dict[str, Any],
+) -> None:
+    """Fence queued descendants when an already-committed result wins a stop."""
+
+    queued = [
+        item
+        for item in record["guidance"]
+        if item.get("status") == "queued"
+        and isinstance(item.get("value"), Mapping)
+        and item["value"].get("auto_send") is True
+    ]
+    if not queued:
+        return
+    changed_at = _now_ms()
+    for item in queued:
+        item["status"] = "failed"
+        item["updated_at"] = changed_at
+        item["failure_reason"] = "cancelled_before_dispatch"
+    record["revision"] += 1
+    record["updated_at"] = changed_at
+    record["events"].append(
+        {
+            "sequence": len(record["events"]),
+            "name": "turn.guidance_cancelled",
+            "at": changed_at,
+            "details": {"guidance_ids": [item["id"] for item in queued]},
+        }
+    )
 
 
 def _now_ms() -> int:
