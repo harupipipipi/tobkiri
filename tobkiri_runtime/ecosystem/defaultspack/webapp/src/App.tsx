@@ -9207,7 +9207,6 @@ export function ChatApp() {
         activityText={pendingRequest?.status}
         hidden={Boolean(hasVisibleModal || isSettingsOpen || isSpotlightOpen || shareDialogOpen || pendingCommandApproval
           || pendingHighRiskCommand || visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
-        raised={!isNewConversation && isChatWorkspace}
       />
 
       <TransientAlert

@@ -241,6 +241,22 @@ fn apply_handoff(
             let window = app
                 .get_webview_window("main")
                 .context("Tobkiri Shell main window is unavailable")?;
+            crate::task_pet_window::bind(
+                app.state::<crate::task_pet_window::SharedPetState>()
+                    .inner(),
+                runtime_url
+                    .port()
+                    .context("Shell runtime port is unavailable")?,
+                &navigation_state
+                    .lock()
+                    .map_err(|error| anyhow!(error.to_string()))?
+                    .binding
+                    .as_ref()
+                    .context("Shell binding is unavailable")?
+                    .identity
+                    .profile_id,
+            )
+            .map_err(anyhow::Error::msg)?;
             window
                 .navigate(runtime_url.clone())
                 .context("Tobkiri Shell failed to schedule the verified runtime navigation")?;
@@ -456,6 +472,8 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
     // leaving the Launcher with only a receipt timeout.
     let _ = env_logger::try_init();
     let navigation_state = Arc::new(Mutex::new(ShellNavigationState::default()));
+    let pet_state = Arc::new(Mutex::new(crate::task_pet_window::PetState::default()));
+    let pet_navigation = pet_state.clone();
     let lifecycle = Arc::new(Mutex::new(ShellHandoffLifecycle::default()));
     let state_for_navigation_guard = Arc::clone(&navigation_state);
     let state_for_forwarded_handoff = Arc::clone(&navigation_state);
@@ -465,6 +483,13 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
     let initial_args = std::env::args_os().collect::<Vec<OsString>>();
 
     let builder = tauri::Builder::default()
+        .manage(pet_state)
+        .invoke_handler(tauri::generate_handler![
+            crate::task_pet_window::sync_task_pet,
+            crate::task_pet_window::task_pet_context,
+            crate::task_pet_window::drag_task_pet,
+            crate::task_pet_window::hide_task_pet,
+        ])
         .plugin(tauri_plugin_single_instance::init(
             move |app, args, _cwd| {
                 let result = handoff_path_from_strings(&args).and_then(|path| {
@@ -482,7 +507,10 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
         ))
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("shell-nav-guard")
-                .on_navigation(move |_webview, url| {
+                .on_navigation(move |webview, url| {
+                    if webview.label() == crate::task_pet_window::LABEL {
+                        return crate::task_pet_window::navigation_allowed(&pet_navigation, url);
+                    }
                     let allowed_ports = state_for_navigation_guard
                         .lock()
                         .map(|state| state.allowed_runtime_ports.clone())
@@ -512,7 +540,23 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == crate::task_pet_window::LABEL {
+                    api.prevent_close();
+                    if let Some(pet) = window
+                        .app_handle()
+                        .get_webview_window(crate::task_pet_window::LABEL)
+                    {
+                        let state = window
+                            .app_handle()
+                            .state::<crate::task_pet_window::SharedPetState>();
+                        let _ = crate::task_pet_window::hide_on_main_thread(&pet, state.inner());
+                    }
+                    return;
+                }
+                if !crate::task_pet_window::closes_shell(window.label()) {
+                    return;
+                }
                 // The Shell owns no background work. Exit instead of leaving a
                 // hidden process that could retain a stale authenticated URL.
                 window.app_handle().exit(0);

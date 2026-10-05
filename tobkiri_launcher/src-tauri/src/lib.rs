@@ -35,6 +35,7 @@ mod sealed_python;
 mod sealed_python_protocol;
 mod shell_handoff;
 mod shell_runtime;
+mod task_pet_window;
 mod tray;
 mod updater;
 

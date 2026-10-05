@@ -103,6 +103,8 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 
 チャットのエラーと完了のお知らせは、会話を押し下げない画面上部の通知カードに表示します。8秒後に通知アイコンへたたみ、アイコンから内容を再表示できます。ピンボタンで通知を固定すると、自動ではたたまれません。もう一度押すと固定を解除できます。マウスやキーボードで通知を読む間も表示を維持し、エラーのコピー・再試行・閉じる操作も利用できます。
 
+Tobkiri ペットは会話画面とは別の小さなウィンドウに表示します。デスクトップ版ではキャラクターや移動ハンドルをドラッグして、画面上の好きな位置へ移動できます。タスクの状態が更新されても位置は変わりません。Pet の「非表示」は会話画面を閉じず、会話画面の「ペットを表示」から再表示できます。ブラウザ版では別の小窓で開きます。ポップアップが制限されている場合は、会話画面の表示ボタンを押してください。
+
 ## AI Agent Service Defaults
 
 defaultspack includes local-first building blocks inspired by Codex, Claude Code, ChatGPT Projects, Manus, Genspark, and OpenClaw. The core contract is:

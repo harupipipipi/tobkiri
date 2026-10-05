@@ -16,7 +16,8 @@
         "title": "Tobkiri",
         "visible": true
       }
-    ]
+    ],
+    "macOSPrivateApi": true
   },
   "bundle": {
     "resources": null

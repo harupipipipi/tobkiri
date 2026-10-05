@@ -10,6 +10,7 @@ const expectedAssets = new Set([
   "shell-app.css",
   "shell-app.js",
   "shell-defaultspack-app.js",
+  "shell-icons.js",
   "shell-rolldown-runtime.js",
   "shell-vendor.js",
 ]);
