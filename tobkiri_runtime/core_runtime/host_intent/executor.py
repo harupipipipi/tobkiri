@@ -7,22 +7,10 @@ capability broker.
 
 from __future__ import annotations
 
-import importlib
-import time
-from dataclasses import dataclass
 from typing import Any
 
-from core_runtime.authority import get_authority_service
-
-from .approval import check_host_intent_authority
-from .models import HostIntent, is_host_intent_payload
+from .models import is_host_intent_payload
 from .validator import validate_host_intent
-
-
-@dataclass(frozen=True)
-class _PreparedViewerBroker:
-    client: Any
-    issue_execution_token: Any
 
 
 class HostIntentExecutor:
@@ -50,170 +38,17 @@ class HostIntentExecutor:
                 "errors": validation.errors,
             }
         intent = validation.intent
-        request_id, approval_token = _authority_followup_for_operation(context, intent.operation)
-        service = get_authority_service()
-        authority = check_host_intent_authority(
-            service,
-            intent,
-            principal_id=principal_id,
-            request_id=request_id,
-            approval_token=approval_token,
-            consume_approval_token=False,
-        )
-        authority_response = _authority_gate_response(authority, intent)
-        if authority_response is not None:
-            return authority_response
-
-        prepared = _prepare_viewer_broker(intent)
-        if not isinstance(prepared, _PreparedViewerBroker):
-            return {
-                "host_intent": intent.to_dict(),
-                "authority": authority,
-                **prepared,
-            }
-
-        authority = check_host_intent_authority(
-            service,
-            intent,
-            principal_id=principal_id,
-            request_id=request_id,
-            approval_token=approval_token,
-            consume_approval_token=True,
-        )
-        authority_response = _authority_gate_response(authority, intent)
-        if authority_response is not None:
-            authority_response["host_broker"] = {"available": True, "dispatched": False}
-            return authority_response
-
-        execution_token = _issue_viewer_execution_token(intent, prepared, request_id=request_id)
-        if isinstance(execution_token, dict):
-            return {
-                "host_intent": intent.to_dict(),
-                "authority": authority,
-                **execution_token,
-            }
-        brokered = _dispatch_prepared_viewer_broker(intent, prepared, execution_token)
-        if not isinstance(brokered, dict):
-            brokered = _host_broker_initialization_failed("viewer_broker_dispatcher_returned_none")
+        del principal_id
         return {
-            "host_intent": intent.to_dict(),
-            "authority": authority,
-            **brokered,
-        }
-
-
-def _authority_gate_response(authority: dict[str, Any], intent: HostIntent) -> dict[str, Any] | None:
-    if authority.get("approval_required"):
-        return {
-            "status": "approval_required",
+            "status": "error",
             "success": False,
-            "host_intent": intent.to_dict(),
-            "authority": authority,
-            **authority,
+            "error_type": "v4_operation_unavailable",
+            "error": (
+                "HostIntent legacy execution is disabled; invoke a declared "
+                "Pack v4 operation through V4DispatchSession"
+            ),
+            "operation": intent.operation,
         }
-    if not authority.get("allowed"):
-        return {
-            "status": "denied",
-            "success": False,
-            "error_type": "host_intent_denied",
-            "host_intent": intent.to_dict(),
-            "authority": authority,
-        }
-    return None
-
-
-def _prepare_viewer_broker(intent: HostIntent) -> _PreparedViewerBroker | dict[str, Any]:
-    try:
-        broker_client_module = importlib.import_module(
-            _defaultspack_module("domain", "host_bridge", "viewer_broker_client")
-        )
-        approval = importlib.import_module(_defaultspack_module("domain", "safety", "approval"))
-    except Exception as exc:
-        return _host_broker_initialization_failed("broker_modules_import_failed", exc)
-
-    ViewerBrokerClient = getattr(broker_client_module, "ViewerBrokerClient", None)
-    from_environment = getattr(ViewerBrokerClient, "from_environment", None)
-    issue_execution_token = getattr(approval, "issue_execution_token", None)
-    if ViewerBrokerClient is None or not callable(from_environment):
-        return _host_broker_initialization_failed("viewer_broker_client_missing")
-    if not callable(issue_execution_token):
-        return _host_broker_initialization_failed("approval_token_issuer_missing")
-    try:
-        client = from_environment()
-        broker_available = bool(client.available())
-    except Exception as exc:
-        return _host_broker_initialization_failed("viewer_broker_client_initialization_failed", exc)
-    if not broker_available:
-        return {
-            "status": "host_broker_unavailable",
-            "success": False,
-            "error_type": "host_broker_unavailable",
-            "host_broker": {"available": False},
-            "message": "Host intent is approved, but Rumi Viewer host broker is unavailable.",
-        }
-
-    return _PreparedViewerBroker(client=client, issue_execution_token=issue_execution_token)
-
-
-def _issue_viewer_execution_token(
-    intent: HostIntent,
-    prepared: _PreparedViewerBroker,
-    *,
-    request_id: str | None = None,
-) -> str | dict[str, Any]:
-    try:
-        return prepared.issue_execution_token(
-            request_id or f"host_intent:{intent.operation}:{intent.args_hash[:12]}",
-            intent.args_hash,
-            expires_at=int(time.time()) + 300,
-            operation=intent.operation,
-            function_id=intent.host_function_id or intent.operation,
-            pack_id=intent.caller_pack_id,
-            conversation_id=intent.conversation_id,
-        )
-    except Exception as exc:
-        return _host_broker_initialization_failed("approval_token_issue_failed", exc)
-
-
-def _dispatch_prepared_viewer_broker(
-    intent: HostIntent,
-    prepared: _PreparedViewerBroker,
-    execution_token: str,
-) -> dict[str, Any]:
-    payload = intent.to_dict()
-    payload["approval_token"] = execution_token
-    try:
-        broker_response = prepared.client.start_stream(payload) if intent.is_stream else prepared.client.execute_intent(payload)
-    except Exception as exc:
-        return {
-            "status": "host_broker_error",
-            "success": False,
-            "error_type": "host_broker_error",
-            "host_broker": {"available": True, "error": str(exc)},
-        }
-
-    success = bool(isinstance(broker_response, dict) and broker_response.get("ok") is True)
-    return {
-        "status": "executed" if success else "host_broker_error",
-        "success": success,
-        "error_type": None if success else "host_broker_error",
-        "host_broker": broker_response if isinstance(broker_response, dict) else {},
-    }
-
-
-def _dispatch_to_viewer_broker(intent: HostIntent, *, request_id: str | None = None) -> dict[str, Any]:
-    prepared = _prepare_viewer_broker(intent)
-    if not isinstance(prepared, _PreparedViewerBroker):
-        return prepared
-    execution_token = _issue_viewer_execution_token(intent, prepared, request_id=request_id)
-    if isinstance(execution_token, dict):
-        return execution_token
-    brokered = _dispatch_prepared_viewer_broker(intent, prepared, execution_token)
-    if isinstance(brokered, dict):
-        return brokered
-    return _host_broker_initialization_failed("viewer_broker_dispatcher_returned_none")
-
-
 def maybe_handle_host_intent_output(
     output: Any,
     *,
@@ -231,39 +66,3 @@ def maybe_handle_host_intent_output(
         caller_function_id=caller_function_id,
         request_context=request_context,
     )
-
-
-def _host_broker_initialization_failed(reason: str, exc: Exception | None = None) -> dict[str, Any]:
-    host_broker: dict[str, Any] = {"available": False, "initialization_error": reason}
-    if exc is not None:
-        host_broker["error"] = str(exc)
-    return {
-        "status": "host_broker_initialization_failed",
-        "success": False,
-        "error_type": "host_broker_initialization_failed",
-        "host_broker": host_broker,
-        "message": "Host intent is approved, but Rumi Viewer host broker could not be initialized.",
-    }
-
-
-def _defaultspack_module(*parts: str) -> str:
-    return ".".join(("ecosystem", "defaultspack", *parts))
-
-
-def _authority_followup_for_operation(context: dict[str, Any], operation: str) -> tuple[str | None, str | None]:
-    raw_authority = context.get("authority")
-    authority: dict[str, Any] = raw_authority if isinstance(raw_authority, dict) else {}
-    approvals = authority.get("approvals") or authority.get("approval_tokens")
-    if isinstance(approvals, dict):
-        item = approvals.get(operation)
-        if isinstance(item, dict):
-            return str(item.get("request_id") or "") or None, str(item.get("approval_token") or "") or None
-    if isinstance(approvals, list):
-        for item in approvals:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("permission_id") or "").strip() == operation:
-                return str(item.get("request_id") or "") or None, str(item.get("approval_token") or "") or None
-    if str(authority.get("permission_id") or "").strip() == operation:
-        return str(authority.get("request_id") or "") or None, str(authority.get("approval_token") or "") or None
-    return None, None

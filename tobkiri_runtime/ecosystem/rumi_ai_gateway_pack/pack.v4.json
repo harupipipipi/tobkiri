@@ -1,0 +1,304 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:4e304a54dc5788102a40d837da8d9c21491733714d74fb719a14f5de43cf7341",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:08f90b5cf858099d62200b839418caa5b15cdcb36fb03e5ec1b55efe5603cbbb",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "kind": "executable",
+      "path": "runtime/gateway.py"
+    },
+    {
+      "digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
+      "kind": "executable",
+      "path": "runtime/route_quote.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.ai.route.quote.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.route-quote"
+      ],
+      "revision_digest": "sha256:6a931c71d36a3560524844a3051277d6bff8772db77f759a82fd7eb7497fe1b0"
+    },
+    {
+      "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics"
+      ],
+      "revision_digest": "sha256:b41c3f794afcdf4913c27f3245d162472e43f7dc712ccdf5e1dc0486c599eb46"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.generate"
+      ],
+      "revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.stream.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.stream"
+      ],
+      "revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+      "id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.generate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:6a931c71d36a3560524844a3051277d6bff8772db77f759a82fd7eb7497fe1b0",
+      "id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "implementation_digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.route-quote"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:b41c3f794afcdf4913c27f3245d162472e43f7dc712ccdf5e1dc0486c599eb46",
+      "id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
+      "id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:a8f080df6336a9d979cf4d8f18473738b7cb2d198103e3e83ff89bcd3e6c729e",
+    "contract_catalog_digest": "sha256:61c621bced34add9d5937133fe081a05b3d7b89f4d32ec731a7f3ee15fc40e9a",
+    "source_identity": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.resource.ai.routing.diagnostics.v1",
+      "rumi.service.ai.generate.v1",
+      "rumi.service.ai.stream.v1",
+      "rumi:ecosystem/rumi_ai_gateway_pack",
+      "rumi_ai_gateway_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.ai.routing.diagnostics.v1",
+      "effect_ceiling": [
+        "capability:ai.gateway.diagnostics.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.generate.v1",
+      "effect_ceiling": [
+        "capability:ai.gateway.generate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.route.quote.v1",
+      "effect_ceiling": [
+        "capability:ai.gateway.route.quote.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.stream.v1",
+      "effect_ceiling": [
+        "capability:ai.gateway.stream",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:a8f080df6336a9d979cf4d8f18473738b7cb2d198103e3e83ff89bcd3e6c729e",
+    "display_name": "Rumi AI Gateway",
+    "id": "rumi_ai_gateway_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.generate.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.generate"
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.route.quote.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.route-quote"
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.route-quote"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.routing.diagnostics.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics"
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.stream.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.stream"
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.stream"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.gateway.diagnostics.read",
+      "ai.gateway.generate",
+      "ai.gateway.route.quote.read",
+      "ai.gateway.stream"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.resource.ai.provider.health.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.failover.decide.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.generate.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.stream.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.request.prepare.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.route.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.usage.cost.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

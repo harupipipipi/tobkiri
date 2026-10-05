@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
+import { remarkMessageMentions } from "../lib/messageMentions";
+import { toUiMessage } from "../App";
+import type { ChatMessage } from "../lib/api";
 
-import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
+import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
 
 const RISKY_AUTHORITY_FOLLOWUP_PHRASES = [
@@ -43,6 +47,92 @@ test("message copy text falls back to raw text", () => {
   assert.equal(messageCopyText(message({ rawText: "fallback text" })), "fallback text");
 });
 
+function canonicalRawUser(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: `message:${"a".repeat(64)}`,
+    role: "user",
+    content: "hello",
+    created_at: 1,
+    conversation_id: "conversation-1",
+    metadata: { turn_id: "turn-1" },
+    ...overrides,
+  };
+}
+
+test("canonical user mapper preserves only a stable owner turn binding", () => {
+  assert.equal(toUiMessage(canonicalRawUser()).metadata?.turn_id, "turn-1");
+  assert.equal(toUiMessage(canonicalRawUser({ metadata: { turn_id: "../invalid" } })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ id: "local-saved-turn:client" })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ conversation_id: "../invalid" })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ conversation_id: 123 as unknown as string })).metadata?.turn_id, undefined);
+  assert.equal(toUiMessage(canonicalRawUser({ role: "assistant" })).metadata?.turn_id, undefined);
+});
+
+test("user delivery indicators are inline, accessible, and limited to pending or canonical saved rows", () => {
+  const pendingUser = message({
+    id: `message:${"c".repeat(64)}`,
+    conversationId: "conversation-1",
+    role: "user",
+    content: [{ type: "text", text: "hello" }],
+    rawText: "hello",
+    metadata: { deliveryState: "pending" },
+  });
+  const canonicalSavedUser = message({
+    id: `message:${"a".repeat(64)}`,
+    conversationId: "conversation-1",
+    role: "user",
+    content: [{ type: "text", text: "stored text" }],
+    rawText: "stored text",
+    metadata: { turn_id: "turn-1" },
+  });
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null, isMessagesRegionVisible: true, isLoading: false,
+    isNewConversation: false, isGenerating: false,
+    messages: [
+      pendingUser,
+      canonicalSavedUser,
+      message({ id: "saved-user", conversationId: "conversation-1", role: "user", rawText: "unconfirmed text" }),
+      message({ id: `message:${"b".repeat(64)}`, conversationId: "conversation-1", role: "user", rawText: "missing owner turn" }),
+      message({ id: `message:${"d".repeat(64)}`, conversationId: "conversation-1", role: "user", rawText: "invalid owner turn", metadata: { turn_id: "../invalid" } }),
+      message({ id: `message:${"e".repeat(64)}`, role: "user", rawText: "missing context", metadata: { turn_id: "turn-1" } }),
+      message({
+        id: `message:${"f".repeat(64)}`,
+        conversationId: 123 as unknown as string,
+        role: "user",
+        rawText: "numeric context",
+        metadata: { turn_id: "turn-1" },
+      }),
+      message({
+        id: `message:${"0".repeat(64)}`,
+        conversationId: "conversation-1",
+        role: "user",
+        rawText: "numeric owner turn",
+        metadata: { turn_id: 123 as unknown as string },
+      }),
+      message({ id: "assistant", rawText: "response", metadata: { deliveryState: "pending" } }),
+    ],
+    messagesEndRef: { current: null }, unknownBlockStrategy: "hidden",
+    showActivityInMessages: true, showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.equal((html.match(/data-chat-delivery-state="pending"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-chat-delivery-state="sent"/g) ?? []).length, 1);
+  assert.match(html, /data-chat-delivery-indicator="pending"[^>]*role="status"/);
+  assert.match(html, /data-chat-delivery-indicator="sent"[^>]*role="img"/);
+  assert.match(html, /data-chat-delivery-indicator="pending"[^>]*><svg[^>]*class="lucide lucide-clock"[\s\S]*?<\/svg><span class="sr-only">送信中<\/span>/);
+  assert.match(html, /data-chat-delivery-indicator="sent"[^>]*><svg[^>]*class="lucide lucide-check"[\s\S]*?<\/svg><span class="sr-only">送信済み<\/span>/);
+  assert.match(html, /data-message-id="message:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" data-message-role="user"/);
+  assert.match(html, /rumi-message-content[^>]*flex items-end gap-1[^>]*><div[^>]*><p>hello<\/p><\/div><span[^>]*data-chat-delivery-indicator="pending"/);
+  assert.match(html, /<p>hello<\/p>/);
+  assert.match(html, /<p>stored text<\/p>/);
+  assert.match(html, /<p>response<\/p>/);
+  assert.doesNotMatch(html, /<div[^>]*>送信中<\/div>|<div[^>]*>送信済み<\/div>/);
+  assert.doesNotMatch(html, /data-message-id="saved-user"[^]*?data-chat-delivery-indicator="sent"/);
+  assert.equal(messageCopyText(pendingUser), "hello");
+  assert.equal(messageCopyText(canonicalSavedUser), "stored text");
+});
+
 test("unknown blocks fail closed in DOM and copy for legacy strategies", () => {
   const unknown = {
     type: "provider.future",
@@ -78,7 +168,7 @@ test("debug unknown block disclosure is explicit, bounded, and value-free", () =
   assert.doesNotMatch(html, /secret-looking-value|never-render-token/);
 });
 
-test("user messages restore human mention badges from semantic metadata", () => {
+test("user messages highlight semantic mentions inline without duplicate badges", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,
     isMessagesRegionVisible: true,
@@ -106,9 +196,53 @@ test("user messages restore human mention badges from semantic metadata", () => 
     onSuggestionClick: () => undefined,
   }));
 
-  assert.match(html, /data-testid="message-mention-badge"/);
+  assert.match(html, /Use <span class="rumi-message-mention">@Browser Computer<\/span>/);
+  assert.doesNotMatch(html, /message-mention-badge/);
   assert.match(html, /@Browser Computer/);
   assert.doesNotMatch(html, />@browser_computer</);
+});
+
+test("inline mentions preserve code, links, and unmatched text", () => {
+  const html = renderToStaticMarkup(createElement(ReactMarkdown, {
+    remarkPlugins: [[remarkMessageMentions, [{ id: "browser", kind: "tool", label: "Browser Computer", syntax: "@Browser Computer" }]]],
+    children: "Use **@Browser Computer** and @browser computer. Leave user@Browser Computer, @Browser Computerized, @Unknown, `@Browser Computer`, and [@Browser Computer](https://example.test) alone.",
+  }));
+  assert.equal((html.match(/class=\"rumi-message-mention\"/g) ?? []).length, 2);
+  assert.match(html, /<strong><span class=\"rumi-message-mention\">@Browser Computer<\/span><\/strong>/);
+  assert.match(html, /<code>@Browser Computer<\/code>/);
+  assert.match(html, /<a href=\"https:\/\/example.test\">@Browser Computer<\/a>/);
+  assert.match(html, /user@Browser Computer, @Browser Computerized, @Unknown/);
+});
+
+test("repository evidence widget renders trusted exact statistics", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      widget: {
+        type: "repository_evidence",
+        statistics: { files_selected: 7, files_excluded: 93 },
+        excluded_reason_counts: {
+          secret_like_path: 3,
+          utility_model_not_selected: 90,
+        },
+        excluded_sample: [{ path: "never-render.ts", reason: "sample" }],
+      },
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /data-testid="repository-evidence-widget"/);
+  assert.match(html, />93</);
+  assert.match(html, /utility_model_not_selected/);
+  assert.doesNotMatch(html, /never-render\.ts/);
 });
 
 test("markdown links render as destination-aware review controls", () => {
@@ -296,6 +430,138 @@ test("running tool activity summary exposes active work and next action", () => 
   assert.equal(summary.nextAction, "画面の変化を確認します");
 });
 
+test("task duration is human-friendly while running and after completion", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const completedAt = startedAt + 125_000;
+  const running = taskDurationForMessage(
+    message({
+      createdAt: startedAt,
+      metadata: { thinkingLabel: "streaming" },
+    }),
+    [],
+    startedAt + 65_000,
+  );
+  const completed = taskDurationForMessage(message({
+    events: [
+      {
+        type: "tool_call_started",
+        timestamp: startedAt,
+        tool_call_id: "duration-call",
+        tool_name: "coding_file_read",
+      },
+      {
+        type: "tool_call_completed",
+        timestamp: completedAt,
+        tool_call_id: "duration-call",
+        tool_name: "coding_file_read",
+      },
+    ],
+  }));
+
+  assert.deepEqual(running, { label: "実行中 1分5秒", running: true });
+  assert.deepEqual(completed, { label: "実行時間 2分5秒", running: false });
+});
+
+test("assistant header omits timing metadata", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      metadata: {
+        executionTime: "just now",
+        thinkingDuration: "1m 2s",
+      },
+      rawText: "done",
+      content: [{ type: "text", text: "done" }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, />Assistant</);
+  assert.doesNotMatch(html, /実行時間 1分2秒/);
+  assert.doesNotMatch(html, /just now|thinking 1m 2s/);
+});
+
+test("stale streaming metadata on a historical assistant message does not show a running timer", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const completedAt = startedAt + 45_000;
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      createdAt: startedAt,
+      metadata: { thinkingLabel: "streaming" },
+      events: [{
+        type: "tool_call_completed",
+        timestamp: completedAt,
+        tool_call_id: "stale-stream",
+        tool_name: "coding_file_read",
+      }],
+      rawText: "done",
+      content: [{ type: "text", text: "done" }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, /実行時間 45秒/);
+  assert.doesNotMatch(html, /実行中/);
+});
+
+test("expanded tool history retains every event and log entry", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const eventPaths = Array.from({ length: 12 }, (_, index) => `event-${index}.md`);
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      events: eventPaths.map((path, index) => ({
+        type: "tool_call_started",
+        seq: index + 1,
+        timestamp: startedAt + index * 1_000,
+        tool_call_id: `event-call-${index}`,
+        tool_name: "coding_file_read",
+        arguments: { path },
+      })),
+      toolLogs: [{
+        tool_name: "coding_file_read",
+        tool_call_id: "log-only-call",
+        arguments: { path: "log-only.md" },
+        result: { status: "ok", data: { path: "log-only.md", content: "ok" } },
+        timestamp: startedAt + 20_000,
+      }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /aria-label="ツール履歴"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /aria-label="ツール履歴の詳細"/);
+  for (const path of eventPaths) assert.match(html, new RegExp(path));
+  assert.match(html, /log-only\.md/);
+  assert.doesNotMatch(html, /前の \d+ 件を表示/);
+});
+
 test("empty response warning waits until streaming draft is finalized", () => {
   const streaming = message({ metadata: { thinkingLabel: "streaming" } });
   const running = message({ metadata: { thinkingLabel: "running" } });
@@ -396,6 +662,13 @@ test("retried tool attempts render discard history beside the clean running atte
   assert.match(html, /README\.md/);
   assert.match(html, /1件失敗/);
   assert.match(html, /作業中/);
+  assert.match(html, /data-error-notice="tool-activity-failed"/);
+  assert.match(html, /data-error-icon="tool-activity-failed"/);
+  assert.match(html, /aria-label="ツール実行エラーをコピー"/);
+  assert.match(html, /data-copy-action=""/);
+  assert.match(html, /role="group"/);
+  const staticErrorTag = html.match(/<div[^>]*data-error-notice="tool-activity-failed"[^>]*>/)?.[0] ?? "";
+  assert.doesNotMatch(staticErrorTag, /aria-live|role="alert"/);
 });
 
 test("tool previews match retry generations while legacy events still use call ids", () => {
@@ -657,4 +930,108 @@ test("streamed browser screenshots include nested tool result artifacts", () => 
   assert.equal(screenshots[0].tool_name, "browser_companion");
   assert.equal(screenshots[0].data_url, "data:image/png;base64,def");
   assert.deepEqual(screenshots[0].marker, { x: 10, y: 12 });
+});
+
+
+test("chat send error exposes retry and dismiss actions without truncating the message", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: "Network connection failed while sending a very long Japanese/English message.",
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+    onRetry: () => undefined,
+    onDismissError: () => undefined,
+  }));
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /data-error-icon="chat"/);
+  assert.match(html, /aria-label="チャットエラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /role="status" aria-live="polite"/);
+  assert.match(html, />再試行</);
+  assert.match(html, /aria-label="エラーを閉じる"/);
+  assert.match(html, /Network connection failed/);
+});
+
+test("verified saved completion renders a non-error chat notice", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    completionNotice: {
+      tone: "success",
+      title: "送信を確認しました",
+      message: "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。",
+    },
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+    onDismissCompletionNotice: () => undefined,
+  }));
+
+  assert.match(html, /data-chat-completion-notice="success"/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /送信を確認しました/);
+  assert.match(html, /aria-label="通知を閉じる"/);
+  assert.doesNotMatch(html, /処理を完了できませんでした|rumi-chat-error|role="alert"/);
+});
+
+test("unavailable saved conversation keeps an explicit warning notice", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    completionNotice: {
+      tone: "warning",
+      title: "現在の会話を確認できません",
+      message: "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。",
+    },
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /data-chat-completion-notice="warning"/);
+  assert.match(html, /現在の会話を確認できません/);
+  assert.match(html, /自動再送はしません/);
+  assert.doesNotMatch(html, /処理を完了できませんでした|role="alert"/);
+});
+
+test("message copy keeps the double-square glyph while status is announced separately", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({ rawText: "Copy this response." })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /aria-label="コピー"/);
+  assert.match(html, /data-copy-action="message"/);
+  assert.match(html, /data-copy-icon="message"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /aria-label="コピー済み"|aria-label="コピー失敗"/);
 });

@@ -1,24 +1,16 @@
 {
   "pack_id": "rumi_model_evals_pack",
   "display_name": "Rumi Model Evals Pack",
-  "description": "Optional declarative model evaluation and routing evidence pack for provider smoke tests, pass@k, flakiness, fit matrices, cost/latency evidence, and defaultspack promotion gates.",
+  "description": "Optional local-first evaluation catalog, approval-aware plan, and deterministic evidence scoring runtime.",
   "target_pack_id": "rumi_model_evals_pack",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "compatibility": {
-    "target_pack_version": ">=1.0.0",
+    "target_pack_version": ">=2.0.0",
     "python": ">=3.10",
     "platforms": ["windows", "linux", "macos"]
   },
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0"
-    },
-    {
-      "pack_id": "rumi_local_agent_pack",
-      "version": ">=1.0.0"
-    }
-  ],
+  "depends_on": [],
+  "required_permissions": ["ai.eval.catalog.read", "ai.eval.plan", "ai.eval.score"],
   "conflicts_with": [],
   "overlap_policy": {
     "tool_aliases": "prefer_explicit_pack_namespace",
@@ -34,7 +26,7 @@
       "Provider keys are runtime-only requirements and must not appear in pack files."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Domain-specific evaluation policy pack; promotion decisions are advisory gates for defaultspack maintainers.",
     "gates": [
@@ -64,6 +56,6 @@
   "security_notes": [
     "No provider keys, API tokens, OAuth clients, private endpoints, or credentials are embedded.",
     "Network default is none; provider smoke recipes require explicit runtime approval and externally supplied credentials.",
-    "The pack contains declarative specs only and does not execute evals."
+    "The runtime plans but does not execute provider calls or grant authority."
   ]
 }

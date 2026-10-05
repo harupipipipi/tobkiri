@@ -1,0 +1,383 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  bindOptimisticSavedTurnExpectedUserMessageId,
+  bindOptimisticSavedTurnOverlay,
+  createOptimisticSavedTurnOverlay,
+  expectedSavedTurnUserMessageId,
+  SavedTurnViewFence,
+  savedTurnComposerControlsReady,
+  savedTurnComposerPresentation,
+  shouldDisplayOptimisticSavedTurnOverlay,
+  shouldRestoreUnwrittenSavedTurnDraft,
+} from "./optimisticSavedTurn";
+
+const conversationId = "conversation-1";
+const operationId = "turn-1";
+const userMessageId = `message:${"a".repeat(64)}`;
+const assistantMessageId = `message:${"b".repeat(64)}`;
+
+function activeViewTicket() {
+  return new SavedTurnViewFence("workspace-a", null).capture();
+}
+
+function overlay() {
+  return bindOptimisticSavedTurnOverlay(
+    createOptimisticSavedTurnOverlay({
+      clientId: "local-1",
+      content: "hello",
+      createdAt: 1,
+      viewTicket: activeViewTicket(),
+    }),
+    {
+      conversationId,
+      operationId,
+      requestFingerprint: "sha256:request",
+    },
+  );
+}
+
+function runningTurn() {
+  return {
+    id: operationId,
+    conversation_id: conversationId,
+    status: "running",
+    revision: 2,
+    events: [{
+      name: "turn.running",
+      details: {
+        phase: "saved_execution_claimed",
+        user_message_id: userMessageId,
+      },
+    }],
+  };
+}
+
+test("a current pending overlay keeps the lower composer visible through fresh creation and root registration", () => {
+  const presentation = (patch: Partial<Parameters<typeof savedTurnComposerPresentation>[0]> = {}) => (
+    savedTurnComposerPresentation({
+      activeConversationId: conversationId,
+      activeSavedTurnOperationId: operationId,
+      canonicalMessageCount: 0,
+      visibleOverlayCount: 1,
+      ...patch,
+    })
+  );
+
+  assert.deepEqual(presentation(), {
+    isNewConversation: true,
+    showConversationComposer: true,
+    showNewConversationStage: false,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: null,
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
+  });
+  assert.deepEqual(presentation({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: true,
+    showNewConversationStage: false,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: null,
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
+  });
+  assert.deepEqual(presentation({
+    activeSavedTurnOperationId: "other-turn",
+    visibleOverlayCount: 0,
+  }), {
+    isNewConversation: true,
+    showConversationComposer: false,
+    showNewConversationStage: true,
+  });
+  assert.deepEqual(presentation({ canonicalMessageCount: 1, visibleOverlayCount: 0 }), {
+    isNewConversation: false,
+    showConversationComposer: true,
+    showNewConversationStage: false,
+  });
+});
+
+test("composer control readiness follows only the filtered current saved submission", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const draft = createOptimisticSavedTurnOverlay({
+    clientId: "controls-draft",
+    content: "hello",
+    createdAt: 1,
+    viewTicket: fence.capture(),
+  });
+  const visibleUnbound = shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleUnbound, true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleUnbound),
+  }), false);
+
+  const bound = bindOptimisticSavedTurnOverlay(draft, {
+    conversationId,
+    operationId,
+    requestFingerprint: "sha256:request",
+  });
+  const visibleBound = shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: new SavedTurnViewFence("workspace-a", conversationId).capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleBound, true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: conversationId,
+    activeSavedTurnOperationId: operationId,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleBound),
+  }), true);
+
+  fence.synchronize("workspace-b", null);
+  const visibleAfterAba = shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  });
+  assert.equal(visibleAfterAba, false);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: null,
+    activeSavedTurnOperationId: null,
+    canonicalMessageCount: 0,
+    visibleOverlayCount: Number(visibleAfterAba),
+  }), true);
+  assert.equal(savedTurnComposerControlsReady({
+    activeConversationId: conversationId,
+    activeSavedTurnOperationId: "other-turn",
+    canonicalMessageCount: 0,
+    visibleOverlayCount: 0,
+  }), true);
+});
+
+test("new-conversation draft is displayable before a durable conversation id exists", () => {
+  const draft = createOptimisticSavedTurnOverlay({
+      clientId: "new-draft",
+      content: "hello",
+      createdAt: 1,
+      viewTicket: activeViewTicket(),
+  });
+
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [],
+  }), true);
+  assert.equal(draft.message.raw_text, "hello");
+  assert.equal(draft.message.conversation_id, "");
+});
+
+test("fresh conversation adoption renews the submitting view ticket without a tab switch", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const draftTicket = fence.capture();
+
+  const adoptedTicket = fence.adoptConversation(draftTicket, conversationId);
+
+  assert.ok(adoptedTicket);
+  assert.equal(fence.matches(draftTicket), false);
+  assert.equal(fence.matches(adoptedTicket), true);
+  assert.equal(fence.adoptConversation(adoptedTicket, "conversation-2"), null);
+  assert.equal(fence.adoptConversation(draftTicket, conversationId), null);
+  fence.synchronize("workspace-b", null);
+  assert.equal(fence.matches(adoptedTicket), false);
+});
+
+test("unwritten fresh-root drafts restore only in the exact empty adopted view", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const initialTicket = fence.capture();
+  const adoptedTicket = fence.adoptConversation(initialTicket, conversationId)!;
+  const draft = {
+    conversationId,
+    operationId,
+    viewTicket: adoptedTicket,
+  };
+  const canRestore = (patch: Partial<Parameters<typeof shouldRestoreUnwrittenSavedTurnDraft>[1]> = {}) => (
+    shouldRestoreUnwrittenSavedTurnDraft(draft, {
+      activeConversationId: conversationId,
+      activeOperationId: null,
+      activeViewTicket: fence.capture(),
+      composerIsEmpty: true,
+      conversationIsEmpty: true,
+      ...patch,
+    })
+  );
+
+  assert.equal(canRestore(), true);
+  assert.equal(canRestore({ activeOperationId: operationId }), false);
+  assert.equal(canRestore({ composerIsEmpty: false }), false);
+  assert.equal(canRestore({ conversationIsEmpty: false }), false);
+  fence.synchronize("workspace-b", null);
+  fence.synchronize("workspace-a", conversationId);
+  assert.equal(canRestore(), false);
+});
+
+test("only the claimed exact root user id replaces the optimistic overlay", () => {
+  const bound = bindOptimisticSavedTurnExpectedUserMessageId(overlay(), runningTurn());
+  assert.equal(bound.expectedUserMessageId, userMessageId);
+
+  const canonicalUser = {
+    id: userMessageId,
+    role: "user",
+    content: "hello",
+    created_at: 1,
+    conversation_id: conversationId,
+    metadata: { turn_id: operationId },
+  };
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [canonicalUser],
+  }), false);
+});
+
+test("same text, timestamp, or root metadata never replaces without the claimed id", () => {
+  const bound = bindOptimisticSavedTurnExpectedUserMessageId(overlay(), runningTurn());
+  const foreignMessage = {
+    id: `message:${"c".repeat(64)}`,
+    role: "user",
+    content: "hello",
+    created_at: 1,
+    conversation_id: conversationId,
+    metadata: { turn_id: operationId },
+  };
+
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [foreignMessage],
+  }), true);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [{
+      ...foreignMessage,
+      id: userMessageId,
+      metadata: { turn_id: "other-turn" },
+    }],
+  }), true);
+});
+
+test("overlay is isolated to its bound conversation and operation across ABA", () => {
+  const bound = bindOptimisticSavedTurnExpectedUserMessageId(overlay(), runningTurn());
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: "conversation-2",
+    activeOperationId: "turn-2",
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [],
+  }), false);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: "turn-2",
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [],
+  }), false);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: null,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [],
+  }), false);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(bound, {
+    activeConversationId: conversationId,
+    activeOperationId: operationId,
+    activeViewTicket: activeViewTicket(),
+    canonicalMessages: [],
+  }), true);
+});
+
+test("unbound new-conversation overlay does not revive after a null-to-null tab ABA", () => {
+  const fence = new SavedTurnViewFence("workspace-a", null);
+  const originalTicket = fence.capture();
+  const draft = createOptimisticSavedTurnOverlay({
+    clientId: "new-draft",
+    content: "hello",
+    createdAt: 1,
+    viewTicket: originalTicket,
+  });
+
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  }), true);
+  fence.synchronize("workspace-b", null);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  }), false);
+  fence.synchronize("workspace-a", null);
+  assert.equal(fence.matches(originalTicket), false);
+  assert.equal(shouldDisplayOptimisticSavedTurnOverlay(draft, {
+    activeConversationId: null,
+    activeOperationId: null,
+    activeViewTicket: fence.capture(),
+    canonicalMessages: [],
+  }), false);
+  assert.equal(fence.matches(fence.capture()), true);
+});
+
+test("terminal references provide an expected id only with an exact completed root", () => {
+  const completed = {
+    ...runningTurn(),
+    status: "completed",
+    result_reference: {
+      conversation_id: conversationId,
+      conversation_revision: 3,
+      user_message_id: userMessageId,
+      assistant_message_id: assistantMessageId,
+      outcome_digest: `sha256:${"d".repeat(64)}`,
+    },
+  };
+
+  assert.equal(expectedSavedTurnUserMessageId(completed, conversationId, operationId), userMessageId);
+  assert.equal(expectedSavedTurnUserMessageId({ ...completed, id: "other" }, conversationId, operationId), null);
+  assert.equal(expectedSavedTurnUserMessageId({ ...runningTurn(), status: "failed" }, conversationId, operationId), null);
+  assert.equal(expectedSavedTurnUserMessageId({
+    ...completed,
+    result_reference: { ...completed.result_reference, outcome_digest: "invalid" },
+  }, conversationId, operationId), null);
+});
+
+test("a stale poll ticket cannot apply steer previews after a tab change", () => {
+  const fence = new SavedTurnViewFence("workspace-a", conversationId);
+  const stalePollTicket = fence.capture();
+  const previews: string[] = [];
+  const applyPreview = (value: string) => {
+    if (fence.matches(stalePollTicket)) previews.push(value);
+  };
+
+  applyPreview("root-guidance");
+  fence.synchronize("workspace-b", null);
+  applyPreview("stale-guidance");
+
+  assert.deepEqual(previews, ["root-guidance"]);
+});

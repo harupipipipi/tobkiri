@@ -11,13 +11,10 @@ Note: core_runtime.paths に BASE_DIR が未定義のため、paths.py を
 """
 from __future__ import annotations
 
-import re
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 # ======================================================================
 # paths.py / security 系インポートチェーンの迂回
@@ -62,23 +59,16 @@ _dummy_paths.check_pack_id_mismatch = lambda *a, **kw: None
 sys.modules.setdefault("core_runtime.paths", _dummy_paths)
 
 # ======================================================================
-# pack_api_server.py のソースを読み込む (静的検証用)
-# ======================================================================
-_SERVER_PY = _PROJECT_ROOT / "core_runtime" / "pack_api_server.py"
-_SERVER_SRC = _SERVER_PY.read_text(encoding="utf-8")
-
-
-# ======================================================================
 # validation.py から validate_pack_id を直接インポート
 # ======================================================================
-from core_runtime.validation import validate_pack_id
+from core_runtime.validation import validate_pack_id  # noqa: E402
 
 
 # ======================================================================
 # SecretsHandlersMixin をインポート
 # (paths.py はダミー登録済みなので api/__init__.py が通る)
 # ======================================================================
-from core_runtime.api.store.secrets_handlers import SecretsHandlersMixin
+from core_runtime.api.store.secrets_handlers import SecretsHandlersMixin  # noqa: E402
 
 
 # ======================================================================
@@ -146,33 +136,46 @@ _PATCH = "core_runtime.api.store.secrets_handlers._w19e_get_secrets_grant_manage
 # Part A: ルーティング静的検証 (5 件)
 # ======================================================================
 class TestRoutingPatterns:
-    """pack_api_server.py に正しいルーティングが存在する"""
+    """The finite Pack v4 boundary owns retirement of historical routes."""
 
-    def _method_body(self, name: str) -> str:
-        pat = rf"(    def {name}\(self\).*?)(?=\n    def |\nclass |\Z)"
-        m = re.search(pat, _SERVER_SRC, re.DOTALL)
-        assert m, f"{name} not found"
-        return m.group(1)
+    @staticmethod
+    def _assert_retired(method: str, path: str) -> None:
+        from core_runtime.pack_api_server import PackAPIHandler
+        from ecosystem.defaultspack.transport.registry import (
+            canonical_http_route_specs,
+        )
+
+        assert (method, path) not in {
+            (spec.method, spec.pattern)
+            for spec in canonical_http_route_specs()
+        }
+        assert PackAPIHandler._retired_api_path(path)
+        assert not hasattr(PackAPIHandler, "_dispatch_defaultspack_http_route")
+        assert not any(
+            hasattr(PackAPIHandler, name)
+            for name in (
+                "_secrets_grants_list",
+                "_secrets_grants_get",
+                "_secrets_grants_grant",
+                "_secrets_grants_delete",
+                "_secrets_grants_delete_key",
+            )
+        )
 
     def test_get_grants_list_route(self):
-        body = self._method_body("do_GET")
-        assert 'path == "/api/secrets/grants"' in body
+        self._assert_retired("GET", "/api/secrets/grants")
 
     def test_get_grants_pack_route(self):
-        body = self._method_body("do_GET")
-        assert 'path.startswith("/api/secrets/grants/")' in body
+        self._assert_retired("GET", "/api/secrets/grants/example")
 
     def test_post_grants_route(self):
-        body = self._method_body("do_POST")
-        assert 'path.startswith("/api/secrets/grants/")' in body
+        self._assert_retired("POST", "/api/secrets/grants/example")
 
     def test_delete_grants_route(self):
-        body = self._method_body("do_DELETE")
-        assert 'path.startswith("/api/secrets/grants/")' in body
+        self._assert_retired("DELETE", "/api/secrets/grants/example")
 
     def test_delete_key_branch(self):
-        body = self._method_body("do_DELETE")
-        assert "_secrets_grants_delete_key" in body
+        self._assert_retired("DELETE", "/api/secrets/grants/example/API_KEY")
 
 
 # ======================================================================

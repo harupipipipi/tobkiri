@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/frontend-contract-map.v4.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "pack_id", "routes"],
+  "properties": {
+    "schema": {"const": "io.tobkiri.frontend-contract-map.v4"},
+    "pack_id": {"const": "tobkiri_workflow_pack"},
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method", "path", "presentation", "targets"],
+        "properties": {
+          "method": {"enum": ["GET", "POST"]},
+          "path": {"type": "string", "pattern": "^/api/contracts/tobkiri_workflow_pack/"},
+          "presentation": {"const": "broker_result"},
+          "targets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["contribution_id", "contract_id", "operation_id", "provider_id", "function_id", "allowed_payload_keys"],
+              "properties": {
+                "contribution_id": {"type": "string", "minLength": 1},
+                "contract_id": {"const": "tobkiri.workflow.v4"},
+                "operation_id": {"type": "string", "minLength": 1},
+                "provider_id": {"const": "tobkiri.workflow.provider"},
+                "function_id": {"const": "tobkiri.workflow.provider"},
+                "allowed_payload_keys": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

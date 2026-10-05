@@ -40,9 +40,11 @@
 ### 起動確認
 
 ```bash
-python -m rumi_ai --health
-python -m rumi_ai
+python -m app          # Host を起動（このターミナルはブロックされる）
+python -m app --health # 別ターミナルで起動中の Host の /health を probe
 ```
+
+`python -m rumi_ai` は互換 shim で、Launcher 注入の Pack v4 activation snapshot がない環境では意図的に fail closed します。手動起動・ヘルスチェックには `python -m app` を使ってください。
 
 ### viewer 開発起動
 
@@ -110,9 +112,7 @@ ecosystem は第三者が作成でき、悪意ある作者も存在しうると�
 
 既存環境で HMAC 署名なしの設定ファイルを再署名する場合:
 
-```bash
-python -m rumi_ai migrate-hmac
-```
+レガシーの `python -m rumi_ai migrate-hmac` サブコマンドは廃止されました。再署名は Launcher 駆動の activation 経路で行われます。
 
 ---
 

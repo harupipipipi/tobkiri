@@ -33,7 +33,7 @@
     "rumi_agent_services_pack": "Owns service-agent composition and service runtime topology.",
     "rumi_devops_release_pack": "Owns operational gates, release evidence, runbooks, rollback plans, and incident evidence."
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "This pack is an optional operational overlay and does not replace or promote defaultspack runtime behavior."
   }

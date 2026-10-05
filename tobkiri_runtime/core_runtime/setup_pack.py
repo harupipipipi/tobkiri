@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .dependency_resolver import validate_dependencies, version_satisfies
-from .paths import BASE_DIR, discover_pack_locations
+from .pack_boundary import finite_files
+from .paths import BASE_DIR, USER_DATA_DIR, discover_pack_locations
 from .setup_pack_metadata import (
     as_dict as _as_dict,
     normalize_dependency_specs as _normalize_dependency_specs,
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 SETUP_PACK_ROOT = BASE_DIR / "ecosystem" / "setup_pack"
 SETUP_PACK_SELECTION_FILE = (
-    BASE_DIR / "user_data" / "settings" / "setup_pack_selection.json"
+    USER_DATA_DIR / "settings" / "setup_pack_selection.json"
 )
 SETUP_PACK_ALL_OK_PERMISSIONS = [
     "function.call",
@@ -68,7 +69,7 @@ class SetupPackDefinition:
     depends_on: List[Dict[str, str]] = field(default_factory=list)
     conflicts_with: List[Dict[str, str]] = field(default_factory=list)
     overlap_policy: Dict[str, Any] = field(default_factory=dict)
-    defaultspack_promotion: Dict[str, Any] = field(default_factory=dict)
+    base_pack_promotion: Dict[str, Any] = field(default_factory=dict)
     compatibility: Dict[str, Any] = field(default_factory=dict)
     marketplace: Dict[str, Any] = field(default_factory=dict)
     signing: Dict[str, Any] = field(default_factory=dict)
@@ -93,7 +94,11 @@ class SetupPackManager:
     def _definition_files(self) -> List[Path]:
         if not self.root.is_dir():
             return []
-        return sorted(self.root.glob("*/pack.json"))
+        return [
+            path
+            for path in finite_files(self.root, (".json",), recursive=True)
+            if path.name == "pack.json" and path.parent.parent == self.root
+        ]
 
     def _load_definitions(self) -> Dict[str, SetupPackDefinition]:
         result: Dict[str, SetupPackDefinition] = {}
@@ -140,7 +145,7 @@ class SetupPackManager:
                 ),
                 conflicts_with=_normalize_pack_ref_specs(raw.get("conflicts_with", [])),
                 overlap_policy=_as_dict(raw.get("overlap_policy")),
-                defaultspack_promotion=_as_dict(raw.get("defaultspack_promotion")),
+                base_pack_promotion=_as_dict(raw.get("base_pack_promotion")),
                 compatibility=compatibility,
                 marketplace=_as_dict(raw.get("marketplace")),
                 signing=_as_dict(raw.get("signing")),
@@ -208,7 +213,7 @@ class SetupPackManager:
                 "depends_on": list(item.depends_on),
                 "conflicts_with": list(item.conflicts_with),
                 "overlap_policy": dict(item.overlap_policy),
-                "defaultspack_promotion": dict(item.defaultspack_promotion),
+                "base_pack_promotion": dict(item.base_pack_promotion),
                 "compatibility": dict(item.compatibility),
                 "marketplace": dict(item.marketplace),
                 "signing": dict(item.signing),
@@ -363,7 +368,7 @@ class SetupPackManager:
                 event_type=action,
                 success=success,
                 details=details or {},
-                error=error,
+                error=error or "",
             )
         except Exception:
             logger.debug("Failed to audit setup_pack system event", exc_info=True)
@@ -387,7 +392,7 @@ class SetupPackManager:
                 action=action,
                 success=success,
                 details=details or {},
-                rejection_reason=error,
+                rejection_reason=error or "",
             )
         except Exception:
             logger.debug("Failed to audit setup_pack permission event", exc_info=True)

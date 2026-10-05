@@ -4,17 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tobkiri Setup</title>
+  <script>
+    (() => {
+      try {
+        const storedTheme = localStorage.getItem("tobkiri-theme") || localStorage.getItem("rumi-theme");
+        if (storedTheme === "Standard" || storedTheme === "Rumi") {
+          localStorage.setItem("tobkiri-theme", "Rounded");
+        }
+        const requestedColorMode = new URLSearchParams(window.location.search).get("color_mode");
+        const colorMode = requestedColorMode === "light" || requestedColorMode === "dark"
+          ? requestedColorMode
+          : localStorage.getItem("tobkiri-color-mode") || localStorage.getItem("rumi-color-mode") || "dark";
+        document.documentElement.classList.toggle("dark", colorMode === "dark");
+      } catch (_) {
+        // Setup remains usable when browser storage is unavailable.
+      }
+    })();
+  </script>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #f8f9fa;
+      color-scheme: light;
+      --bg: #f0f4f9;
       --surface: #ffffff;
-      --surface-muted: #f3f4f6;
-      --ink: #111827;
-      --muted: #6b7280;
-      --line: #e5e7eb;
-      --accent: #4f46e5;
-      --accent-soft: #eef2ff;
+      --surface-muted: #e8eaed;
+      --ink: #1f1f1f;
+      --muted: #444746;
+      --line: #e0e0e0;
+      --accent: #0b57d0;
+      --accent-soft: #e8f0fe;
       --success: #15803d;
       --success-soft: #f0fdf4;
       --danger: #b91c1c;
@@ -22,21 +39,27 @@
       --warning: #a16207;
     }
     * { box-sizing: border-box; }
+    html {
+      min-height: 100%;
+      background: var(--bg);
+      overscroll-behavior-y: none;
+    }
     body {
       margin: 0;
-      min-height: 100vh;
+      min-height: 100dvh;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background: var(--bg);
       padding: 32px clamp(16px, 4vw, 48px) 48px;
       overflow-x: clip;
+      overscroll-behavior-y: none;
     }
     body::before {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background: radial-gradient(circle at 18% 0%, rgba(99, 102, 241, 0.1), transparent 34%);
+      background: radial-gradient(circle at 18% 0%, rgba(16, 163, 127, 0.1), transparent 34%);
     }
     main {
       position: relative;
@@ -53,15 +76,15 @@
     }
     .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; }
     .brand-mark {
-      display: grid;
+      display: block;
       width: 38px;
       height: 38px;
-      place-items: center;
       border: 1px solid var(--line);
-      border-radius: 11px;
+      border-radius: 13px;
       background: var(--surface);
-      color: var(--accent);
+      object-fit: cover;
     }
+    .topbar-actions { display: flex; align-items: center; gap: 14px; }
     .setup-progress { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
     .setup-progress i { width: 28px; height: 3px; border-radius: 99px; background: var(--line); }
     .setup-progress i:first-of-type { background: var(--accent); }
@@ -87,7 +110,7 @@
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 24px;
       padding: 20px;
       box-shadow: 0 24px 70px -58px rgba(17, 24, 39, 0.7);
       animation: setup-rise 0.4s 0.08s ease-out both;
@@ -105,19 +128,26 @@
       position: relative;
       display: block;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 20px;
       padding: 16px;
       background: var(--surface);
-      cursor: pointer;
       transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
       overflow-wrap: anywhere;
     }
-    .pack:hover {
-      border-color: #a5b4fc;
-      background: #fafaff;
+    .pack.selectable-pack {
+      cursor: pointer;
+    }
+    .pack.selectable-pack:hover,
+    .profile-choice:hover {
+      border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+      background: var(--accent-soft);
     }
     .pack:has(input:focus-visible) {
-      outline: 3px solid rgba(79, 70, 229, 0.24);
+      outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      outline-offset: 2px;
+    }
+    .pack.review-confirmation:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--success) 32%, transparent);
       outline-offset: 2px;
     }
     .pack.selected {
@@ -133,6 +163,174 @@
       border-radius: 99px;
       background: var(--accent);
     }
+    .profile-choice {
+      padding: 0;
+      overflow: clip;
+      cursor: pointer;
+    }
+    .profile-choice-main {
+      display: block;
+      width: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 19px;
+      padding: 16px;
+      color: var(--ink);
+      background: transparent;
+      text-align: left;
+    }
+    .profile-choice-main:hover {
+      background: transparent;
+    }
+    .profile-choice-main header {
+      margin: 0;
+    }
+    .profile-choice-copy {
+      display: grid;
+      gap: 4px;
+    }
+    .profile-choice-copy strong {
+      font-size: 18px;
+    }
+    .profile-choice-badges {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .selection-state {
+      color: var(--muted);
+      background: var(--surface-muted);
+      border-color: transparent;
+    }
+    .profile-choice.selected .selection-state {
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+      border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+    }
+    .profile-choice.selected .selection-state::before {
+      content: "\2713";
+      margin-right: 4px;
+    }
+    .pack-disclosure {
+      margin: 0 16px 16px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    .pack-preview {
+      margin-bottom: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .pack-disclosure summary {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 8px 11px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      list-style: none;
+    }
+    .pack-disclosure summary::-webkit-details-marker { display: none; }
+    .pack-disclosure summary::after { content: " \2193"; }
+    .pack-disclosure details[open] summary::after { content: " \2191"; }
+    .pack-name-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .pack-name-list li {
+      min-width: 0;
+      border-radius: 10px;
+      padding: 7px 9px;
+      color: var(--muted);
+      background: var(--surface-muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .review-profile-plan {
+      cursor: default;
+    }
+    .review-profile-plan:hover {
+      border-color: var(--line);
+      background: var(--surface);
+    }
+    .review-profile-plan summary:focus-visible {
+      outline-color: var(--line);
+    }
+    .review-profile-plan .pack-disclosure {
+      margin: 12px 0 0;
+    }
+    .review-pack {
+      display: grid;
+      gap: 12px;
+    }
+    .review-pack header { margin: 0; }
+    .review-pack-title {
+      display: grid;
+      gap: 4px;
+    }
+    .review-pack-title p {
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .review-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .review-meta-item {
+      min-width: 0;
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--muted);
+      background: var(--surface-muted);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .review-meta-item strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--ink);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    .review-meta-item.wide { grid-column: 1 / -1; }
+    .pack.review-confirmation {
+      min-height: 0;
+      cursor: pointer;
+    }
+    .pack.review-confirmation:hover {
+      border-color: color-mix(in srgb, var(--success) 62%, var(--line));
+      background: color-mix(in srgb, var(--success) 8%, var(--surface));
+    }
+    .pack.review-confirmation[aria-pressed="true"] {
+      border-color: var(--success);
+      box-shadow: inset 0 0 0 1px var(--success);
+      background: var(--success-soft);
+    }
+    .confirmation-status {
+      display: inline-flex;
+      width: fit-content;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .pack.review-confirmation[aria-pressed="true"] .confirmation-status {
+      color: var(--success);
+    }
     .pack header {
       display: flex;
       justify-content: space-between;
@@ -140,6 +338,7 @@
       align-items: center;
       margin-bottom: 8px;
     }
+    .profile-choice-main header { margin-bottom: 0; }
     .pill {
       border-radius: 6px;
       padding: 4px 10px;
@@ -148,7 +347,7 @@
       color: var(--muted);
       white-space: nowrap;
     }
-    .recommended { color: var(--accent); border-color: #c7d2fe; }
+    .recommended { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
     .danger { color: var(--danger); border-color: #fecaca; }
     .actions, .mini-actions {
       display: flex;
@@ -172,7 +371,7 @@
     button {
       border: 0;
       min-height: 44px;
-      border-radius: 8px;
+      border-radius: 999px;
       padding: 10px 16px;
       font: inherit;
       cursor: pointer;
@@ -183,8 +382,13 @@
       color: var(--ink);
       background: var(--surface-muted);
     }
+    button.back-button {
+      min-height: 36px;
+      padding: 7px 11px;
+      font-size: 13px;
+    }
     button:focus-visible, summary:focus-visible {
-      outline: 3px solid rgba(79, 70, 229, 0.24);
+      outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
       outline-offset: 2px;
     }
     button:disabled { opacity: 0.55; cursor: default; }
@@ -264,6 +468,7 @@
       border-top: 1px solid var(--line);
     }
     .selection-summary { color: var(--muted); font-size: 12px; }
+    .included-packs { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.55; }
     @keyframes setup-rise {
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: none; }
@@ -279,61 +484,72 @@
       .setup-progress span { display: none; }
       .selection-footer { align-items: stretch; flex-direction: column; }
       .selection-footer button { width: 100%; }
+      .profile-choice-main header { align-items: flex-start; }
+      .profile-choice-badges { justify-content: flex-start; }
+      .pack-name-list { grid-template-columns: 1fr; }
+      .review-meta { grid-template-columns: 1fr; }
+      .review-meta-item.wide { grid-column: auto; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0a0a0a;
-        --surface: #161616;
-        --surface-muted: #202024;
-        --ink: #f5f5f5;
-        --muted: #a1a1aa;
-        --line: #2e2e33;
-        --accent: #818cf8;
-        --accent-soft: #20213a;
-        --success: #4ade80;
-        --success-soft: #11291a;
-        --danger: #f87171;
-        --danger-soft: #321717;
-      }
-      .pack:hover { background: #1c1c22; border-color: #6366f1; }
+    :root.dark {
+      color-scheme: dark;
+      --bg: #131314;
+      --surface: #282a2c;
+      --surface-muted: #333537;
+      --ink: #e3e3e3;
+      --muted: #c4c7c5;
+      --line: #444746;
+      --accent: #a8c7fa;
+      --accent-soft: #1e3557;
+      --success: #4ade80;
+      --success-soft: #11291a;
+      --danger: #f87171;
+      --danger-soft: #321717;
     }
+    :root.dark .pack.selectable-pack:hover,
+    :root.dark .profile-choice:hover { background: var(--accent-soft); }
   </style>
 </head>
 <body>
   <main>
     <div class="topbar">
-      <div class="brand"><span class="brand-mark">T</span><span>Tobkiri Launcher</span></div>
-      <div class="setup-progress"><span>初期セットアップ</span><i></i><i></i></div>
+      <div class="brand">
+        <img class="brand-mark" src="/setup/assets/tobkiri-launcher-icon.png" alt="Tobkiri">
+        <span>Tobkiri Launcher</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="back" class="secondary back-button" type="button">← 戻る</button>
+        <div class="setup-progress"><span>初期セットアップ</span><i></i><i></i></div>
+      </div>
     </div>
     <section class="hero">
-      <div class="eyebrow">Step 2 · Startup packs</div>
-      <h1>最初に使うpackを選ぶ</h1>
-      <p>起動時に読み込む機能を選択します。権限とインストール内容を確認してから適用し、あとから設定で変更できます。</p>
+      <div class="eyebrow">ステップ 2 · 起動時の pack</div>
+      <h1>基本セットを選ぶ</h1>
+      <p>まずは標準の基本セットで始められます。個別のpackを選ぶ必要がある場合だけ、詳細を開いてください。</p>
     </section>
     <section class="grid">
       <div class="panel">
-        <h2>利用可能なpack</h2>
-        <p>複数選択できます。詳細と権限を確認してから開始してください。</p>
+        <h2>まずは基本セット</h2>
+        <p>通常はこの構成だけで会話、設定、基本ツールを使い始められます。必要な機能はあとから追加できます。</p>
         <div id="pack-list" class="pack-list"></div>
         <div class="selection-footer">
           <span id="selection-summary" class="selection-summary">packを選択してください</span>
-          <button id="install-selected" disabled>選択したpackで始める →</button>
+          <button id="install-selected" disabled>この構成で始める →</button>
         </div>
       </div>
       <div class="panel">
         <h2>セットアップ状態</h2>
         <div class="meta">
-          <div><strong>Selection</strong><span id="selection">Loading…</span></div>
-          <div><strong>Migration</strong><span id="migration">Loading…</span></div>
+          <div><strong>選択内容</strong><span id="selection">読み込み中…</span></div>
+          <div><strong>移行</strong><span id="migration">読み込み中…</span></div>
         </div>
         <div class="actions">
           <button id="refresh" class="secondary">状態を再読み込み</button>
         </div>
         <div id="status" class="status" role="status" aria-live="polite"></div>
-        <progress id="install-progress" class="progress" aria-label="Setup installation progress" hidden></progress>
+        <progress id="install-progress" class="progress" aria-label="セットアップの進行状況" hidden></progress>
       </div>
     </section>
   </main>
@@ -346,15 +562,41 @@
     const installButton = document.getElementById("install-selected");
     const selectionSummaryEl = document.getElementById("selection-summary");
     const installProgress = document.getElementById("install-progress");
+    const backButton = document.getElementById("back");
     const returnTo = safeReturnTo(new URLSearchParams(window.location.search).get("return_to"));
+    const BASIC_PACK_IDS = ["defaultspack"];
     const selectedPackIds = new Set();
     let installInProgress = false;
     const confirmedPrivilegedPackIds = new Set();
     let reviewedSelectionFingerprint = "";
     let currentReviewRevision = "";
+    let currentRecommendedProfile = null;
+    let currentRecommendedProfileSelected = false;
+
+    function setupPackName(pack) {
+      if (pack && pack.pack_id === "defaultspack") return "Tobkiri";
+      return (pack && (pack.display_name || pack.pack_id)) || "pack";
+    }
+
+    function setupPackDescription(pack) {
+      if (pack && pack.pack_id === "defaultspack") {
+        return "Tobkiriの標準機能とデータ移行を提供する、推奨の基本packです。";
+      }
+      return (pack && pack.description) || "説明はありません";
+    }
+
+    function requiresPrivilegedConfirmation(pack) {
+      return Boolean(
+        pack
+        && (
+          pack.risk_level === "high"
+          || (pack.required_permissions || []).length > 0
+        )
+      );
+    }
 
     function setStatus(label, payload, rows, tone = "neutral") {
-      const items = rows && rows.length ? rows : ["Waiting for setup pack selection."];
+      const items = rows && rows.length ? rows : ["セットアップする pack を選択してください。"];
       statusEl.innerHTML = "";
       statusEl.dataset.tone = tone;
       const title = document.createElement("h3");
@@ -382,7 +624,7 @@
       const details = document.createElement("details");
       const summary = document.createElement("summary");
       const pre = document.createElement("pre");
-      summary.textContent = "Advanced debug state";
+      summary.textContent = "詳細なデバッグ状態";
       pre.textContent = JSON.stringify(payload || {}, null, 2);
       details.appendChild(summary);
       details.appendChild(pre);
@@ -393,15 +635,21 @@
       const selectedIds = selectedSetupPackIds();
       const selectedNames = (packs.packs || [])
         .filter((pack) => selectedIds.includes(pack.pack_id))
-        .map((pack) => pack.display_name || pack.pack_id);
+        .map(setupPackName);
       const allOkCount = (packs.packs || []).filter(
         (pack) => selectedIds.includes(pack.pack_id) && pack.supports_all_ok
       ).length;
+      const profile = currentRecommendedProfile;
+      const profileSummary = profile && profile.pack_ids.length
+        ? "作成される Defaults Profile: " + profile.pack_ids.length + " 個の現在利用可能な pack を含みます。"
+        : "Defaults Profile は、現在利用可能な pack を含む構成として作成されます。";
       return [
-        "Selected: " + (selectedNames.join(", ") || "none yet"),
-        "Install plan: choose one of the grouped cards, or open Advanced custom selection for pack-level control.",
-        "All OK impact: " + (allOkCount ? allOkCount + " selected pack(s) can receive bounded all OK grants." : "No selected pack will receive all OK grants by default."),
-        "Migration: " + setupMigrationLabel(migration),
+        "セットアップで選択中: " + (selectedNames.join(", ") || "未選択"),
+        profileSummary,
+        "必要な場合だけ「詳細を表示して、packを個別に選ぶ」から追加項目を選択してください。",
+        "All OK の方針: All OK を明示的にサポートする setup pack にだけ、個別の承認後に限定的な許可を付与します。",
+        "All OK の影響: " + (allOkCount ? allOkCount + " 個の選択済み pack は、限定的な All OK 許可の対象になり得ます。" : "選択した pack に All OK 許可は自動で付与されません。"),
+        "移行: " + setupMigrationLabel(migration),
       ];
     }
 
@@ -442,11 +690,11 @@
     function setupMigrationLabel(migration) {
       if (migration && migration.available === false) {
         if (migration.reason === "active_target_not_selected") {
-          return "no active setup pack selected";
+          return "有効な setup pack が選択されていません";
         }
-        return migration.reason ? "migration unavailable: " + migration.reason : "migration unavailable";
+        return migration.reason ? "移行を確認できません: " + migration.reason : "移行を確認できません";
       }
-      return migration && migration.needs_user_migration ? "user.csv migration pending" : "ready";
+      return migration && migration.needs_user_migration ? "ユーザーデータの移行が必要です" : "準備完了";
     }
 
     function redirectToReturnTarget(packs) {
@@ -492,28 +740,36 @@
     async function installSelectedPacks() {
       const selected = selectedSetupPackIds();
       if (!selected.length) {
-        setStatus("No setup packs checked", {}, ["Choose at least one setup profile or advanced pack before installing."]);
+        setStatus("setup pack が未選択です", {}, ["インストール前に、おすすめ構成または個別の pack を 1 つ以上選択してください。"]);
         return;
       }
       const selectedPacks = currentPacks.filter((pack) => selected.includes(pack.pack_id));
-      const privileged = selectedPacks.filter((pack) => pack.supports_all_ok || pack.risk_level === "high");
+      const privileged = selectedPacks.filter(requiresPrivilegedConfirmation);
       const missingConfirmations = privileged.filter((pack) => !confirmedPrivilegedPackIds.has(pack.pack_id));
-      const fingerprint = JSON.stringify(selectedPacks.map((pack) => [pack.pack_id, pack.version, pack.depends_on, pack.required_permissions]));
+      const installingDefaultsProfile = Boolean(
+        currentRecommendedProfileSelected
+        && currentRecommendedProfile
+        && currentRecommendedProfile.setup_pack_ids.every((packId) => selectedPackIds.has(packId))
+      );
+      const fingerprint = JSON.stringify({
+        packs: selectedPacks.map((pack) => [pack.pack_id, pack.version, pack.depends_on, pack.required_permissions]),
+        defaults_profile_pack_ids: installingDefaultsProfile ? currentRecommendedProfile.pack_ids : [],
+      });
       if (missingConfirmations.length || reviewedSelectionFingerprint !== fingerprint) {
         reviewedSelectionFingerprint = fingerprint;
-        renderReview(selectedPacks);
-        setStatus("Review required before install", { setup_pack_ids: selected }, [
-          "Review every selected pack and its exact source, permissions, dependencies, conflicts, and all-OK scope below.",
+        renderReview(selectedPacks, currentRecommendedProfile);
+        setStatus("インストール前の確認が必要です", { setup_pack_ids: selected }, [
+          "下の内容で、選択した各 pack の配布元、権限、依存関係、競合、All OK の範囲を確認してください。",
           missingConfirmations.length
-            ? "Explicitly confirm privileged packs: " + missingConfirmations.map((pack) => pack.display_name || pack.pack_id).join(", ")
-            : "Review complete. Activate Install selected again to confirm this unchanged plan.",
+            ? "権限の強い pack を明示的に確認してください: " + missingConfirmations.map(setupPackName).join(", ")
+            : "内容を確認し、「この構成で始める」をもう一度押してください。",
         ], "pending");
         return;
       }
       setInstallProgress("pending");
-      setStatus("Installing setup packs…", { setup_pack_ids: selected }, [
-        "Sending " + selected.length + " setup pack id(s): " + selected.join(", "),
-        "Installation and any required migration are now running.",
+      setStatus("setup pack をインストール中…", { setup_pack_ids: selected }, [
+        selected.length + " 個の setup pack をインストールします: " + selected.join(", "),
+        "必要な移行があれば、続けて実行します。",
       ], "pending");
       let data;
       try {
@@ -525,14 +781,19 @@
             reviewed_pack_ids: selected,
             review_revision: currentReviewRevision,
             confirmed_privileged_pack_ids: Array.from(confirmedPrivilegedPackIds),
+            install_defaults_profile: installingDefaultsProfile,
+            confirmed_defaults_profile: installingDefaultsProfile,
+            reviewed_default_profile_pack_ids: installingDefaultsProfile
+              ? currentRecommendedProfile.pack_ids
+              : [],
           })
         });
       } catch (error) {
         setInstallProgress("error");
-        setStatus("Setup pack install failed", { setup_pack_ids: selected, error: errorMessage(error) }, [
-          "The install request did not complete.",
-          "Reason: " + errorMessage(error),
-          "Your previous setup selection was left unchanged.",
+        setStatus("setup pack のインストールに失敗しました", { setup_pack_ids: selected, error: errorMessage(error) }, [
+          "インストール要求を完了できませんでした。",
+          "理由: " + errorMessage(error),
+          "以前のセットアップ選択は変更していません。",
         ], "error");
         return;
       }
@@ -541,12 +802,12 @@
       // so do not immediately issue an unauthenticated refresh request here.
       setInstallProgress("success");
       const migrationCount = Object.keys(data.migrations || {}).length;
-      setStatus("Setup packs installed", { setup_pack_ids: selected, result: data }, [
-        "Installed: " + selected.join(", "),
+      setStatus("setup pack をインストールしました", { setup_pack_ids: selected, result: data }, [
+        "インストール済み: " + selected.join(", "),
         migrationCount
-          ? migrationCount + " required migration(s) completed."
-          : "No additional data migration was required.",
-        "The setup state has been refreshed.",
+          ? migrationCount + " 件の必要な移行が完了しました。"
+          : "追加のデータ移行は不要でした。",
+        "セットアップ状態を再読み込みしました。",
       ], "success");
       if (returnTo) window.setTimeout(() => window.location.assign(returnTo), 500);
     }
@@ -561,12 +822,19 @@
 
     function updateSelectionSummary() {
       const selected = selectedSetupPackIds();
-      selectionEl.textContent = selected.length
-        ? selected.length + " pack(s): " + selected.join(", ")
-        : "none";
-      selectionSummaryEl.textContent = selected.length
-        ? selected.length + "個のpackを選択中"
-        : "packを選択してください";
+      const recommendedSelected = currentRecommendedProfile
+        && currentRecommendedProfile.setup_pack_ids.length > 0
+        && currentRecommendedProfile.setup_pack_ids.every((packId) => selectedPackIds.has(packId));
+      selectionEl.textContent = recommendedSelected
+        ? "Defaults Profile（" + currentRecommendedProfile.pack_ids.length + " pack）"
+        : selected.length
+          ? selected.length + " 個の setup pack: " + selected.join(", ")
+          : "未選択";
+      selectionSummaryEl.textContent = recommendedSelected
+        ? "Defaults Profile（" + currentRecommendedProfile.pack_ids.length + " pack）を選択中"
+        : selected.length
+          ? selected.length + "個の setup pack を選択中"
+          : "packを選択してください";
       for (const input of listEl.querySelectorAll("[data-profile-pack-ids]")) {
         const packIds = parseProfilePackIds(input);
         const selectedCount = packIds.filter((packId) => selectedPackIds.has(packId)).length;
@@ -575,6 +843,18 @@
         input.setAttribute("aria-checked", input.indeterminate ? "mixed" : String(input.checked));
         const card = input.closest(".pack");
         if (card) card.classList.toggle("selected", selectedCount > 0);
+      }
+      for (const control of listEl.querySelectorAll("[data-basic-pack-ids]")) {
+        const packIds = parseBasicPackIds(control);
+        const isSelected = packIds.length > 0
+          && packIds.every((packId) => selectedPackIds.has(packId));
+        control.setAttribute("aria-pressed", String(isSelected));
+        const card = control.closest(".pack");
+        if (card) {
+          card.classList.toggle("selected", isSelected);
+          const state = card.querySelector("[data-selection-state]");
+          if (state) state.textContent = isSelected ? "選択中" : "選択する";
+        }
       }
       for (const input of listEl.querySelectorAll("[data-select-pack]")) {
         input.checked = selectedPackIds.has(input.dataset.selectPack || "");
@@ -592,6 +872,28 @@
       }
     }
 
+    function parseBasicPackIds(input) {
+      try {
+        return uniquePackIds(JSON.parse(input.dataset.basicPackIds || "[]"));
+      } catch {
+        return [];
+      }
+    }
+
+    function handleBasicSelection(event) {
+      const control = event.target.closest("[data-basic-pack-ids]");
+      if (!(control instanceof HTMLButtonElement)) return;
+      const packIds = parseBasicPackIds(control);
+      const isSelected = packIds.length > 0
+        && packIds.every((packId) => selectedPackIds.has(packId));
+      selectedPackIds.clear();
+      if (!isSelected) {
+        for (const packId of packIds) selectedPackIds.add(packId);
+      }
+      currentRecommendedProfileSelected = !isSelected;
+      updateSelectionSummary();
+    }
+
     function handleSelectionChange(event) {
       const input = event.target;
       if (!(input instanceof HTMLInputElement)) return;
@@ -604,14 +906,47 @@
         const packId = input.dataset.selectPack || "";
         if (input.checked) selectedPackIds.add(packId);
         else selectedPackIds.delete(packId);
+        currentRecommendedProfileSelected = false;
       }
       updateSelectionSummary();
+    }
+
+    function createPackDisclosure(packNames, packIds) {
+      const names = packNames.length ? packNames : packIds;
+      const wrapper = document.createElement("div");
+      wrapper.className = "pack-disclosure";
+      const disclosure = document.createElement("details");
+      const preview = document.createElement("div");
+      const previewNames = names.slice(0, 2).join("、");
+      preview.className = "pack-preview";
+      preview.textContent = "含まれる pack: " + previewNames
+        + (names.length > 2 ? "、…" : "");
+      const summary = document.createElement("summary");
+      const collapsedLabel = "すべて表示（" + names.length + "）";
+      summary.textContent = collapsedLabel;
+      const list = document.createElement("ul");
+      list.className = "pack-name-list";
+      for (const packName of names) {
+        const item = document.createElement("li");
+        item.textContent = packName;
+        list.appendChild(item);
+      }
+      disclosure.addEventListener("toggle", () => {
+        summary.textContent = disclosure.open ? "一覧を閉じる" : collapsedLabel;
+      });
+      disclosure.appendChild(summary);
+      disclosure.appendChild(list);
+      wrapper.appendChild(preview);
+      wrapper.appendChild(disclosure);
+      return wrapper;
     }
 
     let currentPacks = [];
     function renderPacks(payload) {
       listEl.innerHTML = "";
       const packs = payload.packs || [];
+      currentRecommendedProfile = null;
+      currentRecommendedProfileSelected = false;
       currentPacks = packs;
       currentReviewRevision = payload.review_revision || "";
       selectedPackIds.clear();
@@ -621,49 +956,111 @@
         }
       }
       selectedPackIds.delete("");
+      renderBasicSelection(packs, payload.recommended_default_profile);
       renderAdvancedSelection(packs);
       updateSelectionSummary();
+    }
+
+    function renderBasicSelection(packs, recommendedProfile) {
+      const basicPacks = BASIC_PACK_IDS.filter((packId) => packs.some((pack) => pack.pack_id === packId));
+      if (!basicPacks.length) return;
+      const profilePackIds = uniquePackIds(recommendedProfile && recommendedProfile.pack_ids);
+      const profilePacks = Array.isArray(recommendedProfile && recommendedProfile.packs)
+        ? recommendedProfile.packs
+        : [];
+      const profileNames = profilePacks
+        .map(setupPackName)
+        .filter(Boolean);
+      currentRecommendedProfile = {
+        name: (recommendedProfile && recommendedProfile.name) || "Defaults Profile",
+        pack_ids: profilePackIds.length ? profilePackIds : basicPacks,
+        pack_names: profileNames,
+        setup_pack_ids: basicPacks,
+      };
+      const card = document.createElement("article");
+      card.className = "pack profile-choice";
+      const choice = document.createElement("button");
+      choice.type = "button";
+      choice.className = "profile-choice-main";
+      choice.dataset.basicPackIds = JSON.stringify(basicPacks);
+      choice.setAttribute("aria-pressed", "false");
+      choice.setAttribute("aria-label", "Defaults Profile を選択");
+      const header = document.createElement("header");
+      const details = document.createElement("div");
+      details.className = "profile-choice-copy";
+      const name = document.createElement("strong");
+      const description = document.createElement("div");
+      const pill = document.createElement("div");
+      const selectionState = document.createElement("div");
+      name.textContent = currentRecommendedProfile.name;
+      description.textContent = "現在利用可能な " + currentRecommendedProfile.pack_ids.length + " 個の pack を使う、標準の起動プロファイルです。";
+      pill.className = "pill recommended";
+      pill.textContent = "おすすめ";
+      selectionState.className = "pill selection-state";
+      selectionState.dataset.selectionState = "true";
+      selectionState.textContent = "選択する";
+      details.appendChild(name);
+      details.appendChild(description);
+      const badges = document.createElement("div");
+      badges.className = "profile-choice-badges";
+      badges.appendChild(pill);
+      badges.appendChild(selectionState);
+      header.appendChild(details);
+      header.appendChild(badges);
+      choice.appendChild(header);
+      card.appendChild(choice);
+      card.appendChild(createPackDisclosure(
+        currentRecommendedProfile.pack_names,
+        currentRecommendedProfile.pack_ids,
+      ));
+      card.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest("[data-basic-pack-ids]") || target.closest("summary")) return;
+        choice.click();
+      });
+      listEl.appendChild(card);
     }
 
     function renderAdvancedSelection(packs) {
       const details = document.createElement("details");
       details.className = "advanced-selection";
-      details.open = true;
+      details.open = false;
       const summary = document.createElement("summary");
-      summary.textContent = "packを個別に選択";
+      summary.textContent = "詳細を表示して、packを個別に選ぶ";
       details.appendChild(summary);
       for (const pack of packs) {
         const label = document.createElement("label");
-        label.className = "pack" + (pack.selected ? " selected" : "");
+        label.className = "pack selectable-pack" + (pack.selected ? " selected" : "");
         const input = document.createElement("input");
         input.type = "checkbox";
         input.dataset.selectPack = pack.pack_id || "";
         input.checked = selectedPackIds.has(pack.pack_id || "");
-        input.setAttribute("aria-label", "Include " + (pack.display_name || pack.pack_id || "pack"));
+        input.setAttribute("aria-label", setupPackName(pack) + " を追加");
         const riskClass = pack.risk_level === "high" ? "danger" : "";
         const allOkText = pack.supports_all_ok
-          ? "Supports selective all OK grants. For safety, all OK permissions are granted only to setup packs that explicitly support all OK."
-          : "Installs without all OK grants";
+          ? "選択的な All OK 許可に対応。安全のため、All OK 権限は明示的に対応する setup pack にのみ付与されます"
+          : "All OK 許可なしでインストール";
         const header = document.createElement("header");
         const packDetails = document.createElement("div");
         const name = document.createElement("strong");
         const description = document.createElement("div");
         const allOk = document.createElement("div");
         const pill = document.createElement("div");
-        name.textContent = pack.display_name || pack.pack_id || "";
+        name.textContent = setupPackName(pack);
         description.textContent = pack.description || "";
         allOk.textContent = allOkText;
         packDetails.appendChild(name);
         packDetails.appendChild(description);
         packDetails.appendChild(allOk);
         pill.className = "pill" + (riskClass ? " " + riskClass : "");
-        pill.textContent = "Risk: " + (pack.risk_level || "unknown");
+        pill.textContent = "リスク: " + (pack.risk_level || "不明");
         header.appendChild(packDetails);
         header.appendChild(pill);
         const miniActions = document.createElement("div");
         miniActions.className = "mini-actions";
         miniActions.appendChild(input);
-        miniActions.appendChild(document.createTextNode(" Include this individual pack"));
+        miniActions.appendChild(document.createTextNode(" この pack を個別に追加"));
         label.appendChild(header);
         label.appendChild(miniActions);
         details.appendChild(label);
@@ -671,41 +1068,121 @@
       listEl.appendChild(details);
     }
 
-    function renderReview(packs) {
+    function appendReviewMeta(container, label, value, wide = false) {
+      const entry = document.createElement("div");
+      entry.className = "review-meta-item" + (wide ? " wide" : "");
+      const heading = document.createElement("strong");
+      const content = document.createElement("span");
+      heading.textContent = label;
+      content.textContent = value;
+      entry.appendChild(heading);
+      entry.appendChild(content);
+      container.appendChild(entry);
+    }
+
+    function renderReview(packs, recommendedProfile) {
       for (const existing of listEl.querySelectorAll("[data-install-review]")) existing.remove();
       const review = document.createElement("section");
       review.dataset.installReview = "true";
       review.className = "advanced-selection";
       const title = document.createElement("h3");
-      title.textContent = "Exact install plan";
+      title.textContent = "インストール内容の確認";
       review.appendChild(title);
+      if (recommendedProfile && recommendedProfile.pack_ids.length) {
+        const profilePlan = document.createElement("article");
+        profilePlan.className = "pack review-profile-plan";
+        const profileTitle = document.createElement("strong");
+        const profileDetails = document.createElement("div");
+        profileTitle.textContent = "作成される " + recommendedProfile.name;
+        profileDetails.className = "included-packs";
+        profileDetails.textContent = "現在利用可能な " + recommendedProfile.pack_ids.length
+          + " 個の pack を含む標準構成です。";
+        profilePlan.appendChild(profileTitle);
+        profilePlan.appendChild(profileDetails);
+        profilePlan.appendChild(createPackDisclosure(
+          recommendedProfile.pack_names,
+          recommendedProfile.pack_ids,
+        ));
+        review.appendChild(profilePlan);
+      }
       for (const pack of packs) {
         const item = document.createElement("article");
-        item.className = "pack";
-        const privileged = pack.supports_all_ok || pack.risk_level === "high";
-        item.textContent = [
-          pack.display_name || pack.pack_id,
-          "Source: " + (pack.source_path || "unknown"),
-          "Purpose: " + (pack.description || "not documented"),
-          "Risk: " + (pack.risk_level || "unknown"),
-          "Permissions: " + ((pack.required_permissions || []).join(", ") || "none declared"),
-          "All OK: " + (pack.supports_all_ok ? "eligible; bounded grants require separate approval" : "not eligible"),
-          "Dependencies: " + ((pack.depends_on || []).join(", ") || "none"),
-          "Conflicts: " + ((pack.conflicts_with || []).join(", ") || "none"),
-          "Version: " + (pack.version || "unknown"),
-        ].join(" · ");
+        item.className = "pack review-pack";
+        const privileged = requiresPrivilegedConfirmation(pack);
+        const packHeader = document.createElement("header");
+        const packTitle = document.createElement("div");
+        const packName = document.createElement("strong");
+        const packPurpose = document.createElement("p");
+        const risk = document.createElement("div");
+        const riskLabels = { low: "低リスク", medium: "中リスク", high: "高リスク" };
+        packTitle.className = "review-pack-title";
+        packName.textContent = setupPackName(pack);
+        packPurpose.textContent = setupPackDescription(pack);
+        risk.className = "pill" + (pack.risk_level === "high" ? " danger" : "");
+        risk.textContent = riskLabels[pack.risk_level] || "リスク不明";
+        packTitle.appendChild(packName);
+        packTitle.appendChild(packPurpose);
+        packHeader.appendChild(packTitle);
+        packHeader.appendChild(risk);
+        item.appendChild(packHeader);
+        const metadata = document.createElement("div");
+        metadata.className = "review-meta";
+        appendReviewMeta(metadata, "バージョン", pack.version || "不明");
+        appendReviewMeta(
+          metadata,
+          "権限",
+          (pack.required_permissions || []).join(", ") || "宣言なし",
+        );
+        appendReviewMeta(
+          metadata,
+          "依存関係",
+          (pack.depends_on || []).join(", ") || "なし",
+        );
+        appendReviewMeta(
+          metadata,
+          "競合",
+          (pack.conflicts_with || []).join(", ") || "なし",
+        );
+        appendReviewMeta(
+          metadata,
+          "All OK",
+          pack.supports_all_ok
+            ? "対象。限定的な許可には別途承認が必要です"
+            : "対象外",
+          true,
+        );
+        appendReviewMeta(metadata, "配布元", pack.source_path || "不明", true);
+        item.appendChild(metadata);
         if (privileged) {
-          const label = document.createElement("label");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = confirmedPrivilegedPackIds.has(pack.pack_id);
-          checkbox.addEventListener("change", () => {
-            if (checkbox.checked) confirmedPrivilegedPackIds.add(pack.pack_id);
-            else confirmedPrivilegedPackIds.delete(pack.pack_id);
+          const packId = pack.pack_id || "";
+          const confirmation = document.createElement("div");
+          confirmation.className = "confirmation-status";
+          const updateConfirmation = (confirmed) => {
+            item.classList.toggle("review-confirmation", true);
+            item.setAttribute("aria-pressed", String(confirmed));
+            confirmation.textContent = confirmed
+              ? "承認済み"
+              : "クリックして承認";
+          };
+          const toggleConfirmation = () => {
+            const confirmed = !confirmedPrivilegedPackIds.has(packId);
+            if (confirmed) confirmedPrivilegedPackIds.add(packId);
+            else confirmedPrivilegedPackIds.delete(packId);
+            updateConfirmation(confirmed);
+          };
+          item.classList.add("review-confirmation");
+          item.tabIndex = 0;
+          item.setAttribute("role", "button");
+          item.setAttribute("aria-label", "権限の強い pack を確認: " + setupPackName(pack));
+          item.addEventListener("click", toggleConfirmation);
+          item.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleConfirmation();
+            }
           });
-          label.appendChild(checkbox);
-          label.appendChild(document.createTextNode(" I explicitly confirm this privileged pack"));
-          item.appendChild(label);
+          updateConfirmation(confirmedPrivilegedPackIds.has(packId));
+          item.appendChild(confirmation);
         }
         review.appendChild(item);
       }
@@ -719,21 +1196,23 @@
         renderPacks(packs);
         migrationEl.textContent = setupMigrationLabel(migration);
         if (!options.preserveStatus) {
-          setStatus("Setup loaded", { packs, migration }, renderInstallSummary(packs, migration));
+          setStatus("セットアップを読み込みました", { packs, migration }, renderInstallSummary(packs, migration));
         }
         if (options.redirect !== false) redirectToReturnTarget(packs);
         return true;
       } catch (error) {
         setInstallProgress("error");
-        setStatus("Setup failed", { error: errorMessage(error) }, [
-          "The setup state could not be loaded.",
-          "Reason: " + errorMessage(error),
+        setStatus("セットアップを読み込めませんでした", { error: errorMessage(error) }, [
+          "セットアップ状態を読み込めませんでした。",
+          "理由: " + errorMessage(error),
         ], "error");
         return false;
       }
     }
 
     document.getElementById("refresh").addEventListener("click", load);
+    backButton.addEventListener("click", () => window.location.assign("/panel/setup"));
+    listEl.addEventListener("click", handleBasicSelection);
     listEl.addEventListener("change", handleSelectionChange);
     installButton.addEventListener("click", installSelectedPacks);
     load();

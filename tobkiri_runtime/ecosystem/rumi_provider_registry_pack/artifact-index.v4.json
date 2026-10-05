@@ -1,0 +1,62 @@
+{
+  "artifact_set_digest": "sha256:b8483ada404a90706a29fbaad225849ad13de17ee08fb802de3784558879ab3e",
+  "artifacts": [
+    {
+      "digest": "sha256:22abf70e7a137dd812f15540d89ad808585e62db346d5a308b250d65b5642a08",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:f1b99966655a62354ed93593d69cdf47e0107bada80062d5e275542310948c81",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:d4ae64deb60c33aed98d7ecd44b0b48070276a8a5ed7d3aecf38cfb43cc753ce",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:a4772ae69d4ed2171ac32ca418afc9c2245bf3d8dc0100137cc71afb90435472",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1a35072cfa7a2b7f88421504ee6fa168b9ada618cf7b5e8436bb46437f6ea745",
+      "path": "runtime/configuration.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+      "path": "runtime/health_process.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f88df64fb81657369a3a70daa5b7d28ffedee47f8365b412324f60911e49c995",
+      "path": "runtime/local_endpoint.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ab9af4acce39cb7a8b4b5b71bc459dfdd40498515c96ee2ba20c81f000f6f195",
+      "path": "runtime/process.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:32d04184443fc0e77c3b88bb67cb420d7cb56d2965be950a6524c0e07bb948a5",
+      "path": "runtime/registry.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:06da1bcfbd044b2d5404ac5590dbfaeb406f64298f656a17561a820be46f73bf",
+      "path": "runtime/service.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:5227631223366b0549066effcb987ec6b662dc28ceb10c278bb642cd981f5e36"
+  },
+  "pack_id": "rumi_provider_registry_pack",
+  "source_identity": "sha256:9b149e67eba085210946675b22d08a5922677b97a99876a9c8da820d80d0e679"
+}

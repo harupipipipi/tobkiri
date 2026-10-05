@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -14,12 +14,24 @@ import { publishAmbientFinalAnswer } from "./ambient/finalAnswerBridge";
 import { AuthorityApprovalNotice } from "./components/AuthorityApprovalNotice";
 import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
+import { ErrorNotice } from "./components/ErrorNotice";
 import { CodingCockpit } from "./components/coding/CodingCockpit";
-import { KanbanWorkspacePanel } from "./components/kanban/KanbanWorkspacePanel";
 import { HostPermissionsPage } from "./hostPermissions/HostPermissionsPage";
 import { ConversationSpotlight } from "./components/ConversationSpotlight";
 import { DesktopMonitorWorkspace } from "./components/desktops/DesktopMonitorWorkspace";
+import { KanbanWorkspacePanel } from "./components/kanban/KanbanWorkspacePanel";
+import {
+  alertPlacementForComposerPosition,
+  TransientAlert,
+  type TransientAlertItem,
+  type TransientAlertTone,
+} from "./components/TransientAlert";
 import { WarmActionIcon } from "./components/WarmActionIcon";
+import { useExitPresence } from "./ui/motion/useExitPresence";
+import {
+  TobkiriLoadingScreen,
+  type TobkiriLoadingStep,
+} from "./components/TobkiriLoadingScreen";
 import { SubagentTeamWorkspace } from "./subagentTeam";
 import {
   DEFAULT_WORKSPACE_TAB_ID,
@@ -37,14 +49,26 @@ import {
   workspaceKindForPathname,
   workspaceUrlForKind,
 } from "./lib/workspaceRouting";
-import { PromptStudio } from "./pages/PromptStudio";
+import { applicationPathname, profileScreenPathFromLocation } from "./lib/profileRoute";
 import { UiPrecisionComparator } from "./pages/UiPrecisionComparator";
 import { ConversationShareLanding, ImportedConversationNotice } from "./pages/ConversationShareLanding";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiFetch, defaultspackUrlWithLocalAuth, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
+import {
+  PROJECTS_CHANGED_EVENT,
+  bootstrapProjects,
+  loadProjects,
+  projectTaskContext,
+  type ProjectInfo,
+} from "./features/projects/projectStorage";
+import {
+  filterModelProfilesBySelector,
+  modelSelectorSchemaFromCatalog,
+} from "./features/models";
 import type { ConversationToolPreferences } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
 import {
@@ -54,11 +78,12 @@ import {
   sanitizeAssistantAuthorityBoilerplate,
 } from "./lib/authorityApproval";
 import { subscribeAuthorityApprovalSettlements } from "./lib/authorityApprovalEvents";
-import { browserApprovalRuntimeContent, pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
-import { browserApprovalViewModel, runtimeApprovalViewModel } from "./lib/approvalPresentation";
+import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
+import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
-import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
+import { isMessageScrollerNearBottom } from "./lib/chatScroll";
+import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./lib/conversationView";
 import { cn } from "./lib/cn";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
 import {
@@ -78,6 +103,13 @@ import {
   withComposerMentionSelectionOwnership,
 } from "./lib/composerWidgets";
 import { hasUnescapedMentionSyntax } from "./lib/mentionContract";
+import {
+  beginHighRiskAttempt,
+  highRiskCommandRef,
+  highRiskPrepareArguments,
+  releaseHighRiskAttempt,
+} from "./lib/highRiskCommand";
+import { fileToAttachment } from "./lib/attachments";
 import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
@@ -86,9 +118,57 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import {
+  PENDING_CHAT_REQUEST_TTL_MS,
+  canClearSavedTurnStopFailureError,
+  isGenerationActiveForView,
+  isSavedTurnCancellationPropagationError,
+  markSavedTurnOwnerObserved,
+  resetPersistedSavedTurnOwnerObservations,
+  savedTurnCanRestoreUnwrittenDraft,
+  savedTurnControlActionsReady,
+  savedTurnProgressNotice,
+  savedTurnProgressState,
+  savedTurnSnapshotState,
+  savedTurnSnapshotNotice,
+  savedTurnTerminalNotice,
+  shouldClearPendingAfterConversationRefresh,
+  shouldForgetPendingAfterPollError,
+  shouldReconcileSavedTurnAfterAcknowledgedStop,
+  updateSavedTurnNotice,
+  type PendingChatRequest,
+  type SavedTurnSnapshotNotice,
+  type SavedTurnStopAcknowledgement,
+  type SavedTurnSubmissionAttempt,
+} from "./lib/pendingChat";
+import {
+  bindOptimisticSavedTurnExpectedUserMessageId,
+  bindOptimisticSavedTurnOverlay,
+  createOptimisticSavedTurnOverlay,
+  optimisticSavedTurnOverlayHasCanonicalUserMessage,
+  SavedTurnViewFence,
+  savedTurnComposerControlsReady,
+  savedTurnComposerPresentation,
+  shouldDisplayOptimisticSavedTurnOverlay,
+  shouldRestoreUnwrittenSavedTurnDraft,
+  type OptimisticSavedTurnOverlay,
+  type SavedTurnViewTicket,
+} from "./lib/optimisticSavedTurn";
+import {
+  passiveSteerRefreshStatus,
+  SteerRefreshFence,
+  steerRefreshContextKey,
+} from "./lib/steerRefresh";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
+import {
+  DEFAULT_COMPOSER_HOME_TITLE,
+  createSettingsModeDraft,
+  normalizeComposerHomeTitle,
+  resolveComposerHomeTitle,
+  resolveSettingsAssistantSkill,
+  withSettingsAssistantSkill,
+} from "./lib/settingsMode";
 import { isRegisteredSlashCommand, mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./lib/registeredSlashCommands";
 import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateComposerWidgetsForInput, templateFeatureFlagEnabled, templateToolPolicyReferencePayload, templateToolPolicySettings } from "./lib/templateAiInput";
 import { initialComposerFieldValues, normalizeComposerFields, structuredComposerPayload } from "./lib/structuredComposer";
@@ -98,9 +178,10 @@ import { hasShellRegion } from "./lib/uiShell";
 import { hasWorkspaceAttachment, workspaceFileToAttachment } from "./lib/workspaceAttachments";
 import { createWidgetConversationContext } from "./lib/widgetContext";
 import { promptResources } from "./features/prompts/resources/promptResources";
+import { manualRuntimeModeSelectionEnabled } from "./features/runtimeMode/runtimeMode";
 import { resolveDefaultspackRenderers } from "./renderers/defaultspackRenderers";
 import { RendererBoundary } from "./renderers/trustedRendererLoader";
-import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ContextUsageInfo, DroppedWidget } from "./renderers/types";
+import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ComposerSteerStatus, ContextUsageInfo, DroppedWidget, SettingsLoadState, SettingsSaveState } from "./renderers/types";
 import { LayerPortal } from "./ui/layers/LayerPortal";
 
 type ComposerCandidateMenuState = {
@@ -110,6 +191,13 @@ type ComposerCandidateMenuState = {
 } | null;
 
 type BackendConnectionState = "online" | "degraded" | "offline";
+
+type CatalogRefreshResult = {
+  catalog: UICatalog | null;
+  ready: boolean;
+  degraded: boolean;
+  errorMessage: string | null;
+};
 
 type PendingMentionAttachmentRequest = {
   generation: number;
@@ -124,6 +212,13 @@ const AMBIENT_ROUTING_SETTING_KEYS: Record<string, keyof AmbientRoutingConfig> =
   "ambient.routing.group_title": "group_title",
   "ambient.routing.ai_send_approval_required": "ai_send_approval_required",
 };
+
+/** Interpret a one-shot Host resume receipt without losing live work. */
+export function highRiskResumeDisposition(state: string): "pending" | "succeeded" | "failed" {
+  if (state === "claimed" || state === "dispatched") return "pending";
+  if (state === "succeeded") return "succeeded";
+  return "failed";
+}
 
 type PendingNewTaskContext = {
   groupId?: string;
@@ -172,6 +267,40 @@ type SubmitOverride = {
   toolSelectionRequest?: ToolSelectionRequest;
   skipReview?: boolean;
 };
+
+type RetryableSubmission = SubmitOverride & {
+  errorMessage: string;
+};
+
+type InterruptedSavedTurnDraft = {
+  attachments: AttachedFile[];
+  clientId: string;
+  conversationId: string | null;
+  droppedWidgets: DroppedWidget[];
+  input: string;
+  workspaceTabId: string;
+};
+
+type UnwrittenSavedTurnDraft = {
+  attachments: AttachedFile[];
+  clientId: string;
+  conversationId: string;
+  droppedWidgets: DroppedWidget[];
+  input: string;
+  operationId: string;
+  viewTicket: SavedTurnViewTicket;
+  workspaceTabId: string;
+};
+
+type ConversationScrollState = {
+  follow: boolean;
+  scrollTop: number;
+};
+
+// The shell may remount ChatApp while refreshing its resolved UI catalog.
+// Keep the user's reading position outside the component so a remount cannot
+// silently restore the default "follow bottom" behavior.
+const conversationScrollState = new Map<string, ConversationScrollState>();
 
 function toolIdsFromSelectionRequest(request: ToolSelectionRequest): string[] {
   const ids: string[] = [];
@@ -292,22 +421,6 @@ function backendConnectionCopy(
   };
 }
 
-const dangerShieldSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="20" fill="#2d2e2f"/>
-  <g fill="none" stroke="#fca355" stroke-linecap="round" stroke-linejoin="round">
-    <path
-      d="M 50,25
-         C 62,25 72,28 75,32
-         C 75,55 68,70 50,78
-         C 32,70 25,55 25,32
-         C 28,28 38,25 50,25 Z"
-      stroke-width="5"
-    />
-    <line x1="50" y1="40" x2="50" y2="55" stroke-width="5.5"/>
-    <line x1="50" y1="64" x2="50" y2="64.1" stroke-width="6"/>
-  </g>
-</svg>`;
-
 const calendarSettingsDefaults: CalendarSettings = {
   agentCurrentChat: false,
   agentModel: "",
@@ -356,14 +469,14 @@ const fallbackExternalIoTemplates: ExternalIoTemplateRecord[] = [
     direction: "input",
     provider: "line",
     input_profile_id: "line.default",
-    endpoint: { id: "line-main", route: "/api/integrations/line/webhook" },
+    endpoint: { id: "line-main", route: defaultspackCanonicalRouteKey("api/integrations/line/webhook") },
   },
   {
     id: "line.input.computer_use",
     direction: "input",
     provider: "line",
     input_profile_id: "line.computer_use",
-    endpoint: { id: "line-main", route: "/api/integrations/line/webhook" },
+    endpoint: { id: "line-main", route: defaultspackCanonicalRouteKey("api/integrations/line/webhook") },
     response: { mode: "computer_use_line_biz" },
     response_prompt: { preset: "computer_use_line_biz" },
   },
@@ -372,21 +485,21 @@ const fallbackExternalIoTemplates: ExternalIoTemplateRecord[] = [
     direction: "input",
     provider: "discord",
     input_profile_id: "discord.default",
-    endpoint: { id: "discord-main", route: "/api/integrations/discord/interactions" },
+    endpoint: { id: "discord-main", route: defaultspackCanonicalRouteKey("api/integrations/discord/interactions") },
   },
   {
     id: "slack.input.default",
     direction: "input",
     provider: "slack",
     input_profile_id: "slack.default",
-    endpoint: { id: "slack-main", route: "/api/integrations/slack/events" },
+    endpoint: { id: "slack-main", route: defaultspackCanonicalRouteKey("api/integrations/slack/events") },
   },
   {
     id: "generic.input.default",
     direction: "input",
     provider: "generic",
     input_profile_id: "generic.webhook.default",
-    endpoint: { id: "generic-main", route: "/api/webhooks/inbound/{webhook_id}" },
+    endpoint: { id: "generic-main", route: defaultspackCanonicalRouteKey("api/webhooks/inbound/{webhook_id}") },
   },
   {
     id: "line.output.default",
@@ -1228,14 +1341,19 @@ function CalendarComposerPanel({
               )}
             </div>
           )}
-          {(draftError || lastAgentResult || activeItem?.scheduleId) && (
-            <div className={cn(
-              "mt-3 rounded-lg border px-2.5 py-2 text-xs",
-              draftError ? "border-red-500/40 bg-red-500/10 text-red-100" : "border-blue-500/30 bg-blue-500/10 text-blue-100",
-            )}>
-              {draftError ?? lastAgentResult ?? `Agentスケジュール: ${activeItem?.scheduleStatus ?? "有効"}`}
+          {draftError ? (
+            <ErrorNotice
+              className="mt-3 rounded-lg px-2.5 py-2 text-xs"
+              copyLabel="Copy calendar action error"
+              copyText={draftError}
+              errorIcon="calendar-action"
+              message={draftError}
+            />
+          ) : lastAgentResult || activeItem?.scheduleId ? (
+            <div className="mt-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-2 text-xs text-blue-100">
+              {lastAgentResult ?? `Agentスケジュール: ${activeItem?.scheduleStatus ?? "有効"}`}
             </div>
-          )}
+          ) : null}
           {activeEditor.mode === "edit" && (
             <div className="mt-3 flex items-center justify-between gap-2">
               <button
@@ -1296,6 +1414,18 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 export function shouldAutoCompactHistory(width: number): boolean {
   return width < 760;
+}
+
+export function advanceSettingsDocumentMutationGeneration(generation: number): number {
+  return generation + 1;
+}
+
+export function settingsReadMayApply(
+  dirtyKeyCount: number,
+  generationAtRead: number,
+  currentGeneration: number,
+): boolean {
+  return dirtyKeyCount === 0 && generationAtRead === currentGeneration;
 }
 
 function writeJsonLocalStorage<T>(key: string, value: T) {
@@ -1421,45 +1551,6 @@ function buildChatItems(conversations: Conversation[]): ChatItem[] {
     .map(build);
 }
 
-function visitChatItems(items: ChatItem[], visitor: (chat: ChatItem) => void) {
-  for (const item of items) {
-    visitor(item);
-    visitChatItems(item.children ?? [], visitor);
-  }
-}
-
-function kanbanConversationOptions(chatItems: ChatItem[]): Array<{ id: string; title: string; groupId?: string | null }> {
-  const options: Array<{ id: string; title: string; groupId?: string | null }> = [];
-  visitChatItems(chatItems, (chat) => {
-    options.push({
-      id: chat.id,
-      title: chat.title,
-      groupId: cleanOptionalString(chat.metadata?.group_id ?? chat.metadata?.groupId),
-    });
-  });
-  return options;
-}
-
-function kanbanGroupOptions(chatItems: ChatItem[]): Array<{ id: string; title: string; description?: string | null }> {
-  const groups = new Map<string, { id: string; title: string; count: number }>();
-  visitChatItems(chatItems, (chat) => {
-    const groupId = cleanOptionalString(chat.metadata?.group_id ?? chat.metadata?.groupId);
-    if (!groupId) return;
-    const groupTitle = cleanOptionalString(chat.metadata?.group_title ?? chat.metadata?.groupTitle) ?? groupId;
-    const existing = groups.get(groupId);
-    if (existing) {
-      existing.count += 1;
-      return;
-    }
-    groups.set(groupId, { id: groupId, title: groupTitle, count: 1 });
-  });
-  return [...groups.values()].map((group) => ({
-    id: group.id,
-    title: group.title,
-    description: `${group.count} chats`,
-  }));
-}
-
 function normalizeBlocks(message: ChatMessage): ChatContentBlock[] {
   if (typeof message.content === "string") {
     return [{ type: "text", text: message.content }];
@@ -1473,7 +1564,22 @@ function chatMessageMetadataRecord(value: unknown): Record<string, unknown> | un
     : undefined;
 }
 
-function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
+const CANONICAL_SAVED_USER_MESSAGE_ID = /^message:[a-f0-9]{64}$/;
+const STABLE_OWNER_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+function canonicalOwnerTurnId(message: ChatMessage): string | undefined {
+  const turnId = message.metadata?.turn_id;
+  return message.role === "user"
+    && CANONICAL_SAVED_USER_MESSAGE_ID.test(message.id)
+    && typeof message.conversation_id === "string"
+    && STABLE_OWNER_TURN_ID.test(message.conversation_id)
+    && typeof turnId === "string"
+    && STABLE_OWNER_TURN_ID.test(turnId)
+    ? turnId
+    : undefined;
+}
+
+export function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
   const isUser = message.role === "user";
   const metadata = message.metadata ?? {};
   const thinking = metadata.thinking as Record<string, unknown> | undefined;
@@ -1497,8 +1603,13 @@ function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatU
     ? composerMentionMetadataFromWidgets(metadata.dropped_widgets as DroppedWidget[])
     : [];
   const mentions = explicitMentions.length > 0 ? explicitMentions : fallbackMentions;
-  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0
-    ? { ...displayMetadata, ...(mentions.length > 0 ? { mentions } : {}) }
+  const ownerTurnId = canonicalOwnerTurnId(message);
+  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0 || ownerTurnId
+    ? {
+        ...displayMetadata,
+        ...(mentions.length > 0 ? { mentions } : {}),
+        ...(ownerTurnId ? { turn_id: ownerTurnId } : {}),
+      }
     : undefined;
   return {
     id: message.id,
@@ -1636,7 +1747,7 @@ function CanvasPeek({
     <button
       type="button"
       onClick={onOpen}
-      className="mx-auto mb-2 flex w-[min(620px,calc(100%_-_40px))] items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
+      className="rumi-composer-companion mx-auto mb-2 flex items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
       title="Canvas を開く"
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -1681,21 +1792,65 @@ function canvasPreviewIdentity(preview: ToolPreviewItem): string {
   return `code:${data.filename}:${data.diff ?? data.content ?? ""}`;
 }
 
-function runtimeApprovalRuntimeContent(approval: RuntimeApproval, token?: string): string {
-  const payload = approvalPayloadPreview({
-    ...approval.payload,
-    ...(token ? { approval_token: token } : {}),
-  });
-  return [
-    "The user approved the pending server-side tool operation.",
-    "Continue by calling the exact pending tool once with the approved arguments below.",
-    "Do not ask the user for the same approval again unless the tool returns a new approval_request_id.",
-    `Tool: ${approval.toolName}`,
-    `Operation: ${approval.operation}`,
-    `Approval request id: ${approval.requestId}`,
-    "Approved arguments JSON:",
-    payload,
-  ].join("\n");
+type PendingCommandApproval = {
+  requestId: string;
+  invocationId: string;
+  commandRef: string;
+  command: ComposerCommandItem;
+  args: Record<string, unknown>;
+  conversationId: string | null;
+  mode: ComposerCommandMode;
+  approvalKind: "authority" | "coding";
+  authorityRequestId?: string;
+  authorityToken?: string;
+  codingToken?: string;
+};
+
+/**
+ * Client-only correlation for one Host-owned interactive effect.
+ *
+ * No effect id, prepared plan, scope, grant, token, or command arguments are
+ * retained here. The Host adapter owns those values and only accepts this
+ * invocation id for status, cancel, and the single resume call.
+ */
+type PendingHighRiskCommand = {
+  requestId: string;
+  invocationId: string;
+  commandLabel: string;
+};
+
+const HIGH_RISK_TERMINAL_STATES = new Set([
+  "succeeded",
+  "failed",
+  "stale",
+  "ambiguous",
+  "cancelled",
+]);
+
+function commandApprovalViewModel(
+  pending: PendingCommandApproval,
+): ApprovalViewModel {
+  return {
+    id: pending.requestId,
+    source: pending.approvalKind === "authority" ? "authority" : "coding",
+    title: `「${pending.command.label}」を実行`,
+    consequence: `${pending.command.label} はローカル環境を変更する可能性があります。`,
+    reason: "選択したコマンドを続行するために明示的な許可が必要です。",
+    target: pending.commandRef,
+    riskExplanation: "データの変更・送信を伴う可能性があります。対象と影響を確認してください。",
+    scope: "この1回のコマンド実行のみ",
+    persistence: "承認トークンは再利用できません。",
+    auditText: "判断、コマンド、引数ハッシュはローカルの監査記録に残ります。",
+    technicalDetails: {
+      request_id: pending.requestId,
+      invocation_id: pending.invocationId,
+      command_ref: pending.commandRef,
+      approved_arguments: pending.args,
+      cwd: "current workspace",
+      impact: pending.command.description || pending.command.label,
+    },
+    status: "pending",
+  };
 }
 
 function staleRuntimeApprovalTitle(approval: StaleRuntimeApproval): string {
@@ -1874,13 +2029,372 @@ function isActivityStreamEvent(event: ChatStreamEvent): event is ChatToolStreamE
   );
 }
 
-function isConversationSteerItem(value: unknown): value is ConversationSteerItem {
-  return Boolean(
-    value
-    && typeof value === "object"
-    && "id" in value
-    && "prompt" in value
+const TERMINAL_SAVED_TURN_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const ACTIVE_SAVED_TURN_STATUSES = new Set(["queued", "running", "waiting"]);
+
+export type PendingSavedTurnChain =
+  | { state: "active"; root: SavedTurn; active: SavedTurn; lineage: SavedTurn[] }
+  | { state: "settled"; root: SavedTurn }
+  | { state: "unsettled"; root: SavedTurn | null };
+
+function savedTurnStatus(turn: SavedTurn): string {
+  return turn.status.trim().toLowerCase();
+}
+
+function isAutomaticGuidanceForConversation(
+  guidance: NonNullable<SavedTurn["guidance"]>[number],
+  conversationId: string,
+): boolean {
+  return guidance.value.auto_send === true
+    && guidance.value.target_type === "conversation"
+    && guidance.value.target_id === conversationId
+    && guidance.value.conversation_id === conversationId;
+}
+
+function exactGuidanceFollowup(
+  parent: SavedTurn,
+  child: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+): boolean {
+  const guidanceId = child.guidance_id;
+  const sourceId = child.guidance_source_turn_id;
+  if (child.guidance_parent_turn_id !== parent.id || !guidanceId || !sourceId
+    || child.conversation_id !== conversationId) return false;
+  const source = turnsById.get(sourceId);
+  if (!source || source.conversation_id !== conversationId) return false;
+  return (parent.guidance ?? []).filter((guidance) => (
+    guidance.id === guidanceId
+    && guidance.followup_turn_id === child.id
+    && guidance.followup_source_turn_id === sourceId
+    && isAutomaticGuidanceForConversation(guidance, conversationId)
+  )).length === 1;
+}
+
+function boundLineageForActiveTurn(
+  root: SavedTurn,
+  active: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+): SavedTurn[] | null {
+  const lineage = [active];
+  const seen = new Set([active.id]);
+  let current = active;
+  while (current.id !== root.id) {
+    const parentId = current.guidance_parent_turn_id;
+    if (!parentId || seen.has(parentId)) return null;
+    const parent = turnsById.get(parentId);
+    if (!parent || savedTurnStatus(parent) !== "completed"
+      || !exactGuidanceFollowup(parent, current, turnsById, conversationId)) return null;
+    seen.add(parent.id);
+    lineage.push(parent);
+    current = parent;
+  }
+  return lineage.reverse();
+}
+
+function completedGuidanceLineageIsSettled(
+  turn: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+  seen: Set<string> = new Set(),
+): boolean {
+  if (seen.has(turn.id) || savedTurnStatus(turn) !== "completed") return false;
+  seen.add(turn.id);
+  for (const guidance of turn.guidance ?? []) {
+    if (guidance.value.auto_send !== true) continue;
+    if (!isAutomaticGuidanceForConversation(guidance, conversationId)) return false;
+    const guidanceStatus = guidance.status.trim().toLowerCase();
+    if (guidanceStatus !== "sent" && guidanceStatus !== "failed") return false;
+    const children = [...turnsById.values()].filter((child) => (
+      child.guidance_parent_turn_id === turn.id
+      && child.guidance_id === guidance.id
+      && exactGuidanceFollowup(turn, child, turnsById, conversationId)
+    ));
+    if (children.length !== 1) return false;
+    const [child] = children;
+    const childStatus = savedTurnStatus(child);
+    if (!TERMINAL_SAVED_TURN_STATUSES.has(childStatus)) return false;
+    if ((guidanceStatus === "sent") !== (childStatus === "completed")) return false;
+    if (childStatus === "completed"
+      && !completedGuidanceLineageIsSettled(child, turnsById, conversationId, seen)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function settledGuidanceTerminalNotice(
+  turn: SavedTurn,
+  turnsById: ReadonlyMap<string, SavedTurn>,
+  conversationId: string,
+  seen: Set<string> = new Set(),
+): string | null {
+  if (seen.has(turn.id) || savedTurnStatus(turn) !== "completed") return null;
+  seen.add(turn.id);
+  for (const guidance of turn.guidance ?? []) {
+    if (guidance.value.auto_send !== true) continue;
+    if (!isAutomaticGuidanceForConversation(guidance, conversationId)) return null;
+    const children = [...turnsById.values()].filter((child) => (
+      child.guidance_parent_turn_id === turn.id
+      && child.guidance_id === guidance.id
+      && exactGuidanceFollowup(turn, child, turnsById, conversationId)
+    ));
+    if (children.length !== 1) return null;
+    const [child] = children;
+    const guidanceStatus = guidance.status.trim().toLowerCase();
+    const childStatus = savedTurnStatus(child);
+    if (guidanceStatus === "failed") {
+      if (childStatus === "failed") {
+        return "追加指示は失敗で終了しました。自動再送はしません。";
+      }
+      if (childStatus === "cancelled") {
+        return "追加指示の停止を確認しました。自動再送はしません。";
+      }
+      return null;
+    }
+    if (guidanceStatus !== "sent" || childStatus !== "completed") return null;
+    const descendantNotice = settledGuidanceTerminalNotice(
+      child,
+      turnsById,
+      conversationId,
+      seen,
+    );
+    if (descendantNotice) return descendantNotice;
+  }
+  return null;
+}
+
+export function pendingSavedTurnChainForConversation(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+): PendingSavedTurnChain {
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (conversationTurns.length !== turnsById.size) return { state: "unsettled", root: null };
+  const root = turnsById.get(rootTurnId) ?? null;
+  if (!root) return { state: "unsettled", root: null };
+
+  const nonterminalTurns = conversationTurns.filter(
+    (turn) => !TERMINAL_SAVED_TURN_STATUSES.has(savedTurnStatus(turn)),
   );
+  const rootStatus = savedTurnStatus(root);
+  if (ACTIVE_SAVED_TURN_STATUSES.has(rootStatus)) {
+    return nonterminalTurns.length === 1 && nonterminalTurns[0].id === root.id
+      ? { state: "active", root, active: root, lineage: [root] }
+      : { state: "unsettled", root };
+  }
+  if (rootStatus !== "completed") return { state: "unsettled", root };
+  if (nonterminalTurns.length === 0) {
+    return completedGuidanceLineageIsSettled(root, turnsById, conversationId)
+      ? { state: "settled", root }
+      : { state: "unsettled", root };
+  }
+  if (nonterminalTurns.length !== 1) return { state: "unsettled", root };
+  const active = nonterminalTurns[0];
+  if (!ACTIVE_SAVED_TURN_STATUSES.has(savedTurnStatus(active))) {
+    return { state: "unsettled", root };
+  }
+  const lineage = boundLineageForActiveTurn(root, active, turnsById, conversationId);
+  return lineage
+    ? { state: "active", root, active, lineage }
+    : { state: "unsettled", root };
+}
+
+/**
+ * Returns a terminal descendant outcome only after the canonical list proves
+ * one complete, exact root-to-child guidance lineage. This keeps a completed
+ * root from being presented as a successful overall interaction when its
+ * server-owned automatic follow-up failed or was cancelled.
+ */
+export function savedTurnGuidanceTerminalNotice(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+): string | null {
+  const chain = pendingSavedTurnChainForConversation(
+    turns,
+    conversationId,
+    rootTurnId,
+  );
+  if (chain.state !== "settled") return null;
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (conversationTurns.length !== turnsById.size) return null;
+  return settledGuidanceTerminalNotice(chain.root, turnsById, conversationId);
+}
+
+export function pendingSavedTurnForConversation(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  turnId: string,
+): SavedTurn | null {
+  const chain = pendingSavedTurnChainForConversation(turns, conversationId, turnId);
+  return chain.state === "active" ? chain.root : null;
+}
+
+export function savedTurnChainGuidanceItems(chain: Extract<PendingSavedTurnChain, { state: "active" }>): ConversationSteerItem[] {
+  return chain.lineage.flatMap(savedTurnGuidanceItems);
+}
+
+function sameGuidanceJsonValue(left: unknown, right: unknown): boolean {
+  if (left === null || typeof left !== "object") return Object.is(left, right);
+  if (right === null || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameGuidanceJsonValue(value, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && sameGuidanceJsonValue(leftRecord[key], rightRecord[key]));
+}
+
+function savedTurnGuidanceMatchesRequest(
+  guidance: NonNullable<SavedTurn["guidance"]>[number],
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  const keys = [
+    "auto_send", "conversation_id", "metadata", "prompt", "target_id", "target_type", "visible",
+  ];
+  const valueKeys = Object.keys(guidance.value).sort();
+  return guidance.id === guidanceId
+    && valueKeys.length === keys.length
+    && valueKeys.every((key, index) => key === keys[index])
+    && guidance.value.prompt === expected.prompt
+    && guidance.value.target_type === expected.target_type
+    && guidance.value.target_id === expected.target_id
+    && guidance.value.conversation_id === expected.conversation_id
+    && guidance.value.visible === expected.visible
+    && guidance.value.auto_send === expected.auto_send
+    && sameGuidanceJsonValue(guidance.value.metadata, expected.metadata);
+}
+
+export function savedTurnRootLineageContainsGuidance(
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  const resolution = pendingSavedTurnChainForConversation(
+    turns,
+    conversationId,
+    rootTurnId,
+  );
+  if (resolution.state === "unsettled") return false;
+  const conversationTurns = turns.filter((turn) => turn.conversation_id === conversationId);
+  const turnsById = new Map(conversationTurns.map((turn) => [turn.id, turn]));
+  if (turnsById.size !== conversationTurns.length) return false;
+  const root = turnsById.get(rootTurnId);
+  if (!root) return false;
+
+  const boundTurns: SavedTurn[] = [];
+  const pending = [root];
+  const seen = new Set<string>();
+  while (pending.length) {
+    const turn = pending.pop()!;
+    if (seen.has(turn.id)) return false;
+    seen.add(turn.id);
+    boundTurns.push(turn);
+    for (const child of turnsById.values()) {
+      if (exactGuidanceFollowup(turn, child, turnsById, conversationId)) {
+        pending.push(child);
+      }
+    }
+  }
+  const matches = boundTurns.flatMap((turn) => (
+    (turn.guidance ?? []).filter((guidance) => (
+      savedTurnGuidanceMatchesRequest(guidance, guidanceId, expected)
+    ))
+  ));
+  return matches.length === 1;
+}
+
+export function settlePendingSteerGuidanceId(
+  pendingIds: Map<string, string>,
+  mutationKey: string,
+  turns: readonly SavedTurn[],
+  conversationId: string,
+  rootTurnId: string,
+  guidanceId: string,
+  expected: SavedTurnGuidanceRequest["guidance"],
+): boolean {
+  if (!savedTurnRootLineageContainsGuidance(
+    turns,
+    conversationId,
+    rootTurnId,
+    guidanceId,
+    expected,
+  )) return false;
+  pendingIds.delete(mutationKey);
+  return true;
+}
+
+export function savedTurnGuidanceItems(turn: SavedTurn): ConversationSteerItem[] {
+  return (turn.guidance ?? []).flatMap((guidance) => {
+    const prompt = typeof guidance.value.prompt === "string"
+      ? guidance.value.prompt.trim()
+      : "";
+    if (!prompt) return [];
+    const metadata = guidance.value.metadata;
+    return [{
+      id: guidance.id,
+      turn_id: turn.id,
+      turn_revision: turn.revision,
+      prompt,
+      target_type: typeof guidance.value.target_type === "string"
+        ? guidance.value.target_type
+        : "conversation",
+      target_id: typeof guidance.value.target_id === "string"
+        ? guidance.value.target_id
+        : turn.conversation_id,
+      conversation_id: typeof guidance.value.conversation_id === "string"
+        ? guidance.value.conversation_id
+        : turn.conversation_id,
+      status: guidance.status,
+      visible: guidance.value.visible !== false,
+      auto_send: guidance.value.auto_send !== false,
+      metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata as Record<string, unknown>
+        : {},
+    }];
+  });
+}
+
+export function steerGuidanceMutationKey(
+  turnId: string,
+  guidance: SavedTurnGuidanceRequest["guidance"],
+): string {
+  return JSON.stringify({ turn_id: turnId, guidance });
+}
+
+export function stableSteerGuidanceId(
+  pendingIds: Map<string, string>,
+  mutationKey: string,
+  createId: () => string,
+): string {
+  const known = pendingIds.get(mutationKey);
+  if (known) return known;
+  const guidanceId = createId();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(guidanceId)) {
+    throw new Error("追加指示の安定IDを作成できません。");
+  }
+  pendingIds.set(mutationKey, guidanceId);
+  return guidanceId;
+}
+
+function createSteerGuidanceId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `guidance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function activeComposerSteerItems(items: ConversationSteerItem[], isRunning: boolean): ConversationSteerItem[] {
@@ -1900,10 +2414,6 @@ function profileKey(profile: ModelProfile | null | undefined, fallback: string):
 
 function getNewConversationPlaceholder(): string {
   return "指示を入力するか、/ でツール・コマンドを選択します...";
-}
-
-function getNewConversationGreeting(): string {
-  return "rumi DP";
 }
 
 function findProfile(profiles: ModelProfile[], modelId: string): ModelProfile | null {
@@ -1960,6 +2470,7 @@ function isUserFacingModelProfile(profile: ModelProfile, preferredModel: string)
 
   if (profileId === preferredModel) return true;
   if (!profileIsChatSelectable(profile)) return false;
+  if (profile.route_configured === true && providerId && modelId) return true;
   if (providerId === "rumi") return false;
   if (providerId === "stub") return modelId === "default";
   if (profile.local || profile.availability?.local || profile.availability?.offline || LOCAL_MODEL_PROVIDER_IDS.has(providerId)) return true;
@@ -2179,15 +2690,21 @@ function contextUsageFor(conversation: Conversation | null, profile: ModelProfil
   return { usedTokens, maxContext, ratio, label: `${Math.round(ratio * 100)}%` };
 }
 
-function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
   return items
     .filter((item) => item.category === "tool" || item.category === "capability")
+    .filter((item) => (
+      item.origin?.kind !== "profile_tool_catalog"
+      || item.tool_info?.setup_state?.status === "ok"
+    ))
     .map((item) => ({
       id: item.id,
       label: item.label,
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
+      sourcePackId: item.tool_info?.source_pack_id,
+      serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
     }));
 }
@@ -2206,7 +2723,9 @@ function replaceChatIdInUrl(conversationId: string | null, pending?: boolean) {
   const routeKind = workspaceKindForPathname(window.location.pathname);
   if (routeKind && routeKind !== "chat" && routeKind !== "coding") return;
   const url = new URL(window.location.href);
-  url.pathname = window.location.pathname === "/coding" ? "/coding" : "/chat";
+  url.pathname = profileScreenPathFromLocation(
+    applicationPathname(window.location.pathname) === "/coding" ? "/coding" : "/chat",
+  );
   if (conversationId) {
     url.searchParams.set("chat", conversationId);
   } else {
@@ -2339,6 +2858,13 @@ export function parseSlashCommandInput(
   return { command: matchedCommand, args, raw: trimmed };
 }
 
+export function commandSupportsMode(
+  command: ComposerCommandItem,
+  mode: ComposerCommandMode,
+): boolean {
+  return command.modes?.includes(mode) === true;
+}
+
 export function parseCommandBoolean(value: unknown, fallback: boolean): boolean {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -2379,34 +2905,61 @@ export function resolveUltraYoloModeState(
   state: UltraYoloModeState,
   enabled: boolean,
 ): UltraYoloModeState {
-  if (enabled) {
-    if (state.ultraYoloMode) {
-      return { ...state, yoloMode: true, ultraYoloMode: true };
-    }
-    return {
-      yoloMode: true,
-      ultraYoloMode: true,
-      restoreYoloMode: state.yoloMode,
-    };
-  }
-
-  if (!state.ultraYoloMode) {
-    return {
-      yoloMode: state.yoloMode,
-      ultraYoloMode: false,
-      restoreYoloMode: false,
-    };
-  }
-
+  void state;
   return {
-    yoloMode: state.restoreYoloMode,
-    ultraYoloMode: false,
+    // `/yolo` is the Full Access switch.  Keep the older agent-approval bit
+    // separate so toggling Full Access off always returns to Ask.
+    yoloMode: false,
+    ultraYoloMode: enabled,
     restoreYoloMode: false,
   };
 }
 
 export function keepSelectedToolsAfterSend(settingsValues: Record<string, Record<string, unknown>>): boolean {
   return parseCommandBoolean(settingsValues.tools?.keep_selected_tools_after_send, false);
+}
+
+type ModelStateMutationKind = "preferred_model" | "thinking_level" | "strategy_reference";
+
+export type ModelStateMutationForSetting = {
+  kind: ModelStateMutationKind;
+  value: unknown;
+  modelsPatch: Record<string, unknown>;
+};
+
+/**
+ * Route model controls through the captured model-state owner. Main Model and
+ * Preferred Model are one durable preference, so their presentation fields
+ * must remain synchronized while the owner records the preferred-model value.
+ */
+export function modelStateMutationForSetting(
+  sectionId: string,
+  fieldId: string,
+  value: unknown,
+  models: Record<string, unknown> | undefined,
+): ModelStateMutationForSetting | null {
+  if (sectionId !== "models") return null;
+  if (fieldId === "main_model" || fieldId === "preferred_model") {
+    const selectedModel = String(value ?? "").trim();
+    if (!selectedModel) return null;
+    const modelSlots = models?.model_slots;
+    const currentSlots = modelSlots && typeof modelSlots === "object" && !Array.isArray(modelSlots)
+      ? modelSlots as Record<string, unknown>
+      : {};
+    return {
+      kind: "preferred_model",
+      value: selectedModel,
+      modelsPatch: {
+        main_model: selectedModel,
+        preferred_model: selectedModel,
+        model_slots: { ...currentSlots, main: selectedModel },
+      },
+    };
+  }
+  if (fieldId === "thinking_level" || fieldId === "strategy_reference") {
+    return { kind: fieldId, value, modelsPatch: { [fieldId]: value } };
+  }
+  return null;
 }
 
 function commandSearchText(command: ComposerCommandItem): string {
@@ -2421,9 +2974,32 @@ function commandSearchText(command: ComposerCommandItem): string {
 
 function isModelCommand(command: ComposerCommandItem | undefined): boolean {
   if (!command) return false;
+  if (command.protocol_presentation) {
+    return command.protocol_presentation.input.kind === "search_select"
+      && command.protocol_presentation.input.datasource_ref === "tobkiri:model_catalog";
+  }
   return [command.id, command.name, ...(command.aliases ?? [])]
     .map((value) => String(value ?? "").toLowerCase())
     .includes("model");
+}
+
+function protocolCommandStateRef(command: ComposerCommandItem): string {
+  if (command.protocol_presentation?.input.kind !== "toggle") return "";
+  return String(command.protocol_presentation.input.state_ref ?? "").trim();
+}
+
+function settingsStateRefValue(
+  stateRef: string,
+  settingsValues: Record<string, Record<string, unknown>>,
+): boolean | undefined {
+  if (!stateRef.startsWith("defaultspack:")) return undefined;
+  const path = stateRef.slice("defaultspack:".length);
+  const separator = path.indexOf(".");
+  if (separator <= 0) return undefined;
+  const section = path.slice(0, separator);
+  const field = path.slice(separator + 1);
+  const value = settingsValues[section]?.[field];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function modelCandidateProfileId(candidate: ModelCommandCandidate): string {
@@ -2442,27 +3018,56 @@ function modelCommandInputQuery(value: string): string | null {
   return String(match[1] ?? "").trim();
 }
 
-function ChatApp() {
+export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
+  useEffect(() => {
+    let disposed = false;
+    const refreshModels = () => {
+      void api.listModelProfiles().then((result) => {
+        if (!disposed) setModelProfiles(result.profiles);
+      }).catch(() => { /* Keep the last confirmed list on a read failure. */ });
+    };
+    window.addEventListener("tobkiri-model-profiles-changed", refreshModels);
+    return () => {
+      disposed = true;
+      window.removeEventListener("tobkiri-model-profiles-changed", refreshModels);
+    };
+  }, []);
   const [settingsSections, setSettingsSections] = useState<SettingsSection[]>([]);
   const [settingsValues, setSettingsValues] = useState<Record<string, Record<string, unknown>>>({});
   const settingsValuesRef = useRef(settingsValues);
   const pinnedPlacementSaveRevisionRef = useRef(0);
+  const settingsSaveRevisionRef = useRef(0);
+  const settingsDocumentMutationRevisionRef = useRef(0);
+  const settingsDocumentRevisionRef = useRef<number | null>(null);
+  const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const settingsDirtyKeysRef = useRef<string[]>([]);
+  const refreshCatalogSequenceRef = useRef(0);
+  const [settingsSaveState, setSettingsSaveState] = useState<SettingsSaveState>({ status: "idle", dirtyKeys: [] });
+  const [settingsLoadState, setSettingsLoadState] = useState<SettingsLoadState>({ status: "loading" });
+  const [modelProfilesLoadState, setModelProfilesLoadState] = useState<SettingsLoadState>({ status: "loading" });
   useEffect(() => {
     settingsValuesRef.current = settingsValues;
   }, [settingsValues]);
   const [desktopSystemInfo, setDesktopSystemInfo] = useState<DesktopSystemInfo | null>(null);
   const [commandCatalog, setCommandCatalog] = useState<ComposerCommandItem[]>([]);
+  const [usesResolvedCommandProtocol, setUsesResolvedCommandProtocol] = useState(false);
+  const [commandProtocolInfo, setCommandProtocolInfo] = useState<ResolvedCommandCatalog | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const widgetContext = useMemo(
     () => createWidgetConversationContext(activeConversationId),
     [activeConversationId],
   );
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [activeConversation, setActiveConversationState] = useState<Conversation | null>(null);
+  const loadedConversationViewsRef = useRef(new Map<string, Conversation>());
   const [activeHistoryCompanyId, setActiveHistoryCompanyId] = useState<string | null>(null);
   const [input, setInput] = useLocalStorage("rumi-input", "");
+  const [customHomeTitle, setCustomHomeTitle] = useLocalStorage(
+    "rumi-home-title",
+    DEFAULT_COMPOSER_HOME_TITLE,
+  );
   const [structuredComposerValues, setStructuredComposerValues] = useState<Record<string, string>>({});
   const [composerCandidateMenu, setComposerCandidateMenu] = useState<ComposerCandidateMenuState>(null);
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
@@ -2476,7 +3081,26 @@ function ChatApp() {
   const [requestedSettingsSectionId, setRequestedSettingsSectionId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [startupSteps, setStartupSteps] = useState<TobkiriLoadingStep[]>([
+    { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+    { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
+    { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
+    { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
+  ]);
+  const [error, setErrorState] = useState<string | null>(null);
+  const errorGenerationRef = useRef(0);
+  const setError = useCallback((value: string | null) => {
+    errorGenerationRef.current += 1;
+    setErrorState(value);
+  }, []);
+  const [savedTurnCompletionNotice, setSavedTurnCompletionNotice] = useState<(
+    SavedTurnSnapshotNotice & { conversationId: string }
+  ) | null>(null);
+  const [transientAlert, setTransientAlert] = useState<TransientAlertItem | null>(null);
+  const transientAlertSequenceRef = useRef(0);
+  const composerAlertAnchorRef = useRef<HTMLDivElement>(null);
+  const [retryableSubmission, setRetryableSubmission] = useState<RetryableSubmission | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareCreatedUrl, setShareCreatedUrl] = useState<string | null>(null);
@@ -2491,7 +3115,7 @@ function ChatApp() {
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(() => initialActiveWorkspaceTabIdForPathname(window.location.pathname));
   const [isHistoryMinimized, setIsHistoryMinimized] = useLocalStorage("rumi-history-minimized", false);
   const [isNewChatLaunching, setIsNewChatLaunching] = useState(false);
-  const [modelSteerStatus, setModelSteerStatus] = useState<string | null>(null);
+  const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
   const [modelSteerBusy, setModelSteerBusy] = useState(false);
   const [steerItems, setSteerItems] = useState<ConversationSteerItem[]>([]);
   const [previewMode, setPreviewMode] = useLocalStorage<ToolPreviewMode>("rumi-preview-mode", "auto");
@@ -2501,7 +3125,10 @@ function ChatApp() {
   const [previews, setPreviews] = useState<ToolPreviewItem[]>([]);
   const [settledRuntimeApprovalIds, setSettledRuntimeApprovalIds] = useState<string[]>([]);
   const [settledBrowserApprovalKeys, setSettledBrowserApprovalKeys] = useState<string[]>([]);
-  const [health, setHealth] = useState<{ status: string; pack: string; ts: string } | null>(null);
+  const [pendingCommandApproval, setPendingCommandApproval] = useState<PendingCommandApproval | null>(null);
+  const [pendingHighRiskCommand, setPendingHighRiskCommand] = useState<PendingHighRiskCommand | null>(null);
+  const [commandProgressEvents, setCommandProgressEvents] = useState<Array<Record<string, unknown>>>([]);
+  const [health, setHealth] = useState<Awaited<ReturnType<typeof api.health>> | null>(null);
   const [backendConnectionState, setBackendConnectionState] = useState<BackendConnectionState>("online");
   const [backendConnectionNote, setBackendConnectionNote] = useState<string | null>(null);
   const [operationsStatus, setOperationsStatus] = useState<OperationsCompanyStatus | null>(null);
@@ -2518,21 +3145,57 @@ function ChatApp() {
   const [codingWorkspaces, setCodingWorkspaces] = useState<CodingWorkspaceRecord[]>([]);
   const [selectedCodingWorkspaceId, setSelectedCodingWorkspaceId] = useState<string | null>(null);
   const [pendingNewTaskContext, setPendingNewTaskContext] = useState<PendingNewTaskContext | null>(null);
+  const [projects, setProjects] = useState<ProjectInfo[]>(() => loadProjects());
   const [codingDirectory, setCodingDirectory] = useState(".");
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
+  const workspaceFileDragDepthRef = useRef(0);
   const [pendingMentionAttachmentPaths, setPendingMentionAttachmentPaths] = useState<string[]>([]);
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const pendingRequestsRef = useRef<Record<string, PendingChatRequest>>(pendingRequests);
+  const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
+  const [unwrittenSavedTurnDrafts, setUnwrittenSavedTurnDrafts] = useState<UnwrittenSavedTurnDraft[]>([]);
+  const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const shouldFollowMessagesRef = useRef(true);
   const isUnloadingRef = useRef(false);
   const humanOperatorAutoOpenedPreviewRef = useRef<string | null>(null);
   const currentAbortControllerRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
   const activeRuntimeApprovalActionRef = useRef<string | null>(null);
   const activeBrowserApprovalActionRef = useRef<string | null>(null);
+  const highRiskPrepareInFlightRef = useRef(false);
+  const highRiskResumeStartedRef = useRef(new Set<string>());
+  const highRiskCancelStartedRef = useRef(new Set<string>());
+  const pendingSteerGuidanceIdsRef = useRef(new Map<string, string>());
+  const steerRefreshFenceRef = useRef(new SteerRefreshFence());
+  const savedTurnViewFenceRef = useRef(new SavedTurnViewFence(activeWorkspaceTabId, activeConversationId));
+  const conversationViewLoaderRef = useRef(new ConversationViewLoader(savedTurnViewFenceRef.current));
+  const savedTurnDraftNonceRef = useRef(new Map<string, string>());
+  const activeSavedTurnSubmissionRef = useRef<{ clientId: string; ticket: SavedTurnViewTicket } | null>(null);
+  const savedTurnStopAcknowledgementRef = useRef<SavedTurnStopAcknowledgement | null>(null);
+  const savedTurnStopRequestFailureRef = useRef<{
+    attempt: SavedTurnSubmissionAttempt;
+    error: unknown;
+    errorGeneration: number;
+  } | null>(null);
+  const [savedTurnViewEpoch, setSavedTurnViewEpoch] = useState(0);
+  const setActiveConversation = useCallback((value: SetStateAction<Conversation | null>) => {
+    const ticket = savedTurnViewFenceRef.current.capture();
+    setActiveConversationState((current) => {
+      if (!savedTurnViewFenceRef.current.matches(ticket)) return current;
+      const next = typeof value === "function" ? value(current) : value;
+      if (next && next.id !== ticket.conversationId) return current;
+      if (next) loadedConversationViewsRef.current.set(next.id, next);
+      return next;
+    });
+  }, []);
+  const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
   const authorityApprovalWindowRequestRef = useRef<string | null>(null);
@@ -2569,10 +3232,27 @@ function ChatApp() {
   ];
 
   useEffect(() => {
-    if (mode === "chat") {
+    const refreshProjects = () => setProjects(loadProjects());
+    window.addEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+    void bootstrapProjects().then(setProjects).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "Project state is unavailable.");
+    });
+    return () => {
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+    };
+  }, []);
+
+  const allowManualRuntimeModeSelection = manualRuntimeModeSelectionEnabled(settingsValues);
+
+  useEffect(() => {
+    if (
+      !allowManualRuntimeModeSelection
+      && mode !== "agent"
+      && applicationPathname(window.location.pathname) !== "/coding"
+    ) {
       setMode("agent");
     }
-  }, [mode, setMode]);
+  }, [allowManualRuntimeModeSelection, mode, setMode]);
 
   useEffect(() => {
     if (!shareDialogOpen) return;
@@ -2585,8 +3265,6 @@ function ChatApp() {
 
   const rawSidebarItems: SidebarItem[] = catalog?.sidebar.items ?? [];
   const chatItems = buildChatItems(conversations);
-  const kanbanChatOptions = useMemo(() => kanbanConversationOptions(chatItems), [chatItems]);
-  const kanbanGroups = useMemo(() => kanbanGroupOptions(chatItems), [chatItems]);
   const recentSpotlightResults = useMemo(
     () => conversations
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
@@ -2597,10 +3275,40 @@ function ChatApp() {
   const visibleSpotlightResults = spotlightQuery.trim() ? spotlightResults : recentSpotlightResults;
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
+  const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
+  const isConversationPending = Boolean(
+    pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
+  );
+  const activeSavedTurnOperationId = pendingRequest?.savedTurn
+    ? pendingRequest.operationId ?? null
+    : null;
+  const activeSavedTurnViewTicket = savedTurnViewFenceRef.current.capture();
+  const isGeneratingForActiveView = isGenerationActiveForView({
+    activeConversationId,
+    activeViewTicket: activeSavedTurnViewTicket,
+    globalIsGenerating: isGenerating,
+    isConversationPending,
+    streamingConversationId: streamingConversationIdRef.current,
+    submissionViewTicket: activeSavedTurnSubmissionRef.current?.ticket ?? null,
+  });
   const orderedMessages = useMemo(
     () => activeConversation ? orderConversationMessages(activeConversation.messages) : [],
     [activeConversation?.messages],
   );
+  const visibleOptimisticSavedTurnOverlays = useMemo(() => (
+    optimisticSavedTurnOverlays.filter((overlay) => shouldDisplayOptimisticSavedTurnOverlay(overlay, {
+      activeConversationId,
+      activeOperationId: activeSavedTurnOperationId,
+      activeViewTicket: activeSavedTurnViewTicket,
+      canonicalMessages: activeConversation?.messages ?? [],
+    }))
+  ), [
+    activeConversation?.messages,
+    activeConversationId,
+    activeSavedTurnOperationId,
+    optimisticSavedTurnOverlays,
+    savedTurnViewEpoch,
+  ]);
   const conversationIntegrity = useMemo(
     () => activeConversation
       ? inspectConversationIntegrity(activeConversation.messages)
@@ -2634,7 +3342,16 @@ function ChatApp() {
   const latestActivePendingSignature = latestActiveMessage
     ? `${latestActiveMessage.id}:${latestActiveMessage.role}:${latestActiveMessage.finish_reason ?? ""}:${String(latestActiveThinking.state ?? "")}`
     : "";
-  const messages = orderedMessages.map((message) => toUiMessage(message, activeProfile));
+  const messages = [
+    ...orderedMessages.map((message) => toUiMessage(message, activeProfile)),
+    ...visibleOptimisticSavedTurnOverlays.map((overlay) => {
+      const message = toUiMessage(overlay.message, activeProfile);
+      return {
+        ...message,
+        metadata: { ...message.metadata, deliveryState: "pending" as const },
+      };
+    }),
+  ];
   const backendConnectionBanner = backendConnectionCopy(
     backendConnectionState,
     lastHealthyAtRef.current,
@@ -2649,9 +3366,25 @@ function ChatApp() {
   const isCanvasWorkspace = activeWorkspaceKind === "canvas";
   const isDesktopsWorkspace = activeWorkspaceKind === "desktops";
   const isToolsWorkspace = activeWorkspaceKind === "tools";
-  const isNewConversation = activeConversation === null || activeConversation.messages.length === 0;
+  const savedTurnComposerInput = {
+    activeConversationId,
+    activeSavedTurnOperationId,
+    canonicalMessageCount: activeConversation?.messages.length ?? 0,
+    visibleOverlayCount: visibleOptimisticSavedTurnOverlays.length,
+  };
+  const savedTurnComposer = savedTurnComposerPresentation(savedTurnComposerInput);
+  const steerControlsReady = savedTurnControlActionsReady(
+    savedTurnComposerControlsReady(savedTurnComposerInput),
+    pendingRequest,
+  );
+  const { isNewConversation, showConversationComposer, showNewConversationStage } = savedTurnComposer;
   useEffect(() => {
+    const ticket = savedTurnViewFenceRef.current.capture();
+    if (!conversationOwnsSelectedView(
+      ticket, activeWorkspaceTabId, activeConversationId, activeConversation?.id ?? null,
+    )) return;
     setWorkspaceTabs((current) => current.map((tab) => {
+      if (!savedTurnViewFenceRef.current.matches(ticket)) return tab;
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
       const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
       if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
@@ -2661,7 +3394,7 @@ function ChatApp() {
         title: nextTitle,
       };
     }));
-  }, [activeChatTitle, activeConversationId, activeWorkspaceTabId]);
+  }, [activeChatTitle, activeConversation?.id, activeConversationId, activeWorkspaceTabId]);
   const activePromptUsage = latestActiveMetadata.prompt_usage && typeof latestActiveMetadata.prompt_usage === "object" && !Array.isArray(latestActiveMetadata.prompt_usage)
     ? latestActiveMetadata.prompt_usage as PromptUsageSummary
     : null;
@@ -2669,6 +3402,14 @@ function ChatApp() {
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
   const locale = normalizeLocale(settingsValues.general?.language);
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
+  const workspaceTabsEnabled = parseCommandBoolean(settingsValues.general?.workspace_tabs_enabled, true);
+  const subagentTeamsEnabled = parseCommandBoolean(settingsValues.automation?.subagent_teams_enabled, true);
+  const workspaceTabCreateOptions = useMemo(
+    () => WORKSPACE_TAB_CREATE_OPTIONS.filter((option) => (
+      option.kind !== "subagents" || subagentTeamsEnabled
+    )),
+    [subagentTeamsEnabled],
+  );
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
   const spotlightShortcutTextInput = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_text_input, true);
@@ -2734,7 +3475,18 @@ function ChatApp() {
     [hiddenToolIdSet, rawSidebarItems],
   );
   const preferredModel = activeModelId;
-  const selectableModelProfiles = userFacingModelProfiles(modelProfiles, preferredModel);
+  const modelSelectorSchema = useMemo(() => modelSelectorSchemaFromCatalog(catalog), [catalog]);
+  const userFacingProfiles = userFacingModelProfiles(modelProfiles, preferredModel);
+  const selectableModelProfiles = filterModelProfilesBySelector(
+    userFacingProfiles,
+    modelSelectorSchema,
+    "composer",
+  );
+  const settingsModelProfiles = filterModelProfilesBySelector(
+    userFacingProfiles,
+    modelSelectorSchema,
+    "settings",
+  );
   const favoriteProfiles = favoriteModelProfiles(settingsValues.models?.favorite_profiles, selectableModelProfiles, preferredModel);
   const thinkingLevels = (settingsValues.models?.thinking_level_by_profile ?? {}) as Record<string, unknown>;
   const selectedThinkingLevel = String(
@@ -2743,7 +3495,22 @@ function ChatApp() {
     ?? activeProfile?.default_thinking_level
     ?? "medium",
   );
-  const deepthinkEnabled = parseCommandBoolean(settingsValues.models?.deepthink_enabled, false);
+  const strategyReference = typeof settingsValues.models?.strategy_reference === "string"
+    && settingsValues.models.strategy_reference.trim()
+    ? settingsValues.models.strategy_reference.trim()
+    : undefined;
+  const strategyContributions = useMemo(
+    () => admittedStrategyContributions(catalog?.strategy_contributions),
+    [catalog],
+  );
+  const selectedStrategyContribution = strategyContributions.find(
+    (contribution) => contribution.reference === strategyReference,
+  );
+  const strategySelectionInvalid = Boolean(
+    catalog && strategyReference && !selectedStrategyContribution,
+  );
+  const commandStateRevisionsRef = useRef<Record<string, number>>({});
+  const commandClientSequenceRef = useRef(0);
   const contextUsage = contextUsageFor(activeConversation, activeProfile);
   const composerExtensions = useMemo(
     () => composerExtensionItems(sidebarItems)
@@ -2762,7 +3529,7 @@ function ChatApp() {
     return Array.from(byId.values());
   }, [droppedWidgets, templateComposerWidgets]);
   const composerSkills = useMemo<ComposerSkillItem[]>(() => (
-    (catalog?.skills ?? []).map((skill) => ({
+    withSettingsAssistantSkill((catalog?.skills ?? []).map((skill) => ({
       id: skill.id,
       label: skill.label ?? skill.id,
       description: skill.description,
@@ -2770,8 +3537,23 @@ function ChatApp() {
       appliesToTools: skill.applies_to_tools ?? [],
       aliases: skill.aliases ?? [],
       metadata: skill.metadata,
-    }))
+    })))
   ), [catalog?.skills]);
+  const settingsAssistantSkill = useMemo<ComposerSkillItem>(() => (
+    resolveSettingsAssistantSkill(composerSkills)
+  ), [composerSkills]);
+  const composerPosition = isNewConversation
+    ? composerInputMetadata?.layout?.home?.position ?? "center"
+    : composerInputMetadata?.layout?.conversation?.position ?? "bottom";
+  const transientAlertPlacement = alertPlacementForComposerPosition(composerPosition);
+  const composerHomeTitle = useMemo(
+    () => resolveComposerHomeTitle(
+      input,
+      composerSkills,
+      normalizeComposerHomeTitle(customHomeTitle),
+    ),
+    [composerSkills, customHomeTitle, input],
+  );
   const selectedTools = useMemo(() => storedSelectedToolIds
     .map((toolId) => composerExtensions.find((tool) => tool.id === toolId))
     .filter((tool): tool is ComposerExtensionItem => Boolean(tool)), [composerExtensions, storedSelectedToolIds]);
@@ -2788,7 +3570,7 @@ function ChatApp() {
     conversationPreferences: activeConversationToolPreferences,
   });
   useEffect(() => {
-    if (isGenerating) return;
+    if (isGeneratingForActiveView) return;
     const reconciled = reconcileComposerSemanticDraft({
       droppedWidgets,
       selectedToolIds,
@@ -2806,11 +3588,119 @@ function ChatApp() {
     ) {
       setStoredSelectedToolIds(reconciled.selectedToolIds);
     }
-  }, [droppedWidgets, input, isGenerating, selectedToolIds, setStoredSelectedToolIds]);
-  const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
-  const isConversationPending = Boolean(
-    pendingRequest && Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS,
+  }, [droppedWidgets, input, isGeneratingForActiveView, selectedToolIds, setStoredSelectedToolIds]);
+  const activeSteerRefreshContext = steerRefreshContextKey(
+    activeConversationId,
+    pendingRequest?.savedTurn ? pendingRequest.operationId : null,
   );
+  useLayoutEffect(() => {
+    steerRefreshFenceRef.current.synchronize(activeSteerRefreshContext);
+    setSteerItems([]);
+    setModelSteerStatus(null);
+    setModelSteerBusy(false);
+  }, [activeSteerRefreshContext]);
+  useLayoutEffect(() => {
+    const viewFence = savedTurnViewFenceRef.current;
+    if (viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) {
+      setSavedTurnViewEpoch(viewFence.capture().epoch);
+    }
+    const activeSubmission = activeSavedTurnSubmissionRef.current;
+    if (!activeSubmission || viewFence.matches(activeSubmission.ticket)) return;
+    activeSavedTurnSubmissionRef.current = null;
+    setIsGenerating(false);
+    setIsNewChatLaunching(false);
+  }, [activeConversationId, activeWorkspaceTabId]);
+  useLayoutEffect(() => {
+    const interruptedDraft = interruptedSavedTurnDrafts.find((draft) => (
+      draft.workspaceTabId === activeWorkspaceTabId
+      && draft.conversationId === activeConversationId
+    ));
+    if (!interruptedDraft
+      || savedTurnDraftNonceRef.current.get(interruptedDraft.workspaceTabId) !== interruptedDraft.clientId
+      || input.trim()
+      || attachedFiles.length
+      || droppedWidgets.length
+      || activeSavedTurnOperationId) return;
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => draft.clientId !== interruptedDraft.clientId));
+    setInput(interruptedDraft.input);
+    setAttachedFiles(interruptedDraft.attachments);
+    setDroppedWidgets(interruptedDraft.droppedWidgets);
+    setError("送信開始前に画面を切り替えたため、下書きを復元しました。内容を確認して送信してください。");
+  }, [
+    activeConversationId,
+    activeSavedTurnOperationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    droppedWidgets.length,
+    input,
+    interruptedSavedTurnDrafts,
+    savedTurnViewEpoch,
+  ]);
+  useLayoutEffect(() => {
+    const draft = unwrittenSavedTurnDrafts.find((candidate) => (
+      candidate.workspaceTabId === activeWorkspaceTabId
+      && candidate.conversationId === activeConversationId
+    ));
+    if (!draft
+      || savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId
+      || !shouldRestoreUnwrittenSavedTurnDraft(draft, {
+        activeConversationId,
+        activeOperationId: activeSavedTurnOperationId,
+        activeViewTicket: savedTurnViewFenceRef.current.capture(),
+        composerIsEmpty: !input.trim()
+          && attachedFiles.length === 0
+          && droppedWidgets.length === 0
+          && composerEntityReferences.length === 0
+          && pendingMentionAttachmentPaths.length === 0,
+        conversationIsEmpty: activeConversation?.messages.length === 0,
+      })) return;
+    setUnwrittenSavedTurnDrafts((current) => current.filter((candidate) => (
+      candidate.clientId !== draft.clientId
+    )));
+    setInput(draft.input);
+    setAttachedFiles(draft.attachments);
+    setDroppedWidgets(draft.droppedWidgets);
+    setError("送信は失敗で終了しました。メッセージは保存されていません。下書きを復元しました。内容を確認してから送信してください。");
+  }, [
+    activeConversation?.messages.length,
+    activeConversationId,
+    activeSavedTurnOperationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    pendingMentionAttachmentPaths.length,
+    savedTurnViewEpoch,
+    unwrittenSavedTurnDrafts,
+  ]);
+  useEffect(() => {
+    if (!input.trim()
+      && attachedFiles.length === 0
+      && droppedWidgets.length === 0
+      && composerEntityReferences.length === 0
+      && pendingMentionAttachmentPaths.length === 0) return;
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== activeWorkspaceTabId
+    )));
+  }, [
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    pendingMentionAttachmentPaths.length,
+  ]);
+  useEffect(() => {
+    if (!activeConversation) return;
+    setOptimisticSavedTurnOverlays((current) => {
+      const next = current.filter((overlay) => !optimisticSavedTurnOverlayHasCanonicalUserMessage(
+        overlay,
+        activeConversation.messages,
+      ));
+      return next.length === current.length ? current : next;
+    });
+  }, [activeConversation?.id, activeConversation?.messages]);
   const rawBrowserApproval = pendingBrowserApproval(messages);
   const rawAuthorityApproval = pendingAuthorityApproval(messages);
   const rawRuntimeApproval = pendingRuntimeApproval(messages);
@@ -2829,7 +3719,7 @@ function ChatApp() {
   const staleRuntimeApprovalNotice = !ultraYoloMode && !rawRuntimeApproval ? staleRuntimeApproval(messages) : null;
   const visibleBrowserApproval = !ultraYoloMode ? browserApproval : null;
   const latestAssistantFinal = useMemo(() => {
-    if (isGenerating || isConversationPending) return null;
+    if (isGeneratingForActiveView) return null;
     for (const message of [...messages].reverse()) {
       if (message.role === "user") return null;
       if (message.role !== "agent") continue;
@@ -2845,7 +3735,7 @@ function ChatApp() {
       };
     }
     return null;
-  }, [isConversationPending, isGenerating, messages]);
+  }, [isGeneratingForActiveView, messages]);
 
   useEffect(() => {
     if (!latestAssistantFinal) return;
@@ -2856,51 +3746,9 @@ function ChatApp() {
     });
   }, [activeConversationId, latestAssistantFinal]);
 
-  const composerModelStatusIndicators = useMemo<ComposerModelStatusIndicator[]>(() => {
-    if (ultraYoloMode) {
-      return [
-        {
-          id: "ultra-yolo",
-          name: "Ultra YOLO",
-          description: "Ultra YOLO が ON です。高権限の実行方針を要求しますが、承認カードとサーバー側の安全ポリシーは維持されます。",
-          svgMarkup: dangerShieldSvg,
-          tone: "danger",
-          action: {
-            label: "YOLO に戻す",
-            tone: "danger",
-            onSelect: () => {
-              setUltraYoloMode(false);
-              setYoloMode(true);
-              setUltraYoloRestoreYoloMode(false);
-            },
-          },
-        },
-      ];
-    }
-
-    if (yoloMode) {
-      return [
-        {
-          id: "yolo",
-          name: "YOLO",
-          description: "YOLO が ON です。承認不要の tool は自動実行されます。",
-          svgMarkup: dangerShieldSvg,
-          tone: "warning",
-          action: {
-            label: "標準に戻す",
-            tone: "warning",
-            onSelect: () => {
-              setUltraYoloMode(false);
-              setYoloMode(false);
-              setUltraYoloRestoreYoloMode(false);
-            },
-          },
-        },
-      ];
-    }
-
-    return [];
-  }, [ultraYoloMode, yoloMode, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode]);
+  // The approval control is the single visible source of truth.  Full Access
+  // must not also appear as a model/status chip beside it.
+  const composerModelStatusIndicators: ComposerModelStatusIndicator[] = [];
   const messageToolPreviews = useMemo(
     () => toolPreviewsFromMessages(activeConversation?.messages ?? []),
     [activeConversation?.messages],
@@ -2936,11 +3784,222 @@ function ChatApp() {
   const canShowCanvas = hasCanvasItems(canvasPreviews, canvasMemo) || liveBrowserState.state_revision >= 0;
   const effectiveShowPreview = showPreview && canShowCanvas;
   const effectiveCommandCatalog = useMemo(() => (
-    mergeRegisteredSlashCommands(
-      commandCatalog,
-      registeredSlashCommandsFromSettings(settingsValues.commands?.registered_slash_commands),
-    )
-  ), [commandCatalog, settingsValues.commands?.registered_slash_commands]);
+    usesResolvedCommandProtocol
+      ? commandCatalog
+      : mergeRegisteredSlashCommands(
+          commandCatalog,
+          registeredSlashCommandsFromSettings(settingsValues.commands?.registered_slash_commands),
+        )
+  ), [commandCatalog, settingsValues.commands?.registered_slash_commands, usesResolvedCommandProtocol]);
+
+  useEffect(() => {
+    if (!usesResolvedCommandProtocol || pendingCommandApproval || effectiveCommandCatalog.length === 0) return;
+    let cancelled = false;
+    void api.pendingCommandApprovals()
+      .then(({ pending_approvals: approvals }) => {
+        if (cancelled || approvals.length === 0) return;
+        const pending = approvals[0];
+        const result = pending.result;
+        const requestId = result?.approval?.request_id ?? pending.approval_request_id;
+        const commandRef = result?.command_ref;
+        const details = result?.approval?.details;
+        if (!requestId || !commandRef || !details) return;
+        const command = effectiveCommandCatalog.find((candidate) => (
+          candidate.canonical_id === commandRef
+          || candidate.id === commandRef
+          || candidate.name === commandRef
+        ));
+        if (!command) return;
+        const restoredMode = details.mode;
+        setPendingCommandApproval({
+          requestId,
+          invocationId: pending.invocation_id,
+          commandRef,
+          command,
+          args: details.approved_arguments ?? details.args ?? {},
+          conversationId: typeof details.conversation_id === "string"
+            ? details.conversation_id
+            : null,
+          mode: restoredMode === "chat" || restoredMode === "coding" || restoredMode === "agent"
+            ? restoredMode
+            : mode as ComposerCommandMode,
+          approvalKind: result?.approval?.kind === "authority"
+            ? "authority"
+            : "coding",
+        });
+      })
+      .catch((restoreError) => {
+        if (!cancelled) console.error("Failed to restore pending command approval", restoreError);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveCommandCatalog, mode, pendingCommandApproval, usesResolvedCommandProtocol]);
+
+  useEffect(() => {
+    if (!pendingHighRiskCommand) return;
+    let disposed = false;
+    let retryTimer: number | null = null;
+    const pending = pendingHighRiskCommand;
+
+    const clearPending = () => {
+      setPendingHighRiskCommand((current) => (
+        current?.invocationId === pending.invocationId ? null : current
+      ));
+    };
+    const schedulePoll = () => {
+      if (!disposed) retryTimer = window.setTimeout(() => void poll(), 750);
+    };
+    const poll = async () => {
+      try {
+        const approval = await api.getInteractiveApproval(pending.requestId);
+        if (disposed) return;
+        if (approval.request_id !== pending.requestId) {
+          throw new Error("高リスク操作の承認リクエストが一致しません。");
+        }
+        const invocation = await api.highRiskCommandStatus(pending.invocationId);
+        if (disposed) return;
+        if (
+          invocation.invocation_id !== pending.invocationId
+          || invocation.approval_request_id !== pending.requestId
+        ) {
+          throw new Error("高リスク操作の実行状態が一致しません。");
+        }
+        if (HIGH_RISK_TERMINAL_STATES.has(invocation.state)) {
+          clearPending();
+          if (invocation.state === "succeeded") {
+            transientAlertSequenceRef.current += 1;
+            setTransientAlert({
+              id: `high-risk-succeeded-${transientAlertSequenceRef.current}`,
+              message: `/${pending.commandLabel} を実行しました。`,
+              tone: "success",
+            });
+          } else {
+            setError(`/${pending.commandLabel} は ${invocation.state} のため実行されませんでした。`);
+          }
+          return;
+        }
+        if (["denied", "expired", "cancelled", "stale", "failed"].includes(approval.state)) {
+          if (!beginHighRiskAttempt(highRiskCancelStartedRef.current, pending.invocationId)) return;
+          let cancelled: Awaited<ReturnType<typeof api.cancelHighRiskCommand>>;
+          try {
+            cancelled = await api.cancelHighRiskCommand(pending.invocationId);
+          } catch (cancelError) {
+            releaseHighRiskAttempt(highRiskCancelStartedRef.current, pending.invocationId);
+            throw cancelError;
+          }
+          if (disposed) return;
+          if (cancelled.invocation_id !== pending.invocationId) {
+            releaseHighRiskAttempt(highRiskCancelStartedRef.current, pending.invocationId);
+            throw new Error("高リスク操作の取消状態が一致しません。");
+          }
+          clearPending();
+          if (approval.state !== "denied") {
+            setError(`/${pending.commandLabel} の承認は ${approval.state} のため取り消されました。`);
+          }
+          return;
+        }
+        if (approval.state === "approved" && invocation.state === "approved") {
+          if (!beginHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId)) {
+            schedulePoll();
+            return;
+          }
+          let resumed: Awaited<ReturnType<typeof api.resumeHighRiskCommand>>;
+          try {
+            resumed = await api.resumeHighRiskCommand(pending.invocationId);
+          } catch (resumeError) {
+            // The HTTP response may have been lost before or after the Host
+            // claimed the effect. Its CAS path is idempotent, so a later
+            // authoritative poll may safely make the same resume request.
+            releaseHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId);
+            throw resumeError;
+          }
+          if (disposed) return;
+          if (resumed.invocation_id !== pending.invocationId) {
+            releaseHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId);
+            throw new Error("高リスク操作の再開状態が一致しません。");
+          }
+          const resumeDisposition = highRiskResumeDisposition(resumed.state);
+          if (resumeDisposition === "pending") {
+            // The Host claimed the resume effect but the durable worker has
+            // not reached a terminal state. Keep polling this receipt.
+            schedulePoll();
+            return;
+          }
+          clearPending();
+          if (resumeDisposition === "succeeded") {
+            transientAlertSequenceRef.current += 1;
+            setTransientAlert({
+              id: `high-risk-succeeded-${transientAlertSequenceRef.current}`,
+              message: `/${pending.commandLabel} を実行しました。`,
+              tone: "success",
+            });
+          } else {
+            setError(`/${pending.commandLabel} は ${resumed.state} のため完了しませんでした。`);
+          }
+          return;
+        }
+        schedulePoll();
+      } catch (pollError) {
+        if (disposed) return;
+        setError(
+          pollError instanceof Error
+            ? pollError.message
+            : "高リスク操作の承認状態を確認できませんでした。",
+        );
+        schedulePoll();
+      }
+    };
+
+    void poll();
+    return () => {
+      disposed = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [pendingHighRiskCommand]);
+
+  useEffect(() => {
+    if (!usesResolvedCommandProtocol || pendingHighRiskCommand) return;
+    let disposed = false;
+    void api.listHighRiskCommands()
+      .then(({ invocations }) => {
+        if (disposed || highRiskPrepareInFlightRef.current) return;
+        const pending = invocations.find((item) => (
+          Boolean(item.invocation_id)
+          && Boolean(item.approval_request_id)
+          && !HIGH_RISK_TERMINAL_STATES.has(item.state)
+        ));
+        const approvalRequestId = pending?.approval_request_id;
+        if (!pending || !approvalRequestId) return;
+        setPendingHighRiskCommand((current) => current ?? {
+          requestId: approvalRequestId,
+          invocationId: pending.invocation_id,
+          commandLabel: "高リスク操作",
+        });
+        if (highRiskApprovalWindowOpenedRequestRef.current === approvalRequestId) return;
+        // Claim before awaiting the native window open so React Strict Mode or
+        // a state refresh cannot create duplicate approval windows.
+        highRiskApprovalWindowOpenedRequestRef.current = approvalRequestId;
+        void openAuthorityApprovalWindow(approvalRequestId)
+          .then((opened) => {
+            if (!disposed && !opened) {
+              setError("専用の承認ウィンドウを開けませんでした。承認待ち表示から再試行してください。");
+            }
+          })
+          .catch((restoreOpenError) => {
+            if (!disposed) {
+              console.error("Failed to open restored high-risk approval", restoreOpenError);
+              setError("専用の承認ウィンドウを開けませんでした。承認待ち表示から再試行してください。");
+            }
+          });
+      })
+      .catch((restoreError) => {
+        if (!disposed) console.error("Failed to restore pending high-risk command", restoreError);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [pendingHighRiskCommand, usesResolvedCommandProtocol]);
 
   useEffect(() => {
     const preview = canvasPreviews.find(isHumanOperatorCanvasPreview);
@@ -2967,12 +4026,18 @@ function ChatApp() {
       .filter((command) => command.id !== "fast" || Boolean(fastCandidate))
       .filter((command) => command.id !== "price" || Boolean(priceLowCandidate || priceHighCandidate))
       .filter((command) => command.id !== "think" || profileSupportsThinking(activeProfile))
-      .map((command) => ({
-        ...command,
-        active: command.id === "yolo" ? (yoloMode || ultraYoloMode) : command.id === "ultra_yolo" ? ultraYoloMode : command.id === "deepthink" ? deepthinkEnabled : command.id === mode,
-        enabled: command.id === "yolo" ? (yoloMode || ultraYoloMode) : command.id === "ultra_yolo" ? ultraYoloMode : command.id === "deepthink" ? deepthinkEnabled : command.id === mode,
-      }));
-  }, [activeProfile, deepthinkEnabled, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues.commands?.show_advanced_commands, slashCommandsEnabled, ultraYoloMode, yoloMode]);
+      .map((command) => {
+        const stateRef = protocolCommandStateRef(command);
+        const protocolState = stateRef === "host:approval.full_access"
+          ? ultraYoloMode
+          : settingsStateRefValue(stateRef, settingsValues);
+        const legacyState = command.id === "yolo" || command.id === "ultra_yolo"
+          ? ultraYoloMode
+          : command.id === mode;
+        const active = protocolState ?? legacyState;
+        return { ...command, active, enabled: active };
+      });
+  }, [activeProfile, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
   const modelCommandCandidates = composerCandidateMenu?.mode === "model" ? composerCandidateMenu.candidates : [];
   const unknownBlockStrategy = String(settingsValues.chat_rendering?.unknown_block_strategy ?? "placeholder");
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
@@ -2984,6 +4049,7 @@ function ChatApp() {
     !isCanvasWorkspace &&
     !isDesktopsWorkspace &&
     !isSubagentWorkspace;
+  const isActivityPreviewPresent = useExitPresence(isActivityPreviewVisible, 240);
   const activityPreviewWidthPx = clampNumber(activityPreviewWidth, 220, 720, 340);
   const operationsProfileAvailable = hasOperationsProfile(catalog);
   const mimoCodingProfileAvailable = hasMimoCodingProfile(catalog);
@@ -3052,9 +4118,87 @@ function ChatApp() {
   const updatePendingRequests = (updater: (current: Record<string, PendingChatRequest>) => Record<string, PendingChatRequest>) => {
     setPendingRequests((current) => {
       const next = updater(current);
+      pendingRequestsRef.current = next;
       writeJsonLocalStorage(pendingStorageKey, next);
       return next;
     });
+  };
+
+  const bindOptimisticSavedTurnOverlayToRequest = (
+    clientId: string,
+    conversationId: string,
+    operationId: string,
+    requestFingerprint: string,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.map((overlay) => (
+      overlay.clientId === clientId
+        ? bindOptimisticSavedTurnOverlay(overlay, {
+            conversationId,
+            operationId,
+            requestFingerprint,
+          })
+        : overlay
+    )));
+  };
+
+  const bindOptimisticSavedTurnOverlayToTurn = (
+    conversationId: string,
+    operationId: string,
+    turn: SavedTurn,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.map((overlay) => (
+      overlay.conversationId === conversationId && overlay.operationId === operationId
+        ? bindOptimisticSavedTurnExpectedUserMessageId(overlay, turn)
+        : overlay
+    )));
+  };
+
+  const discardOptimisticSavedTurnOverlay = (clientId: string) => {
+    setOptimisticSavedTurnOverlays((current) => current.filter((overlay) => overlay.clientId !== clientId));
+  };
+
+  const discardOptimisticSavedTurnOverlayForRequest = (
+    conversationId: string,
+    operationId: string,
+  ) => {
+    setOptimisticSavedTurnOverlays((current) => current.filter((overlay) => (
+      overlay.conversationId !== conversationId || overlay.operationId !== operationId
+    )));
+  };
+
+  const retainInterruptedSavedTurnDraft = (draft: InterruptedSavedTurnDraft) => {
+    if (savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId) return;
+    setInterruptedSavedTurnDrafts((current) => [
+      ...current.filter((currentDraft) => currentDraft.workspaceTabId !== draft.workspaceTabId),
+      draft,
+    ]);
+  };
+
+  const retainUnwrittenSavedTurnDraft = (draft: UnwrittenSavedTurnDraft) => {
+    if (savedTurnDraftNonceRef.current.get(draft.workspaceTabId) !== draft.clientId) return;
+    setUnwrittenSavedTurnDrafts((current) => [
+      ...current.filter((currentDraft) => currentDraft.workspaceTabId !== draft.workspaceTabId),
+      draft,
+    ]);
+  };
+
+  const discardUnwrittenSavedTurnDraft = (clientId: string) => {
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => draft.clientId !== clientId));
+  };
+
+  const discardUnwrittenSavedTurnDraftForRequest = (
+    conversationId: string,
+    operationId: string,
+  ) => {
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.conversationId !== conversationId || draft.operationId !== operationId
+    )));
+  };
+
+  const discardInterruptedSavedTurnDraftForWorkspace = (workspaceTabId: string) => {
+    savedTurnDraftNonceRef.current.delete(workspaceTabId);
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => draft.workspaceTabId !== workspaceTabId));
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => draft.workspaceTabId !== workspaceTabId));
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
@@ -3072,21 +4216,28 @@ function ChatApp() {
     });
   };
 
-  const loadCodingWorkspaces = useCallback(async () => {
-    try {
-      const result = await api.listCodingWorkspaces();
-      setCodingWorkspaces(result.workspaces);
-      let selectedWorkspaceId = result.selected_workspace_id ?? result.workspaces[0]?.workspace_id ?? null;
-      setSelectedCodingWorkspaceId((current) => {
-        selectedWorkspaceId = current ?? selectedWorkspaceId;
-        return selectedWorkspaceId;
-      });
-      return { ...result, selected_workspace_id: selectedWorkspaceId };
-    } catch {
-      setCodingWorkspaces([]);
-      return { workspaces: [], selected_workspace_id: null };
-    }
+  useLayoutEffect(() => {
+    updatePendingRequests(resetPersistedSavedTurnOwnerObservations);
   }, []);
+
+  const loadCodingWorkspaces = useCallback(async () => {
+    const result = await api.listCodingWorkspaces();
+    setCodingWorkspaces(result.workspaces);
+    let selectedWorkspaceId = result.selected_workspace_id ?? result.workspaces[0]?.workspace_id ?? null;
+    setSelectedCodingWorkspaceId((current) => {
+      selectedWorkspaceId = current ?? selectedWorkspaceId;
+      return selectedWorkspaceId;
+    });
+    return { ...result, selected_workspace_id: selectedWorkspaceId };
+  }, []);
+
+  const reportCodingLoadError = useCallback((loadError: unknown) => {
+    setError(loadError instanceof Error ? loadError.message : "ワークスペースを読み込めませんでした。");
+  }, []);
+
+  const refreshCodingWorkspaces = useCallback(() => {
+    void loadCodingWorkspaces().catch(reportCodingLoadError);
+  }, [loadCodingWorkspaces, reportCodingLoadError]);
 
   const activeConversationWorkspaceContext = useMemo(
     () => workspaceContextFromConversation(activeConversation),
@@ -3105,7 +4256,10 @@ function ChatApp() {
     try {
       const [result, branchInfo] = await Promise.all([
         api.getCodingContext({ directory: codingDirectory, workspace_id: workspaceId }),
-        api.getGitBranch({ workspace_id: workspaceId }).catch(() => null),
+        api.getGitBranch({ workspace_id: workspaceId }).catch((branchError) => {
+          reportCodingLoadError(branchError);
+          return null;
+        }),
       ]);
       setCodingContext({
         branch: result.branch,
@@ -3117,14 +4271,45 @@ function ChatApp() {
         entries: result.entries,
         git: result.git,
       });
-    } catch {
+    } catch (contextError) {
       setCodingContext(null);
+      throw contextError;
     }
-  }, [codingDirectory, effectiveWorkspaceId]);
+  }, [codingDirectory, effectiveWorkspaceId, reportCodingLoadError]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isGenerating]);
+    if (!activeConversationId) {
+      shouldFollowMessagesRef.current = false;
+      return;
+    }
+    const saved = conversationScrollState.get(activeConversationId);
+    shouldFollowMessagesRef.current = saved?.follow ?? true;
+    if (!saved || saved.follow) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (messagesScrollRef.current) {
+        messagesScrollRef.current.scrollTop = saved.scrollTop;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeConversationId]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const scroller = messagesScrollRef.current;
+    if (!scroller) return;
+    const follow = isMessageScrollerNearBottom(scroller);
+    shouldFollowMessagesRef.current = follow;
+    if (activeConversationId) {
+      conversationScrollState.set(activeConversationId, {
+        follow,
+        scrollTop: scroller.scrollTop,
+      });
+    }
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!shouldFollowMessagesRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeConversationId, messages, isGeneratingForActiveView]);
 
   useEffect(() => {
     const markUnloading = () => {
@@ -3146,10 +4331,12 @@ function ChatApp() {
       if ((payload as Record<string, unknown>).type === "rumi_human_operator_sync") {
         const conversationId = String((payload as Record<string, unknown>).conversation_id ?? "").trim();
         if (conversationId && conversationId === activeConversationId) {
+          const ticket = conversationViewLoaderRef.current.capture();
           void api.getConversation(conversationId)
             .then((conversation) => {
+              if (!conversationViewLoaderRef.current.matches(ticket)) return;
               setActiveConversation(conversation);
-              void refreshPreview(conversationId);
+              void refreshPreview(conversationId, ticket);
             })
             .catch(console.error);
         }
@@ -3171,18 +4358,52 @@ function ChatApp() {
 
   useEffect(() => {
     if (mode === "coding") {
-      void loadCodingWorkspaces().then((result) => loadCodingContext(result.selected_workspace_id ?? null));
+      void loadCodingWorkspaces()
+        .then((result) => loadCodingContext(result.selected_workspace_id ?? null))
+        .catch(reportCodingLoadError);
     }
-  }, [mode, loadCodingContext, loadCodingWorkspaces]);
+  }, [mode, loadCodingContext, loadCodingWorkspaces, reportCodingLoadError]);
 
   useEffect(() => {
-    if (window.location.pathname !== "/coding") return;
+    if (applicationPathname(window.location.pathname) !== "/coding") return;
     setMode("coding");
   }, [setMode]);
 
   useEffect(() => {
     if (!isSettingsOpen) return;
     let cancelled = false;
+    const documentMutationRevisionAtRead = settingsDocumentMutationRevisionRef.current;
+    // The bootstrap response deliberately omits dynamic provider metadata.  Fetch
+    // the full registry when Settings opens so built-in Provider/API controls do
+    // not look like empty extension slots while the shell is still settling.
+    setSettingsLoadState({ status: "loading" });
+    void api.uiSettings({ full: true })
+      .then((settings) => {
+        if (cancelled) return;
+        setSettingsSections(settings.sections);
+        // A full refresh can finish after a failed/queued save. Do not replace
+        // the user's recoverable local edits with an older server snapshot.
+        if (settingsReadMayApply(
+          settingsDirtyKeysRef.current.length,
+          documentMutationRevisionAtRead,
+          settingsDocumentMutationRevisionRef.current,
+        )) {
+          const nextValues = withCalendarSettingsValues(settings.values);
+          settingsDocumentRevisionRef.current = settings.document_revision;
+          settingsValuesRef.current = nextValues;
+          setSettingsValues(nextValues);
+        }
+        setSettingsLoadState({ status: "ready" });
+      })
+      .catch((settingsError) => {
+        console.error(settingsError);
+        if (!cancelled) {
+          setSettingsLoadState({
+            status: "error",
+            message: settingsError instanceof Error ? settingsError.message : "Failed to refresh Settings.",
+          });
+        }
+      });
     void fetchDesktopSystemInfo()
       .then((info) => {
         if (!cancelled) setDesktopSystemInfo(info);
@@ -3236,6 +4457,7 @@ function ChatApp() {
           },
         });
       }
+      if (reason === "bootstrap") throw healthError;
     }
   }, [activeConversationId]);
 
@@ -3305,45 +4527,101 @@ function ChatApp() {
     void refreshCatalog().catch(console.error);
   }
 
-  async function refreshCatalog() {
-    const [catalogResult, settingsResult, profilesResult, commandsResult] = await Promise.allSettled([
-      api.uiCatalog(),
-      api.uiSettings(),
-      api.listModelProfiles(),
-      api.uiCommands(),
-    ]);
+  async function refreshCatalog(): Promise<CatalogRefreshResult | null> {
+    const requestSequence = ++refreshCatalogSequenceRef.current;
+    const documentMutationRevisionAtRead = settingsDocumentMutationRevisionRef.current;
+    setSettingsLoadState({ status: "loading" });
+    setModelProfilesLoadState({ status: "loading" });
+    // The three presentation-dependent reads own distinct Broker reservations
+    // and request-scoped runtimes. Start them in order so a lifecycle gate
+    // never rejects one reservation merely because another is materializing.
+    // Model Profiles are Host-owned and can load alongside that sequence.
+    const profilesResultPromise = Promise.allSettled([api.listModelProfiles()]);
+    const [catalogResult] = await Promise.allSettled([api.uiCatalog()]);
+    const [settingsResult] = await Promise.allSettled([api.uiSettings()]);
+    const [commandsResult] = await Promise.allSettled([api.resolvedUiCommands()]);
+    const [profilesResult] = await profilesResultPromise;
+    if (requestSequence !== refreshCatalogSequenceRef.current) return null;
     const nextCatalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
     const nextSettings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
     if (nextCatalog) {
       setCatalog(nextCatalog);
-    } else {
-      if (catalogResult.status === "rejected") console.error(catalogResult.reason);
-      setCatalog(null);
+    } else if (catalogResult.status === "rejected") {
+      // Keep the last validated catalog visible during transient provider or
+      // registry failures; the individual load states communicate staleness.
+      console.error(catalogResult.reason);
     }
     if (profilesResult.status === "fulfilled") {
       setModelProfiles(profilesResult.value.profiles);
+      setModelProfilesLoadState({ status: "ready" });
     } else {
       console.error(profilesResult.reason);
-      setModelProfiles([]);
+      setModelProfilesLoadState({
+        status: "error",
+        message: profilesResult.reason instanceof Error ? profilesResult.reason.message : "Failed to load model profiles.",
+      });
     }
     if (nextSettings) {
       setSettingsSections(nextSettings.sections);
-      setSettingsValues(withCalendarSettingsValues(nextSettings.values));
+      // Provider/OAuth refreshes run independently of settings saves. Preserve
+      // dirty values until the existing save/retry flow has resolved them.
+      if (settingsReadMayApply(
+        settingsDirtyKeysRef.current.length,
+        documentMutationRevisionAtRead,
+        settingsDocumentMutationRevisionRef.current,
+      )) {
+        const nextValues = withCalendarSettingsValues(nextSettings.values);
+        settingsDocumentRevisionRef.current = nextSettings.document_revision;
+        settingsValuesRef.current = nextValues;
+        setSettingsValues(nextValues);
+      }
+      setSettingsLoadState({ status: "ready" });
     } else {
       if (settingsResult.status === "rejected") console.error(settingsResult.reason);
+      setSettingsLoadState({
+        status: "error",
+        message: settingsResult.status === "rejected" && settingsResult.reason instanceof Error
+          ? settingsResult.reason.message
+          : "Failed to load Settings.",
+      });
     }
     if (commandsResult.status === "rejected") {
       console.error(commandsResult.reason);
     }
-    setCommandCatalog(mergeComposerCommands(
-      commandsResult.status === "fulfilled" ? commandsResult.value.commands ?? [] : [],
-      nextCatalog?.commands ?? [],
-    ));
+    const resolvedCommandsResponse = commandsResult.status === "fulfilled"
+      ? commandsResult.value
+      : null;
+    const resolvedProtocol = resolvedCommandsResponse?.protocol ?? null;
+    setCommandProtocolInfo(resolvedProtocol);
+    setUsesResolvedCommandProtocol(Boolean(resolvedProtocol));
+    setCommandCatalog(
+      resolvedProtocol
+        ? resolvedCommandsResponse?.commands ?? []
+        : mergeComposerCommands(
+            commandsResult.status === "fulfilled" ? commandsResult.value.commands ?? [] : [],
+            nextCatalog?.commands ?? [],
+          ),
+    );
     const defaultMode = nextSettings?.values.preview?.default_mode;
     if (defaultMode === "auto" || defaultMode === "manual") {
       setPreviewMode(defaultMode);
     }
-    return nextCatalog;
+    const fallbackCommandsAvailable = Boolean(nextCatalog?.commands?.length);
+    const commandReady = commandsResult.status === "fulfilled" || fallbackCommandsAvailable;
+    const readinessFailures = [
+      !nextCatalog ? "UIカタログ" : "",
+      settingsResult.status === "rejected" ? "設定" : "",
+      profilesResult.status === "rejected" ? "モデル" : "",
+      !commandReady ? "コマンド" : "",
+    ].filter(Boolean);
+    return {
+      catalog: nextCatalog,
+      ready: readinessFailures.length === 0,
+      degraded: commandsResult.status === "rejected" && fallbackCommandsAvailable,
+      errorMessage: readinessFailures.length > 0
+        ? `${readinessFailures.join("・")}の初期化を完了できませんでした。`
+        : null,
+    };
   }
 
   async function refreshOperationsStatus() {
@@ -3362,7 +4640,13 @@ function ChatApp() {
     }
   }
 
-  async function refreshPreview(conversationId: string | null) {
+  async function refreshPreview(
+    conversationId: string | null,
+    ticket = conversationViewLoaderRef.current.capture(),
+  ) {
+    const ownsPreview = () => conversationViewLoaderRef.current.matches(ticket)
+      && ticket.conversationId === conversationId;
+    if (!ownsPreview()) return;
     if (!conversationId) {
       setPreviews([]);
       setActivePreviewId(null);
@@ -3370,6 +4654,7 @@ function ChatApp() {
     }
     try {
       const result = await api.conversationPreview(conversationId);
+      if (!ownsPreview()) return;
       const limit = Number(settingsValues.preview?.max_items ?? 12);
       const nextPreviews = result.previews.slice(0, limit);
       setPreviews(nextPreviews);
@@ -3378,58 +4663,102 @@ function ChatApp() {
         setShowPreview(true);
       }
     } catch (previewError) {
+      if (!ownsPreview()) return;
       console.error(previewError);
       setPreviews([]);
       setActivePreviewId(null);
     }
   }
 
-  async function loadConversation(conversationId: string | null, updateUrl = true) {
-    if (!conversationId) {
-      setActiveConversationId(null);
-      setActiveConversation(null);
-      void refreshPreview(null);
-      if (updateUrl) replaceChatIdInUrl(null, false);
-      return;
-    }
-    const conversation = await api.getConversation(conversationId);
-    const supersededTargetId = resolveSupersededConversationRedirect(conversation, conversationId);
-    if (supersededTargetId) {
-      await loadConversation(supersededTargetId, updateUrl);
-      return;
-    }
-    setActiveConversationId(conversationId);
-    setActiveConversation(conversation);
-    if (updateUrl) replaceChatIdInUrl(conversationId);
-    void refreshPreview(conversationId);
+  function publishConversationSelection(ticket: ConversationLoadTicket) {
+    const conversationId = ticket.conversationId;
+    const loaded = conversationId ? loadedConversationViewsRef.current.get(conversationId) ?? null : null;
+    setActiveConversationId(ticket.conversationId);
+    setSavedTurnViewEpoch(ticket.epoch);
+    setActiveConversation(loaded);
+    const knownTitle = loaded?.title
+      ?? conversations.find((conversation) => conversation.id === conversationId)?.title;
+    setWorkspaceTabs((current) => current.map((tab) => {
+      if (!conversationViewLoaderRef.current.matches(ticket)
+        || tab.id !== ticket.workspaceTabId || tab.kind !== "chat") return tab;
+      const title = conversationId ? knownTitle
+        ?? (tab.conversationId === conversationId ? tab.title : "Conversation") : "New Conversation";
+      return tab.conversationId === conversationId && tab.title === title
+        ? tab : { ...tab, conversationId, title };
+    }));
+    setPreviews([]);
+    setActivePreviewId(null);
   }
 
-  async function refreshConversations(preferredId?: string | null) {
-    const result = await api.listConversations();
-    setConversations(result.conversations);
-    await loadConversationForRefresh({
-      preferredId,
-      activeConversationId,
-      locationChatId: chatIdFromLocation(),
-      listedConversations: result.conversations,
-      loadConversation,
+  async function loadConversation(
+    conversationId: string | null,
+    updateUrl = true,
+    workspaceTabId = savedTurnViewFenceRef.current.capture().workspaceTabId,
+    onViewLoad?: (ticket: ConversationLoadTicket) => void,
+  ) {
+    await conversationViewLoaderRef.current.load({
+      workspaceTabId,
+      conversationId,
+      readConversation: api.getConversation,
+      publishSelection: (ticket) => {
+        publishConversationSelection(ticket);
+        onViewLoad?.(ticket);
+      },
+      publishConversation: setActiveConversation,
+      publishRoute: updateUrl ? (id) => replaceChatIdInUrl(id, false) : undefined,
+      refreshPreview: (id, ticket) => { void refreshPreview(id, ticket); },
     });
   }
 
-  useEffect(() => subscribeAuthorityApprovalSettlements((event) => {
-    setSettledRuntimeApprovalIds((ids) => (
-      ids.includes(event.requestId) ? ids : [...ids, event.requestId].slice(-50)
-    ));
-    if (event.conversationId && event.conversationId === activeConversationId) {
-      void refreshConversations(event.conversationId);
-    }
-  }), [activeConversationId]);
+  async function refreshConversations(
+    preferredId?: string | null,
+    ticket = conversationViewLoaderRef.current.capture(),
+    onViewLoad?: (ticket: ConversationLoadTicket) => void,
+  ) {
+    return conversationViewLoaderRef.current.refresh({
+      ticket, preferredId, onViewLoad,
+      readList: api.listConversations,
+      publishList: setConversations,
+      locationConversationId: chatIdFromLocation,
+      loadConversation: (id, workspaceTabId, onSelection) => loadConversation(id, true, workspaceTabId, onSelection),
+    });
+  }
+
+  useEffect(() => {
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    return subscribeAuthorityApprovalSettlements((event) => {
+      setSettledRuntimeApprovalIds((ids) => (
+        ids.includes(event.requestId) ? ids : [...ids, event.requestId].slice(-50)
+      ));
+      if (event.conversationId && event.conversationId === viewTicket.conversationId
+        && savedTurnViewFenceRef.current.matches(viewTicket)) {
+        void refreshConversations(event.conversationId, conversationViewLoaderRef.current.capture());
+      }
+    });
+  }, [activeConversationId, activeWorkspaceTabId, savedTurnViewEpoch]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       setIsLoading(true);
+      setStartupError(null);
+      setStartupSteps([
+        { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+        { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
+        { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
+        { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
+      ]);
+      const updateStartupStep = (
+        id: string,
+        status: TobkiriLoadingStep["status"],
+        label?: string,
+      ) => {
+        if (cancelled) return;
+        setStartupSteps((current) => current.map((step) => (
+          step.id === id ? { ...step, status, ...(label ? { label } : {}) } : step
+        )));
+      };
       const pendingConversationId = chatIdFromLocation();
       if (pendingConversationId && isPendingInLocation()) {
         // A reload can arrive through the pending URL after the transport has
@@ -3447,42 +4776,76 @@ function ChatApp() {
           recoveredFromLocation: true,
         });
       }
-      const shellBootstrap = Promise.all([refreshHealth("bootstrap"), refreshCatalog()])
-        .then(([, nextCatalog]) => {
-          if (cancelled) return;
+      const backendBootstrap = refreshHealth("bootstrap").then(() => {
+        updateStartupStep("backend", "ready", "バックエンドの接続状態を確認しました");
+      });
+      updateStartupStep("capabilities", "loading", "ツール・スキル・@候補を読み込んでいます…");
+      updateStartupStep("commands", "loading", "/コマンド・モデル・設定を読み込んでいます…");
+      const interfaceBootstrap = refreshCatalog()
+        .then(async (result) => {
+          if (cancelled) return null;
+          if (!result?.ready || !result.catalog) {
+            updateStartupStep("capabilities", "error", "ツール・スキル・@候補を準備できませんでした");
+            updateStartupStep("commands", "error", "/コマンド・モデル・設定を準備できませんでした");
+            throw new Error(
+              result?.errorMessage
+              ?? "インターフェース情報を取得できませんでした。バックエンド接続を確認してください。",
+            );
+          }
+          updateStartupStep("capabilities", "ready", "ツール・スキル・@候補を準備しました");
+          updateStartupStep(
+            "commands",
+            "ready",
+            result.degraded
+              ? "/コマンドを互換カタログから準備しました"
+              : "/コマンド・モデル・設定を準備しました",
+          );
           const statusRefreshes: Array<Promise<unknown>> = [];
-          if (hasOperationsProfile(nextCatalog)) {
+          if (hasOperationsProfile(result.catalog)) {
             statusRefreshes.push(refreshOperationsStatus());
           }
-          if (hasMimoCodingProfile(nextCatalog)) {
+          if (hasMimoCodingProfile(result.catalog)) {
             statusRefreshes.push(refreshMimoCodingStatus());
           }
           if (statusRefreshes.length > 0) {
-            return Promise.all(statusRefreshes);
+            await Promise.all(statusRefreshes);
           }
-          return undefined;
-        })
-        .catch((shellError) => {
-          if (!cancelled) console.error(shellError);
+          return result;
         });
+      updateStartupStep("conversations", "loading", "会話とワークスペースを復元しています…");
+      const conversationBootstrap = refreshConversations(null).then(() => {
+        updateStartupStep("conversations", "ready", "会話とワークスペースを復元しました");
+      });
       try {
+        const [, interfaceResult] = await Promise.all([
+          backendBootstrap,
+          interfaceBootstrap,
+          conversationBootstrap,
+        ]);
         if (!cancelled) {
-          await refreshConversations(null);
+          setIsLoading(false);
+          if (interfaceResult?.degraded) {
+            transientAlertSequenceRef.current += 1;
+            setTransientAlert({
+              id: `startup-degraded-${transientAlertSequenceRef.current}`,
+              message: "最新のコマンド経路を取得できなかったため、互換カタログを使用しています。",
+              tone: "warning",
+              durationMs: 6000,
+            });
+          }
         }
       } catch (bootstrapError) {
         if (!cancelled) {
-          setError(
-            bootstrapError instanceof Error
-              ? bootstrapError.message
-              : "defaultspack の読み込みに失敗しました。",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
+          const message = bootstrapError instanceof Error
+            ? bootstrapError.message
+            : "起動準備を完了できませんでした。";
+          setStartupError(message);
+          setError(message);
+          setStartupSteps((current) => current.map((step) => (
+            step.status === "loading" ? { ...step, status: "error" } : step
+          )));
         }
       }
-      void shellBootstrap;
     }
 
     void bootstrap();
@@ -3505,6 +4868,8 @@ function ChatApp() {
     const handlePopState = () => {
       setError(null);
       const routeKind = workspaceKindForPathname(window.location.pathname) ?? "chat";
+      const selectedTabId = routeKind !== "chat"
+        ? `workspace-tab-route-${routeKind}` : DEFAULT_WORKSPACE_TAB_ID;
       if (routeKind !== "chat") {
         const routeTabId = `workspace-tab-route-${routeKind}`;
         setWorkspaceTabs((current) => (
@@ -3518,7 +4883,7 @@ function ChatApp() {
         setActiveWorkspaceTabId(DEFAULT_WORKSPACE_TAB_ID);
         setMode("agent");
       }
-      void loadConversation(chatIdFromLocation(), false).catch((loadError) => {
+      void loadConversation(chatIdFromLocation(), false, selectedTabId).catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : "会話の読み込みに失敗しました。");
       });
     };
@@ -3583,16 +4948,273 @@ function ChatApp() {
   useEffect(() => {
     if (!activeConversationId || !isConversationPending) return;
     const latestKnown = latestActiveMessage;
-    if (shouldClearPendingAfterConversationRefresh(latestKnown, pendingRequest, Date.now())) {
+    if (!pendingRequest?.savedTurn && shouldClearPendingAfterConversationRefresh(latestKnown, pendingRequest, Date.now())) {
       forgetPendingRequest(activeConversationId);
       replaceChatIdInUrl(activeConversationId, false);
       setIsGenerating(false);
       return;
     }
-    if (streamingConversationIdRef.current === activeConversationId) return;
+    if (streamingConversationIdRef.current === activeConversationId && !pendingRequest?.savedTurn) return;
     setIsGenerating(true);
+    let disposed = false;
+    const pollViewTicket = savedTurnViewFenceRef.current.capture();
+    const pollUiIsCurrent = () => (
+      !disposed && savedTurnViewFenceRef.current.matches(pollViewTicket)
+    );
+    const setCurrentSteerItems = (items: ConversationSteerItem[]) => {
+      if (pollUiIsCurrent()) setSteerItems(items);
+    };
+    let polling = false;
     const pollPendingConversation = () => {
-      void api.getConversation(activeConversationId).then((conversation) => {
+      if (disposed || polling) return;
+      polling = true;
+      void (async () => {
+        if (!pollUiIsCurrent()) return;
+        if (pendingRequest?.savedTurn) {
+          if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
+          if (pendingRequest.ownerTurnObserved !== true) {
+            // The local operation ID precedes the owner's durable registration.
+            // A successful empty list is still pending, including after a lost
+            // start reply. Only the exact registered root can unlock event reads.
+            const turns = await api.listSavedTurns(activeConversationId);
+            if (!pollUiIsCurrent()) return;
+            const roots = turns.filter((item) => item.id === pendingRequest.operationId);
+            if (roots.length === 0) return;
+            if (roots.length !== 1 || roots[0].conversation_id !== activeConversationId
+              || roots[0].guidance_parent_turn_id !== undefined
+              || roots[0].guidance_source_turn_id !== undefined
+              || roots[0].guidance_id !== undefined) {
+              throw new Error("登録された送信IDが保留中の会話と一致しません。");
+            }
+          }
+          let turn = (
+            await api.getSavedTurnEvents(
+              pendingRequest.operationId,
+              activeConversationId,
+            )
+          ).turn;
+          if (!pollUiIsCurrent()) return;
+          if (pollUiIsCurrent()) {
+            updatePendingRequests((current) => markSavedTurnOwnerObserved(
+              current,
+              pendingRequest,
+              turn,
+              pollViewTicket,
+              savedTurnViewFenceRef.current.capture(),
+            ));
+          }
+          bindOptimisticSavedTurnOverlayToTurn(
+            activeConversationId,
+            pendingRequest.operationId,
+            turn,
+          );
+          if (turn.status === "running" || turn.status === "waiting") {
+            turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
+            if (!pollUiIsCurrent()) return;
+            bindOptimisticSavedTurnOverlayToTurn(
+              activeConversationId,
+              pendingRequest.operationId,
+              turn,
+            );
+          }
+          setCurrentSteerItems(savedTurnGuidanceItems(turn));
+          const terminalNotice = savedTurnTerminalNotice(
+            turn,
+            activeConversationId,
+            pendingRequest.operationId,
+          );
+          if (terminalNotice) {
+            const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+              if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+              throw error;
+            });
+            if (!pollUiIsCurrent()) return;
+            const recoveryDraft = unwrittenSavedTurnDrafts.find((draft) => (
+              draft.conversationId === activeConversationId
+              && draft.operationId === pendingRequest.operationId
+            ));
+            const canRestoreUnwrittenDraft = Boolean(recoveryDraft)
+              && savedTurnViewFenceRef.current.matches(recoveryDraft!.viewTicket)
+              && !input.trim()
+              && attachedFiles.length === 0
+              && droppedWidgets.length === 0
+              && composerEntityReferences.length === 0
+              && pendingMentionAttachmentPaths.length === 0
+              && savedTurnCanRestoreUnwrittenDraft(
+                turn,
+                conversation,
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+            if (recoveryDraft && !canRestoreUnwrittenDraft) {
+              discardUnwrittenSavedTurnDraftForRequest(
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+            }
+            discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
+            forgetPendingRequest(activeConversationId);
+            if (pollUiIsCurrent()) {
+              if (conversation) setActiveConversation(conversation);
+              setError(canRestoreUnwrittenDraft
+                ? "送信は失敗で終了しました。メッセージは保存されていません。"
+                : terminalNotice);
+              replaceChatIdInUrl(activeConversationId, false);
+              setIsGenerating(false);
+              void refreshConversations(activeConversationId);
+            }
+            return;
+          }
+          if (turn.status === "completed") {
+            let listedTurns = await api.listSavedTurns(activeConversationId);
+            let chain = pendingSavedTurnChainForConversation(
+              listedTurns,
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            if (!pollUiIsCurrent()) return;
+            if (chain.state === "unsettled") {
+              setCurrentSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
+              updatePendingRequests((current) => {
+                const entry = current[activeConversationId];
+                const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+                return entry && entry.status !== status
+                  ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+              });
+              return;
+            }
+            if (chain.state === "active") {
+              setCurrentSteerItems(savedTurnChainGuidanceItems(chain));
+              let activeTurn = (
+                await api.getSavedTurnEvents(chain.active.id, activeConversationId)
+              ).turn;
+              if (!pollUiIsCurrent()) return;
+              if (pollUiIsCurrent()) {
+                // `chain` was built by pendingSavedTurnChainForConversation,
+                // which has already verified the complete root-to-child
+                // lineage. A completed root can therefore become
+                // control-ready only through this exact active child read.
+                updatePendingRequests((current) => markSavedTurnOwnerObserved(
+                  current,
+                  pendingRequest,
+                  turn,
+                  pollViewTicket,
+                  savedTurnViewFenceRef.current.capture(),
+                  activeTurn,
+                ));
+              }
+              if (activeTurn.status === "running" || activeTurn.status === "waiting") {
+                activeTurn = await api.reconcileSavedTurn(activeTurn.id, activeConversationId);
+                if (!pollUiIsCurrent()) return;
+              }
+              if (!TERMINAL_SAVED_TURN_STATUSES.has(savedTurnStatus(activeTurn))) {
+                const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+                  if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+                  throw error;
+                });
+                if (!pollUiIsCurrent()) return;
+                const progress = savedTurnProgressState(
+                  activeTurn,
+                  conversation,
+                  activeConversationId,
+                  activeTurn.id,
+                );
+                const status = savedTurnProgressNotice(progress);
+                if (conversation) setActiveConversation(conversation);
+                updatePendingRequests((current) => {
+                  const entry = current[activeConversationId];
+                  return entry && entry.status !== status
+                    ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+                });
+                return;
+              }
+              listedTurns = await api.listSavedTurns(activeConversationId);
+              chain = pendingSavedTurnChainForConversation(
+                listedTurns,
+                activeConversationId,
+                pendingRequest.operationId,
+              );
+              if (!pollUiIsCurrent()) return;
+              if (chain.state !== "settled") {
+                setCurrentSteerItems(chain.state === "active"
+                  ? savedTurnChainGuidanceItems(chain)
+                  : chain.root ? savedTurnGuidanceItems(chain.root) : []);
+                updatePendingRequests((current) => {
+                  const entry = current[activeConversationId];
+                  const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+                  return entry && entry.status !== status
+                    ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+                });
+                return;
+              }
+            }
+            setCurrentSteerItems(savedTurnGuidanceItems(chain.root));
+            const guidanceTerminalNotice = savedTurnGuidanceTerminalNotice(
+              listedTurns,
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            if (guidanceTerminalNotice) {
+              const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+                if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+                throw error;
+              });
+              if (!pollUiIsCurrent()) return;
+              if (conversation) setActiveConversation(conversation);
+              setSavedTurnCompletionNotice(null);
+              setError(guidanceTerminalNotice);
+              discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
+              forgetPendingRequest(activeConversationId);
+              replaceChatIdInUrl(activeConversationId, false);
+              setIsGenerating(false);
+              void refreshConversations(activeConversationId);
+              return;
+            }
+          }
+          if (turn.status !== "completed") {
+            const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+              if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+              throw error;
+            });
+            if (!pollUiIsCurrent()) return;
+            const progress = savedTurnProgressState(
+              turn,
+              conversation,
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            const status = savedTurnProgressNotice(progress);
+            if (conversation) setActiveConversation(conversation);
+            updatePendingRequests((current) => {
+              const entry = current[activeConversationId];
+              return entry && entry.status !== status
+                ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+            });
+            return;
+          }
+          const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+            if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+            throw error;
+          });
+          if (!pollUiIsCurrent()) return;
+          const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
+          if (state === "pending") {
+            throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
+          }
+          setActiveConversation(conversation);
+          const snapshotNotice = savedTurnSnapshotNotice(state);
+          setError(null);
+          setSavedTurnCompletionNotice(snapshotNotice
+            ? { ...snapshotNotice, conversationId: activeConversationId }
+            : null);
+          forgetPendingRequest(activeConversationId);
+          replaceChatIdInUrl(activeConversationId, false);
+          setIsGenerating(false);
+          void refreshConversations(activeConversationId);
+          return;
+        }
+        const conversation = await api.getConversation(activeConversationId);
+        if (!pollUiIsCurrent()) return;
         setActiveConversation(conversation);
         const latest = conversation.messages[conversation.messages.length - 1];
         if (shouldClearPendingAfterConversationRefresh(latest, pendingRequest, Date.now())) {
@@ -3601,9 +5223,10 @@ function ChatApp() {
           setIsGenerating(false);
           void refreshConversations(conversation.id);
         }
-      }).catch((pollError) => {
+      })().catch((pollError) => {
+        if (!pollUiIsCurrent()) return;
         console.error(pollError);
-        if (shouldForgetPendingAfterPollError(pollError)) {
+        if (!pendingRequest?.savedTurn && shouldForgetPendingAfterPollError(pollError)) {
           forgetPendingRequest(activeConversationId);
           replaceChatIdInUrl(activeConversationId, false);
           setIsGenerating(false);
@@ -3612,26 +5235,40 @@ function ChatApp() {
         }
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
+          const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
+          if (existing?.status === status) return current;
           return existing ? {
             ...current,
             [activeConversationId]: {
               ...existing,
-              status: "接続を待っています。同じ送信として再試行できます",
+              status,
             },
           } : current;
         });
         setBackendConnectionState("degraded");
         setBackendConnectionNote("送信結果を確認できません。operation IDを保持して接続回復を待っています。");
-      });
+      }).finally(() => { polling = false; });
     };
     pollPendingConversation();
     const interval = window.setInterval(pollPendingConversation, 1500);
-    return () => window.clearInterval(interval);
-  }, [activeConversationId, isConversationPending, latestActivePendingSignature, pendingRequest]);
+    return () => { disposed = true; window.clearInterval(interval); };
+  }, [
+    activeConversationId,
+    activeWorkspaceTabId,
+    attachedFiles.length,
+    composerEntityReferences.length,
+    droppedWidgets.length,
+    input,
+    isConversationPending,
+    latestActivePendingSignature,
+    pendingMentionAttachmentPaths.length,
+    pendingRequest,
+    unwrittenSavedTurnDrafts,
+  ]);
 
   useEffect(() => {
     const staleIds = Object.entries(pendingRequests)
-      .filter(([, request]) => Date.now() - request.startedAt >= PENDING_CHAT_REQUEST_TTL_MS)
+      .filter(([, request]) => !request.savedTurn && Date.now() - request.startedAt >= PENDING_CHAT_REQUEST_TTL_MS)
       .map(([id]) => id);
     if (staleIds.length === 0) return;
     updatePendingRequests((current) => {
@@ -3648,14 +5285,20 @@ function ChatApp() {
   const handleNewTask = (options?: HistoryBoardNewTaskOptions) => {
     const nextContext = workspaceContextFromHistoryOptions(options);
     const nextTab = createWorkspaceTab("chat", { title: "New Conversation" });
-    setWorkspaceTabs((current) => [...current, nextTab]);
-    setActiveWorkspaceTabId(nextTab.id);
+    if (workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => [...current, nextTab]);
+      setActiveWorkspaceTabId(nextTab.id);
+    } else {
+      setWorkspaceTabs((current) => current.map((tab) => (
+        tab.id === activeWorkspaceTabId ? nextTab : tab
+      )));
+      setActiveWorkspaceTabId(nextTab.id);
+    }
     setPendingNewTaskContext(nextContext);
     if (nextContext?.workspaceId) {
       setMode("coding");
     }
-    setActiveConversationId(null);
-    setActiveConversation(null);
+    conversationViewLoaderRef.current.select(nextTab.id, null, publishConversationSelection);
     setPreviews([]);
     setError(null);
     setIsGenerating(false);
@@ -3667,8 +5310,92 @@ function ChatApp() {
     replaceChatIdInUrl(null, false);
   };
 
+  const startSettingsChat = () => {
+    const draft = createSettingsModeDraft(settingsAssistantSkill);
+    handleNewTask();
+    setMode("agent");
+    setInput(draft.input);
+    setDroppedWidgets(draft.widgets);
+    setComposerEntityReferences(draft.references);
+    setIsSettingsOpen(false);
+  };
+
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    const selectedTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    if (viewTicket.workspaceTabId !== activeWorkspaceTabId
+      || viewTicket.conversationId !== conversationId
+      || (selectedTab?.conversationId ?? null) !== conversationId
+      || (activeConversation && activeConversation.id !== conversationId)) return;
+    if (conversationId && pendingRequests[conversationId]?.savedTurn) {
+      const pendingSavedTurn = pendingRequests[conversationId];
+      if (pendingSavedTurn.ownerTurnObserved !== true) return;
+      const turnId = pendingSavedTurn.operationId;
+      if (!turnId) {
+        setError("送信の操作IDを確認できないため、停止要求は送信していません。");
+        return;
+      }
+      const activeSubmission = activeSavedTurnSubmissionRef.current;
+      const stopAttempt = activeSubmission
+        && activeSubmission.ticket.conversationId === conversationId
+        && savedTurnViewFenceRef.current.matches(activeSubmission.ticket)
+        && typeof pendingSavedTurn.requestFingerprint === "string"
+        && pendingSavedTurn.requestFingerprint.trim()
+        ? {
+            attemptId: activeSubmission.clientId,
+            conversationId,
+            requestFingerprint: pendingSavedTurn.requestFingerprint,
+            turnId,
+            viewTicket: {
+              conversationId,
+              epoch: activeSubmission.ticket.epoch,
+              workspaceTabId: activeSubmission.ticket.workspaceTabId,
+            },
+          } satisfies SavedTurnSubmissionAttempt
+        : null;
+      const notice = (status: string) => updatePendingRequests((current) =>
+        updateSavedTurnNotice(current, conversationId, turnId, status));
+      notice("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
+      void api.stopSavedTurn(turnId).then((receipt) => {
+        const acknowledgement = stopAttempt && receipt.turn_id === stopAttempt.turnId
+          ? { ...stopAttempt, status: receipt.status } satisfies SavedTurnStopAcknowledgement
+          : null;
+        if (acknowledgement) {
+          savedTurnStopAcknowledgementRef.current = acknowledgement;
+          const pendingFailure = savedTurnStopRequestFailureRef.current;
+          if (pendingFailure && shouldReconcileSavedTurnAfterAcknowledgedStop(
+            acknowledgement,
+            pendingFailure.attempt,
+            pendingFailure.error,
+          )) {
+            savedTurnStopRequestFailureRef.current = null;
+            const currentRequest = pendingRequestsRef.current[acknowledgement.conversationId];
+            if (
+              currentRequest?.savedTurn
+              && currentRequest.operationId === acknowledgement.turnId
+              && currentRequest.requestFingerprint === acknowledgement.requestFingerprint
+              && savedTurnViewFenceRef.current.matches(acknowledgement.viewTicket)
+            ) {
+              if (canClearSavedTurnStopFailureError(
+                pendingFailure.errorGeneration,
+                errorGenerationRef.current,
+              )) {
+                setError(null);
+                setRetryableSubmission(null);
+              }
+              setIsGenerating(true);
+            }
+          }
+        }
+        notice(receipt.stopped
+          ? "実行の停止を確認しました。保存結果の照合を続けます。"
+          : "停止要求を受け付けました。実行・保存結果の照合を続けます。");
+      }).catch(() => {
+        notice("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
+      });
+      return;
+    }
     if (conversationId) {
       void api.stopMessage(conversationId).catch(console.error);
     }
@@ -3687,28 +5414,78 @@ function ChatApp() {
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    if (activeTab?.kind === "chat") {
+    let targetTabId = activeWorkspaceTabId;
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId
+        ? { ...tab, kind: "chat", title: "AI Chat", conversationId }
+        : tab));
+    } else if (activeTab?.kind === "chat") {
       setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId ? { ...tab, conversationId } : tab));
     } else {
       const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
       setWorkspaceTabs((current) => [...current, nextTab]);
       setActiveWorkspaceTabId(nextTab.id);
+      targetTabId = nextTab.id;
     }
-    void loadConversation(conversationId);
+    void loadConversation(conversationId, true, targetTabId);
   };
 
   const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
+    const ticket = conversationViewLoaderRef.current.capture();
     setError(null);
-    void api.updateConversation(conversationId, updates as Partial<Conversation>)
+    void api.updateConversation(conversationId, updates as Partial<Conversation>, conversations.find((item) => item.id === conversationId)?.conversation_revision)
       .then((conversation) => {
         setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
-        if (activeConversationId === conversation.id) setActiveConversation(conversation);
+        if (conversationViewLoaderRef.current.matches(ticket)
+          && ticket.conversationId === conversation.id) setActiveConversation(conversation);
       })
-      .catch((updateError) => setError(updateError instanceof Error ? updateError.message : "会話メタデータの更新に失敗しました。"));
+      .catch((updateError) => {
+        if (conversationViewLoaderRef.current.matches(ticket)) {
+          setError(updateError instanceof Error ? updateError.message : "会話メタデータの更新に失敗しました。");
+        }
+      });
   };
 
   const handleHistoryGroupSelect = (group: ChatGroup) => {
     setActiveHistoryCompanyId(resolveCompanyWorkspaceHintFromGroup(group));
+  };
+
+  const handleComposerProjectSelect = (project: ProjectInfo | null) => {
+    const context = projectTaskContext(project);
+    if (!activeConversationId || !activeConversation) {
+      setPendingNewTaskContext(context);
+      if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
+      return;
+    }
+
+    const metadata = { ...(activeConversation.metadata ?? {}) };
+    delete metadata.groupId;
+    if (project) {
+      metadata.group_id = project.id;
+      metadata.group_title = project.title;
+      if (project.workspaceId) metadata.workspace_id = project.workspaceId;
+      if (project.workspaceLabel) metadata.workspace_label = project.workspaceLabel;
+      if (project.workspaceRoot) metadata.workspace_root = project.workspaceRoot;
+      if (project.rumiDataPath) metadata.rumi_data_path = project.rumiDataPath;
+    } else {
+      delete metadata.group_id;
+      delete metadata.group_title;
+    }
+
+    setError(null);
+    const ticket = conversationViewLoaderRef.current.capture();
+    void api.updateConversation(activeConversationId, {
+      group_id: project?.id ?? null,
+      metadata,
+    }, activeConversation.conversation_revision).then((conversation) => {
+      setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
+      setActiveConversation(conversation);
+      if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
+    }).catch((updateError) => {
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
+      setError(updateError instanceof Error ? updateError.message : "Project update failed.");
+    });
   };
 
   const closeSpotlight = () => {
@@ -3752,24 +5529,124 @@ function ChatApp() {
     setSettingsValues(next);
   };
 
+  const settingsErrorMessage = (errorValue: unknown, fallback: string) => (
+    errorValue instanceof Error && errorValue.message.trim() ? errorValue.message : fallback
+  );
+
+  const persistSettingsValues = (
+    next: Record<string, Record<string, unknown>>,
+    dirtyKey?: string,
+    explicitPatches?: Array<{ section: string; field: string; value: unknown }>,
+  ) => {
+    const revision = ++settingsSaveRevisionRef.current;
+    settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+      settingsDocumentMutationRevisionRef.current,
+    );
+    const dirtyKeys = [...new Set([
+      ...settingsDirtyKeysRef.current,
+      ...(dirtyKey ? [dirtyKey] : []),
+      ...(explicitPatches ?? []).map((patch) => `${patch.section}.${patch.field}`),
+    ])];
+    settingsDirtyKeysRef.current = dirtyKeys;
+    setSettingsSaveState({
+      status: "saving",
+      dirtyKeys,
+      message: dirtyKeys.length > 1 ? `${dirtyKeys.length} settings are being saved.` : null,
+    });
+    const requestedPatches = explicitPatches ?? dirtyKeys.flatMap((key) => {
+      const dot = key.indexOf(".");
+      if (dot <= 0 || dot >= key.length - 1) return [];
+      const section = key.slice(0, dot);
+      const field = key.slice(dot + 1);
+      return [{ section, field, value: next[section]?.[field] }];
+    });
+    const saveRequest = settingsSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => {
+        const expectedRevision = settingsDocumentRevisionRef.current;
+        if (expectedRevision === null) throw new Error("Refresh Settings before saving changes.");
+        return api.updateUiSettingsPatches(requestedPatches, expectedRevision);
+      })
+      .then((result) => {
+        // Even an earlier queued save advances the owner's revision. It must
+        // not replace newer local edits while the next save waits in the queue.
+        settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+          settingsDocumentMutationRevisionRef.current,
+        );
+        settingsDocumentRevisionRef.current = result.document_revision;
+        if (revision !== settingsSaveRevisionRef.current) return result;
+        const persisted = withCalendarSettingsValues({
+          ...settingsValuesRef.current,
+          ...Object.fromEntries(Object.entries(result.values).map(([section, fields]) => [
+            section, { ...settingsValuesRef.current[section], ...fields },
+          ])),
+        });
+        settingsDirtyKeysRef.current = [];
+        applySettingsValues(persisted);
+        setSettingsSaveState({ status: "saved", dirtyKeys: [], lastSavedAt: Date.now(), message: null });
+        return result;
+      })
+      .catch((saveError) => {
+        if (revision !== settingsSaveRevisionRef.current) return undefined;
+        const message = settingsErrorMessage(saveError, "Failed to save Settings.");
+        setSettingsSaveState({ status: "error", dirtyKeys: settingsDirtyKeysRef.current, message });
+        throw saveError;
+      });
+    settingsSaveQueueRef.current = saveRequest.then(() => undefined, () => undefined);
+    return saveRequest;
+  };
+
+  const persistModelState = (mutation: ModelStateMutationForSetting) => {
+    settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+      settingsDocumentMutationRevisionRef.current,
+    );
+    const saveRequest = settingsSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => api.updateModelState(mutation.kind, mutation.value))
+      .then((result) => {
+        // Model-state writes share the frontend settings document with ordinary
+        // preferences. The captured owner receipt is the only authoritative
+        // global revision; guessing from a previous UI read races a later CAS.
+        settingsDocumentMutationRevisionRef.current = advanceSettingsDocumentMutationGeneration(
+          settingsDocumentMutationRevisionRef.current,
+        );
+        settingsDocumentRevisionRef.current = result.document_revision;
+        const persisted = withCalendarSettingsValues({
+          ...settingsValuesRef.current,
+          models: {
+            ...(settingsValuesRef.current.models ?? {}),
+            ...mutation.modelsPatch,
+          },
+        });
+        applySettingsValues(persisted);
+        return result;
+      });
+    settingsSaveQueueRef.current = saveRequest.then(() => undefined, () => undefined);
+    return saveRequest;
+  };
+
+  const retrySettingsSave = () => {
+    if (settingsDirtyKeysRef.current.length === 0) return;
+    void persistSettingsValues(settingsValuesRef.current).catch(() => undefined);
+  };
+
   const handleSettingChange = (sectionId: string, fieldId: string, value: unknown) => {
     if (sectionId === "sidebar" && fieldId === "ui_placements") {
       const previous = settingsValuesRef.current;
       const previousPlacements = normalizePinnedPlacements(previous.sidebar?.ui_placements);
       const next = withPinnedPlacements(previous, normalizePinnedPlacements(value));
       const revision = ++pinnedPlacementSaveRevisionRef.current;
+      const dirtyKey = "sidebar.ui_placements";
       applySettingsValues(next);
-      void api.updateUiSettings(next)
-        .then((result) => {
-          if (revision !== pinnedPlacementSaveRevisionRef.current) return;
-          const persisted = withCalendarSettingsValues(result.values);
-          applySettingsValues(persisted);
-        })
+      void persistSettingsValues(next, dirtyKey)
         .catch((updateError) => {
           if (revision !== pinnedPlacementSaveRevisionRef.current) return;
           const rolledBack = withPinnedPlacements(settingsValuesRef.current, previousPlacements);
           applySettingsValues(rolledBack);
-          setError(updateError instanceof Error ? updateError.message : "Failed to save pinned widgets.");
+          settingsDirtyKeysRef.current = settingsDirtyKeysRef.current.filter((key) => key !== dirtyKey);
+          const message = settingsErrorMessage(updateError, "Failed to save pinned widgets; the placement change was reverted.");
+          setSettingsSaveState({ status: "error", dirtyKeys: settingsDirtyKeysRef.current, message });
+          setError(message);
         });
       return;
     }
@@ -3778,10 +5655,24 @@ function ChatApp() {
       const section = settingsSections.find((item) => item.id === sectionId);
       const field = section?.fields.find((item) => item.id === fieldId);
       const fieldType = String(field?.type ?? "");
+      const actionPayload = value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+      if (String(actionPayload.action ?? "") === "refresh" && (fieldType === "secret" || fieldType === "external_tokens")) {
+        void refreshCatalog().catch(console.error);
+        return;
+      }
       const sectionPatch = {
         ...(current[sectionId] ?? {}),
         [fieldId]: fieldType === "secret" || fieldType === "api_keys" || fieldType === "api_key_setup" || fieldType === "external_tokens" ? "" : value,
       };
+      const modelStateMutation = modelStateMutationForSetting(
+        sectionId,
+        fieldId,
+        sectionPatch[fieldId],
+        current.models,
+      );
+      if (modelStateMutation) Object.assign(sectionPatch, modelStateMutation.modelsPatch);
       if (sectionId === "external_input" && fieldId === "input_provider") {
         const provider = String(value ?? "line");
         const template = firstExternalIoTemplateForProvider(catalog, "input", provider)
@@ -3946,30 +5837,82 @@ function ChatApp() {
         if (ambientRoutingKey) {
           void ambientTriggerClient.configure({ [ambientRoutingKey]: value } as AmbientRoutingConfig).catch(console.error);
         }
-        void api.updateUiSettings(next).then((result) => applySettingsValues(withCalendarSettingsValues(result.values))).catch(console.error);
+        const currentSection = current[sectionId] ?? {};
+        const changedPatches = Object.entries(sectionPatch)
+          .filter(([field, nextValue]) => currentSection[field] !== nextValue)
+          .map(([field, nextValue]) => ({ section: sectionId, field, value: nextValue }));
+        if (modelStateMutation) {
+          void persistModelState(modelStateMutation).catch((modelError) => {
+            setError(settingsErrorMessage(modelError, "Failed to save model state."));
+          });
+          return;
+        } else {
+          void persistSettingsValues(
+            next,
+            `${sectionId}.${fieldId}`,
+            changedPatches,
+          ).catch(() => undefined);
+        }
       }
       applySettingsValues(next);
     }
   };
 
   const updateModelSettings = (updates: Record<string, unknown>) => {
-    const next = {
-      ...settingsValues,
+    const current = settingsValuesRef.current;
+    const preferredModelUpdate = String(updates.preferred_model ?? "").trim();
+    const normalizedUpdates = preferredModelUpdate
+      ? {
+          ...updates,
+          main_model: preferredModelUpdate,
+          model_slots: {
+            ...((current.models?.model_slots as Record<string, unknown> | undefined) ?? {}),
+            main: preferredModelUpdate,
+          },
+        }
+      : updates;
+    const next = withCalendarSettingsValues({
+      ...current,
       models: {
-        ...(settingsValues.models ?? {}),
-        ...updates,
+        ...(current.models ?? {}),
+        ...normalizedUpdates,
       },
-    };
-    setSettingsValues(withCalendarSettingsValues(next));
-    void api.updateUiSettings(next).then((result) => setSettingsValues(withCalendarSettingsValues(result.values))).catch(console.error);
+    });
+    applySettingsValues(next);
+    const modelMutation = preferredModelUpdate
+      ? ["preferred_model", preferredModelUpdate] as const
+      : Object.prototype.hasOwnProperty.call(normalizedUpdates, "thinking_level")
+        ? ["thinking_level", normalizedUpdates.thinking_level] as const
+        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "strategy_reference")
+          ? ["strategy_reference", normalizedUpdates.strategy_reference] as const
+          : null;
+    if (modelMutation) {
+      const mutation = modelStateMutationForSetting(
+        "models",
+        modelMutation[0],
+        modelMutation[1],
+        current.models,
+      );
+      if (mutation) {
+        void persistModelState(mutation).catch((modelError) => {
+          setError(settingsErrorMessage(modelError, "Failed to save model state."));
+        });
+      }
+    }
   };
 
   const handleModelProfileSelect = (profileId: string) => {
+    const ticket = conversationViewLoaderRef.current.capture();
     updateModelSettings({ preferred_model: profileId });
+    // New-conversation placeholders have no persisted conversation id yet, but
+    // still carry the bootstrap model (usually stub/default). Keep that local
+    // placeholder in sync so it cannot immediately override the newly selected
+    // preferred model on the next render.
+    setActiveConversation((current) => current ? { ...current, model: profileId } : current);
     if (activeConversationId) {
-      void api.updateConversation(activeConversationId, { model: profileId }).then((conversation) => {
-        setActiveConversation(conversation);
-        void refreshConversations(conversation.id);
+      void api.updateConversation(activeConversationId, { model: profileId }, activeConversation?.conversation_revision).then((conversation) => {
+        if (conversationViewLoaderRef.current.matches(ticket)) setActiveConversation(conversation);
+        void refreshConversations(conversation.id, ticket);
       }).catch(console.error);
     }
   };
@@ -3995,31 +5938,36 @@ function ChatApp() {
     setIsSettingsOpen(true);
   }, []);
 
+  const openSettingsHome = useCallback(() => {
+    setRequestedSettingsSectionId("quick_setup");
+    setIsSettingsOpen(true);
+  }, []);
+
   const actionApprovalMode: ActionApprovalMode = ultraYoloMode ? "full" : yoloMode ? "agent" : "ask";
 
+  const setFullAccessEnabled = useCallback((enabled: boolean) => {
+    const nextState = resolveUltraYoloModeState(
+      {
+        yoloMode,
+        ultraYoloMode,
+        restoreYoloMode: ultraYoloRestoreYoloMode,
+      },
+      enabled,
+    );
+    setYoloMode(nextState.yoloMode);
+    setUltraYoloMode(nextState.ultraYoloMode);
+    setUltraYoloRestoreYoloMode(nextState.restoreYoloMode);
+  }, [setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode, ultraYoloMode, ultraYoloRestoreYoloMode, yoloMode]);
+
   const handleActionApprovalModeChange = useCallback((nextMode: ActionApprovalMode) => {
-    if (nextMode === "custom") {
-      openSettingsSection("tools");
-      return;
-    }
     if (nextMode === "full") {
-      const nextState = resolveUltraYoloModeState(
-        {
-          yoloMode,
-          ultraYoloMode,
-          restoreYoloMode: ultraYoloRestoreYoloMode,
-        },
-        true,
-      );
-      setYoloMode(nextState.yoloMode);
-      setUltraYoloMode(nextState.ultraYoloMode);
-      setUltraYoloRestoreYoloMode(nextState.restoreYoloMode);
+      setFullAccessEnabled(true);
       return;
     }
     setUltraYoloMode(false);
     setUltraYoloRestoreYoloMode(false);
     setYoloMode(nextMode === "agent");
-  }, [openSettingsSection, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode, ultraYoloMode, ultraYoloRestoreYoloMode, yoloMode]);
+  }, [setFullAccessEnabled, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode]);
 
   const handleSwitchToVisionModel = useCallback(() => {
     if (preferredVisionCandidate) {
@@ -4029,56 +5977,125 @@ function ChatApp() {
     setError("Vision対応モデルが見つかりません。Model設定から追加してください。");
   }, [handleModelProfileSelect, preferredVisionCandidate]);
 
-  const refreshSteerQueue = useCallback(async (conversationIdOverride?: string) => {
-    const conversationId = conversationIdOverride ?? activeConversationId;
-    if (!conversationId) {
-      setSteerItems([]);
-      return;
-    }
-    setModelSteerBusy(true);
+  const refreshSteerQueue = useCallback(async (source: "passive" | "submission" = "passive") => {
+    const conversationId = activeConversationId;
+    const pendingTurnId = pendingRequest?.savedTurn
+      ? pendingRequest.operationId
+      : null;
+    const refreshContext = activeSteerRefreshContext;
+    const token = steerRefreshFenceRef.current.begin(refreshContext);
+    if (!conversationId || !pendingTurnId || !refreshContext || !token) return null;
+    const canApply = () => steerRefreshFenceRef.current.isCurrent(token);
+    if (canApply()) setModelSteerBusy(true);
     try {
-      const result = await api.conversationSteer({
-        action: "list",
-        conversation_id: conversationId,
-      });
-      const items = "items" in result && Array.isArray(result.items) ? result.items : [];
+      const turns = await api.listSavedTurns(conversationId);
+      if (!canApply()) return null;
+      const chain = pendingSavedTurnChainForConversation(
+        turns,
+        conversationId,
+        pendingTurnId,
+      );
+      if (chain.state === "unsettled") {
+        setSteerItems(chain.root ? savedTurnGuidanceItems(chain.root) : []);
+        if (source === "passive") setModelSteerStatus(passiveSteerRefreshStatus("unsettled"));
+        return { chain, turns };
+      }
+      const items = chain.state === "active"
+        ? savedTurnChainGuidanceItems(chain)
+        : savedTurnGuidanceItems(chain.root);
       setSteerItems(items);
       const queuedCount = items.filter((item) => item.status === "queued").length;
-      setModelSteerStatus(queuedCount ? `${queuedCount}件のステアが待機中` : null);
+      setModelSteerStatus(queuedCount ? {
+        kind: "success",
+        message: `${queuedCount}件のステアが待機中`,
+      } : null);
+      return { chain, turns };
     } catch (steerError) {
-      setModelSteerStatus(steerError instanceof Error ? steerError.message : "Steer refresh failed");
+      if (canApply() && source === "passive") {
+        setModelSteerStatus(passiveSteerRefreshStatus("unavailable"));
+      }
+      return null;
     } finally {
-      setModelSteerBusy(false);
+      if (canApply()) setModelSteerBusy(false);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, activeSteerRefreshContext, pendingRequest?.operationId, pendingRequest?.savedTurn]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
-    if (!activeConversationId || !prompt) return;
-    setModelSteerBusy(true);
+    if (!activeConversationId || !prompt
+      || (pendingRequest?.savedTurn && pendingRequest.ownerTurnObserved !== true)) return;
+    const queueTicket = steerRefreshFenceRef.current.capture(activeSteerRefreshContext);
+    const canApply = () => steerRefreshFenceRef.current.matches(queueTicket);
+    if (!queueTicket) {
+      setModelSteerStatus({
+        kind: "error",
+        message: "実行中の保存済みturnを確認できません。入力は保持されています。",
+      });
+      return;
+    }
+    if (canApply()) setModelSteerBusy(true);
     try {
-      await api.conversationSteer({
-        action: "enqueue",
+      const initial = await refreshSteerQueue("submission");
+      if (!canApply()) return;
+      if (!initial || initial.chain.state !== "active") {
+        throw new Error("実行中の保存済みturnを確認できません。入力は保持されています。");
+      }
+      const root = initial.chain.root;
+      const guidance = {
         prompt,
-        target_type: "conversation",
+        target_type: "conversation" as const,
         target_id: activeConversationId,
         conversation_id: activeConversationId,
         visible: true,
         auto_send: true,
-        metadata: {
-          source: "composer_steer",
-          live: isGenerating || isConversationPending,
-        },
+        metadata: { source: "composer_steer" },
+      };
+      const mutationKey = steerGuidanceMutationKey(root.id, guidance);
+      const guidanceId = stableSteerGuidanceId(
+        pendingSteerGuidanceIdsRef.current,
+        mutationKey,
+        createSteerGuidanceId,
+      );
+      await api.steerSavedTurn({
+        turn_id: root.id,
+        expected_revision: root.revision,
+        guidance_id: guidanceId,
+        guidance,
       });
+      if (!canApply()) return;
+      const refreshed = await refreshSteerQueue("submission");
+      if (!canApply()) return;
+      if (!refreshed || !settlePendingSteerGuidanceId(
+        pendingSteerGuidanceIdsRef.current,
+        mutationKey,
+        refreshed.turns,
+        activeConversationId,
+        root.id,
+        guidanceId,
+        guidance,
+      )) {
+        throw new Error("追加指示の受領を確認できません。入力は保持されています。");
+      }
+      if (!canApply()) return;
       setInput("");
-      setModelSteerStatus(isGenerating || isConversationPending ? "ステアを送りました" : "ステアを予約しました");
-      await refreshSteerQueue();
+      setModelSteerStatus({
+        kind: "success",
+        message: "追加指示を待機列に追加しました",
+      });
     } catch (steerError) {
-      setModelSteerStatus(steerError instanceof Error ? steerError.message : "Steer queue failed");
+      if (!canApply()) return;
+      await refreshSteerQueue("passive");
+      if (!canApply()) return;
+      setModelSteerStatus({
+        kind: "error",
+        message: steerError instanceof Error
+          ? `${steerError.message} 入力は保持されています。`
+          : "追加指示を待機列へ追加できませんでした。入力は保持されています。",
+      });
     } finally {
-      setModelSteerBusy(false);
+      if (canApply()) setModelSteerBusy(false);
     }
-  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput]);
+  }, [activeConversationId, activeSteerRefreshContext, input, pendingRequest?.ownerTurnObserved, pendingRequest?.savedTurn, refreshSteerQueue, setInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -4120,7 +6137,10 @@ function ChatApp() {
     action: string | undefined,
     command: ComposerCommandItem,
     args: Record<string, unknown>,
+    ticket = conversationViewLoaderRef.current.capture(),
   ) => {
+    if (!conversationViewLoaderRef.current.matches(ticket)
+      && action !== "fork_conversation" && action !== "rename_conversation") return;
     switch (action) {
       case "open_model_picker": {
         const query = String(args.query ?? "").trim().toLowerCase();
@@ -4196,6 +6216,29 @@ function ChatApp() {
           replaceChatIdInUrl(activeConversationId, false);
         }
         return;
+      case "set_home_title": {
+        const requestedTitle = String(args.value ?? "").replace(/\s+/g, " ").trim();
+        if (!requestedTitle) {
+          transientAlertSequenceRef.current += 1;
+          setTransientAlert({
+            id: String(transientAlertSequenceRef.current),
+            message: `現在のホームタイトル: ${normalizeComposerHomeTitle(customHomeTitle)}`,
+            tone: "info" satisfies TransientAlertTone,
+          });
+          return;
+        }
+        const nextTitle = normalizeComposerHomeTitle(requestedTitle);
+        setCustomHomeTitle(nextTitle);
+        transientAlertSequenceRef.current += 1;
+        setTransientAlert({
+          id: String(transientAlertSequenceRef.current),
+          message: nextTitle === DEFAULT_COMPOSER_HOME_TITLE
+            ? "ホームタイトルをTobkiriへ戻しました。"
+            : `ホームタイトルを「${nextTitle}」へ変更しました。`,
+          tone: "success",
+        });
+        return;
+      }
       case "set_mode_coding":
         handleModeChange(mode === "coding" ? "agent" : "coding");
         return;
@@ -4206,20 +6249,8 @@ function ChatApp() {
         handleModeChange("agent");
         return;
       case "toggle_yolo":
-        setYoloMode((value) => parseCommandBoolean(args.enabled, !value));
-        return;
       case "toggle_ultra_yolo": {
-        const nextState = resolveUltraYoloModeState(
-          {
-            yoloMode,
-            ultraYoloMode,
-            restoreYoloMode: ultraYoloRestoreYoloMode,
-          },
-          parseCommandBoolean(args.enabled, !ultraYoloMode),
-        );
-        setYoloMode(nextState.yoloMode);
-        setUltraYoloMode(nextState.ultraYoloMode);
-        setUltraYoloRestoreYoloMode(nextState.restoreYoloMode);
+        setFullAccessEnabled(parseCommandBoolean(args.enabled, !ultraYoloMode));
         return;
       }
       case "open_tool_picker": {
@@ -4238,7 +6269,7 @@ function ChatApp() {
       }
       case "show_status":
         setError(
-          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, deepthink=${deepthinkEnabled ? "on" : "off"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
+          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, strategy=${strategyReference ?? "direct"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
         );
         return;
       case "open_context_viewer":
@@ -4263,6 +6294,8 @@ function ChatApp() {
           setRequestedSettingsSectionId("theme");
         } else if (action === "open_keymap_settings") {
           setRequestedSettingsSectionId("keymap");
+        } else {
+          setRequestedSettingsSectionId("quick_setup");
         }
         setIsSettingsOpen(true);
         return;
@@ -4293,14 +6326,172 @@ function ChatApp() {
         handleModeChange("coding");
         if (args.query) setInput(`Find workspace files matching ${String(args.query)}.`);
         return;
+      case "open_history":
+        setIsHistoryMinimized(false);
+        return;
+      case "export_conversation":
+        if (!activeConversationId) {
+          setError("エクスポートする会話がありません。");
+          return;
+        }
+        void handlePanelAction(
+          {} as SidebarItem,
+          { id: "conversation.export" } as SidebarAction,
+        );
+        return;
+      case "fork_conversation":
+        if (!activeConversationId) {
+          if (conversationViewLoaderRef.current.matches(ticket)) setError("forkする会話がありません。");
+          return;
+        }
+        void api.createConversation({
+          model: preferredModel || "stub/default",
+          parent_conversation_id: activeConversationId,
+          metadata: { forked_from: activeConversationId },
+        }).then((conversation) => {
+          void refreshConversations(conversation.id, ticket);
+        }).catch((forkError) => {
+          if (!conversationViewLoaderRef.current.matches(ticket)) return;
+          setError(forkError instanceof Error ? forkError.message : "会話のforkに失敗しました。");
+        });
+        return;
+      case "resume_conversation":
+        if (activeConversationId) {
+          void loadConversation(activeConversationId, false);
+          return;
+        }
+        setIsHistoryMinimized(false);
+        setError("履歴から再開する会話を選択してください。");
+        return;
+      case "rename_conversation": {
+        const title = String(args.title ?? "").replace(/\s+/g, " ").trim();
+        if (!activeConversationId || !title) {
+          if (conversationViewLoaderRef.current.matches(ticket)) setError("現在の会話と新しいtitleを指定してください。");
+          return;
+        }
+        void api.updateConversation(activeConversationId, { title }, activeConversation?.conversation_revision).then((conversation) => {
+          if (conversationViewLoaderRef.current.matches(ticket)) setActiveConversation(conversation);
+          void refreshConversations(conversation.id, ticket);
+        }).catch((renameError) => {
+          if (!conversationViewLoaderRef.current.matches(ticket)) return;
+          setError(renameError instanceof Error ? renameError.message : "会話名の変更に失敗しました。");
+        });
+        return;
+      }
+      case "open_memory_inspector":
+        setActiveSidebarItemId("__context_usage__");
+        setSidebarSelectionTick((value) => value + 1);
+        return;
+      case "open_approvals":
+        setRequestedSettingsSectionId("permissions");
+        setIsSettingsOpen(true);
+        return;
+      case "open_debug":
+      case "open_logs":
+      case "show_raw":
+        pushActionPreview(
+          { id: `command.${action}`, label: command.label, icon: "terminal" },
+          command.label,
+          action === "show_raw"
+            ? activeConversation
+            : {
+                mode,
+                conversation_id: activeConversationId,
+                pending_request: activeConversationId ? pendingRequests[activeConversationId] ?? null : null,
+                error,
+              },
+        );
+        return;
+      case "run_doctor":
+        void api.health().then((health) => {
+          pushActionPreview(
+            { id: "command.doctor", label: "Doctor", icon: "activity" },
+            "Tobkiri diagnostics",
+            health,
+          );
+        }).catch((doctorError) => {
+          setError(doctorError instanceof Error ? doctorError.message : "diagnosticsの実行に失敗しました。");
+        });
+        return;
+      case "open_plugins":
+      case "open_mcp":
+      case "open_skills":
+      case "open_hooks": {
+        const keyword = action.replace(/^open_/, "").replace(/s$/, "");
+        const panel = composerExtensions.find((item) => (
+          `${item.id} ${item.label}`.toLowerCase().includes(keyword)
+        ));
+        if (panel) {
+          setActiveSidebarItemId(panel.id);
+          setSidebarSelectionTick((value) => value + 1);
+          return;
+        }
+        setActiveSidebarItemId("__tool_manager__");
+        setSidebarSelectionTick((value) => value + 1);
+        return;
+      }
+      case "request_commit_approval":
+        handleModeChange("coding");
+        setInput("Commit the reviewed workspace changes.");
+        return;
+      case "request_push_approval":
+        handleModeChange("coding");
+        setInput("Push the reviewed current branch.");
+        return;
+      case "request_terminal_approval":
+        handleModeChange("coding");
+        setInput("Run the approved terminal command.");
+        return;
+      case "request_patch_approval":
+        handleModeChange("coding");
+        setInput("Apply the approved workspace patch.");
+        return;
+      case "request_restore_approval":
+        handleModeChange("coding");
+        setInput("Restore the approved workspace checkpoint.");
+        return;
       default:
         if (command.risk === "high") {
           setError(`/${command.name} は high risk command のため approval center 経由で実行してください。`);
+          return;
         }
+        setError(`/${command.name} は現在のFrontendに実行handlerがないため利用できません。`);
+    }
+  };
+
+  const applyAuthoritativeCommandState = (result: ComposerCommandExecuteResult): string[] => {
+    const applied = applyCommandStateSnapshots(
+      settingsValuesRef.current,
+      commandStateRevisionsRef.current,
+      result.state_changes,
+    );
+    commandStateRevisionsRef.current = applied.revisions;
+    if (applied.values !== settingsValuesRef.current) {
+      settingsDirtyKeysRef.current = settingsDirtyKeysRef.current.filter(
+        (dirtyKey) => !applied.appliedPaths.includes(dirtyKey),
+      );
+      applySettingsValues(applied.values);
+    }
+    return applied.appliedPaths;
+  };
+
+  const followCommandProgress = async (invocationId: string, ticket: ConversationLoadTicket) => {
+    try {
+      for await (const event of api.streamCommandInvocationEvents(invocationId)) {
+        if (conversationViewLoaderRef.current.matches(ticket)) {
+          setCommandProgressEvents((current) => [...current, event].slice(-12));
+        }
+      }
+    } catch (streamError) {
+      if (streamError instanceof DOMException && streamError.name === "AbortError") return;
+      if (!conversationViewLoaderRef.current.matches(ticket)) return;
+      setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
     }
   };
 
   const executeComposerCommand = async (commandId: string, rawInput = `/${commandId}`): Promise<boolean | void> => {
+    let ticket = conversationViewLoaderRef.current.capture();
+    const commandUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     const parsed = parseSlashCommandInput(rawInput, effectiveCommandCatalog) ?? {
       command: effectiveCommandCatalog.find((command) => command.id === commandId || command.name === commandId),
       args: {},
@@ -4310,11 +6501,59 @@ function ChatApp() {
       setError(`/${commandId} は未登録の command です。`);
       return;
     }
+    if (!commandSupportsMode(parsed.command, mode as ComposerCommandMode)) {
+      setError(`/${parsed.command.name} は ${mode} mode では利用できません。`);
+      return false;
+    }
     try {
       setError(null);
-      if (isRegisteredSlashCommand(parsed.command)) {
+      const highRiskRef = highRiskCommandRef(parsed.command);
+      if (highRiskRef) {
+        if (highRiskPrepareInFlightRef.current || pendingHighRiskCommand) {
+          setError("高リスク操作の承認がすでに保留中です。先にその操作を完了または拒否してください。");
+          return;
+        }
+        const invocationId = createCommandInvocationId(highRiskRef);
+        const commandArgs = { ...parsed.args };
+        highRiskPrepareInFlightRef.current = true;
+        try {
+          const prepared = await api.prepareHighRiskCommand({
+            invocation_id: invocationId,
+            command_ref: highRiskRef,
+            arguments: highRiskPrepareArguments(highRiskRef, commandArgs, {
+              workspaceId: effectiveWorkspaceId,
+              currentBranch: codingContext?.branch,
+            }),
+            presentation: {
+              title: parsed.command.label,
+              summary: parsed.command.description ?? `${parsed.command.label} を実行します。`,
+            },
+          });
+          if (
+            prepared.invocation_id !== invocationId
+            || !prepared.approval_request_id
+            || prepared.state !== "approval_pending"
+          ) {
+            throw new Error("高リスク操作の承認準備に失敗しました。");
+          }
+          setPendingHighRiskCommand({
+            requestId: prepared.approval_request_id,
+            invocationId,
+            commandLabel: parsed.command.label,
+          });
+          highRiskApprovalWindowOpenedRequestRef.current = prepared.approval_request_id;
+          const opened = await openAuthorityApprovalWindow(prepared.approval_request_id);
+          if (!opened && commandUiIsCurrent()) {
+            setError("専用の承認ウィンドウを開けませんでした。下の承認待ち表示から再試行してください。");
+          }
+          return commandUiIsCurrent();
+        } finally {
+          highRiskPrepareInFlightRef.current = false;
+        }
+      }
+      if (isRegisteredSlashCommand(parsed.command) && !parsed.command.canonical_id) {
         const frontendAction = parsed.command.execution.type === "frontend" ? parsed.command.execution.action : undefined;
-        runFrontendCommandAction(frontendAction, parsed.command, parsed.args);
+        runFrontendCommandAction(frontendAction, parsed.command, parsed.args, ticket);
         return true;
       }
       const commandArgs = { ...parsed.args };
@@ -4322,19 +6561,39 @@ function ChatApp() {
         commandArgs.scope = "profile";
         commandArgs.profile_id = profileKey(activeProfile, preferredModel);
       }
-      const result = await api.executeUiCommand({
-        command: parsed.command.name ?? parsed.command.id,
+      const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
+      const invocationId = createCommandInvocationId(parsed.command.id);
+      void followCommandProgress(invocationId, ticket);
+      const result: ComposerCommandExecuteResult = await api.executeResolvedUiCommand({
+        command: resolvedCommandName,
         args: commandArgs,
         conversation_id: activeConversationId,
         mode: mode as ComposerCommandMode,
+        invocation_id: invocationId,
       });
+      const appliedStatePaths = applyAuthoritativeCommandState(result);
       const feedbackMessage = composerCommandResultMessage(result);
       if (result.requires_approval) {
-        setError(feedbackMessage ?? `/${parsed.command.name} は approval center 経由で実行してください。`);
+        if (result.approval_request_id && result.operation_id) {
+          setPendingCommandApproval({
+            requestId: result.approval_request_id,
+            invocationId: result.operation_id,
+            commandRef: resolvedCommandName,
+            command: parsed.command,
+            args: commandArgs,
+            conversationId: activeConversationId,
+            mode: mode as ComposerCommandMode,
+            approvalKind: result.approval_kind === "authority"
+              ? "authority"
+              : "coding",
+          });
+        }
+        if (commandUiIsCurrent()) setError(feedbackMessage ?? `/${parsed.command.name} は approval center 経由で実行してください。`);
         return;
       }
       if (isModelCommand(parsed.command)) {
         if (result.action === "show_model_candidates") {
+          if (!commandUiIsCurrent()) return false;
           setComposerCandidateMenu({
             mode: "model",
             query: String(result.args?.query ?? commandArgs.query ?? "").trim(),
@@ -4344,6 +6603,7 @@ function ChatApp() {
           return false;
         }
         if (result.action === "open_model_picker") {
+          if (!commandUiIsCurrent()) return false;
           setComposerCandidateMenu(null);
           setModelPickerRequestId((value) => value + 1);
           if (feedbackMessage) setError(feedbackMessage);
@@ -4351,18 +6611,20 @@ function ChatApp() {
         }
         if (result.executed) {
           const selectedProfileId = selectedModelProfileId(result.selected_model);
-          setComposerCandidateMenu(null);
-          setInput("");
-          if (feedbackMessage) setError(feedbackMessage);
+          if (commandUiIsCurrent()) {
+            setComposerCandidateMenu(null);
+            setInput("");
+            if (feedbackMessage) setError(feedbackMessage);
+          }
           await refreshCatalog();
           if (activeConversationId && selectedProfileId) {
-            const conversation = await api.updateConversation(activeConversationId, { model: selectedProfileId });
-            setActiveConversation(conversation);
-            await refreshConversations(conversation.id);
+            const conversation = await api.updateConversation(activeConversationId, { model: selectedProfileId }, activeConversation?.conversation_revision);
+            if (commandUiIsCurrent()) setActiveConversation(conversation);
+            await refreshConversations(conversation.id, ticket, (next) => { ticket = next; });
           } else if (activeConversationId) {
-            await refreshConversations(activeConversationId);
+            await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; });
           }
-          return true;
+          return commandUiIsCurrent();
         }
       }
 
@@ -4372,17 +6634,29 @@ function ChatApp() {
           result.action ?? frontendAction,
           parsed.command,
           resolvedFrontendCommandArgs(parsed.command, parsed.args, result.args),
+          ticket,
         );
       }
-      if (parsed.command.execution.type === "rumi_function") {
+      if (parsed.command.execution.type === "rumi_function" && appliedStatePaths.length === 0) {
         await refreshCatalog();
       }
-      if (feedbackMessage) {
-        setError(feedbackMessage);
+      if (feedbackMessage && commandUiIsCurrent()) {
+        const tone = composerCommandFeedbackTone(result);
+        if (tone === "error") {
+          setError(feedbackMessage);
+        } else {
+          transientAlertSequenceRef.current += 1;
+          setTransientAlert({
+            id: String(transientAlertSequenceRef.current),
+            message: feedbackMessage,
+            tone,
+          });
+        }
       }
     } catch (commandError) {
-      setError(commandError instanceof Error ? commandError.message : "command execution に失敗しました。");
+      if (commandUiIsCurrent()) setError(commandError instanceof Error ? commandError.message : "command execution に失敗しました。");
     }
+    if (!commandUiIsCurrent()) return false;
   };
 
   const handleComposerCommand = (commandId: string, rawInput?: string) => {
@@ -4401,6 +6675,7 @@ function ChatApp() {
 
   const handleComposerInputChange = (value: string) => {
     if (value !== input) {
+      discardInterruptedSavedTurnDraftForWorkspace(activeWorkspaceTabId);
       for (const [toolId, syntaxes] of dismissedComposerMentionToolsRef.current) {
         if (!syntaxes.some((syntax) => hasUnescapedMentionSyntax(value, syntax))) {
           dismissedComposerMentionToolsRef.current.delete(toolId);
@@ -4408,7 +6683,7 @@ function ChatApp() {
       }
     }
     setInput(value);
-    if (isGenerating || isConversationPending) {
+    if (isGeneratingForActiveView) {
       setComposerCandidateMenu(null);
       return;
     }
@@ -4422,13 +6697,13 @@ function ChatApp() {
     if (newMode !== "coding") cancelPendingMentionAttachments();
     setMode(newMode);
     if (!updateRoute) return;
-    if (newMode === "coding" && window.location.pathname !== "/coding") {
+    if (newMode === "coding" && applicationPathname(window.location.pathname) !== "/coding") {
       const url = new URL(window.location.href);
-      url.pathname = "/coding";
+      url.pathname = profileScreenPathFromLocation("/coding");
       window.history.pushState({ mode: "coding", conversationId: activeConversationId }, "", `${url.pathname}${url.search}${url.hash}`);
-    } else if (newMode !== "coding" && window.location.pathname === "/coding") {
+    } else if (newMode !== "coding" && applicationPathname(window.location.pathname) === "/coding") {
       const url = new URL(window.location.href);
-      url.pathname = "/chat";
+      url.pathname = profileScreenPathFromLocation("/chat");
       if (activeConversationId) url.searchParams.set("chat", activeConversationId);
       else url.searchParams.delete("chat");
       url.searchParams.delete("pending");
@@ -4442,9 +6717,12 @@ function ChatApp() {
     if (tab.kind === "chat") {
       handleModeChange("agent", false);
       pushWorkspaceRoute("chat", tab.conversationId ?? null);
-      void loadConversation(tab.conversationId ?? null, false);
+      void loadConversation(tab.conversationId ?? null, false, tab.id);
       return;
     }
+    conversationViewLoaderRef.current.select(tab.id, activeConversationId, (ticket) => {
+      setSavedTurnViewEpoch(ticket.epoch);
+    });
     if (tab.kind === "coding") {
       handleModeChange("coding", false);
       pushWorkspaceRoute("coding", activeConversationId);
@@ -4470,11 +6748,18 @@ function ChatApp() {
   };
 
   const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
-    const option = WORKSPACE_TAB_CREATE_OPTIONS.find((candidate) => candidate.kind === kind);
-    if (option?.disabled) return;
+    const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind);
+    if (!option || option.disabled) return;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
   };
@@ -4502,6 +6787,37 @@ function ChatApp() {
 
   const handleFileAttach = (files: AttachedFile[]) => {
     setAttachedFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleWorkspaceFileDragEnter = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isChatWorkspace || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    workspaceFileDragDepthRef.current += 1;
+    setIsWorkspaceFileDragActive(true);
+  };
+
+  const handleWorkspaceFileDragOver = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isChatWorkspace || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleWorkspaceFileDragLeave = (event: ReactDragEvent<HTMLElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    workspaceFileDragDepthRef.current = Math.max(0, workspaceFileDragDepthRef.current - 1);
+    if (workspaceFileDragDepthRef.current === 0) setIsWorkspaceFileDragActive(false);
+  };
+
+  const handleWorkspaceFileDrop = (event: ReactDragEvent<HTMLElement>) => {
+    workspaceFileDragDepthRef.current = 0;
+    setIsWorkspaceFileDragActive(false);
+    if (event.defaultPrevented || event.dataTransfer.files.length === 0) return;
+    event.preventDefault();
+    void Promise.all(Array.from(event.dataTransfer.files).map(fileToAttachment))
+      .then(handleFileAttach)
+      .catch((attachmentError) => {
+        setError(attachmentError instanceof Error ? attachmentError.message : "ファイルを添付できませんでした。");
+      });
   };
 
   const handleAtFileAttach = (path: string) => {
@@ -4613,7 +6929,7 @@ function ChatApp() {
   };
 
   const handleDirectorySelect = async () => {
-    const selected = await api.selectDirectory("New Group の保存先フォルダを選択");
+    const selected = await api.selectDirectory("Project に紐づける既存フォルダを選択");
     return selected.cancelled ? null : selected.path;
   };
 
@@ -4731,7 +7047,7 @@ function ChatApp() {
     }
 
     const method = (action.method ?? "GET").toUpperCase();
-    const result = await defaultspackApiFetch(action.endpoint, {
+    const result = await defaultspackApiFetch(defaultspackContractRoute(action.endpoint), {
       method,
       body: method === "GET" ? undefined : JSON.stringify(action.payload ?? {}),
     }).then((response) => response.json());
@@ -4800,82 +7116,79 @@ function ChatApp() {
     if (!browserApproval) return;
     if (!activeConversationId) return;
     const currentApproval = browserApproval;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
+    // Bind the continuation to the exact pending saved turn, if any, so its
+    // packets can never be projected onto a different turn.
+    const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
+      ? pendingRequests[activeConversationId].operationId ?? ""
+      : "";
     setError(null);
     setIsGenerating(true);
     const approvalToolIds = selectedToolIds.length
       ? selectedToolIds
       : [currentApproval.toolName].filter(Boolean);
     rememberPendingRequest({
+      ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
       startedAt: Date.now(),
       status: "ユーザー承認をAIへ伝えています",
       toolNames: approvalToolIds,
     });
-    try {
-      const approvalWorkspace = workspaceContextFromConversation(activeConversation);
-      let approvalToken = currentApproval.token ?? "";
-      if (currentApproval.requestId) {
-        const decision = await api.approveCodingApproval(currentApproval.requestId);
-        if (!decision.approved) {
-          throw new Error(decision.reason || "approval failed");
-        }
-        approvalToken = decision.token ?? "";
-        settleBrowserApproval(currentApproval);
+    const settlePendingContinuation = (status: string) => {
+      if (pendingTurnId) {
+        // The continuation belongs to the pending saved turn; keep its entry
+        // so the canonical reconcile loop keeps tracking that exact turn.
+        updatePendingRequests((current) => {
+          const entry = current[activeConversationId];
+          return entry ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+        });
+      } else {
+        forgetPendingRequest(activeConversationId);
       }
-      await api.sendMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を踏まえて続行してください。", {
-        tool_choice: "required",
-        tool_policy: {
-          ...templatePolicyReferencePayload,
-          action_approval_mode: actionApprovalMode,
-          ...((yoloMode || ultraYoloMode) ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...(approvalWorkspace.workspaceId ? { workspace_id: approvalWorkspace.workspaceId } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          ...(approvalToolIds.length ? { selected_tools: approvalToolIds } : {}),
-        },
-        tools: approvalToolIds.length ? approvalToolIds : undefined,
-        metadata: {
-          mode,
-          ...(approvalWorkspace.workspaceId ? {
-            workspace_id: approvalWorkspace.workspaceId,
-            workspace_label: approvalWorkspace.workspaceLabel,
-            workspace_root: approvalWorkspace.workspaceRoot,
-          } : {}),
-          approval_followup: {
-            action: currentApproval.action,
-            operation: currentApproval.action,
-            approval_token: approvalToken,
-            payload: currentApproval.payload,
-            request_id: currentApproval.requestId,
-            tool_call_id: currentApproval.toolCallId,
-            tool_name: currentApproval.toolName,
-          },
-          runtime_content: browserApprovalRuntimeContent(currentApproval, approvalToken),
-          selected_tools: approvalToolIds,
-        },
-      });
-      forgetPendingRequest(activeConversationId);
-      replaceChatIdInUrl(activeConversationId, false);
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+    };
+    try {
+      if (!currentApproval.requestId) {
+        throw new Error("A request-backed approval is required to continue safely.");
+      }
+      const decision = await api.approveCodingApprovalForContinuation(
+        currentApproval.requestId,
+        activeConversationId,
+        currentApproval.argsHash ?? "",
+        pendingTurnId,
+      );
+      if (!decision.approved || !decision.resume_id) {
+        throw new Error(decision.reason || "approval continuation is unavailable");
+      }
+      await api.resumeCodingApproval(
+        currentApproval.requestId,
+        decision.resume_id,
+        activeConversationId,
+        pendingTurnId,
+      );
+      settleBrowserApproval(currentApproval);
+      settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
+      ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
     } catch (approvalError) {
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
         settleBrowserApproval(currentApproval);
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
-      setIsGenerating(false);
+      if (approvalUiIsCurrent()) setIsGenerating(false);
     }
   };
 
   const denyBrowserAction = async () => {
     if (!browserApproval) return;
     const currentApproval = browserApproval;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     const actionKey = browserApprovalSettlementKey(currentApproval);
     if (activeBrowserApprovalActionRef.current === actionKey) return;
     activeBrowserApprovalActionRef.current = actionKey;
@@ -4886,17 +7199,16 @@ function ChatApp() {
       }
       settleBrowserApproval(currentApproval);
       if (activeConversationId) {
-        await loadConversation(activeConversationId, false);
-        await refreshConversations(activeConversationId);
+        ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
       }
     } catch (approvalError) {
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
         settleBrowserApproval(currentApproval);
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
       activeBrowserApprovalActionRef.current = null;
@@ -4907,76 +7219,179 @@ function ChatApp() {
     if (!runtimeApproval) return;
     if (!activeConversationId) return;
     if (activeRuntimeApprovalActionRef.current === runtimeApproval.requestId) return;
+    let ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
     activeRuntimeApprovalActionRef.current = runtimeApproval.requestId;
+    // Bind the continuation to the exact pending saved turn, if any, so its
+    // packets can never be projected onto a different turn.
+    const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
+      ? pendingRequests[activeConversationId].operationId ?? ""
+      : "";
     setError(null);
     setIsGenerating(true);
     rememberPendingRequest({
+      ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
       startedAt: Date.now(),
       status: "承認済みの操作を続行しています",
       toolNames: [runtimeApproval.toolName],
       toolStartedAt: { [runtimeApproval.toolName]: Date.now() },
     });
+    const settlePendingContinuation = (status: string) => {
+      if (pendingTurnId) {
+        // The continuation belongs to the pending saved turn; keep its entry
+        // so the canonical reconcile loop keeps tracking that exact turn.
+        updatePendingRequests((current) => {
+          const entry = current[activeConversationId];
+          return entry ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+        });
+      } else {
+        forgetPendingRequest(activeConversationId);
+      }
+    };
     try {
-      const approvalWorkspace = workspaceContextFromConversation(activeConversation);
-      const decision = await api.approveCodingApproval(runtimeApproval.requestId);
-      if (!decision.approved) {
-        throw new Error(decision.reason || "approval failed");
+      const decision = await api.approveCodingApprovalForContinuation(
+        runtimeApproval.requestId,
+        activeConversationId,
+        runtimeApproval.argsHash ?? "",
+        pendingTurnId,
+      );
+      if (!decision.approved || !decision.resume_id) {
+        throw new Error(decision.reason || "approval continuation is unavailable");
       }
       setSettledRuntimeApprovalIds((ids) => (
         ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
       ));
-      await api.sendMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を続行してください。", {
-        tool_choice: "required",
-        tool_policy: {
-          ...templatePolicyReferencePayload,
-          action_approval_mode: actionApprovalMode,
-          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...(approvalWorkspace.workspaceId ? { workspace_id: approvalWorkspace.workspaceId } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          selected_tools: [runtimeApproval.toolName],
-        },
-        tools: [runtimeApproval.toolName],
-        metadata: {
-          mode,
-          ...(approvalWorkspace.workspaceId ? {
-            workspace_id: approvalWorkspace.workspaceId,
-            workspace_label: approvalWorkspace.workspaceLabel,
-            workspace_root: approvalWorkspace.workspaceRoot,
-          } : {}),
-          approval_followup: {
-            action: runtimeApproval.action,
-            operation: runtimeApproval.operation,
-            approval_token: decision.token,
-            payload: runtimeApproval.payload,
-            request_id: runtimeApproval.requestId,
-            tool_call_id: runtimeApproval.toolCallId,
-            tool_name: runtimeApproval.toolName,
-          },
-          runtime_content: runtimeApprovalRuntimeContent(runtimeApproval, decision.token),
-          selected_tools: [runtimeApproval.toolName],
-        },
-      });
-      forgetPendingRequest(activeConversationId);
-      replaceChatIdInUrl(activeConversationId, false);
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+      await api.resumeCodingApproval(
+        runtimeApproval.requestId,
+        decision.resume_id,
+        activeConversationId,
+        pendingTurnId,
+      );
+      settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
+      ticket = await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; }) ?? ticket;
     } catch (approvalError) {
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = approvalStaleUiMessage(approvalError);
       if (staleMessage) {
         setSettledRuntimeApprovalIds((ids) => (
           ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
         ));
-        setError(staleMessage);
+        if (approvalUiIsCurrent()) setError(staleMessage);
       } else {
         console.error(approvalError);
-        setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
+        if (approvalUiIsCurrent()) setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
       activeRuntimeApprovalActionRef.current = null;
-      setIsGenerating(false);
+      if (approvalUiIsCurrent()) setIsGenerating(false);
+    }
+  };
+
+  const approveCommandAction = async () => {
+    if (!pendingCommandApproval) return;
+    const pending = pendingCommandApproval;
+    const ticket = conversationViewLoaderRef.current.capture();
+    const approvalUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket)
+      && ticket.conversationId === pending.conversationId;
+    setError(null);
+    try {
+      const decision = pending.approvalKind === "authority"
+        ? await api.approveAuthorityApproval(pending.requestId, { scope: "once" })
+        : await api.approveCodingApproval(pending.requestId);
+      if (!decision.approved || !decision.token) {
+        throw new Error(("reason" in decision ? decision.reason : undefined) || "approval failed");
+      }
+      const authorityToken = pending.approvalKind === "authority"
+        ? decision.token
+        : pending.authorityToken;
+      const authorityRequestId = pending.approvalKind === "authority"
+        ? pending.requestId
+        : pending.authorityRequestId;
+      const codingToken = pending.approvalKind === "coding"
+        ? decision.token
+        : pending.codingToken;
+      const resumed = await api.resumeResolvedUiCommand({
+        command: pending.commandRef,
+        approval_token: codingToken,
+        authority_request_id: authorityRequestId,
+        authority_approval_token: authorityToken,
+        args: pending.args,
+        conversation_id: pending.conversationId,
+        mode: pending.mode,
+        invocation_id: pending.invocationId,
+      });
+      if (resumed.status === "approval_required" && resumed.approval?.request_id) {
+        const nextApproval = {
+          ...pending,
+          requestId: resumed.approval.request_id,
+          approvalKind: resumed.approval.kind === "authority"
+            ? "authority" as const
+            : "coding" as const,
+          authorityRequestId,
+          authorityToken,
+          codingToken,
+        };
+        setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+          && current.requestId === pending.requestId ? nextApproval : current);
+        return;
+      }
+      if (resumed.status !== "succeeded" || !resumed.legacy_result) {
+        throw new Error(resumed.error?.message || "command resume failed");
+      }
+      applyAuthoritativeCommandState(resumed.legacy_result);
+      if (resumed.legacy_result.executed !== true && ticket.conversationId === pending.conversationId) {
+        runFrontendCommandAction(
+          resumed.legacy_result.action,
+          pending.command,
+          resumed.legacy_result.args ?? pending.args,
+          ticket,
+        );
+      }
+      setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+        && current.requestId === pending.requestId ? null : current);
+    } catch (approvalError) {
+      if (approvalUiIsCurrent()) setError(
+        approvalError instanceof Error
+          ? approvalError.message
+          : "コマンドの承認再開に失敗しました。",
+      );
+    }
+  };
+
+  const denyCommandAction = async () => {
+    if (!pendingCommandApproval) return;
+    const pending = pendingCommandApproval;
+    const ticket = conversationViewLoaderRef.current.capture();
+    try {
+      if (pending.approvalKind === "authority") {
+        await api.denyAuthorityApproval(
+          pending.requestId,
+          "Denied from the command approval card",
+        );
+      } else {
+        await api.denyCodingApproval(
+          pending.requestId,
+          "Denied from the command approval card",
+        );
+      }
+      await api.cancelResolvedUiCommand({
+        invocation_id: pending.invocationId,
+        command_ref: pending.commandRef,
+        conversation_id: pending.conversationId,
+        mode: pending.mode,
+        action: "deny",
+        reason: "Denied from the command approval card",
+      });
+      setPendingCommandApproval((current) => current?.invocationId === pending.invocationId
+        && current.requestId === pending.requestId ? null : current);
+    } catch (approvalError) {
+      if (conversationViewLoaderRef.current.matches(ticket)
+        && ticket.conversationId === pending.conversationId) setError(
+        approvalError instanceof Error
+          ? approvalError.message
+          : "コマンドの拒否に失敗しました。",
+      );
     }
   };
 
@@ -4984,6 +7399,7 @@ function ChatApp() {
     if (!runtimeApproval) return;
     if (!activeConversationId) return;
     if (activeRuntimeApprovalActionRef.current === runtimeApproval.requestId) return;
+    let ticket = conversationViewLoaderRef.current.capture();
     activeRuntimeApprovalActionRef.current = runtimeApproval.requestId;
     setError(null);
     try {
@@ -4991,11 +7407,10 @@ function ChatApp() {
       setSettledRuntimeApprovalIds((ids) => (
         ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
       ));
-      await loadConversation(activeConversationId, false);
-      await refreshConversations(activeConversationId);
+      await refreshConversations(activeConversationId, ticket, (next) => { ticket = next; });
     } catch (approvalError) {
       console.error(approvalError);
-      setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError("拒否を保存できませんでした。リクエストの状態を更新して再試行してください。");
     } finally {
       activeRuntimeApprovalActionRef.current = null;
     }
@@ -5008,6 +7423,20 @@ function ChatApp() {
       const opened = await openAuthorityApprovalWindow(authorityApproval.requestId);
       if (!opened) {
         setError("専用の承認ウィンドウを開けませんでした。Tobkiri Launcher に戻り、ポップアップを許可して再試行してください。");
+      }
+    } catch (openError) {
+      console.error(openError);
+      setError("専用の承認ウィンドウを開けませんでした。Tobkiri Launcher から再試行してください。");
+    }
+  };
+
+  const openPendingHighRiskApproval = async () => {
+    if (!pendingHighRiskCommand) return;
+    setError(null);
+    try {
+      const opened = await openAuthorityApprovalWindow(pendingHighRiskCommand.requestId);
+      if (!opened) {
+        setError("専用の承認ウィンドウを開けませんでした。Tobkiri Launcher から再試行してください。");
       }
     } catch (openError) {
       console.error(openError);
@@ -5036,6 +7465,7 @@ function ChatApp() {
   };
 
   const handleStartOperationsCompany = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     setOperationsBusy(true);
     setError(null);
     try {
@@ -5045,9 +7475,9 @@ function ChatApp() {
         model: preferredOperationsModel(),
       });
       setOperationsStatus(status);
-      await refreshConversations(status.conversation_id ?? null);
+      await refreshConversations(status.conversation_id ?? null, ticket, (next) => { ticket = next; });
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "Operations Company の起動に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(startError instanceof Error ? startError.message : "Operations Company の起動に失敗しました。");
     } finally {
       setOperationsBusy(false);
     }
@@ -5110,6 +7540,7 @@ function ChatApp() {
   };
 
   const handleStartMimoCodingCompany = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     setMimoCodingBusy(true);
     setError(null);
     try {
@@ -5129,25 +7560,25 @@ function ChatApp() {
         run_initial_review_now: settingsValues.mimo_coding_company?.run_initial_review_now !== false,
       });
       setMimoCodingStatus(status);
-      await refreshConversations(status.conversation_id ?? null);
+      await refreshConversations(status.conversation_id ?? null, ticket, (next) => { ticket = next; });
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "MiMo Coding Company の起動に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(startError instanceof Error ? startError.message : "MiMo Coding Company の起動に失敗しました。");
     } finally {
       setMimoCodingBusy(false);
     }
   };
 
   const handleOpenMimoCodingChat = async () => {
+    const ticket = conversationViewLoaderRef.current.capture();
     if (!mimoCodingStatus?.conversation_id) {
       await handleStartMimoCodingCompany();
       const refreshed = await api.getMimoCodingCompanyStatus();
       setMimoCodingStatus(refreshed);
-      if (refreshed.conversation_id) {
+      if (refreshed.conversation_id && conversationViewLoaderRef.current.matches(ticket)) {
         setError(null);
         handleHistoryClick(refreshed.conversation_id);
-        return refreshed.conversation_id;
       }
-      return null;
+      return refreshed.conversation_id ?? null;
     }
     setError(null);
     handleHistoryClick(mimoCodingStatus.conversation_id);
@@ -5155,23 +7586,24 @@ function ChatApp() {
   };
 
   const handleTriggerOperationsHeartbeat = async () => {
+    let ticket = conversationViewLoaderRef.current.capture();
     const heartbeat = operationsHeartbeatSchedule();
     if (!heartbeat?.id) return;
     setOperationsBusy(true);
     setError(null);
     try {
       const result = await api.triggerSchedule(String(heartbeat.id));
-      pushActionPreview(
+      if (conversationViewLoaderRef.current.matches(ticket)) pushActionPreview(
         { id: "operations.heartbeat", label: "Operations Heartbeat", icon: "activity" },
         "operations-heartbeat",
         result,
       );
       await refreshOperationsStatus();
       if (operationsStatus?.conversation_id) {
-        await refreshConversations(operationsStatus.conversation_id);
+        await refreshConversations(operationsStatus.conversation_id, ticket, (next) => { ticket = next; });
       }
     } catch (heartbeatError) {
-      setError(heartbeatError instanceof Error ? heartbeatError.message : "Operations Company heartbeat に失敗しました。");
+      if (conversationViewLoaderRef.current.matches(ticket)) setError(heartbeatError instanceof Error ? heartbeatError.message : "Operations Company heartbeat に失敗しました。");
     } finally {
       setOperationsBusy(false);
     }
@@ -5261,7 +7693,7 @@ function ChatApp() {
         if (!isSafeLocalEndpoint(action.endpoint) || action.requires_approval) {
           throw new Error("この action は安全な /api/ endpoint ではないか、承認が必要なため直接実行できません。");
         }
-        result = await defaultspackApiFetch(action.endpoint, { method: action.method ?? "GET" }).then((response) => response.json());
+        result = await defaultspackApiFetch(defaultspackContractRoute(action.endpoint), { method: action.method ?? "GET" }).then((response) => response.json());
       } else {
         result = { item: item.id, action: action.id, status: "ready" };
       }
@@ -5297,8 +7729,23 @@ function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    if (!conversationOwnsSelectedView(
+      savedTurnViewFenceRef.current.capture(), activeWorkspaceTabId,
+      activeConversationId, activeConversation?.id ?? null,
+    )) {
+      setError("会話を読み込んでいます。完了してから送信してください。");
+      return;
+    }
+    if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
+      setError("前の送信結果を確認中です。新しいturnとして再送しません。");
+      return;
+    }
     if (activeConversation?.metadata?.shared_read_only === true) {
       setError("This imported conversation is read-only. Import a continue copy to send messages.");
+      return;
+    }
+    if (strategySelectionInvalid) {
+      setError("選択した Strategy は現在の Plan で利用できません。Direct または利用可能な Strategy を選択してください。");
       return;
     }
     if (pendingMentionAttachmentRequestsRef.current.size > 0) {
@@ -5308,12 +7755,21 @@ function ChatApp() {
     const inputForSubmit = override?.input ?? input;
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
-    if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGenerating) return;
+    if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGeneratingForActiveView) return;
+    shouldFollowMessagesRef.current = true;
+    if (activeConversationId) {
+      conversationScrollState.set(activeConversationId, {
+        follow: true,
+        scrollTop: messagesScrollRef.current?.scrollTop ?? 0,
+      });
+    }
+    setRetryableSubmission(null);
 
     const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
     if (commandInput) {
+      const commandTicket = conversationViewLoaderRef.current.capture();
       const shouldClearInput = await executeComposerCommand(commandInput.command.id, commandInput.raw);
-      if (shouldClearInput !== false) setInput("");
+      if (conversationViewLoaderRef.current.matches(commandTicket) && shouldClearInput !== false) setInput("");
       return;
     }
 
@@ -5321,6 +7777,7 @@ function ChatApp() {
     const userText = (trimmedInput.startsWith("//") ? trimmedInput.slice(1) : trimmedInput) || "添付ファイルを確認してください。";
     const submittedAttachments = attachmentsForSubmit;
     const wasNewConversation = isNewConversation;
+    const startsWithoutConversation = !activeConversation;
     const selectionToolIdsForReconciliation = override?.toolSelectionRequest
       ? toolIdsFromSelectionRequest(override.toolSelectionRequest)
       : selectedToolIds;
@@ -5375,6 +7832,9 @@ function ChatApp() {
     setIsGenerating(true);
     cancelPendingMentionAttachments();
     setError(null);
+    setSavedTurnCompletionNotice(null);
+    setModelSteerStatus(null);
+    setSteerItems([]);
     if (wasNewConversation) {
       setIsNewChatLaunching(true);
     }
@@ -5423,14 +7883,100 @@ function ChatApp() {
       ?? null;
     const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
     const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
-    let submittedConversationRuntimeId: string | null = null;
-    let markInterruptedAssistant: ((streamError: ChatStreamInterruptedError) => void) | null = null;
+    let savedSubmissionStarted = false;
+    let savedTurnStartRequestFailed = false;
+    let savedTurnStartRequestError: unknown;
+    let keepGeneratingForStopReconciliation = false;
+    let savedTurnSubmissionAttempt: SavedTurnSubmissionAttempt | null = null;
+    const optimisticOverlayClientId = typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    const optimisticOverlayCreatedAt = Date.now();
+    let submissionViewTicket = savedTurnViewFenceRef.current.capture();
+    savedTurnDraftNonceRef.current.set(submissionViewTicket.workspaceTabId, optimisticOverlayClientId);
+    setInterruptedSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== submissionViewTicket.workspaceTabId
+    )));
+    setUnwrittenSavedTurnDrafts((current) => current.filter((draft) => (
+      draft.workspaceTabId !== submissionViewTicket.workspaceTabId
+    )));
+    activeSavedTurnSubmissionRef.current = {
+      clientId: optimisticOverlayClientId,
+      ticket: submissionViewTicket,
+    };
+    const submissionUiIsCurrent = () => (
+      activeSavedTurnSubmissionRef.current?.clientId === optimisticOverlayClientId
+      && savedTurnViewFenceRef.current.matches(submissionViewTicket)
+    );
+    const retainInterruptedDraft = () => {
+      discardOptimisticSavedTurnOverlay(optimisticOverlayClientId);
+      retainInterruptedSavedTurnDraft({
+        attachments: submittedAttachments,
+        clientId: optimisticOverlayClientId,
+        conversationId: submissionViewTicket.conversationId,
+        droppedWidgets: droppedWidgetsForSubmit,
+        input: inputForSubmit,
+        workspaceTabId: submissionViewTicket.workspaceTabId,
+      });
+    };
 
     try {
+      const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
+      if (submittedSkillIds.length
+        || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
+        || groupIdForSubmit || rumiDataPathForSubmit
+        || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
+        || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
+        || toolSelectionRequest.mode === "review"
+        || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
+        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
+      }
+      if (startsWithoutConversation) {
+        // A new conversation has no owner id until createConversation settles.
+        // This UI-only draft is intentionally unbound until a durable root can
+        // be selected below.
+        setOptimisticSavedTurnOverlays((current) => [
+          ...current,
+          createOptimisticSavedTurnOverlay({
+            clientId: optimisticOverlayClientId,
+            content: savedTurnContent,
+            createdAt: optimisticOverlayCreatedAt,
+            viewTicket: submissionViewTicket,
+          }),
+        ]);
+      }
+      const savedToolSelection = {
+        mode: toolSelectionRequest.mode === "manual" ? "manual" as const
+          : toolSelectionRequest.mode === "none" ? "none" as const : "auto" as const,
+        include: toolSelectionRequest.include ?? [],
+        exclude: toolSelectionRequest.exclude ?? [],
+        scope: toolSelectionRequest.scope ?? "turn" as const,
+        must_use: toolSelectionRequest.must_use ?? false,
+      };
+      const requestStartedAt = Date.now();
+      const requestFingerprintInput = JSON.stringify({
+        content: savedTurnContent,
+        tool_selection: savedToolSelection,
+        strategy_reference: strategyReference,
+        thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : undefined,
+      });
+      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
+        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
+      );
+      const requestFingerprint = requestFingerprintBytes
+        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : `unavailable:${requestStartedAt}`;
+      if (!submissionUiIsCurrent()) {
+        retainInterruptedDraft();
+        return;
+      }
       let conversation = activeConversation;
       if (!conversation) {
         conversation = await api.createConversation({
           model: preferredModel || "stub/default",
+          system_prompt_id: cleanOptionalString(
+            settingsValues.personalization?.default_system_prompt_id,
+          ) ?? undefined,
           conversation_kind: isCodingWorkspaceSubmit ? "coding" : null,
           group_id: groupIdForSubmit ?? null,
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
@@ -5447,471 +7993,235 @@ function ChatApp() {
               : {}),
           },
         });
+        if (!submissionUiIsCurrent()) {
+          retainInterruptedDraft();
+          return;
+        }
+        const adoptedTicket = savedTurnViewFenceRef.current.adoptConversation(
+          submissionViewTicket,
+          conversation.id,
+        );
+        if (!adoptedTicket) {
+          retainInterruptedDraft();
+          return;
+        }
+        submissionViewTicket = adoptedTicket;
+        activeSavedTurnSubmissionRef.current = {
+          clientId: optimisticOverlayClientId,
+          ticket: submissionViewTicket,
+        };
         setPendingNewTaskContext(null);
         setActiveConversationId(conversation.id);
+        setActiveConversation(conversation);
       }
-      const isOperationsMode = isOperationsConversation(conversation);
-      const isMimoCodingMode = isMimoCodingConversation(conversation);
-      const workspaceIdForRuntime = workspaceIdForSubmit ?? (isMimoCodingMode ? selectedCodingWorkspaceId : null);
-      const workspaceRecordForRuntime = workspaceIdForRuntime
-        ? codingWorkspaces.find((workspace) => workspace.workspace_id === workspaceIdForRuntime) ?? null
-        : null;
-      const workspaceLabelForRuntime = workspaceLabelForSubmit ?? workspaceRecordForRuntime?.label ?? null;
-      const workspaceRootForRuntime = workspaceRootForSubmit ?? workspaceRecordForRuntime?.root_path ?? null;
-      const shouldAttachWorkspaceToRuntime = isCodingWorkspaceSubmit || isMimoCodingMode;
       submittedConversationId = conversation.id;
-      submittedConversationRuntimeId = conversation.id;
-      const requestStartedAt = Date.now();
-      const requestFingerprint = JSON.stringify({
-        text: userText,
-        attachments: submittedAttachments.map(({ name, size, type, source, sourcePath }) => (
-          { name, size, type, source, sourcePath }
-        )),
-      });
       const recoverablePending = pendingRequests[conversation.id];
+      if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
+        throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
+      }
       const operationId = recoverablePending?.requestFingerprint === requestFingerprint
         && recoverablePending.operationId
         ? recoverablePending.operationId
         : typeof globalThis.crypto?.randomUUID === "function"
           ? globalThis.crypto.randomUUID()
           : `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+      if (startsWithoutConversation) {
+        bindOptimisticSavedTurnOverlayToRequest(
+          optimisticOverlayClientId,
+          conversation.id,
+          operationId,
+          requestFingerprint,
+        );
+      } else {
+        setOptimisticSavedTurnOverlays((current) => [
+          ...current,
+          bindOptimisticSavedTurnOverlay(
+            createOptimisticSavedTurnOverlay({
+              clientId: optimisticOverlayClientId,
+              content: savedTurnContent,
+              createdAt: optimisticOverlayCreatedAt,
+              viewTicket: submissionViewTicket,
+            }),
+            {
+              conversationId: conversation.id,
+              operationId,
+              requestFingerprint,
+            },
+          ),
+        ]);
+      }
+      if (startsWithoutConversation) {
+        retainUnwrittenSavedTurnDraft({
+          attachments: submittedAttachments,
+          clientId: optimisticOverlayClientId,
+          conversationId: conversation.id,
+          droppedWidgets: droppedWidgetsForSubmit,
+          input: inputForSubmit,
+          operationId,
+          viewTicket: submissionViewTicket,
+          workspaceTabId: submissionViewTicket.workspaceTabId,
+        });
+      }
+      if (submissionViewTicket.conversationId !== conversation.id) {
+        throw new Error("会話の選択が変わったため、保存付き送信は開始していません。");
+      }
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
+        ownerTurnObserved: false,
         requestFingerprint,
+        savedTurn: true,
         startedAt: requestStartedAt,
         status: `${activeProfile?.display_name ?? preferredModel} が思考中`,
         toolNames: [],
         toolStartedAt: {},
       });
+      savedTurnSubmissionAttempt = {
+        attemptId: optimisticOverlayClientId,
+        conversationId: conversation.id,
+        requestFingerprint,
+        turnId: operationId,
+        viewTicket: {
+          conversationId: conversation.id,
+          epoch: submissionViewTicket.epoch,
+          workspaceTabId: submissionViewTicket.workspaceTabId,
+        },
+      };
+      savedTurnStopRequestFailureRef.current = null;
       replaceChatIdInUrl(conversation.id, true);
 
-      const title =
-        conversation.title === "New Conversation"
-          ? deriveConversationTitle(userText)
-          : conversation.title;
-      const optimisticConversation = {
-        ...conversation,
-        title,
-        updated_at: Date.now(),
-        messages: [
-          ...conversation.messages,
-          optimisticUserMessage(
-            conversation.id,
-            userText,
-            submittedMentions.length > 0 ? { mentions: submittedMentions } : undefined,
-          ),
-        ],
-      };
-      setActiveConversation(optimisticConversation);
-      setConversations((current) => {
-        const item = {
-          ...optimisticConversation,
-          messages: [],
-        };
-        const withoutCurrent = current.filter((candidate) => candidate.id !== conversation.id);
-        return [item, ...withoutCurrent];
-      });
-      const assistantDraft = optimisticAssistantMessage(conversation.id, preferredModel || "stub/default");
-      const abortController = new AbortController();
-      currentAbortControllerRef.current = abortController;
+      // Keep the captured revision and identity; a lost reply never starts a new turn.
+      savedSubmissionStarted = true;
       streamingConversationIdRef.current = conversation.id;
-      let finalStreamMessageId: string | null = null;
-      let finalStreamActivityEvents: ChatActivityEvent[] = [];
-      const updateStreamingAssistant = (delta: string) => {
-        if (finalStreamMessageId) return;
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          if (!existing) {
-            return {
-              ...current,
-              messages: [
-                ...current.messages,
-                {
-                  ...assistantDraft,
-                  content: [{ type: "text", text: delta }],
-                  raw_text: delta,
-                },
-              ],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => {
-              if (message.id !== assistantDraft.id) return message;
-              const nextText = `${message.raw_text ?? ""}${delta}`;
-              return {
-                ...message,
-                content: [{ type: "text", text: nextText }],
-                raw_text: nextText,
-              };
-            }),
-          };
-        });
-      };
-      const updateStreamingThinking = (delta: string) => {
-        if (finalStreamMessageId) return;
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          const nextThinking = (message: ChatMessage) => {
-            const metadata = { ...(message.metadata ?? {}) };
-            const thinking = metadata.thinking as Record<string, unknown> | undefined;
-            metadata.thinking = {
-              ...(thinking ?? {}),
-              state: "streaming",
-              transcript: `${String(thinking?.transcript ?? "")}${delta}`,
-            };
-            return { ...message, metadata };
-          };
-          if (!existing) {
-            return {
-              ...current,
-              messages: [...current.messages, nextThinking(assistantDraft)],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => message.id === assistantDraft.id ? nextThinking(message) : message),
-          };
-        });
-      };
-      const updateStreamingActivity = (streamEvent: ChatStreamEvent) => {
-        if (!isActivityStreamEvent(streamEvent)) return;
-        const eventTimestamp = Date.now();
-        const activityEvent: ChatActivityEvent = { timestamp: eventTimestamp, ...streamEvent };
-        const finalizedMessageIdAtEvent = finalStreamMessageId;
-        if (finalizedMessageIdAtEvent) {
-          finalStreamActivityEvents = upsertStreamActivityEvent(finalStreamActivityEvents, activityEvent);
-        }
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const targetMessageId = finalizedMessageIdAtEvent ?? assistantDraft.id;
-          const existing = current.messages.find((message) => message.id === targetMessageId);
-          const appendEvent = (message: ChatMessage): ChatMessage => ({
-            ...message,
-            events: upsertStreamActivityEvent(message.events ?? [], activityEvent),
-          });
-          if (!existing) {
-            if (finalizedMessageIdAtEvent) return current;
-            return {
-              ...current,
-              messages: [...current.messages, appendEvent(assistantDraft)],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => message.id === targetMessageId ? appendEvent(message) : message),
-          };
-        });
-
-        if (activityEvent.phase === "conversation_steer") {
-          const processed = Array.isArray(activityEvent.processed)
-            ? activityEvent.processed.filter(isConversationSteerItem)
-            : [];
-          if (processed.length > 0) {
-            setSteerItems((current) => {
-              const byId = new Map(current.map((item) => [item.id, item]));
-              for (const item of processed) byId.set(item.id, item);
-              return Array.from(byId.values());
-            });
-            setModelSteerStatus("ステアを反映しました");
-          }
-        }
-
-        const status = typeof activityEvent.message === "string" && activityEvent.message.trim()
-          ? activityEvent.message.trim()
-          : pendingRequests[conversation.id]?.status ?? `${activeProfile?.display_name ?? preferredModel} が思考中`;
-        const toolName = typeof activityEvent.tool_name === "string" ? activityEvent.tool_name.trim() : "";
-        if (finalizedMessageIdAtEvent) return;
-        updatePendingRequests((current) => {
-          const existing = current[conversation.id] ?? {
-            conversationId: conversation.id,
-            startedAt: requestStartedAt,
-            status,
-            toolNames: [],
-            toolStartedAt: {},
-          };
-          const toolNames = toolName ? [...new Set([...existing.toolNames, toolName])] : existing.toolNames;
-          const toolStartedAt = { ...(existing.toolStartedAt ?? {}) };
-          if (toolName && toolStartedAt[toolName] === undefined) {
-            toolStartedAt[toolName] = eventTimestamp;
-          }
-          return {
-            ...current,
-            [conversation.id]: {
-              ...existing,
-              status,
-              toolNames,
-              toolStartedAt,
-            },
-          };
-        });
-      };
-      const replaceStreamingAssistant = (message: ChatMessage) => {
-        finalStreamMessageId = message.id;
-        const completedAt = Date.now();
-        const enhancedMessage: ChatMessage = {
-          ...message,
-          metadata: {
-            ...(message.metadata ?? {}),
-            timing: {
-              ...((message.metadata?.timing && typeof message.metadata.timing === "object") ? message.metadata.timing as Record<string, unknown> : {}),
-              thinking_started_at: requestStartedAt,
-              completed_at: completedAt,
-              thinking_duration_ms: completedAt - requestStartedAt,
-              thinking_duration_label: boundedDurationLabel(requestStartedAt, completedAt),
-            },
-          },
-        };
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const withoutDraft = current.messages.filter((candidate) => candidate.id !== assistantDraft.id);
-          const existingFinalMessage = withoutDraft.find((candidate) => candidate.id === enhancedMessage.id);
-          const baseMergedMessage = mergeStreamingFinalMessage(existingFinalMessage, enhancedMessage);
-          const mergedMessage = {
-            ...baseMergedMessage,
-            events: mergeChatActivityEvents(baseMergedMessage.events, finalStreamActivityEvents),
-          };
-          return {
-            ...current,
-            messages: existingFinalMessage
-              ? withoutDraft.map((candidate) => candidate.id === enhancedMessage.id ? mergedMessage : candidate)
-              : [...withoutDraft, mergedMessage],
-          };
-        });
-        forgetPendingRequest(conversation.id);
-        replaceChatIdInUrl(conversation.id, false);
-        setIsGenerating(false);
-      };
-      markInterruptedAssistant = (streamError: ChatStreamInterruptedError) => {
-        const completedAt = Date.now();
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          const existingMetadata = existing?.metadata && typeof existing.metadata === "object"
-            ? existing.metadata as Record<string, unknown>
-            : {};
-          const existingThinking = existingMetadata.thinking && typeof existingMetadata.thinking === "object"
-            ? existingMetadata.thinking as Record<string, unknown>
-            : {};
-          const nextText = String(existing?.raw_text ?? "") || streamError.partialText;
-          const nextTranscript = `${String(existingThinking.transcript ?? "")}${streamError.thinkingText}`;
-          const interruptedMessage: ChatMessage = {
-            ...(existing ?? assistantDraft),
-            content: nextText ? [{ type: "text", text: nextText }] : existing?.content ?? assistantDraft.content,
-            raw_text: nextText,
-            finish_reason: "interrupted",
-            metadata: {
-              ...existingMetadata,
-              thinking: {
-                ...existingThinking,
-                state: "interrupted",
-                transcript: nextTranscript || undefined,
-              },
-              transport: {
-                status: "interrupted",
-                reason: streamError.message,
-                saw_activity: streamError.sawActivity,
-              },
-              timing: {
-                ...((existingMetadata.timing && typeof existingMetadata.timing === "object") ? existingMetadata.timing as Record<string, unknown> : {}),
-                thinking_started_at: requestStartedAt,
-                completed_at: completedAt,
-                thinking_duration_ms: completedAt - requestStartedAt,
-                thinking_duration_label: boundedDurationLabel(requestStartedAt, completedAt),
-              },
-            },
-          };
-          const hasExisting = current.messages.some((message) => message.id === assistantDraft.id);
-          return {
-            ...current,
-            messages: hasExisting
-              ? current.messages.map((message) => message.id === assistantDraft.id ? interruptedMessage : message)
-              : [...current.messages, interruptedMessage],
-          };
-        });
-      };
-
-      const operationsModelAllowlist = settingList(settingsValues.operations_company?.model_allowlist);
-      const operationsToolDenylist = settingList(settingsValues.operations_company?.tool_denylist);
-      const operationsToolAllowlist = operationsStatus?.manifest.tool_policy?.allowlist ?? [];
-      const operationsPolicy = isOperationsMode
-        ? {
-            profile_id: "defaultspack.operations_company",
-            non_stop: true,
-            allow_shell: false,
-            allow_file_write: true,
-            write_actions_require_approval: true,
-            normal_status_silent: settingsValues.operations_company?.normal_status_silent !== false,
-            max_concurrent_children: Math.max(1, Math.min(12, settingNumber(settingsValues.operations_company?.max_concurrent_children, 3))),
-            ...(operationsModelAllowlist.length ? { model_allowlist: operationsModelAllowlist } : {}),
-            ...(operationsToolAllowlist.length ? { tool_allowlist: operationsToolAllowlist } : {}),
-            ...(operationsToolDenylist.length ? { tool_denylist: operationsToolDenylist } : {}),
-          }
-        : {};
-      const mimoCodingModelAllowlist = settingList(settingsValues.mimo_coding_company?.model_allowlist);
-      const mimoCodingToolAllowlist = mimoCodingStatus?.manifest.tool_policy?.allowlist ?? [];
-      const mimoCodingPolicy = isMimoCodingMode
-        ? {
-            profile_id: "defaultspack.mimo_coding_company",
-            non_stop: true,
-            allow_shell: true,
-            allow_file_write: true,
-            write_actions_require_approval: false,
-            delete_actions_require_approval: true,
-            terminal_actions_require_approval: false,
-            normal_status_silent: true,
-            max_concurrent_children: 6,
-            ...mimoCodingMaxToolCallsPayload(),
-            ...(mimoCodingModelAllowlist.length ? { model_allowlist: mimoCodingModelAllowlist } : {}),
-            ...(mimoCodingToolAllowlist.length ? { tool_allowlist: mimoCodingToolAllowlist } : {}),
-          }
-        : {};
-      const templateRequestPayload = {
-        params: {
-          ...templateAiInputParams,
-          ...(Object.keys(effectiveStructuredComposerValues).length ? { composer_fields: effectiveStructuredComposerValues } : {}),
-        },
-        toolPolicy: {
-          ...templatePolicyReferencePayload,
-          ...(composerInputMetadata?.id ? { composer_input_id: composerInputMetadata.id } : {}),
-        },
-      };
-      const shouldSendExplicitToolSelection = toolSelectionRequest.mode === "manual" && submittedToolIds.length > 0;
-
-      await api.streamMessage(conversation.id, userText, {
-        idempotency_key: operationId,
-        params: templateRequestPayload.params,
-        thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : null,
-        deepthink_enabled: deepthinkEnabled,
-        tool_selection: toolSelectionRequest,
-        tool_policy: {
-          ...templateRequestPayload.toolPolicy,
-          action_approval_mode: actionApprovalMode,
-          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...operationsPolicy,
-          ...mimoCodingPolicy,
-          ...(shouldAttachWorkspaceToRuntime && workspaceIdForRuntime ? { workspace_id: workspaceIdForRuntime } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          ...(shouldSendExplicitToolSelection ? { selected_tools: submittedToolIds } : {}),
-        },
-        attachments: submittedAttachments,
-        tools: shouldSendExplicitToolSelection ? submittedToolIds : undefined,
-        metadata: {
-          mode: isOperationsMode ? "operations_company" : isMimoCodingMode ? "mimo_coding_company" : isCodingWorkspaceSubmit ? "coding" : mode,
-          ...(groupIdForSubmit ? { group_id: groupIdForSubmit } : {}),
-          ...(rumiDataPathForSubmit ? { rumi_data_path: rumiDataPathForSubmit } : {}),
-          ...(isOperationsMode ? {
-            profile_id: "defaultspack.operations_company",
-            agent_id: "client_manager",
-            conversation_strategy: "one_agent_one_conversation",
-            internal_channel: "ops-company",
-          } : {}),
-          ...(isMimoCodingMode ? {
-            profile_id: "defaultspack.mimo_coding_company",
-            agent_id: "client_manager",
-            conversation_strategy: "one_agent_one_conversation",
-            internal_channel: "mimo-coding-company",
-          } : {}),
-          ...(shouldAttachWorkspaceToRuntime && workspaceIdForRuntime ? {
-            workspace_id: workspaceIdForRuntime,
-            workspace_label: workspaceLabelForRuntime,
-            workspace_root: workspaceRootForRuntime,
-          } : {}),
-          ...templateRequestPayload.toolPolicy,
-          ...(Object.keys(effectiveStructuredComposerValues).length ? { structured_input: effectiveStructuredComposerValues } : {}),
-          attachments: submittedAttachments.map(({ name, size, type, truncated, source, sourcePath }) => ({ name, size, type, truncated, source, sourcePath })),
-          ...(shouldSendExplicitToolSelection ? { selected_tools: submittedToolIds } : {}),
-          ...(submittedSkillIds.length ? { skills: submittedSkillIds, skill_mentions: submittedSkillIds.map((skillId) => ({ id: skillId, label: composerSkillById.get(skillId)?.label ?? skillId })) } : {}),
-          ...(submittedMentions.length ? { mentions: submittedMentions } : {}),
-          dropped_widgets: submittedDroppedWidgets
-            .filter((widget) => widget.widgetKind === "tool_toggle" || widget.type === "tool" ? submittedToolIdSet.has(widget.sourceItemId || widget.id) : widget.enabled !== false)
-            .map(({ id, type, label, widgetKind, sourceItemId, metadata }) => ({
-              id,
-              type,
-              label,
-              widgetKind,
-              sourceItemId,
-              metadata: publicComposerWidgetMetadata(metadata),
-            })),
-        },
-      }, {
-        onEvent: updateStreamingActivity,
-        onDelta: updateStreamingAssistant,
-        onThinkingDelta: updateStreamingThinking,
-        onMessage: replaceStreamingAssistant,
-        signal: abortController.signal,
+      const result = await api.startSavedTurn({
+        turn_id: operationId,
+        conversation_id: conversation.id,
+        conversation_revision: conversation.conversation_revision!,
+        content: savedTurnContent,
+        tool_selection: savedToolSelection,
+        strategy_reference: strategyReference,
+        thinking_level: activeProfile?.supports_thinking
+          ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
+          : undefined,
+      }).catch((startError: unknown) => {
+        savedTurnStartRequestFailed = true;
+        savedTurnStartRequestError = startError;
+        throw startError;
       });
-      setAttachedFiles([]);
-      setDroppedWidgets([]);
-      dismissedComposerMentionToolsRef.current.clear();
-      toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
-      forgetPendingRequest(conversation.id);
-      replaceChatIdInUrl(conversation.id, false);
-
-      if (title !== conversation.title) {
-        await api.updateConversation(conversation.id, { title });
+      bindOptimisticSavedTurnOverlayToTurn(conversation.id, operationId, result.turn);
+      if (result.turn.status !== "completed" || !result.turn.result_reference) {
+        throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
-
-      await refreshConversations(conversation.id);
-      await refreshSteerQueue(conversation.id).catch(console.error);
+      const snapshot = await api.getConversation(conversation.id);
+      const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
+      if (snapshotState === "pending") {
+        throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
+      }
+      const listedTurns = await api.listSavedTurns(conversation.id);
+      const guidanceChain = pendingSavedTurnChainForConversation(
+        listedTurns,
+        conversation.id,
+        operationId,
+      );
+      if (guidanceChain.state !== "settled") {
+        // The pending saved-turn poll owns reconciliation. Leaving this
+        // request pending preserves its exact operation id without falsely
+        // presenting an in-progress follow-up as a send error.
+        updatePendingRequests((current) => {
+          const entry = current[conversation.id];
+          const status = "追加指示の連鎖を照合中です。自動再送はしません。";
+          return entry && entry.status !== status
+            ? { ...current, [conversation.id]: { ...entry, status } }
+            : current;
+        });
+        return;
+      }
+      const guidanceTerminalNotice = savedTurnGuidanceTerminalNotice(
+        listedTurns,
+        conversation.id,
+        operationId,
+      );
+      if (guidanceTerminalNotice) throw new Error(guidanceTerminalNotice);
+      const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
+      setConversations((current) => [
+        { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
+      ]);
+      forgetPendingRequest(conversation.id);
+      discardUnwrittenSavedTurnDraft(optimisticOverlayClientId);
+      if (submissionUiIsCurrent()) {
+        setError(null);
+        setSavedTurnCompletionNotice(snapshotNotice
+          ? { ...snapshotNotice, conversationId: conversation.id }
+          : null);
+        setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
+        replaceChatIdInUrl(conversation.id, false);
+        setAttachedFiles([]);
+        setDroppedWidgets([]);
+        setRetryableSubmission(null);
+        dismissedComposerMentionToolsRef.current.clear();
+        toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
+      }
     } catch (submitError) {
       console.error("Chat error:", submitError);
+      if (!submissionUiIsCurrent()) {
+        if (!savedSubmissionStarted) retainInterruptedDraft();
+        return;
+      }
+      if (savedSubmissionStarted && submittedConversationId) {
+        const acknowledgedStop = savedTurnStopAcknowledgementRef.current;
+        if (savedTurnStartRequestFailed
+          && savedTurnStartRequestError === submitError
+          && shouldReconcileSavedTurnAfterAcknowledgedStop(
+            acknowledgedStop,
+            savedTurnSubmissionAttempt,
+            submitError,
+          )) {
+            savedTurnStopRequestFailureRef.current = null;
+            keepGeneratingForStopReconciliation = true;
+            updatePendingRequests((current) => {
+            const entry = current[submittedConversationId!];
+            return entry ? {
+              ...current,
+              [submittedConversationId!]: {
+                ...entry,
+                status: "停止要求を受け付けました。実行・保存結果の照合を続けます。",
+              },
+            } : current;
+          });
+          return;
+        }
+        const submitErrorMessage = submitError instanceof Error
+          ? submitError.message
+          : "送信結果を確認できません。再送せず照合を待ちます。";
+        const cancellationPropagationAttempt = savedTurnStartRequestFailed
+          && savedTurnStartRequestError === submitError
+          && savedTurnSubmissionAttempt
+          && isSavedTurnCancellationPropagationError(submitError)
+          ? savedTurnSubmissionAttempt
+          : null;
+        setRetryableSubmission(null);
+        setError(submitErrorMessage);
+        if (cancellationPropagationAttempt) {
+          savedTurnStopRequestFailureRef.current = {
+            attempt: cancellationPropagationAttempt,
+            error: submitError,
+            errorGeneration: errorGenerationRef.current,
+          };
+        }
+        updatePendingRequests((current) => {
+          const entry = current[submittedConversationId!];
+          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
+        });
+        return;
+      }
+      discardOptimisticSavedTurnOverlay(optimisticOverlayClientId);
       if (isCancelledStreamError(submitError)) {
         if (submittedConversationId) {
           forgetPendingRequest(submittedConversationId);
           replaceChatIdInUrl(submittedConversationId, false);
           await refreshConversations(submittedConversationId).catch(console.error);
         }
-        setError(null);
-        return;
-      }
-      if (submitError instanceof ChatStreamInterruptedError) {
-        const interruptedConversationId = submittedConversationId ?? submittedConversationRuntimeId;
-        markInterruptedAssistant?.(submitError);
-        if (interruptedConversationId) {
-          // A stream close is transport-ambiguous: the backend may already
-          // have committed the turn. Keep the persisted operation id and
-          // pending URL so a retry replays this logical send.
-          updatePendingRequests((current) => {
-            const existing = current[interruptedConversationId];
-            return existing
-              ? {
-                  ...current,
-                  [interruptedConversationId]: {
-                    ...existing,
-                    status: "応答ストリームが切れました。再試行すると結果を確認します",
-                  },
-                }
-              : current;
-          });
-        }
-        setBackendConnectionState("degraded");
-        setBackendConnectionNote("応答 stream が途中で閉じました。ここまで届いた内容を保持しつつ、backend の回復を待っています。");
-        void reportClientDiagnostic({
-          source: "webapp",
-          category: "stream_interrupted",
-          level: "warning",
-          message: "The frontend preserved a partial assistant response after the stream was interrupted.",
-          fingerprint: `stream-interrupted:${interruptedConversationId ?? "new"}:${submitError.message}`,
-          conversationId: interruptedConversationId,
-          detail: {
-            error: submitError.message,
-            partialTextLength: submitError.partialText.length,
-            thinkingTextLength: submitError.thinkingText.length,
-            sawActivity: submitError.sawActivity,
-          },
-        });
-        setError(
-          submitError.partialText.trim()
-            ? "応答ストリームが途中で切れたため、ここまで届いた内容を保護して着地しました。"
-            : "応答ストリームが途中で切れました。画面は保護したまま、再接続の余地を残しています。",
-        );
-        dismissedComposerMentionToolsRef.current.clear();
-        setIsNewChatLaunching(false);
+        if (submissionUiIsCurrent()) setError(null);
         return;
       }
       const preserveOperationForRetry = isLikelyTransportFailure(submitError);
@@ -5920,6 +8230,7 @@ function ChatApp() {
         replaceChatIdInUrl(submittedConversationId, false);
         await refreshConversations(submittedConversationId).catch(console.error);
       }
+      if (!submissionUiIsCurrent()) return;
       void reportClientDiagnostic({
         source: "webapp",
         category: "chat_submit_error",
@@ -5932,20 +8243,52 @@ function ChatApp() {
           hadAttachments: submittedAttachments.length > 0,
         },
       });
-      setInput(userText);
+      const submitErrorMessage = submitError instanceof Error
+        ? submitError.message
+        : "メッセージ送信に失敗しました。";
+      setInput(inputForSubmit);
       setAttachedFiles(submittedAttachments);
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "メッセージ送信に失敗しました。",
-      );
+      setDroppedWidgets(droppedWidgetsForSubmit);
+      setRetryableSubmission({
+        input: inputForSubmit,
+        attachments: submittedAttachments,
+        droppedWidgets: droppedWidgetsForSubmit,
+        toolSelectionRequest,
+        skipReview: true,
+        errorMessage: submitErrorMessage,
+      });
+      setError(submitErrorMessage);
       setIsNewChatLaunching(false);
     } finally {
-      streamingConversationIdRef.current = null;
-      currentAbortControllerRef.current = null;
-      setIsGenerating(false);
-      setIsNewChatLaunching(false);
+      if (streamingConversationIdRef.current === submittedConversationId) {
+        streamingConversationIdRef.current = null;
+        currentAbortControllerRef.current = null;
+      }
+      if (submissionUiIsCurrent()) {
+        activeSavedTurnSubmissionRef.current = null;
+        if (!keepGeneratingForStopReconciliation) setIsGenerating(false);
+        setIsNewChatLaunching(false);
+      }
     }
+  };
+
+  const handleRetryLastFailedSubmission = () => {
+    const retry = retryableSubmission;
+    if (!retry || isGeneratingForActiveView) return;
+    setError(null);
+    setRetryableSubmission(null);
+    void handleSubmit(undefined, {
+      input: retry.input,
+      attachments: retry.attachments,
+      droppedWidgets: retry.droppedWidgets,
+      toolSelectionRequest: retry.toolSelectionRequest,
+      skipReview: true,
+    });
+  };
+
+  const dismissChatError = () => {
+    setError(null);
+    setRetryableSubmission(null);
   };
 
   const handleToolReviewApprove = () => {
@@ -6001,7 +8344,7 @@ function ChatApp() {
       onWorkspaceSelect={handleCodingWorkspaceSelect}
       onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
       onWorkspaceTrust={handleCodingWorkspaceTrust}
-      onWorkspacesRefresh={() => void loadCodingWorkspaces()}
+      onWorkspacesRefresh={refreshCodingWorkspaces}
     />
   ) : null;
   const isCalendarMode = activeWorkspaceKind === "calendar";
@@ -6012,6 +8355,16 @@ function ChatApp() {
     : {};
   const activeConversationGroupId = cleanOptionalString(activeConversation?.group_id)
     ?? cleanOptionalString(activeConversationMetadata.group_id ?? activeConversationMetadata.groupId);
+  const composerProjects = effectiveGroupId && !projects.some((project) => project.id === effectiveGroupId)
+    ? [{
+        id: effectiveGroupId,
+        title: cleanOptionalString(activeConversationMetadata.group_title ?? activeConversationMetadata.groupTitle) ?? effectiveGroupId,
+        workspaceId: activeConversationWorkspaceContext.workspaceId ?? null,
+        workspaceLabel: activeConversationWorkspaceContext.workspaceLabel ?? null,
+        workspaceRoot: activeConversationWorkspaceContext.workspaceRoot ?? null,
+        rumiDataPath: activeConversationWorkspaceContext.rumiDataPath ?? null,
+      }, ...projects]
+    : projects;
   const activeConversationCompanyId = resolveCompanyWorkspaceHint({
     companyId: activeConversationMetadata.company_id ?? activeConversationMetadata.companyId,
     groupId: activeConversationGroupId,
@@ -6021,6 +8374,10 @@ function ChatApp() {
   });
   const activeCompanyWorkspaceHint = activeConversationCompanyId ?? activeHistoryCompanyId;
   const handleCalendarModeToggle = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("calendar");
+      return;
+    }
     const existingCalendarTab = workspaceTabs.find((tab) => tab.kind === "calendar");
     if (existingCalendarTab) {
       activateWorkspaceTab(existingCalendarTab);
@@ -6029,23 +8386,35 @@ function ChatApp() {
     handleWorkspaceTabCreate("calendar");
   };
 
-  const openKanbanScope = (scope: KanbanBoardScope = { type: "global", id: "default" }, label = "All Rumi Runs") => {
-    const existingKanbanTab = workspaceTabs.find((tab) => tab.kind === "kanban");
-    if (existingKanbanTab) {
-      const updatedTab = {
-        ...existingKanbanTab,
-        title: label ? `Kanban: ${label}` : "Kanban",
+  const openKanbanScope = (
+    scope: KanbanBoardScope = { type: "global", id: "default" },
+    label = "All Rumi Runs",
+  ) => {
+    if (!workspaceTabsEnabled) {
+      const tab = createWorkspaceTab("kanban", {
+        title: label || "Kanban",
         kanbanScope: scope,
-        kanbanScopeLabel: label,
-      };
-      setWorkspaceTabs((current) => current.map((tab) => tab.id === existingKanbanTab.id ? updatedTab : tab));
-      activateWorkspaceTab(updatedTab);
+        kanbanScopeLabel: label || "Kanban",
+      });
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
+    const existingTab = workspaceTabs.find((tab) => (
+      tab.kind === "kanban"
+      && (tab.kanbanScope?.type ?? "global") === scope.type
+      && (tab.kanbanScope?.id ?? "default") === scope.id
+    ));
+    if (existingTab) {
+      activateWorkspaceTab(existingTab);
       return;
     }
     const tab = createWorkspaceTab("kanban", {
-      title: label ? `Kanban: ${label}` : "Kanban",
+      title: label || "Kanban",
       kanbanScope: scope,
-      kanbanScopeLabel: label,
+      kanbanScopeLabel: label || "Kanban",
     });
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
@@ -6056,6 +8425,10 @@ function ChatApp() {
   };
 
   const handleDesktopsModeOpen = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("desktops");
+      return;
+    }
     const existingDesktopsTab = workspaceTabs.find((tab) => tab.kind === "desktops");
     if (existingDesktopsTab) {
       activateWorkspaceTab(existingDesktopsTab);
@@ -6064,32 +8437,10 @@ function ChatApp() {
     handleWorkspaceTabCreate("desktops");
   };
 
-  const handleKanbanScopeChange = (scope: KanbanBoardScope, label?: string | null) => {
-    setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId && tab.kind === "kanban"
-      ? {
-          ...tab,
-          title: label ? `Kanban: ${label}` : "Kanban",
-          kanbanScope: scope,
-          kanbanScopeLabel: label ?? null,
-        }
-      : tab));
-  };
-
   const handleHistoryGroupKanbanOpen = (group: ChatGroup) => {
     openKanbanScope({ type: "group", id: group.id }, group.title);
   };
 
-  const openPromptStudio = (promptId?: string) => {
-    const url = new URL(window.location.href);
-    url.pathname = "/prompts";
-    url.search = "";
-    if (activePromptProfileId) url.searchParams.set("profile_id", activePromptProfileId);
-    if (activeConversationId) url.searchParams.set("conversation_id", activeConversationId);
-    if (promptId) url.searchParams.set("prompt_id", promptId);
-    const modelProfileId = profileIdentity(activeProfile) || activeModelId;
-    if (modelProfileId) url.searchParams.set("model_profile_id", modelProfileId);
-    window.location.href = `${url.pathname}${url.search}${url.hash}`;
-  };
   const renderComposer = (isCentered = false) => {
     if (!isCentered && activeConversation?.metadata?.shared_read_only === true) {
       return <div role="status" className="mx-3 mb-3 flex min-h-14 items-center justify-center border border-zinc-800 bg-zinc-950 px-4 text-center text-sm text-zinc-400">Read-only imported copy. Import the share again with continue mode to send messages.</div>;
@@ -6099,10 +8450,11 @@ function ChatApp() {
       input={input}
       placeholder={isCentered ? getNewConversationPlaceholder() : placeholder}
       isNewConversation={isCentered}
-      isGenerating={isGenerating || isConversationPending}
+      isGenerating={isGeneratingForActiveView}
       selectedProfile={activeProfile}
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
+      modelSelectorSchema={modelSelectorSchema}
       thinkingLevel={activeProfile?.supports_thinking ? selectedThinkingLevel : null}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
@@ -6113,14 +8465,16 @@ function ChatApp() {
       structuredInputValues={effectiveStructuredComposerValues}
       modelCommandCandidates={modelCommandCandidates}
       modelPickerRequestId={modelPickerRequestId}
-      yoloMode={yoloMode || ultraYoloMode}
       modelStatusIndicators={composerModelStatusIndicators}
       voiceInputEnabled={settingsValues.general?.voice_input_enabled !== false}
       voiceInputUseAi={settingsValues.general?.voice_input_use_ai === true}
+      manualRuntimeModeSelectionEnabled={allowManualRuntimeModeSelection}
       mode={mode}
       codingContext={codingContext}
       codingWorkspaces={codingWorkspaces}
       selectedCodingWorkspaceId={effectiveWorkspaceId}
+      projects={composerProjects}
+      selectedProjectId={effectiveGroupId}
       attachedFiles={attachedFiles}
       pendingMentionAttachmentPaths={pendingMentionAttachmentPaths}
       droppedWidgets={activeDroppedWidgets}
@@ -6132,8 +8486,9 @@ function ChatApp() {
       keyboardButtonNavigation={keyboardButtonNavigation}
       steerStatus={modelSteerStatus}
       steerBusy={modelSteerBusy}
+      steerControlsReady={steerControlsReady}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
-      steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
+      steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGeneratingForActiveView)}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -6170,19 +8525,35 @@ function ChatApp() {
       onCodingWorkspaceSelect={handleCodingWorkspaceSelect}
       onCodingWorkspaceTrust={handleCodingWorkspaceTrust}
       onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
-      onCodingWorkspacesRefresh={() => void loadCodingWorkspaces()}
-      onCodingContextRefresh={loadCodingContext}
+      onCodingWorkspacesRefresh={refreshCodingWorkspaces}
+      onCodingContextRefresh={() => void loadCodingContext().catch(reportCodingLoadError)}
+      onProjectSelect={handleComposerProjectSelect}
+      onProjectDirectorySelect={handleDirectorySelect}
+      onProjectStoragePrepare={handlePrepareChatGroupStorage}
     />;
   };
 
+  if (isLoading) {
+    return (
+      <TobkiriLoadingScreen
+        error={startupError}
+        onRetry={startupError ? () => window.location.reload() : undefined}
+        steps={startupSteps}
+      />
+    );
+  }
+
   return (
     <RendererBoundary>
-    <div className="rumi-app-shell flex w-full flex-col bg-[#09090b] font-sans text-zinc-300 selection:bg-zinc-800">
-      {showRegion("title_bar") && <Renderers.titleBar appName={catalog?.app?.name} appIcon={catalog?.app?.icon} />}
+    <div className="rumi-app-shell flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[var(--rumi-surface-base)] font-sans text-zinc-300 selection:bg-zinc-800">
+      {showRegion("title_bar") && <Renderers.titleBar appName={composerHomeTitle || catalog?.app?.name} appIcon={catalog?.app?.icon} />}
 
-      <div className="flex flex-1 min-h-0">
-        {showRegion("history") && !isHistoryMinimized && (
-          <div className="w-[286px] max-w-[30vw] min-w-[240px] flex-shrink-0 overflow-hidden border-r border-zinc-800/60 animate-in slide-in-from-left-2 fade-in duration-200 ease-out max-[900px]:w-[260px] rumi-anim-fade-left">
+      <div className="rumi-shell-body flex min-h-0 flex-1">
+        {showRegion("history") && (
+          <div className={cn(
+            "rumi-history-sidebar flex-shrink-0 border-r border-zinc-800/60",
+            isHistoryMinimized ? "rumi-history-rail is-compact" : "rumi-history-pane rumi-layer-panel",
+          )}>
             <Renderers.historyBoard
               activeChatId={activeConversationId}
               chatItems={chatItems}
@@ -6205,57 +8576,48 @@ function ChatApp() {
               isKanbanActive={isKanbanMode}
               onDesktopsOpen={handleDesktopsModeOpen}
               isDesktopsActive={isDesktopsWorkspace}
-              onSettingsClick={() => setIsSettingsOpen(true)}
+              onSettingsClick={openSettingsHome}
               onChatMetadataChange={handleHistoryMetadataChange}
+              onSearchOpen={() => { setIsSpotlightOpen(true); setSpotlightSelectedIndex(0); }}
               onMinimize={() => setIsHistoryMinimized(true)}
-            />
-          </div>
-        )}
-
-        {showRegion("history") && isHistoryMinimized && (
-          <div className="rumi-history-rail w-14 flex-shrink-0 overflow-visible border-r border-zinc-800/60 animate-in slide-in-from-left-1 fade-in duration-150 ease-out rumi-anim-fade-left">
-            <Renderers.historyBoard
-              activeChatId={activeConversationId}
-              chatItems={chatItems}
-              account={catalog?.app?.account}
-              onChatSelect={handleHistoryClick}
-              onNewTask={handleNewTask}
-              codingWorkspaces={codingWorkspaces}
-              selectedCodingWorkspaceId={effectiveWorkspaceId}
-              onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
-              onDirectorySelect={handleDirectorySelect}
-              onGroupDataPathPrepare={handlePrepareChatGroupStorage}
-              onCodingWorkspacesRefresh={async () => {
-                await loadCodingWorkspaces();
-              }}
-              onCalendarOpen={handleCalendarModeToggle}
-              isCalendarActive={isCalendarMode}
-              onKanbanOpen={handleKanbanModeToggle}
-              onGroupKanbanOpen={handleHistoryGroupKanbanOpen}
-              onGroupSelect={handleHistoryGroupSelect}
-              isKanbanActive={isKanbanMode}
-              onDesktopsOpen={handleDesktopsModeOpen}
-              isDesktopsActive={isDesktopsWorkspace}
-              onSettingsClick={() => setIsSettingsOpen(true)}
-              onChatMetadataChange={handleHistoryMetadataChange}
               onRestore={() => setIsHistoryMinimized(false)}
-              isCompact
+              isCompact={isHistoryMinimized}
             />
           </div>
         )}
 
         <main
-          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[#09090b]", isActivityPreviewVisible && "has-activity-preview")}
+          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]", isActivityPreviewPresent && "has-activity-preview", isActivityPreviewPresent && !isActivityPreviewVisible && "is-closing-preview")}
           style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
+          onDragEnter={handleWorkspaceFileDragEnter}
+          onDragOver={handleWorkspaceFileDragOver}
+          onDragLeave={handleWorkspaceFileDragLeave}
+          onDrop={handleWorkspaceFileDrop}
         >
+          {isWorkspaceFileDragActive && (
+            <div
+              role="status"
+              aria-label="ファイルをここにドロップ"
+              className="pointer-events-none absolute inset-0 rumi-layer-modal flex items-center justify-center bg-black/75 backdrop-blur-[2px]"
+            >
+              <div className="mx-6 flex max-w-md flex-col items-center rounded-3xl border border-dashed border-sky-300/55 bg-[#15171c]/95 px-10 py-9 text-center shadow-2xl">
+                <Cloud className="mb-4 text-sky-200" size={42} strokeWidth={1.6} aria-hidden="true" />
+                <p className="text-xl font-semibold text-zinc-50">ここにドロップ</p>
+                <p className="mt-2 text-sm text-zinc-400">画像やファイルを会話に追加します</p>
+              </div>
+            </div>
+          )}
           <div className={cn("rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up", isActivityPreviewVisible && "border-r border-zinc-800/40")}>
-            <WorkspaceTabBar
-              tabs={workspaceTabs}
-              activeTabId={activeWorkspaceTabId}
-              onSelect={handleWorkspaceTabSelect}
-              onClose={handleWorkspaceTabClose}
-              onCreate={handleWorkspaceTabCreate}
-            />
+            {workspaceTabsEnabled && (
+              <WorkspaceTabBar
+                tabs={workspaceTabs}
+                activeTabId={activeWorkspaceTabId}
+                createOptions={workspaceTabCreateOptions}
+                onSelect={handleWorkspaceTabSelect}
+                onClose={handleWorkspaceTabClose}
+                onCreate={handleWorkspaceTabCreate}
+              />
+            )}
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
@@ -6266,31 +8628,20 @@ function ChatApp() {
                 onTogglePreview={() => {
                   if (canShowCanvas) setShowPreview((value) => !value);
                 }}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={openSettingsHome}
               />
             )}
 
             {backendConnectionState !== "online" && (
-              <div
-                role="status"
-                className={cn(
-                  "mx-3 mt-3 rounded-2xl border px-4 py-3",
-                  backendConnectionState === "offline"
-                    ? "border-red-500/20 bg-red-500/10 text-red-100"
-                    : "border-amber-500/20 bg-amber-500/10 text-amber-100",
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={cn(
-                      "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
-                      backendConnectionState === "offline" ? "bg-red-400" : "bg-amber-300 animate-pulse",
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{backendConnectionBanner.title}</p>
-                    <p className="mt-1 text-xs leading-5 opacity-90">{backendConnectionBanner.detail}</p>
-                  </div>
+              <ErrorNotice
+                className="mx-3 mt-3 rounded-2xl px-4 py-3"
+                copyLabel="Copy backend connection error"
+                copyText={`${backendConnectionBanner.title}\n${backendConnectionBanner.detail}`}
+                errorIcon={`backend-connection-${backendConnectionState}`}
+                message={backendConnectionBanner.detail}
+                severity={backendConnectionState === "offline" ? "error" : "warning"}
+                title={backendConnectionBanner.title}
+                trailing={(
                   <button
                     type="button"
                     onClick={() => void refreshHealth("focus")}
@@ -6298,8 +8649,8 @@ function ChatApp() {
                   >
                     いま確認
                   </button>
-                </div>
-              </div>
+                )}
+              />
             )}
 
             {activeConversation?.metadata?.imported_from_share === true && provenanceDismissedFor !== activeConversation.id && (
@@ -6309,27 +8660,13 @@ function ChatApp() {
             {isDesktopsWorkspace ? (
               <DesktopMonitorWorkspace />
             ) : isKanbanMode ? (
-              <div className="flex min-h-0 flex-1 p-1.5">
-                <KanbanWorkspacePanel
-                  activeConversationId={activeConversationId}
-                  activeConversationTitle={activeChatTitle}
-                  initialScope={activeWorkspaceTab?.kind === "kanban" ? activeWorkspaceTab.kanbanScope ?? null : null}
-                  initialScopeLabel={activeWorkspaceTab?.kind === "kanban" ? activeWorkspaceTab.kanbanScopeLabel ?? null : null}
-                  conversationOptions={kanbanChatOptions}
-                  groupOptions={kanbanGroups}
-                  workspaceId={effectiveWorkspaceId}
-                  workspaceLabel={activeConversationWorkspaceContext.workspaceLabel}
-                  workspaceRoot={activeConversationWorkspaceContext.workspaceRoot}
-                  companyId={activeConversationCompanyId}
-                  modelId={activeModelId}
-                  modelProfiles={selectableModelProfiles}
-                  onOpenChat={(conversationId) => {
-                    handleHistoryClick(conversationId);
-                  }}
-                  onScopeChange={handleKanbanScopeChange}
-                  onOpenSettings={() => setIsSettingsOpen(true)}
-                />
-              </div>
+              <KanbanWorkspacePanel
+                scope={activeWorkspaceTab?.kanbanScope ?? { type: "global", id: "default" }}
+                scopeLabel={activeWorkspaceTab?.kanbanScopeLabel ?? (activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : "All Rumi Runs")}
+                activeConversationId={activeConversationId}
+                workspaceId={effectiveWorkspaceId}
+                companyId={activeCompanyWorkspaceHint}
+              />
             ) : isCalendarMode ? (
               <div className="flex min-h-0 flex-1 p-1.5">
                 <CalendarComposerPanel
@@ -6349,12 +8686,19 @@ function ChatApp() {
                   onWorkspaceSelect={handleCodingWorkspaceSelect}
                   onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
                   onWorkspaceTrust={handleCodingWorkspaceTrust}
-                  onWorkspacesRefresh={() => void loadCodingWorkspaces()}
+                  onWorkspacesRefresh={refreshCodingWorkspaces}
                 />
               </div>
-            ) : isSubagentWorkspace ? (
+            ) : isSubagentWorkspace && subagentTeamsEnabled ? (
               <div className="flex min-h-0 flex-1">
                 <SubagentTeamWorkspace activeConversationId={activeConversationId} activeConversationTitle={activeChatTitle} />
+              </div>
+            ) : isSubagentWorkspace ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <div className="max-w-sm rounded-xl border border-zinc-800 bg-zinc-950/45 p-5 text-center">
+                  <p className="text-sm font-medium text-zinc-200">サブエージェントは無効です</p>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">設定の「サブエージェントを使う」を有効にすると、チーム画面を開けます。</p>
+                </div>
               </div>
             ) : isCanvasWorkspace ? (
               <div className="flex min-h-0 flex-1 p-1.5">
@@ -6377,6 +8721,7 @@ function ChatApp() {
               </div>
             ) : isToolsWorkspace ? (
               <WorkspaceLaunchpad
+                createOptions={workspaceTabCreateOptions}
                 sidebarItems={sidebarItems}
                 onCreate={handleWorkspaceTabCreate}
                 onOpenSidebarItem={(itemId) => {
@@ -6384,28 +8729,38 @@ function ChatApp() {
                   setSidebarSelectionTick((value) => value + 1);
                 }}
               />
-            ) : isNewConversation && !isLoading ? (
-              <div className={cn("rumi-new-chat-stage flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
+            ) : showNewConversationStage && !isLoading ? (
+              <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
                 <div className="w-full">
+                  {error && (
+                    <div className="mx-auto mb-4 max-w-[720px] rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm leading-relaxed text-red-100" role="alert">
+                      {error}
+                    </div>
+                  )}
                   <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
-                    {getNewConversationGreeting()}
+                    {composerHomeTitle}
                   </h1>
                   {renderComposer(true)}
                 </div>
               </div>
             ) : (
               <Renderers.chatMessages
+                completionNotice={savedTurnCompletionNotice?.conversationId === activeConversationId
+                  ? savedTurnCompletionNotice
+                  : null}
                 error={error}
                 isMessagesRegionVisible={showRegion("chat_messages")}
                 isLoading={isLoading}
-                isNewConversation={isNewConversation}
-                isGenerating={isGenerating || isConversationPending}
+                isNewConversation={showNewConversationStage}
+                isGenerating={isGeneratingForActiveView}
                 pendingStatus={pendingRequest?.status ?? null}
                 pendingToolNames={pendingRequest?.toolNames ?? []}
                 pendingStartedAt={pendingRequest?.startedAt ?? null}
                 pendingToolStartedAt={pendingRequest?.toolStartedAt ?? {}}
                 messages={messages}
                 messagesEndRef={messagesEndRef}
+                messagesScrollRef={messagesScrollRef}
+                onMessagesScroll={handleMessagesScroll}
                 unknownBlockStrategy={unknownBlockStrategy}
                 showActivityInMessages={showActivityInMessages}
                 showWidgets={showWidgets}
@@ -6413,13 +8768,16 @@ function ChatApp() {
                 onSuggestionClick={(text) => setInput(text)}
                 onOpenToolPreview={(previewId) => {
                   setActivePreviewId(previewId);
-                  setShowPreview(true);
+                  setShowPreview(!(effectiveShowPreview && activePreviewId === previewId));
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
+                onRetry={retryableSubmission && error === retryableSubmission.errorMessage ? handleRetryLastFailedSubmission : undefined}
+                onDismissCompletionNotice={() => setSavedTurnCompletionNotice(null)}
+                onDismissError={error ? dismissChatError : undefined}
               />
             )}
 
-            {showRegion("composer") && isChatWorkspace && !isNewConversation && !isCalendarMode && !isKanbanMode && (
+            {showRegion("composer") && isChatWorkspace && showConversationComposer && !isCalendarMode && !isKanbanMode && (
               <div className="relative">
                 {showRegion("activity_preview") && !effectiveShowPreview && canShowCanvas && (
                   <CanvasPeek
@@ -6438,14 +8796,64 @@ function ChatApp() {
                     className="pointer-events-auto absolute bottom-full left-1/2 rumi-layer-modal mb-2 max-h-[min(70vh,620px)] w-[min(620px,calc(100vw-24px))] -translate-x-1/2 overflow-y-auto"
                   />
                 )}
-                {!visibleBrowserApproval && authorityApproval && (
+                {!visibleBrowserApproval && pendingCommandApproval && (
+                  <ApprovalDecisionSurface
+                    approval={commandApprovalViewModel(pendingCommandApproval)}
+                    onDeny={() => void denyCommandAction()}
+                    onApprove={() => void approveCommandAction()}
+                    keyboardShortcuts={{ deny: "2", approve: "3" }}
+                    className="pointer-events-auto absolute bottom-full left-1/2 rumi-layer-modal mb-2 max-h-[min(70vh,620px)] w-[min(620px,calc(100vw-24px))] -translate-x-1/2 overflow-y-auto"
+                  />
+                )}
+                {!visibleBrowserApproval && !pendingCommandApproval && pendingHighRiskCommand && (
+                  <section className="pointer-events-auto absolute bottom-full left-1/2 rumi-layer-modal mb-2 w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-amber-500/30 bg-zinc-950 p-3 shadow-2xl">
+                    <p className="text-sm font-medium text-zinc-100">高リスク操作の承認待ち</p>
+                    <p className="mt-1 text-xs leading-5 text-zinc-400">
+                      「{pendingHighRiskCommand.commandLabel}」は専用の承認ウィンドウで確認します。
+                      この画面は承認トークンや実行対象を保持せず、承認後に Host が同じ操作を一度だけ再開します。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void openPendingHighRiskApproval()}
+                      className="mt-3 h-9 rounded-lg border border-amber-400/35 bg-amber-400/10 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-400/20"
+                    >
+                      承認ウィンドウを開く
+                    </button>
+                  </section>
+                )}
+                {commandProgressEvents.length > 0 && (
+                  <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3" aria-label="Command progress">
+                    <h3 className="text-xs font-semibold text-zinc-300">Command progress</h3>
+                    <ol className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                      {commandProgressEvents.map((event, index) => (
+                        <li key={`${String(event.invocation_id ?? "invocation")}:${String(event.sequence ?? index)}`}>
+                          {String(event.sequence ?? "•")} · {String(event.type ?? "progress")}
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
+                {commandProtocolInfo && (
+                  <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
+                      Command catalog inspector · {commandProtocolInfo.commands.length} commands
+                    </summary>
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px] text-zinc-500">
+                      <dt>revision</dt><dd className="font-mono">{commandProtocolInfo.catalog_revision}</dd>
+                      <dt>rollout</dt><dd>{commandProtocolInfo.rollout?.phase ?? "unavailable"}</dd>
+                      <dt>diagnostics</dt><dd>{commandProtocolInfo.diagnostics?.length ?? 0}</dd>
+                      <dt>events</dt><dd>{commandProgressEvents.length}</dd>
+                    </dl>
+                  </details>
+                )}
+                {!visibleBrowserApproval && !pendingCommandApproval && !pendingHighRiskCommand && authorityApproval && (
                   <AuthorityApprovalNotice
                     approval={authorityApproval}
                     title={authorityApprovalTitle(authorityApproval)}
                     onOpen={() => void openAuthorityApprovalWindowAction()}
                   />
                 )}
-                {!visibleBrowserApproval && !authorityApproval && runtimeApproval && (
+                {!visibleBrowserApproval && !pendingCommandApproval && !pendingHighRiskCommand && !authorityApproval && runtimeApproval && (
                   <ApprovalDecisionSurface
                     approval={runtimeApprovalViewModel(runtimeApproval)}
                     onDeny={() => void denyCodingAction()}
@@ -6454,7 +8862,7 @@ function ChatApp() {
                     className="pointer-events-auto absolute bottom-full left-1/2 rumi-layer-modal mb-2 max-h-[min(70vh,620px)] w-[min(620px,calc(100vw-24px))] -translate-x-1/2 overflow-y-auto"
                   />
                 )}
-                {!visibleBrowserApproval && !authorityApproval && !runtimeApproval && staleRuntimeApprovalNotice && (
+                {!visibleBrowserApproval && !pendingCommandApproval && !pendingHighRiskCommand && !authorityApproval && !runtimeApproval && staleRuntimeApprovalNotice && (
                   <div className="pointer-events-auto absolute bottom-full left-1/2 rumi-layer-modal mb-2 w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-zinc-700 bg-zinc-950 p-3 shadow-2xl">
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
@@ -6475,13 +8883,21 @@ function ChatApp() {
                     </div>
                   </div>
                 )}
-                {renderComposer(false)}
+                <div
+                  ref={composerAlertAnchorRef}
+                  data-testid="conversation-composer-anchor"
+                  className="flex-shrink-0"
+                >
+                  {renderComposer(false)}
+                </div>
               </div>
             )}
           </div>
 
-          {isActivityPreviewVisible && (
+          {isActivityPreviewPresent && (
             <div
+              aria-hidden={!isActivityPreviewVisible}
+              inert={!isActivityPreviewVisible}
               role="separator"
               aria-label="Canvas幅を変更"
               title="Canvas幅を変更"
@@ -6490,12 +8906,12 @@ function ChatApp() {
             />
           )}
 
-          {isActivityPreviewVisible && (
-            <aside className="rumi-activity-preview-pane rumi-anim-fade-right" aria-label="Activity preview">
+          {isActivityPreviewPresent && (
+            <aside className="rumi-activity-preview-pane" aria-label="Activity preview" aria-hidden={!isActivityPreviewVisible} inert={!isActivityPreviewVisible}>
               <Renderers.toolPreviewPanel
                 widgetContext={widgetContext}
                 previews={canvasPreviews}
-                showPreview={effectiveShowPreview}
+                showPreview={isActivityPreviewPresent}
                 onClose={() => setShowPreview(false)}
                 previewMode={previewMode}
                 onModeChange={setPreviewMode}
@@ -6536,15 +8952,16 @@ function ChatApp() {
             onLoadPromptActive={promptResources.getActiveSummary}
             onTogglePromptEdge={promptResources.toggleEdge}
             onToggleChatPromptUsage={setShowPromptUsageInMessages}
-            onOpenPromptStudio={openPromptStudio}
-            yoloMode={yoloMode}
+            yoloMode={ultraYoloMode}
             workspaceTabs={workspaceTabs}
+            workspaceTabsEnabled={workspaceTabsEnabled}
+            workspaceTabCreateOptions={workspaceTabCreateOptions}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}
-            onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSettings={openSettingsHome}
             onOpenSettingsSection={openSettingsSection}
-            onToggleYolo={() => setYoloMode((value) => !value)}
+            onToggleYolo={() => setFullAccessEnabled(!ultraYoloMode)}
             onWorkspaceTabSelect={handleWorkspaceTabSelect}
             onWorkspaceTabClose={handleWorkspaceTabClose}
             onWorkspaceTabCreate={handleWorkspaceTabCreate}
@@ -6589,12 +9006,29 @@ function ChatApp() {
           settingsSections={settingsSections}
           settingsValues={settingsValues}
           desktopSystemInfo={desktopSystemInfo}
+          modelProfiles={settingsModelProfiles}
+          activeModelProfileId={activeProfile?.profile_id ?? activeModelId}
+          backendConnectionState={backendConnectionState}
+          backendConnectionNote={backendConnectionNote}
+          saveState={settingsSaveState}
+          loadState={settingsLoadState}
+          modelProfilesLoadState={modelProfilesLoadState}
           locale={locale}
           onClose={() => setIsSettingsOpen(false)}
+          onStartSettingsChat={startSettingsChat}
           onOpenSection={openSettingsSection}
+          onRetryLoad={() => { void refreshCatalog(); }}
+          onRetrySave={retrySettingsSave}
           onSettingChange={handleSettingChange}
         />
       )}
+
+      <TransientAlert
+        alert={transientAlert}
+        onDismiss={() => setTransientAlert(null)}
+        placement={transientAlertPlacement}
+        anchorRef={composerAlertAnchorRef}
+      />
 
       <AmbientWindowLauncher enabled={Boolean(settingsValues.ambient?.["ambient.monitor.enabled"])} />
       {shareDialogOpen && (
@@ -6619,7 +9053,15 @@ function ChatApp() {
                 <button type="button" disabled={shareBusy} onClick={() => void createConversationShare("tunnel")} className="flex min-h-20 items-start gap-3 border border-zinc-700 p-3 text-left hover:bg-zinc-900 disabled:opacity-60"><Cloud size={18} className="mt-0.5 text-sky-300" /><span><strong className="block text-sm text-zinc-100">Cloudflare Tunnel link</strong><span className="mt-1 block text-xs leading-5 text-zinc-500">Public through the configured hostname.</span></span></button>
               </div>
               {shareBusy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-zinc-400"><Loader2 size={15} className="animate-spin" /> Creating redacted bundle...</p>}
-              {shareDialogError && <p role="alert" className="mt-4 text-sm text-red-300">{shareDialogError}</p>}
+              {shareDialogError ? (
+                <ErrorNotice
+                  className="mt-4 text-sm"
+                  copyLabel="Copy share dialog error"
+                  copyText={shareDialogError}
+                  errorIcon="share-dialog"
+                  message={shareDialogError}
+                />
+              ) : null}
               {shareCreatedUrl && <div className={`mt-4 border p-3 ${shareRevoked ? "border-red-500/25 bg-red-500/10" : "border-emerald-500/25 bg-emerald-500/10"}`}><p className={`break-all text-sm ${shareRevoked ? "text-red-100 line-through" : "text-emerald-100"}`}>{shareCreatedUrl}</p><div className="mt-3 flex flex-wrap gap-2">{!shareRevoked && <button type="button" onClick={() => void navigator.clipboard.writeText(new URL(shareCreatedUrl, window.location.origin).toString())} className="inline-flex h-9 items-center gap-2 border border-emerald-300/25 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/10"><Copy size={14} /> Copy link</button>}{shareCreatedToken && !shareRevoked && <button type="button" onClick={() => void api.revokeShare(shareCreatedToken).then(() => setShareRevoked(true)).catch((reason) => setShareDialogError(reason instanceof Error ? reason.message : "Could not revoke link."))} className="inline-flex h-9 items-center gap-2 border border-red-400/25 px-3 text-xs font-semibold text-red-200 hover:bg-red-500/10"><X size={14} /> Revoke link</button>}</div>{shareRevoked && <p role="status" className="mt-2 text-xs text-red-200">Revoked. This link can no longer be viewed or imported.</p>}</div>}
               <button type="button" onClick={() => { if (activeConversationId) void handlePanelAction({} as SidebarItem, { id: "conversation.export" } as SidebarAction); }} className="mt-5 inline-flex h-10 items-center gap-2 text-sm text-zinc-300 hover:text-white"><Download size={16} /> Export history.json</button>
             </section>
@@ -6644,7 +9086,7 @@ function AmbientWindowLauncher({ enabled }: { enabled: boolean }) {
       const opened = await openFingerRecordingWindow();
       if (opened) return;
       const popup = window.open(
-        "/finger-recording",
+        profileScreenPathFromLocation("/finger-recording"),
         "rumi-finger-recording",
         "width=380,height=520,noopener,noreferrer",
       );
@@ -6682,7 +9124,10 @@ function AmbientWindowLauncher({ enabled }: { enabled: boolean }) {
 }
 
 export default function App() {
-  const pathname = window.location.pathname;
+  const pathname = applicationPathname(window.location.pathname);
+  if (pathname === null) {
+    throw new Error("profile_screen_identity_unavailable");
+  }
   const searchParams = new URLSearchParams(window.location.search);
   const fingerDebugMode = pathname === "/ambient-debug"
     || searchParams.get("debug") === "1"
@@ -6691,9 +9136,6 @@ export default function App() {
 
   if (pathname === "/approval") {
     return <AuthorityApprovalWindow />;
-  }
-  if (pathname === "/prompts") {
-    return <PromptStudio />;
   }
   if (pathname === "/ui-precision" || searchParams.get("ui-precision") === "1") {
     return <UiPrecisionComparator />;
@@ -6716,8 +9158,17 @@ export default function App() {
   if (pathname === "/adaptive" || pathname === "/operating-profile") {
     return <AdaptiveRuntimePage />;
   }
-  if (pathname === "/defaultspack" || pathname === "/pack/defaultspack" || pathname === "/chat" || pathname === "/calendar") {
+  if (pathname === "/defaultspack" || pathname === "/pack/defaultspack" || pathname === "/chat" || pathname === "/calendar" || pathname === "/coding") {
     return <ChatApp />;
   }
-  return <ChatApp />;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[var(--rumi-surface-base)] px-6 py-10">
+      <ErrorNotice
+        className="w-full max-w-xl"
+        copyLabel="Copy unavailable screen error"
+        errorIcon="screen-unavailable"
+        message="This screen is not available in Tobkiri."
+      />
+    </main>
+  );
 }
