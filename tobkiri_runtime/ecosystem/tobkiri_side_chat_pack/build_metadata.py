@@ -150,14 +150,31 @@ def build() -> dict[str, Any]:
                 "operations": [operation],
             }
         )
-    assets = [
-        {"path": path, "digest": sha256_file(PACK / path), "kind": kind}
-        for path, kind in [
-            ("runtime/host.py", "executable"),
-            ("runtime/side_chat.py", "sidecar"),
-            ("pack-source.v1.json", "sidecar"),
-            ("frontend/contributions/side-chat.json", "sidecar"),
+    runtime_artifacts = [
+        {
+            "path": path,
+            "digest": sha256_file(PACK / path),
+            "kind": kind,
+            **({"index_role": index_role} if index_role is not None else {}),
+        }
+        for path, kind, index_role in [
+            ("runtime/host.py", "executable", None),
+            ("runtime/side_chat.py", "sidecar", None),
+            ("pack-source.v1.json", "sidecar", None),
+            (
+                "frontend/contributions/side-chat.json",
+                "sidecar",
+                "sidecar",
+            ),
         ]
+    ]
+    manifest_artifacts = [
+        {
+            key: value
+            for key, value in artifact.items()
+            if key != "index_role"
+        }
+        for artifact in runtime_artifacts
     ]
     requirements = {
         "pack_dependencies": {},
@@ -201,7 +218,9 @@ def build() -> dict[str, Any]:
             "version": "1.0.0",
             "kind": "host_extension",
             "display_name": source["display_name"],
-            "artifact_digest": canonical_digest({"source": source, "assets": assets}),
+            "artifact_digest": canonical_digest(
+                {"source": source, "assets": manifest_artifacts}
+            ),
         },
         "functions": functions,
         "contracts": [
@@ -212,13 +231,13 @@ def build() -> dict[str, Any]:
             }
             for item in contracts
         ],
-        "artifacts": assets,
+        "artifacts": manifest_artifacts,
         "requirements": requirements,
         "operation_catalog": operations,
         "provider_catalog": providers,
         "integrity": {
             "source_identity": identity,
-            "artifact_set_digest": canonical_digest(assets),
+            "artifact_set_digest": canonical_digest(manifest_artifacts),
             "contract_catalog_digest": canonical_digest(catalog),
         },
         "provenance": provenance,
@@ -246,7 +265,7 @@ def build() -> dict[str, Any]:
             },
             "required_contracts": requirements["contract_dependencies"],
             "provided_contracts": provided,
-            "runtime_artifacts": assets,
+            "runtime_artifacts": runtime_artifacts,
             "legacy_ids": [],
             "legacy_operations": [],
             "migration": {"removal_wave": 0, "sunset_at": "2027-12-31"},
@@ -272,6 +291,17 @@ def build() -> dict[str, Any]:
         "ui_contributions": ["frontend/contributions/side-chat.json"],
         "guest_source_addition": "tobkiri_protocol/conversation_context.py",
         "requested_default_selection": "optional; no installed or release evidence",
+        "ui_progress_dependency": {
+            "contract_id": "tobkiri.resource.turn.progress.v1",
+            "contract_version": "1.0.0",
+            "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+            "optional": True,
+            "owner": (
+                "Application frontend resource capture; exact signed edge and "
+                "readiness remain integration-owned"
+            ),
+            "required_host_effects": ["pure", "read"],
+        },
     }
     outputs = {
         "pack.v4.json": manifest,

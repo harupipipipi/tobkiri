@@ -1469,12 +1469,12 @@
     {
       "path": "packs/tobkiri_side_chat_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:0af9e02cca61c6e4d9ec42d6a3a0820a2d86538bbc0968e0d98bc9c29d0d5968"
+      "digest": "sha256:a46434df0b4cc0f2ddff237024893b3f654b35d6707b5862920851abc1f85e74"
     },
     {
       "path": "packs/tobkiri_side_chat_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:9377961ebda77e0267e20d4d8de236d1d5973adea09f928a9e03420032be53f4"
+      "digest": "sha256:9dd1f41da1a7ebbe593377b0ecf6a0f842c17b5c8c80a8da1f5a4a882bf41329"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",

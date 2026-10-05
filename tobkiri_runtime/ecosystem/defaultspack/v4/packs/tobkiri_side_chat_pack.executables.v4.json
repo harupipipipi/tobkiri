@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_side_chat_pack",
-  "source_identity": "sha256:b1eb5fe3aaabf307794f7bba50201422d6e5e8681fa7970b9924476225eff740",
+  "source_identity": "sha256:5240a570476235b4310c2b6face0adda5fc6d95b5d3f5313f1dc83b592be3f84",
   "variants": [
     {
       "variant_id": "tobkiri_side_chat_pack.manage.python",
@@ -305,6 +305,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:273b8ed0ae21f4056b684cb1ca23bc2c7ed2dd12296d255031e95e06783f6f7a",
-  "catalog_digest": "sha256:7b967f48318c663314e99d58d8abbb1cfcfdb0a15678eea1426fa3184806743d"
+  "materialization_catalog_digest": "sha256:af0755521bf015cec5c411ecb96de4d090de896760f406b9c9ffd43de4826342",
+  "catalog_digest": "sha256:d2c07660d3300dd1ef28f5392c4478fbba49ba364f530f25e59d97bfea1288ad"
 }

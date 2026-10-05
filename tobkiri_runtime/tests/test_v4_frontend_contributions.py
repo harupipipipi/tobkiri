@@ -405,7 +405,7 @@ def test_catalog_without_pack_closure_has_no_optional_frontend_diagnostic() -> N
     assert _selected_frontend_pack_closure({"application": None, "effective_set": []}) == ()
 
 
-def test_defaults_bundle_only_application_does_not_raise_frontend_diagnostic() -> None:
+def test_defaults_projects_verified_side_chat_without_frontend_diagnostic() -> None:
     runtime_root = Path(__file__).resolve().parents[1]
     lock = json.loads((
         runtime_root / "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json"
@@ -416,7 +416,12 @@ def test_defaults_bundle_only_application_does_not_raise_frontend_diagnostic() -
         closure, [], profile_id="defaults", profile_revision="revision-1",
         activation_id="activation-1", plan_digest="plan-1",
     )
-    assert (projected, diagnostics, quarantined) == ([], [], [])
+    assert diagnostics == []
+    assert quarantined == []
+    assert [
+        (item["owner_pack_id"], item["contribution_id"], item["kind"])
+        for item in projected
+    ] == [("tobkiri_side_chat_pack", "tobkiri.side-chat", "view")]
 
 
 def test_presentation_rejects_stale_activation(tmp_path: Path, monkeypatch) -> None:

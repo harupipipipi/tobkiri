@@ -417,7 +417,8 @@
       {
         "path": "frontend/contributions/side-chat.json",
         "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
-        "kind": "sidecar"
+        "kind": "sidecar",
+        "index_role": "sidecar"
       }
     ],
     "legacy_ids": [],

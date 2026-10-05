@@ -41,6 +41,7 @@ def test_shipped_progress_uses_both_strict_schemas_and_host_validator() -> None:
         item for item in proposal["pack_catalog_record"]["runtime_artifacts"] if item["path"] == DESCRIPTOR
     )
     assert artifact["digest"] == digest
+    assert artifact["index_role"] == "sidecar"
 
 
 @pytest.mark.parametrize("change", [
