@@ -1,5 +1,5 @@
 import { RuntimeActivityIndicator, useActivityClock as useActivityNow } from "../components/RuntimeActivityIndicator";
-import { Check, Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, RefreshCw, Terminal, Wrench, X } from "lucide-react";
+import { Check, Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, Terminal, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
@@ -8,6 +8,7 @@ import { remarkMessageMentions, type MessageMention } from "../lib/messageMentio
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from "../components/ArtifactPreviewDialog";
 import { ErrorCopyAction, ErrorNotice, copyTextWithFallback } from "../components/ErrorNotice";
+import { ChatNotifications } from "../components/ChatNotifications";
 import { PromptUsageDisclosure } from "../components/prompts/PromptUsageDisclosure";
 import { cn } from "../lib/cn";
 import { elapsedDurationLabel, formatCompactDuration, timestampMs } from "../lib/duration";
@@ -1723,83 +1724,13 @@ export function ChatMessagesRenderer({
 
   return (
     <>
-      {completionNotice && (
-        <div
-          aria-live="polite"
-          className={cn(
-            "rumi-chat-completion-notice mx-4 mt-3 flex items-start gap-2 rounded-xl border px-3.5 py-3",
-            completionNotice.tone === "success"
-              ? "border-emerald-400/25 bg-emerald-500/[0.09] text-emerald-100"
-              : "border-amber-400/25 bg-amber-500/[0.09] text-amber-100",
-          )}
-          data-chat-completion-notice={completionNotice.tone}
-          role="status"
-        >
-          <span
-            className={cn(
-              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center",
-              completionNotice.tone === "success" ? "text-emerald-300" : "text-amber-300",
-            )}
-          >
-            {completionNotice.tone === "success"
-              ? <Check aria-hidden="true" size={15} />
-              : <CircleAlert aria-hidden="true" size={15} />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold">{completionNotice.title}</p>
-            <p className="mt-1 whitespace-pre-wrap text-[12px] leading-5 opacity-80">{completionNotice.message}</p>
-          </div>
-          {onDismissCompletionNotice ? (
-            <button
-              aria-label="通知を閉じる"
-              className={cn(
-                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-white/10",
-                completionNotice.tone === "success"
-                  ? "text-emerald-200/70 hover:text-emerald-50"
-                  : "text-amber-200/70 hover:text-amber-50",
-              )}
-              onClick={onDismissCompletionNotice}
-              title="閉じる"
-              type="button"
-            >
-              <X aria-hidden="true" size={15} />
-            </button>
-          ) : null}
-        </div>
-      )}
-      {error && (
-        <ErrorNotice
-          className="rumi-chat-error mx-4 mt-3 rounded-xl border-red-400/25 bg-red-500/[0.09] px-3.5 py-3 text-red-100"
-          copyLabel="チャットエラーをコピー"
-          errorIcon="chat"
-          message={error}
-          messageClassName="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-red-100/80"
-          title="処理を完了できませんでした"
-          titleClassName="text-[12px] text-red-100"
-          trailing={onDismissError ? (
-            <button
-              aria-label="エラーを閉じる"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-red-200/70 hover:bg-red-100/10 hover:text-red-50"
-              onClick={onDismissError}
-              title="閉じる"
-              type="button"
-            >
-              <X aria-hidden="true" size={15} />
-            </button>
-          ) : undefined}
-        >
-          {onRetry ? (
-            <button
-              className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200/25 bg-red-100/[0.06] px-3 text-[12px] font-semibold text-red-50 hover:bg-red-100/[0.11]"
-              onClick={onRetry}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={13} />
-              再試行
-            </button>
-          ) : null}
-        </ErrorNotice>
-      )}
+      <ChatNotifications
+        error={error}
+        completionNotice={completionNotice}
+        onDismissError={onDismissError}
+        onDismissCompletionNotice={onDismissCompletionNotice}
+        onRetry={onRetry}
+      />
 
       {!isMessagesRegionVisible ? null : isLoading ? (
         <div className="flex-1 flex items-center justify-center">

@@ -18,6 +18,7 @@ from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
 from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 from .api.api_response import APIResponse
+from .api.browser_access import BrowserAccessHTTPMixin, browser_access_document
 from .api.auth_gate import (
     APPROVAL_SESSION_COOKIE,
     PANEL_SESSION_COOKIE,
@@ -787,6 +788,7 @@ class _RequestReplayGuard:
 class PackAPIHandler(
     ResponseWriterMixin,
     AuthGateMixin,
+    BrowserAccessHTTPMixin,
     RequestBodyMixin,
     SetupHandlersMixin,
     WebMountMixin,
@@ -2474,29 +2476,26 @@ class PackAPIHandler(
         kept_query = self._bootstrap_query_without_code()
         if kept_query:
             safe_target = f"{safe_target}?{kept_query}"
-        target_literal = json.dumps(safe_target)
-        document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
-<script>
-document.addEventListener('DOMContentLoaded',()=>{{
-const params=new URL(location.href).searchParams;
-const code=params.get('code');
-const requestId=params.get('request_id');
-if(!code){{document.body.textContent='Tobkiri Launcher authentication required';}}
-else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
-headers:{{'Content-Type':'application/json'}},
-body:JSON.stringify(requestId?{{code,request_id:requestId}}:{{code}})}})
-.then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
-.then(v=>{{if(!v.data?.csrf_token||!v.data?.journal_scope)throw new Error('authentication failed');
-sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);
-sessionStorage.setItem('tobkiri-panel-journal-scope-v1',v.data.journal_scope);
-location.replace({target_literal})}})
-.catch(()=>{{document.body.textContent='Tobkiri Launcher authentication failed';}});
-}});
-</script>""".encode("utf-8")
+        binding = self._current_panel_auth_binding()
+        document = browser_access_document(
+            safe_target,
+            request_allowed=(
+                binding is not None
+                and self._browser_access_target(safe_target, binding) is not None
+            ),
+        )
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; connect-src 'self'; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+            )
             self.send_header("Content-Length", str(len(document)))
             self.end_headers()
             self.wfile.write(document)
@@ -3024,6 +3023,8 @@ location.replace({target_literal})}})
             return
         if path == "/api/panel/auth/bootstrap":
             self._handle_panel_bootstrap()
+            return
+        if self._handle_browser_access(path):
             return
         if path == "/api/internal/native-pack/admit":
             self._handle_native_external_pack_admission()

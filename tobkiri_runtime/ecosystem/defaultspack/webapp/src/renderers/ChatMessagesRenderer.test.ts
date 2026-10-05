@@ -951,6 +951,9 @@ test("chat send error exposes retry and dismiss actions without truncating the m
   }));
 
   assert.match(html, /role="alert"/);
+  assert.match(html, /data-chat-notifications=""/);
+  assert.match(html, /data-chat-notification-tone="error"/);
+  assert.doesNotMatch(html, /rumi-chat-error/);
   assert.match(html, /data-error-icon="chat"/);
   assert.match(html, /aria-label="チャットエラーをコピー"/);
   assert.match(html, /data-copy-icon=""/);

@@ -184,6 +184,8 @@ UI development; it does not bundle the PackVM helper needed to run Defaults.
 
 When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, open **Packs** → **Tobkiri Host Pack Control** → **PackVM lifecycle**, prepare and approve the plan, and provision PackVM. Once it reports **Healthy and attested**, use **Home** → **Launch Tobkiri Defaults** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
 
+To open `http://127.0.0.1:8766/p/defaults/chat` in a browser, select **アクセスをリクエスト** and approve the separate Tobkiri Launcher window. The window shows the exact local origin, Profile and route. Approval expires after two minutes and applies only to the browser that requested access. Closing the window or selecting **拒否** denies the request. The Host owns the pending request and login session; the Launcher owns the local approval window; Defaults presents the chat after login. This login does not approve tool execution. Existing tool approval, capability and workspace policies still apply. Launcher must be running with an active Defaults Profile; unavailable or stale runtimes cannot issue a session.
+
 `--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
 
 ### Use a local model without Docker or an API key

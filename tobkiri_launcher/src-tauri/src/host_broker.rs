@@ -97,6 +97,7 @@ struct HostBrokerShared {
     active_host_streams: Mutex<HashMap<String, HostStreamSession>>,
     used_approval_tokens: Mutex<HashMap<String, u64>>,
     attestation: BrokerAttestationIdentity,
+    browser_access_opener: Arc<dyn Fn(&str, u16) -> Result<(), String> + Send + Sync>,
     authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
 
@@ -179,6 +180,12 @@ impl HostBrokerRuntime {
         app: tauri::AppHandle,
     ) -> Result<Self> {
         let attestation = BrokerAttestationIdentity::generate();
+        let browser_app = app.clone();
+        let browser_config = config.clone();
+        let browser_access_opener: Arc<dyn Fn(&str, u16) -> Result<(), String> + Send + Sync> =
+            Arc::new(move |id, port| {
+                crate::browser_access::open(&browser_app, &browser_config, id, port)
+            });
         let authority_approval_window_opener = Self::authority_approval_window_opener(app, config);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
@@ -192,6 +199,7 @@ impl HostBrokerRuntime {
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
                     attestation,
+                    browser_access_opener,
                     authority_approval_window_opener,
                 }),
             });
@@ -252,6 +260,7 @@ impl HostBrokerRuntime {
                     active_requests: Mutex::new(0),
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
+                    browser_access_opener,
                     authority_approval_window_opener,
                     attestation,
                 }),
@@ -712,6 +721,29 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                         "consumed": false,
                         "error": {"code": "DEBUG_EXECUTION_INVALID", "message": error}
                     }),
+                }
+            })
+        }
+        ("POST", "/api/host/browser-access/open") => {
+            handle_authorized_json(request, shared, |payload: serde_json::Value| {
+                let request_id = payload
+                    .get("request_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let port = payload
+                    .get("runtime_port")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| u16::try_from(v).ok());
+                if !crate::valid_authority_request_id(request_id)
+                    || port != Some(crate::active_defaultspack_http_port())
+                {
+                    return json!({"ok":false,"opened":false,"error":{"code":"BROWSER_ACCESS_INVALID"}});
+                }
+                match (shared.browser_access_opener)(request_id, port.unwrap()) {
+                    Ok(()) => json!({"ok":true,"opened":true,"request_id":request_id}),
+                    Err(_) => {
+                        json!({"ok":false,"opened":false,"error":{"code":"BROWSER_ACCESS_OPEN_FAILED"}})
+                    }
                 }
             })
         }
@@ -3638,6 +3670,7 @@ mod tests {
             active_requests: Mutex::new(0),
             active_host_streams: Mutex::new(HashMap::new()),
             used_approval_tokens: Mutex::new(HashMap::new()),
+            browser_access_opener: Arc::new(|_, _| Ok(())),
             authority_approval_window_opener: Arc::new(|_| Ok(())),
             attestation: BrokerAttestationIdentity::generate(),
         }
@@ -3654,6 +3687,37 @@ mod tests {
             headers,
             body: serde_json::to_vec(&body).unwrap(),
         }
+    }
+
+    #[test]
+    fn browser_access_route_requires_token_and_captured_port() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let shared = Arc::new(test_shared(config));
+        let mut request = authority_approval_open_request(
+            None,
+            json!({"request_id":"req-1","runtime_port":crate::active_defaultspack_http_port()}),
+        );
+        request.path = "/api/host/browser-access/open".into();
+        assert_eq!(route_request(&request, &shared).0, 401);
+        request
+            .headers
+            .insert("authorization".into(), "Bearer broker-token".into());
+        assert_eq!(
+            route_request(&request, &shared)
+                .1
+                .get("ok")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        request.body = serde_json::to_vec(&json!({"request_id":"req-1","runtime_port":1})).unwrap();
+        assert_eq!(
+            route_request(&request, &shared)
+                .1
+                .get("ok")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let _ = fs::remove_dir_all(temp_dir);
     }
 
     #[test]

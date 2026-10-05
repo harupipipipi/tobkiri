@@ -70,6 +70,14 @@ class PanelAuthManager:
         # Each grant is bound to exactly one issued one-time code and is
         # consumed by that code's exchange.
         self._presenter_grants: Dict[str, Dict[str, Any]] = {}
+        from .browser_access import BrowserAccessManager
+
+        self.browser_access = BrowserAccessManager(self)
+        from .browser_access_native_auth import BrowserAccessNativeAuth
+
+        self.browser_access_native_auth = BrowserAccessNativeAuth(
+            self._bootstrap_secret
+        )
 
     @staticmethod
     def _generate_secret_token() -> str:

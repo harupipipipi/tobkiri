@@ -101,6 +101,8 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 
 `webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
 
+チャットのエラーと完了のお知らせは、会話を押し下げない画面上部の通知カードに表示します。8秒後に通知アイコンへたたみ、アイコンから内容を再表示できます。ピンボタンで通知を固定すると、自動ではたたまれません。もう一度押すと固定を解除できます。マウスやキーボードで通知を読む間も表示を維持し、エラーのコピー・再試行・閉じる操作も利用できます。
+
 ## AI Agent Service Defaults
 
 defaultspack includes local-first building blocks inspired by Codex, Claude Code, ChatGPT Projects, Manus, Genspark, and OpenClaw. The core contract is:

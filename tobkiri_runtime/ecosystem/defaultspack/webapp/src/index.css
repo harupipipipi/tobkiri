@@ -1,4 +1,6 @@
 @import "tailwindcss";
+
+@import "./styles/chat-notifications.css";
 @import "./ui/layers/layers.css";
 @import "./ui/motion/luxeMotion.css";
 @import "./styles/rumi-liquid-mobile.css";

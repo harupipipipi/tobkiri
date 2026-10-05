@@ -192,6 +192,7 @@ struct SourceProvenance<'a> {
 #[cfg(not(test))]
 fn main() {
     println!("cargo:rerun-if-changed=splash/index.html");
+    println!("cargo:rerun-if-changed=splash/browser-access-approval.html");
     println!("cargo:rerun-if-changed=splash/tobkiri_launcher_startup_blade_cut.svg");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=../../pack-shell/Cargo.toml");
@@ -245,6 +246,8 @@ fn main() {
     }
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "browser_access_context",
+            "browser_access_decide",
             "get_setup_progress",
             "debug_approval_status",
             "arm_debug_approval",

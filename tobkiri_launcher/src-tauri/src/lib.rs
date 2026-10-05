@@ -13,6 +13,7 @@ mod development_packvm;
 mod frontend_entry;
 mod health_check;
 mod host_audit;
+mod browser_access;
 mod host_broker;
 mod host_broker_types;
 mod host_contract;
@@ -4000,6 +4001,9 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "browser-access-approval" && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
+                if let Some(config) = window.app_handle().try_state::<AppConfig>() { browser_access::close(window.app_handle(), config.inner()); }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if should_send_to_background_on_close(window.label()) {
                     api.prevent_close();
@@ -4010,6 +4014,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            browser_access::browser_access_context,
+            browser_access::browser_access_decide,
             get_setup_progress,
             debug_approval_status,
             arm_debug_approval,
@@ -4198,6 +4204,7 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
 
     let progress = SetupProgress(Arc::new(Mutex::new("Initializing...".to_string())));
     let progress_arc = progress.0.clone();
+    app.manage(browser_access::Coordinator::default());
     app.manage(progress);
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     app.manage(ShutdownState(
