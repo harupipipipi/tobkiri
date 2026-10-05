@@ -81,7 +81,7 @@ const enter=(data)=>{
 if(!data?.csrf_token||!data?.journal_scope)throw new Error('invalid_request');
 sessionStorage.setItem('rumi-panel-csrf',data.csrf_token);
 sessionStorage.setItem('tobkiri-panel-journal-scope-v1',data.journal_scope);
-location.replace(data.target||target);
+if(data.target){location.replace(data.target)}else{location.replace(TARGET_LITERAL)}
 };
 const fail=(error)=>{
 button.disabled=false;button.textContent='もう一度リクエスト';

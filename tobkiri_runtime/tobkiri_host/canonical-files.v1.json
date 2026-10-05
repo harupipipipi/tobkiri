@@ -49,6 +49,7 @@
     "saved_turn_plan.py",
     "shells.py",
     "sparse_copy.py",
+    "surface_resources.py",
     "tauri_roles.py",
     "triggers.py",
     "wasm_backend.py",
