@@ -286,11 +286,10 @@ pub(crate) async fn drag_task_pet(
 ) -> Result<(), String> {
     let state = state.inner().clone();
     crate::run_ui_work_on_main_thread(&app, "drag task pet", move || {
-        checked_binding(
-            &window,
-            &state.lock().map_err(|error| error.to_string())?,
-            true,
-        )?;
+        {
+            let locked = state.lock().map_err(|error| error.to_string())?;
+            checked_binding(&window, &locked, true)?;
+        }
         window.start_dragging().map_err(|error| error.to_string())
     })
 }
@@ -409,7 +408,7 @@ mod tests {
         assert!(validate(&p, "profile-a").is_err());
         let mut value = serde_json::to_value(presentation()).unwrap();
         value["approved"] = true.into();
-        assert!(serde_json::from_value::<Presentation>(value).is_err());
+        assert!(serde_json::from_value::<Presentation>(value.clone()).is_err());
         value.as_object_mut().unwrap().remove("approved");
         value["view"]["mood"] = "unknown".into();
         assert!(serde_json::from_value::<Presentation>(value).is_err());
