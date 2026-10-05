@@ -1562,7 +1562,10 @@ def _migration_status(
         return "generated-draft"
     if effective_status != "semantically-reviewed":
         return "generated-draft"
-    release_entry = {**effective_entry, "status": "release-verified"}
+    # Validate the generated receipt against its original generated document.
+    # The release validator applies the independently bound curated semantics
+    # itself; pre-overlaying here invalidates an otherwise genuine receipt.
+    release_entry = {**entry, "status": "release-verified"}
     if review is not None and not _pack_release_proof_errors(
         pack_id,
         release_entry,
@@ -3882,43 +3885,63 @@ def test_executable_source_registry_covers_every_executable_operation() -> None:
     assert not findings
 
 
-def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
-    """Only exact legacy-to-v4 comparisons plus release receipts promote a Pack."""
-    proof, proof_findings = _load_independent_migration_proof()
-
-    assert not proof_findings
-    assert len(proof) == len(_production_pack_dirs())
-    statuses = Counter(
-        _migration_status(path.name, path, proof) for path in _production_pack_dirs()
+@pytest.fixture
+def synthetic_migration_evidence(tmp_path: Path):
+    """Use real evidence validators over a separate, explicitly synthetic Pack."""
+    from tests.conformance_support.migration_gate_fixture import (
+        bind_fixture,
+        build_fixture,
     )
-    assert statuses == {"release-verified": len(_production_pack_dirs())}
-    assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
-    assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
-    assert proof["tobkiri_mcp_connection_pack"]["status"] == "generated-draft"
+
+    gate = sys.modules[__name__]
+    fixture = build_fixture(tmp_path, gate)
+    with bind_fixture(gate, fixture, snapshot=True):
+        yield fixture
 
 
-def test_current_sha_evidence_is_green_when_pack_semantics_are_proved() -> None:
-    """The complete release gate reports GREEN once every Pack is proved."""
+def test_migration_status_promotes_only_pack_specific_semantic_proof(
+    synthetic_migration_evidence,
+) -> None:
+    """Exact fixture evidence promotes only its matching Pack, never a foreign one."""
+    fixture = synthetic_migration_evidence
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    assert _migration_status(fixture.pack_id, fixture.pack_dir, proof) == "release-verified"
+    assert _migration_status("foreign_pack", fixture.pack_dir, proof) != "release-verified"
+
+
+def test_synthetic_evidence_is_green_when_pack_semantics_are_proved(
+    synthetic_migration_evidence,
+) -> None:
+    """Exercise aggregation with real proof loaders, not live release inventory."""
     report = _audit_snapshot()
-    expected_head = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-    ).strip()
-    assert report["head_sha"] == expected_head
     assert report["gate"]["status"] == "GREEN"
     assert report["gate"]["clean"] is True
+    assert report["pack_inventory"]["production_pack_directories"] == 1
+    assert report["pack_inventory"]["migration_status_counts"] == {"release-verified": 1}
+    assert report["gates"]["migration_evidence"] == {"status": "GREEN", "findings": []}
+
+
+def test_current_sha_evidence_reports_actual_production_proof_state() -> None:
+    """A fresh report must preserve unproved production artifacts as RED."""
+    report = _audit_snapshot()
+    assert report["head_sha"] == subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+    ).strip()
     pack_count = len(_production_pack_dirs())
     assert report["pack_inventory"]["production_pack_directories"] == pack_count
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
-    assert report["pack_inventory"]["migration_status_counts"] == {
-        "release-verified": pack_count,
-    }
-    assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
-    assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"
-    assert report["gates"]["executable_source_registry"]["status"] == "GREEN"
-    assert report["gates"]["migration_evidence"]["status"] == "GREEN"
-    migration_rules = {item["rule"] for item in report["gates"]["migration_evidence"]["findings"]}
-    assert "migration_release_proof_missing" not in migration_rules
+    counts = report["pack_inventory"]["migration_status_counts"]
+    assert sum(counts.values()) == pack_count
+    findings = report["gates"]["migration_evidence"]["findings"]
+    if counts.get("release-verified", 0) != pack_count:
+        assert report["gate"]["status"] == "RED"
+        assert report["gate"]["clean"] is False
+        assert report["gates"]["migration_evidence"]["status"] == "RED"
+        assert "migration_release_proof_missing" in {item["rule"] for item in findings}
+    for key in ("artifact_contracts", "declaration_disk_runtime", "executable_source_registry"):
+        assert report["gates"][key]["status"] == "GREEN"
 
 
 def test_independent_migration_proof_rejects_tampered_signature(
@@ -3939,3 +3962,66 @@ def test_independent_migration_proof_rejects_tampered_signature(
 
     assert not proof
     assert findings[0]["rule"] == "independent_migration_proof_invalid"
+
+
+def test_curated_overlay_preserves_original_generated_receipt_validation(
+    synthetic_migration_evidence,
+) -> None:
+    fixture = synthetic_migration_evidence
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    reviews, receipts, evidence_findings = _load_release_evidence()
+    assert not evidence_findings
+    pack_id = fixture.pack_id
+    entry = proof[pack_id]
+    effective = _entry_with_curated_semantics(entry, reviews[pack_id])
+    assert effective["semantic_comparison"] != entry["semantic_comparison"]
+    # Validating a prematurely overlaid entry would invalidate the original
+    # generated receipt. The public evaluator must preserve both identities.
+    assert _pack_release_proof_errors(
+        pack_id, {**effective, "status": "release-verified"},
+        curated_reviews=reviews, runtime_receipts=receipts,
+    ) == ["pack_specific_migration_receipt_invalid"]
+    assert not _pack_release_proof_errors(
+        pack_id, {**entry, "status": "release-verified"},
+        curated_reviews=reviews, runtime_receipts=receipts,
+    )
+    assert _migration_status(pack_id, fixture.pack_dir, proof) == "release-verified"
+
+
+def test_curated_overlay_does_not_hide_a_tampered_generated_receipt(
+    synthetic_migration_evidence,
+) -> None:
+    fixture = synthetic_migration_evidence
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    pack_id = fixture.pack_id
+    assert _migration_status(pack_id, fixture.pack_dir, proof) == "release-verified"
+    changed = {**proof, pack_id: {**proof[pack_id], "migration_receipt_digest": "sha256:" + "0" * 64}}
+    assert _pack_release_proof_errors(
+        pack_id, {**changed[pack_id], "status": "release-verified"},
+    ) == ["pack_specific_migration_receipt_invalid"]
+    assert _migration_status(pack_id, fixture.pack_dir, changed) == "semantically-reviewed"
+
+
+def test_stale_curated_review_preserves_generated_semantics_and_red_gate(
+    synthetic_migration_evidence,
+) -> None:
+    fixture = synthetic_migration_evidence
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    reviews, _, evidence_findings = _load_release_evidence()
+    assert not evidence_findings
+    assert _migration_status(fixture.pack_id, fixture.pack_dir, proof) == "release-verified"
+    stale = {**reviews[fixture.pack_id], "target_digest": "sha256:" + "d" * 64}
+    stale.pop("review_attestation_digest")
+    stale["review_attestation_digest"] = _proof_digest(stale)
+    payload = _load_json(fixture.review_path)
+    payload["reviews"][fixture.pack_id] = stale
+    fixture.review_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert _entry_with_curated_semantics(proof[fixture.pack_id], stale) == proof[fixture.pack_id]
+    assert _migration_status(fixture.pack_id, fixture.pack_dir, proof) == "semantically-reviewed"
+    report = _audit_snapshot()
+    assert report["gate"]["status"] == "RED"
+    rules = {finding["rule"] for finding in report["gates"]["migration_evidence"]["findings"]}
+    assert {"pack_release_proof_invalid", "migration_release_proof_missing"}.issubset(rules)

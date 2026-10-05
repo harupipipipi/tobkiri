@@ -217,3 +217,57 @@ def test_complete_setup_rejects_invalid_compatibility_payload_without_writes(
     assert result["success"] is False
     assert result["setup_state"] == "invalid_request"
     assert list(user_data.rglob("*")) == []
+
+
+@pytest.mark.parametrize("reconfirmation", [False, True])
+def test_current_capture_failure_overrides_prior_runtime_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reconfirmation: bool,
+) -> None:
+    """Prior startup success cannot bless a denied current authority capture."""
+    from types import SimpleNamespace
+
+    from core_runtime import app_lifecycle_manager as lifecycle_module
+    from core_runtime import profile_runtime_port
+    from core_runtime.bootstrap import profile_capture
+
+    monkeypatch.setattr(lifecycle_module, "_RUNTIME_READINESS_STATE", {})
+    lifecycle_module.mark_runtime_ready()
+    monkeypatch.setattr(profile_capture, "active_profile_exists", lambda **_kw: True)
+    monkeypatch.setattr(
+        profile_runtime_port,
+        "require_profile_runtime",
+        lambda: SimpleNamespace(
+            is_activation_lock_timeout=lambda _error: False,
+            is_reconfirmation_required=lambda _error: reconfirmation,
+        ),
+    )
+    active = SimpleNamespace(
+        resolved=SimpleNamespace(
+            profile={"profile_id": "defaults"}, plan={"plan_digest": "plan"}
+        ),
+        activation={"activation_id": "activation:current"},
+    )
+    monkeypatch.setattr(profile_capture, "capture_active_profile", lambda **_kw: active)
+    lifecycle = AppLifecycleManager(base_dir=tmp_path)
+    assert lifecycle.get_health()["runtime_ready"] is True
+
+    def deny(**_kwargs):
+        raise RuntimeError("current authority denied")
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", deny)
+    for result in (lifecycle.check_setup_status(), lifecycle.get_health()):
+        assert result["runtime_ready"] is False
+        assert result["runtime_status"] == (
+            "profile_reconfirmation_required" if reconfirmation else "error"
+        )
+        assert result["runtime_error"] == "current authority denied"
+        assert result["panel_ready"] is True
+        assert result["needs_setup"] is True
+        assert result["active_profile_ready"] is False
+        assert result["launch_ready"] is False
+        assert result["host_catalog_verified"] is reconfirmation
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", lambda **_kw: active)
+    assert lifecycle.get_health()["runtime_ready"] is True

@@ -4,33 +4,46 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 from pathlib import Path
 from typing import Sequence
 
 _TARGET_MODULE = None
+_TARGET_LOAD_LOCK = threading.RLock()
 
 
 def _load_desktop_app_module():
     """Load and cache the canonical long-lived Defaultspack desktop server."""
-    global _TARGET_MODULE
-    if _TARGET_MODULE is not None:
-        return _TARGET_MODULE
-    app_root = Path(__file__).resolve().parents[1] / "app"
-    target = app_root / "ecosystem" / "defaultspack" / "defaultspack" / "desktop_app.py"
-    if target.is_symlink() or not target.is_file():
-        raise RuntimeError(f"canonical Defaultspack entrypoint is missing: {target}")
-    if str(app_root) not in sys.path:
-        sys.path.insert(0, str(app_root))
-    spec = importlib.util.spec_from_file_location(
-        "tobkiri_packaged_defaultspack",
-        target,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"canonical Defaultspack entrypoint is not importable: {target}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    _TARGET_MODULE = module
-    return module
+    with _TARGET_LOAD_LOCK:
+        global _TARGET_MODULE
+        if _TARGET_MODULE is not None:
+            return _TARGET_MODULE
+        app_root = Path(__file__).resolve().parents[1] / "app"
+        target = app_root / "ecosystem" / "defaultspack" / "defaultspack" / "desktop_app.py"
+        if target.is_symlink() or not target.is_file():
+            raise RuntimeError(f"canonical Defaultspack entrypoint is missing: {target}")
+        if str(app_root) not in sys.path:
+            sys.path.insert(0, str(app_root))
+        spec = importlib.util.spec_from_file_location(
+            "tobkiri_packaged_defaultspack",
+            target,
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"canonical Defaultspack entrypoint is not importable: {target}")
+        module = importlib.util.module_from_spec(spec)
+        # Dataclasses and other import-time consumers resolve __module__ through
+        # sys.modules. Register before execution, just as normal imports do.
+        if spec.name in sys.modules:
+            raise RuntimeError("canonical Defaultspack module name is already occupied")
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            if sys.modules.get(spec.name) is module:
+                del sys.modules[spec.name]
+            raise
+        _TARGET_MODULE = module
+        return module
 
 
 def _load_desktop_app_main():

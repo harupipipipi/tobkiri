@@ -4,7 +4,7 @@ import { configureProvider, type ProviderConfigurationStatus } from "./providerC
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
-import type { ComposerCommandItem } from "./api";
+import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
 import { mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./registeredSlashCommands";
@@ -91,6 +91,21 @@ test("commands cannot execute outside their declared modes", () => {
   assert.equal(commandSupportsMode(terminal, "agent"), false);
   assert.equal(commandSupportsMode(terminal, "coding"), true);
   assert.equal(commandSupportsMode({ ...terminal, modes: [] }, "chat"), false);
+});
+
+test("undeclared conversation steering never sends a request", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new Error("no steer route is declared");
+  };
+  assert.equal(api.supportsConversationSteering, false);
+  for (const action of ["list", "enqueue"]) {
+    await assert.rejects(api.conversationSteer({ action, prompt: "keep this draft" }), /まだ対応していません/);
+  }
+  assert.equal(calls, 0);
 });
 
 test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
@@ -627,6 +642,33 @@ test("saved turn uses exact canonical transport and never retries an uncertain o
   globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
   await assert.rejects(api.startSavedTurn(input), /connection lost/);
   assert.equal(calls, 2);
+});
+
+test("saved turn preserves explicit no-tools mode in the canonical request", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input: SavedTurnRequest = {
+    turn_id: "turn-none-mode",
+    conversation_id: "conversation-1",
+    conversation_revision: 1,
+    content: [{ type: "text" as const, text: "Answer using no external tools." }],
+    tool_selection: {
+      mode: "none" as const, include: [], exclude: [], scope: "turn" as const, must_use: false,
+    },
+  };
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "reconciliation_required",
+      turn: { id: input.turn_id, conversation_id: input.conversation_id, status: "waiting", revision: 1 },
+    } }));
+  };
+  await api.startSavedTurn(input);
+  assert.equal(calls, 1);
 });
 
 test("saved turn preserves the admitted strategy and thinking level", async (context) => {
@@ -1760,6 +1802,15 @@ test("a Settings read begun during a write cannot overwrite its settled receipt"
 test("command protocol catalog is authoritative and invocation preserves its envelope", async () => {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
+  const invocation = {
+    args: { enabled: true },
+    conversation_id: "conversation-1",
+    mode: "chat" as const,
+    invocation_id: "invocation-1",
+    catalog_revision: "revision-1",
+    idempotency_key: "invocation-1",
+    client_sequence: 3,
+  };
   const legacyCommand = {
     id: "feature_toggle",
     name: "feature-toggle",
@@ -1769,9 +1820,14 @@ test("command protocol catalog is authoritative and invocation preserves its env
     risk: "medium",
     execution: { type: "rumi_function", qualified_name: "example_pack:toggle_feature" },
   };
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestTarget(input);
     requests.push(url);
+    if (url.endsWith("/invoke")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        ...invocation, command_ref: "example_pack:feature-toggle",
+      });
+    }
     const data = url.endsWith("/catalog")
       ? {
           api_version: "tobkiri.commands/v1",
@@ -1821,7 +1877,7 @@ test("command protocol catalog is authoritative and invocation preserves its env
     const catalog = await api.resolvedUiCommands();
     const result = await api.executeResolvedUiCommand({
       command: catalog.commands[0].canonical_id ?? "",
-      args: { enabled: true },
+      ...invocation,
     });
     assert.equal(catalog.protocol?.catalog_revision, "revision-1");
     assert.equal(catalog.commands[0].protocol_presentation?.input.kind, "toggle");
@@ -1835,6 +1891,37 @@ test("command protocol catalog is authoritative and invocation preserves its env
     routeKey("api/command-protocol/v1/catalog"),
     routeKey("api/command-protocol/v1/invoke"),
   ]);
+});
+
+test("resolved slash commands send only the canonical invocation fields", async () => {
+  const originalFetch = globalThis.fetch;
+  const sent: Record<string, unknown>[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(requestTarget(input), routeKey("api/command-protocol/v1/invoke"));
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    sent.push(body);
+    assert.deepEqual(Object.keys(body).sort(), [
+      "args", "command_ref", "idempotency_key", "invocation_id", "mode",
+    ]);
+    return new Response(JSON.stringify({ status: "ok", data: {
+      api_version: "tobkiri.commands/v1", status: "succeeded",
+      operation_id: body.invocation_id, command_ref: body.command_ref,
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    for (const name of ["new", "help", "tools"]) {
+      await api.executeResolvedUiCommand({
+        command: `defaultspack:${name}`, args: {}, conversation_id: null,
+        mode: "chat", invocation_id: `invoke-${name}`, idempotency_key: `invoke-${name}`,
+      });
+    }
+    assert.deepEqual(sent.map((body) => body.command_ref), [
+      "defaultspack:new", "defaultspack:help", "defaultspack:tools",
+    ]);
+    assert.equal(sent.length, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("high-risk command routes expose only invocation-scoped follow-ups", async () => {
@@ -2805,6 +2892,77 @@ test("listProviderConnections rejects a provider response that carries undeclare
   }) as typeof fetch;
   try {
     await assert.rejects(api.listProviderConnections(), /invalid Pack v4 response/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listProviderConnections accepts keyless local connections without inferring readiness", async () => {
+  const originalFetch = globalThis.fetch;
+  const localConnection = {
+    provider_instance_id: "connection/ollama:local",
+    display_name: "Local Ollama",
+    credential_status: "not_required",
+    health_status: "unverified",
+    reachability: "unknown",
+    observed_at: null,
+  };
+  const calls: Array<{ target: string; cache?: RequestCache; method: string }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({
+      target: requestTarget(input),
+      cache: init?.cache,
+      method: init?.method ?? "GET",
+    });
+    return new Response(JSON.stringify({ success: true, data: {
+      revision: 8,
+      providers: [
+        { ...localConnection, enabled: true },
+        {
+          ...localConnection,
+          provider_instance_id: "disabled/local:connection",
+          enabled: false,
+        },
+      ],
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.listProviderConnections(), {
+      registry_revision: 8,
+      connections: [localConnection],
+    });
+    assert.deepEqual(calls, [{
+      target: routeKey("api/connections/status"),
+      cache: "no-store",
+      method: "GET",
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keyless provider snapshots still reject unknown credential states and secret fields", async () => {
+  const originalFetch = globalThis.fetch;
+  const localConnection = {
+    provider_instance_id: "connection/ollama:local",
+    display_name: "Local Ollama",
+    enabled: true,
+    credential_status: "not_required",
+    health_status: "unverified",
+    reachability: "unknown",
+    observed_at: null,
+  };
+  try {
+    for (const provider of [
+      { ...localConnection, credential_status: "optional" },
+      { ...localConnection, credential_handle: "credential:must-not-reach-ui" },
+    ]) {
+      globalThis.fetch = (async () => new Response(JSON.stringify({
+        success: true,
+        data: { revision: 8, providers: [provider] },
+      }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+      await assert.rejects(api.listProviderConnections(), /invalid Pack v4 response/i);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

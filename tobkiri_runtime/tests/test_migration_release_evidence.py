@@ -122,7 +122,12 @@ def _operation_mapping_review(
                 "v4_count": v4_count,
             },
             "operation_mappings": [
-                {"legacy": f"legacy-op-{index}", "v4": f"v4-op-{index}"}
+                {
+                    "legacy_operation_id": f"legacy-op-{index}",
+                    "function_id": "function:test",
+                    "v4_contract_id": "contract:test",
+                    "v4_operation_id": f"v4-op-{index}",
+                }
                 for index in range(v4_count)
             ],
         },
@@ -205,6 +210,7 @@ def _runtime_receipt(
     *,
     operation_count: int = 0,
     isolated_status: str = "not-applicable",
+    with_executions: bool = False,
 ) -> dict[str, Any]:
     admission = _with_digest(
         {
@@ -253,6 +259,25 @@ def _runtime_receipt(
         isolated["result_digest"] = isolated["probe_result_digest"]
     else:
         isolated["reason"] = "Admission-only Pack has no executable operation."
+    if with_executions:
+        # Synthetic unit-test measurements, never published as Host receipts.
+        isolated["operation_executions"] = [
+            {
+                "method": "host-operation-invocation.v1",
+                "pack_id": pack_id,
+                "target_digest": target_digest,
+                "host_instance_id": isolated["host_instance_id"],
+                "function_id": "function:test",
+                "contract_id": "contract:test",
+                "operation_id": f"v4-op-{index}",
+                "invocation_id": f"invocation:test:{index}",
+                "observed_at": "2026-09-16T00:02:30Z",
+                "outcome": "passed",
+                "input_digest": canonical_digest({"test-input": index}),
+                "output_digest": canonical_digest({"test-output": index}),
+            }
+            for index in range(operation_count)
+        ]
     isolated = _with_digest(isolated, "receipt_digest")
     return _with_digest(
         {
@@ -451,7 +476,7 @@ def test_runtime_receipt_rejects_target_digest_substitution(tmp_path: Path) -> N
 
 
 def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
-    """All checked-in reviews bind exact source, target, and semantic digests."""
+    """Historical reviews promote only when their exact current bindings match."""
 
     reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
     proof, findings = complete_gate._load_independent_migration_proof()
@@ -461,7 +486,18 @@ def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
     for pack_id, review in reviews.items():
         entry = {**proof[pack_id], "status": "generated-draft"}
         effective = complete_gate._entry_with_curated_semantics(entry, review)
-        assert effective["status"] == "semantically-reviewed"
+        bindings_match = (
+            review["source_digest"] == entry["source"]["digest"]
+            and review["target_digest"] == entry["target"]["digest"]
+            and (
+                review.get("semantic_record") is not None
+                or review["semantic_record_digest"] == canonical_digest(entry["semantic_comparison"])
+            )
+        )
+        if bindings_match:
+            assert effective["status"] == "semantically-reviewed"
+        else:
+            assert effective == entry
         if review.get("semantic_record") is None:
             tampered_review = {
                 **review,
@@ -518,7 +554,7 @@ def _runtime_ledger(path: Path, pack_id: str, record: dict[str, Any]) -> Path:
 
 
 def test_verified_receipt_is_valid_with_full_execution_anchors(tmp_path: Path) -> None:
-    """A verified isolated-conformance receipt carries real Host artifacts."""
+    """Release validation accepts a complete synthetic execution test fixture."""
 
     source_digest = "sha256:" + "a" * 64
     target_digest = "sha256:" + "b" * 64
@@ -531,6 +567,7 @@ def test_verified_receipt_is_valid_with_full_execution_anchors(tmp_path: Path) -
         review,
         operation_count=2,
         isolated_status="verified",
+        with_executions=True,
     )
     path = _runtime_ledger(tmp_path / "runtime.json", "pack-a", runtime)
 
@@ -633,6 +670,7 @@ def test_release_evidence_binds_executed_operations_to_review() -> None:
         review,
         operation_count=2,
         isolated_status="verified",
+        with_executions=True,
     )
     assert not release_evidence_errors("pack-a", entry, review, matching)
 
@@ -685,7 +723,9 @@ def test_verified_conformance_must_exercise_a_nonempty_operation_set() -> None:
         operation_count=1,
         isolated_status="verified",
     )
-    assert not release_evidence_errors("pack-a", entry, review, real_run)
+    assert "runtime_receipt_operation_execution_missing" in release_evidence_errors(
+        "pack-a", entry, review, real_run
+    )
 
 
 def test_admission_only_review_rejects_verified_conformance_claim() -> None:
@@ -706,3 +746,228 @@ def test_admission_only_review_rejects_verified_conformance_claim() -> None:
     errors = release_evidence_errors("pack-a", entry, review, runtime)
 
     assert "isolated_conformance_verified_for_admission_only" in errors
+
+
+def test_inventory_only_receipt_remains_readable_but_ineligible(tmp_path: Path) -> None:
+    """Backward compatibility does not preserve an unsupported release claim."""
+
+    source = "sha256:" + "a" * 64
+    target = "sha256:" + "b" * 64
+    review = _operation_mapping_review("pack-a", source, target)
+    runtime = _runtime_receipt(
+        "pack-a", target, review, operation_count=2, isolated_status="verified"
+    )
+    path = _runtime_ledger(tmp_path / "old.json", "pack-a", runtime)
+    assert load_runtime_receipts(path) == {"pack-a": runtime}
+    assert release_evidence_errors(
+        "pack-a", _release_entry("pack-a", source, target), review, runtime
+    ) == ["runtime_receipt_operation_execution_missing"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("missing", "runtime_receipt_operation_execution_missing"),
+        ("empty", "runtime_receipt_operation_execution_missing"),
+        ("duplicate", "runtime_receipt_operation_execution_duplicate"),
+        ("reused-invocation", "runtime_receipt_operation_execution_duplicate"),
+        ("failed", "runtime_receipt_operation_execution_failed"),
+        ("omitted", "runtime_receipt_operation_execution_set_mismatch"),
+        ("foreign-operation", "runtime_receipt_operation_execution_set_mismatch"),
+        ("foreign-contract", "runtime_receipt_operation_execution_set_mismatch"),
+        ("foreign-function", "runtime_receipt_operation_execution_set_mismatch"),
+        ("foreign-pack", "runtime_receipt_operation_execution_identity_mismatch"),
+        ("foreign-target", "runtime_receipt_operation_execution_identity_mismatch"),
+        ("foreign-host", "runtime_receipt_operation_execution_identity_mismatch"),
+        ("later-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("stale-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("invalid-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("naive-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("underflow-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("overflow-observation", "runtime_receipt_operation_execution_observation_mismatch"),
+        ("missing-input", "runtime_receipt_operation_execution_invalid"),
+        ("missing-output", "runtime_receipt_operation_execution_invalid"),
+        ("missing-invocation", "runtime_receipt_operation_execution_invalid"),
+        ("inventory-method", "runtime_receipt_operation_execution_invalid"),
+        ("malformed", "runtime_receipt_operation_execution_invalid"),
+    ],
+)
+def test_release_rejects_unmeasured_or_substituted_operation_execution(
+    tmp_path: Path, mutation: str, expected: str
+) -> None:
+    """Rehashing incomplete or foreign records does not establish execution."""
+
+    source = "sha256:" + "a" * 64
+    target = "sha256:" + "b" * 64
+    review = _operation_mapping_review("pack-a", source, target)
+    runtime = _runtime_receipt(
+        "pack-a",
+        target,
+        review,
+        operation_count=2,
+        isolated_status="verified",
+        with_executions=True,
+    )
+    isolated = runtime["isolated-conformance"]
+    executions = isolated["operation_executions"]
+    if mutation == "missing":
+        isolated.pop("operation_executions")
+    elif mutation == "empty":
+        isolated["operation_executions"] = []
+    elif mutation == "duplicate":
+        executions[1] = copy.deepcopy(executions[0])
+    elif mutation == "reused-invocation":
+        executions[1]["invocation_id"] = executions[0]["invocation_id"]
+    elif mutation == "failed":
+        executions[1]["outcome"] = "failed"
+    elif mutation == "omitted":
+        executions.pop()
+    elif mutation.startswith("foreign-"):
+        field = {
+            "operation": "operation_id",
+            "contract": "contract_id",
+            "function": "function_id",
+            "pack": "pack_id",
+            "target": "target_digest",
+            "host": "host_instance_id",
+        }[mutation.removeprefix("foreign-")]
+        executions[1][field] = (
+            "sha256:" + "f" * 64 if field == "target_digest" else "foreign"
+        )
+    elif mutation.endswith("-observation"):
+        executions[1]["observed_at"] = {
+            "later-observation": "2026-09-17T00:00:00Z",
+            "stale-observation": "2026-09-15T00:00:00Z",
+            "invalid-observation": "not-a-timestamp",
+            "naive-observation": "2026-09-16T00:02:30",
+            "underflow-observation": "0001-01-01T00:00:00+01:00",
+            "overflow-observation": "9999-12-31T23:59:59-01:00",
+        }[mutation]
+    elif mutation.startswith("missing-"):
+        executions[1].pop(
+            mutation.removeprefix("missing-") + "_digest"
+            if mutation != "missing-invocation"
+            else "invocation_id"
+        )
+    elif mutation == "inventory-method":
+        executions[1]["method"] = "operation-inventory"
+    elif mutation == "malformed":
+        executions[1] = None
+    runtime = _rechain_receipt(runtime)
+    # Historical/diagnostic records remain structurally loadable; eligibility
+    # performs the stricter measured-execution checks.
+    path = _runtime_ledger(tmp_path / "runtime.json", "pack-a", runtime)
+    assert load_runtime_receipts(path) == {"pack-a": runtime}
+    assert expected in release_evidence_errors(
+        "pack-a", _release_entry("pack-a", source, target), review, runtime
+    )
+
+
+def test_digest_only_review_resolves_only_exact_bound_operation_identities() -> None:
+    """Generated mappings are usable only through the review's exact digest."""
+
+    source = "sha256:" + "a" * 64
+    target = "sha256:" + "b" * 64
+    review = _operation_mapping_review("pack-a", source, target)
+    semantic = review.pop("semantic_record")
+    semantic.pop("semantic_record_digest")
+    review["semantic_record_digest"] = canonical_digest(semantic)
+    review = _with_digest(
+        {k: v for k, v in review.items() if k != "review_attestation_digest"},
+        "review_attestation_digest",
+    )
+    runtime = _runtime_receipt(
+        "pack-a",
+        target,
+        review,
+        operation_count=2,
+        isolated_status="verified",
+        with_executions=True,
+    )
+    entry = _release_entry("pack-a", source, target)
+    entry["semantic_comparison"] = semantic
+    assert not release_evidence_errors("pack-a", entry, review, runtime)
+    entry["semantic_comparison"] = copy.deepcopy(semantic)
+    entry["semantic_comparison"]["operation_mappings"][0]["v4_operation_id"] = "foreign"
+    assert "runtime_receipt_reviewed_operation_identities_missing" in (
+        release_evidence_errors("pack-a", entry, review, runtime)
+    )
+
+
+def test_all_historical_receipts_load_but_inventory_only_claims_cannot_release() -> (
+    None
+):
+    """Preserve all 143 records while withdrawing the 95 execution claims."""
+
+    reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
+    receipts = load_runtime_receipts(complete_gate.MIGRATION_RUNTIME_RECEIPT_PATH)
+    proof, findings = complete_gate._load_independent_migration_proof()
+    assert not findings
+    assert len(receipts) == 143
+    rejected = []
+    for pack_id, runtime in receipts.items():
+        errors = release_evidence_errors(
+            pack_id, proof[pack_id], reviews[pack_id], runtime
+        )
+        expected_errors = set()
+        if runtime["isolated-conformance"]["operation_count"]:
+            expected_errors.add("runtime_receipt_operation_execution_missing")
+            rejected.append(pack_id)
+        # Historical inventories may also be stale after a legitimate source
+        # repair. Require precisely the recorded binding failures, not arbitrary
+        # extra errors that could hide a broken eligible zero-operation path.
+        for field in ("source", "target"):
+            if reviews[pack_id][f"{field}_digest"] != proof[pack_id][field]["digest"]:
+                expected_errors.add(f"curated_review_{field}_digest_mismatch")
+        if runtime["target_digest"] != proof[pack_id]["target"]["digest"]:
+            expected_errors.add("runtime_receipt_target_digest_mismatch")
+        for field in ("semantic_record_digest", "review_attestation_digest"):
+            if runtime[field] != reviews[pack_id][field]:
+                expected_errors.add(f"runtime_receipt_{field}_mismatch")
+        assert set(errors) == expected_errors
+    assert len(rejected) == 95
+
+
+@pytest.mark.parametrize("kind", ["admission-only", "zero-operation"])
+def test_empty_reviews_reject_phantom_execution_records(kind: str) -> None:
+    """The empty/admission-only paths cannot conceal claimed executions."""
+
+    target = "sha256:" + "b" * 64
+    source = "sha256:" + "a" * 64
+    if kind == "admission-only":
+        review = _admission_only_review("pack-a", target)
+        source = None
+        status = "not-applicable"
+    else:
+        review = _zero_operation_review("pack-a", source, target)
+        status = "verified"
+    runtime = _runtime_receipt("pack-a", target, review, isolated_status=status)
+    runtime["isolated-conformance"]["operation_executions"] = [{"outcome": "passed"}]
+    runtime = _rechain_receipt(runtime)
+    entry = {"source": {"digest": source}, "target": {"digest": target}}
+    assert (
+        "runtime_receipt_operation_execution_set_mismatch"
+        in release_evidence_errors("pack-a", entry, review, runtime)
+    )
+
+
+def test_execution_observation_compares_actual_timezone_instants() -> None:
+    """Timezone offsets cannot falsely reject an in-range measured run."""
+
+    source = "sha256:" + "a" * 64
+    target = "sha256:" + "b" * 64
+    review = _operation_mapping_review("pack-a", source, target)
+    runtime = _runtime_receipt(
+        "pack-a",
+        target,
+        review,
+        operation_count=2,
+        isolated_status="verified",
+        with_executions=True,
+    )
+    for execution in runtime["isolated-conformance"]["operation_executions"]:
+        execution["observed_at"] = "2026-09-16T01:02:30+01:00"
+    runtime = _rechain_receipt(runtime)
+    assert not release_evidence_errors(
+        "pack-a", _release_entry("pack-a", source, target), review, runtime
+    )

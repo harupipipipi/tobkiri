@@ -373,7 +373,8 @@ test('Home does not advertise launch on an unsupported Windows PackVM host', asy
     await settle();
     const launch = buttonByLabel(container, 'Launch Defaults Profile');
     assert.equal(launch.disabled, true);
-    assert.match(container.textContent ?? '', /Windows WHPX.*Docker/);
+    assert.match(container.textContent ?? '', /bundled QEMU\/WHPX/);
+    assert.doesNotMatch(container.textContent ?? '', /Docker/);
     assert.match(container.textContent ?? '', /Profile verified/);
     assert.ok([...container.querySelectorAll('button')].some(
       (button) => button.textContent?.includes('Windows support issue #1494'),
@@ -997,6 +998,85 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
 
       assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
       assert.match(container.textContent ?? '', /Research Renamed/);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
+test('Home waits for the verified Host catalog and reloads Profiles after readiness recovers', async () => {
+  const previousState = useAppStore.getState();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  let profileReads = 0;
+  let finishLateRead: ((response: Response) => void) | undefined;
+
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      assert.equal(path, '/api/v4/profiles');
+      profileReads += 1;
+      if (profileReads === 1) {
+        throw new RequestTimeoutError('GET request timed out after 30000ms: /api/v4/profiles');
+      }
+      if (profileReads === 2) {
+        return new Promise<Response>((resolve) => { finishLateRead = resolve; });
+      }
+      return jsonResponse(profileRegistry());
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: false,
+      runtimeStatus: 'starting',
+      hostCatalogVerified: false,
+      profileCeremonyAvailable: false,
+      packTogglePending: {},
+    });
+    const {dom, container, root} = createDashboardDom();
+    try {
+      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+      await settle();
+      assert.equal(profileReads, 0, 'do not compete with cold-start catalog verification');
+
+      await act(async () => useAppStore.setState({hostCatalogVerified: true}));
+      await settle();
+      assert.equal(profileReads, 1);
+      assert.match(container.textContent ?? '', /GET request timed out/);
+
+      await act(async () => useAppStore.setState({hostCatalogVerified: false}));
+      await settle();
+      assert.equal(profileReads, 1, 'readiness loss must not start another Profile read');
+      await act(async () => useAppStore.setState({hostCatalogVerified: true}));
+      await settle();
+      assert.equal(profileReads, 2, 'verified readiness recovery must refresh the failed read');
+
+      await act(async () => useAppStore.setState({hostCatalogVerified: false}));
+      await act(async () => {
+        assert.ok(finishLateRead);
+        finishLateRead(jsonResponse(profileRegistry()));
+      });
+      await settle();
+      assert.doesNotMatch(container.textContent ?? '', /Defaults Profile/,
+        'a response from before readiness loss must not restore the catalog');
+      await act(async () => useAppStore.setState({hostCatalogVerified: true}));
+      await settle();
+      assert.equal(profileReads, 3);
+      assert.match(container.textContent ?? '', /Defaults Profile/);
+      assert.doesNotMatch(container.textContent ?? '', /GET request timed out/);
     } finally {
       await act(async () => root.unmount());
       dom.window.close();

@@ -74,8 +74,12 @@ python scripts/tobkiri_pack.py add ./my-pack tool \
   --description "Read approved task context"
 ```
 
-The command refuses to overwrite existing files and validates every generated
-manifest against its authoritative schema.
+The command refuses to overwrite existing component files and validates every
+generated manifest against its authoritative schema. It operates only on inert
+scaffolds: if a Pack already declares executable Functions, contracts, variants,
+custom requirements, or other authored authority, `add` refuses before creating
+or rewriting any files. Update those Packs through their own authoring/build
+workflow; refreshing the empty scaffold source must never erase declarations.
 
 ## Skill or Tool?
 

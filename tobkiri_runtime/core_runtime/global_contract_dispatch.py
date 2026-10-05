@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 
 class GlobalContractUnavailable(RuntimeError):
@@ -92,6 +93,15 @@ class HostCredentialTransport(Protocol):
         """Perform the sole Host-bound HTTPS Git push primitive."""
 
 
+class HostLocalModelTransport(Protocol):
+    """Finite credential-free capability for an operator-registered local model."""
+
+    def post_chat(
+        self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
+    ) -> Mapping[str, Any]:
+        """Invoke only the preapproved local text model, without caller URLs."""
+
+
 def _require_v4_session(value: object) -> V4ContractDispatch:
     if not callable(getattr(value, "invoke", None)) or not callable(
         getattr(value, "provider_metadata", None)
@@ -163,6 +173,7 @@ class GlobalContractClient:
     allowed_contract_ids: frozenset[str]
     consumer_pack_id: str
     host_credential_transport: HostCredentialTransport | None = None
+    host_local_model_transport: HostLocalModelTransport | None = None
 
     def providers(self, contract_id: str) -> tuple[dict[str, Any], ...]:
         """List selected metadata only for a manifest-declared requirement."""
@@ -188,6 +199,19 @@ class GlobalContractClient:
             operation,
             payload,
         )
+
+    def post_local_model_chat(
+        self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
+    ) -> dict[str, Any]:
+        """Use a separate Host-local capability; never downgrade cloud transport."""
+        if self.host_local_model_transport is None:
+            raise PermissionError("Host local model transport is unavailable")
+        result = self.host_local_model_transport.post_chat(
+            provider_instance_id=provider_instance_id, body=body, deadline=deadline,
+        )
+        if not isinstance(result, Mapping):
+            raise TypeError("Host local model response is invalid")
+        return dict(result)
 
     def post_json_with_credential(
         self,

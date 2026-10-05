@@ -95,6 +95,9 @@ pub(crate) struct ApplicationAuthority {
     pub shell_provider_id: String,
     pub application_id: String,
     pub launch_contribution: Option<RuntimeLaunchContribution>,
+    /// Exact active Normal Pack pins whose trust is checked by the Host.
+    /// These are NOT signed-bundle-verified artifacts or system Pack authority.
+    pub deferred_external_packs: BTreeMap<String, String>,
 }
 
 /// One artifact declaration accepted by the selected Pack verifier.
@@ -393,39 +396,44 @@ impl SignedApplicationResolver {
             };
         let mut selected_variant =
             validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
-        if let Err(error) = validate_profile_pack_closure(
+        let deferred_external_packs;
+        match validate_profile_pack_closure(
             &selected,
             &catalog,
             &bundle_root,
             &bundle_lock,
             development_bundle,
         ) {
-            if reconfirmation.is_some()
-                || error
-                    .downcast_ref::<ProfileReresolutionRequired>()
-                    .is_none()
-            {
-                return Err(error);
-            }
-            let candidate =
-                select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
-            ensure_reconfirmation_selection_is_stable(&selected, &candidate)?;
-            previous_launch = selected.launch_contribution;
-            selected = candidate;
-            selected_variant =
-                validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
-            if let Err(candidate_error) = validate_profile_pack_closure(
-                &selected,
-                &catalog,
-                &bundle_root,
-                &bundle_lock,
-                development_bundle,
-            ) {
-                bail!(
+            Ok(deferred) => deferred_external_packs = deferred,
+            Err(error) => {
+                if reconfirmation.is_some()
+                    || error
+                        .downcast_ref::<ProfileReresolutionRequired>()
+                        .is_none()
+                {
+                    return Err(error);
+                }
+                let candidate =
+                    select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+                ensure_reconfirmation_selection_is_stable(&selected, &candidate)?;
+                previous_launch = selected.launch_contribution;
+                selected = candidate;
+                selected_variant =
+                    validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
+                deferred_external_packs = match validate_profile_pack_closure(
+                    &selected,
+                    &catalog,
+                    &bundle_root,
+                    &bundle_lock,
+                    development_bundle,
+                ) {
+                    Ok(deferred) => deferred,
+                    Err(candidate_error) => bail!(
                     "current signed bootstrap Profile Pack closure is invalid: {candidate_error:#}"
-                );
+                ),
+                };
+                reconfirmation = Some(ReconfirmationKind::Profile);
             }
-            reconfirmation = Some(ReconfirmationKind::Profile);
         }
 
         let application_path =
@@ -466,7 +474,7 @@ impl SignedApplicationResolver {
         if let Some(kind) = reconfirmation {
             #[cfg(target_os = "macos")]
             if selected_variant.platform == "macos" {
-                let artifact = pack_root
+                let artifact = application_pack_root
                     .join("platform-artifacts")
                     .join(safe_relative(&selected_variant.artifact_ref)?);
                 let status = std::process::Command::new("/usr/bin/codesign")
@@ -500,6 +508,7 @@ impl SignedApplicationResolver {
             shell_provider_id: selected.shell_provider_id,
             application_id: selected.application_pack_id,
             launch_contribution: selected.launch_contribution,
+            deferred_external_packs,
         })
     }
 }
@@ -890,6 +899,33 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
 /// The unbundled local Launcher embeds the exact sealed authority snapshot
 /// prepared by its build script. The path alone is insufficient: another
 /// build or a planted link must not substitute a self-consistent old manifest.
+/// Return portable VM authority only from this executable's verified local stage.
+pub(crate) fn local_development_packvm_binding(
+    config: &AppConfig,
+) -> Result<Option<(PathBuf, String)>> {
+    #[cfg(all(debug_assertions, any(target_os = "linux", target_os = "windows")))]
+    {
+        if !config.is_dev_workspace() {
+            return Ok(None);
+        }
+        let Some(stage) = bound_local_development_authority_stage(config)? else {
+            return Ok(None);
+        };
+        let expected = option_env!("TOBKIRI_QEMU_PACKVM_MANIFEST_SHA256").unwrap_or_default();
+        let accelerator = if cfg!(target_os = "windows") {
+            "whpx"
+        } else {
+            "kvm"
+        };
+        crate::development_packvm::verify_assets(&stage, expected, accelerator)
+    }
+    #[cfg(not(all(debug_assertions, any(target_os = "linux", target_os = "windows"))))]
+    {
+        let _ = config;
+        Ok(None)
+    }
+}
+
 #[cfg(debug_assertions)]
 fn bound_local_development_authority_stage(config: &AppConfig) -> Result<Option<PathBuf>> {
     if option_env!("TOBKIRI_LOCAL_DEV_WORKSPACE") != Some("1") {
@@ -1524,13 +1560,18 @@ fn validate_profile_pack_closure(
     bundle_root: &Path,
     bundle_lock: &VerifiedBundleLock,
     development_bundle: bool,
-) -> Result<()> {
+) -> Result<BTreeMap<String, String>> {
+    let mut deferred = BTreeMap::new();
     let mut identities = selected.pack_ids.clone();
     identities.insert(selected.base_pack_id.clone());
     identities.insert(selected.shell_pack_id.clone());
     for pack_id in identities {
         let Some(relative) = bundle_lock.pack_paths.get(&pack_id) else {
             if ci_e2e_external_pack_is_admissible(selected, &pack_id) {
+                continue;
+            }
+            if let Some(digest) = deferred_external_pack_identity(selected, catalog, &pack_id) {
+                deferred.insert(pack_id, digest);
                 continue;
             }
             bail!("selected Profile Pack is not in the signed bundle: {pack_id}");
@@ -1587,7 +1628,88 @@ fn validate_profile_pack_closure(
             )?;
         }
     }
-    Ok(())
+    Ok(deferred)
+}
+
+/// Defer only an exact active optional provider to Host admission validation.
+///
+/// This is identity consistency, not external signature verification. The
+/// Launcher never loads this Pack or derives system/update descriptors from it.
+/// Host capture must still validate the full active authority and admitted CAS
+/// closure before publishing routes; Shell launch requires that authenticated
+/// Host identity. Bundled and launch-critical identities cannot use this path.
+fn deferred_external_pack_identity(
+    selected: &SelectedProfileAuthority,
+    catalog: &crate::presentation::PresentationCatalog,
+    pack_id: &str,
+) -> Option<String> {
+    if !valid_identifier(pack_id)
+        || pack_id == selected.base_pack_id
+        || pack_id == selected.shell_pack_id
+        || pack_id == selected.application_pack_id
+        || catalog.source_manifest_digests.contains_key(pack_id)
+        || catalog
+            .base_packs
+            .iter()
+            .any(|base| base.backend_provider_ids.iter().any(|id| id == pack_id))
+        || selected.profile_revision.is_none()
+        || selected.activation_id.is_none()
+        || selected.plan_digest.is_none()
+        || selected.lock_digest.is_none()
+    {
+        return None;
+    }
+    let plan = selected.plan.as_ref()?;
+    let lock = selected.lock.as_ref()?;
+    let profiles = selected.profile.get("packs")?.as_array()?;
+    let mut matches = profiles
+        .iter()
+        .filter(|item| value_str(item, "/pack_id") == Some(pack_id));
+    let entry = matches.next()?;
+    if matches.next().is_some() || value_str(entry, "/role") != Some("provider") {
+        return None;
+    }
+    let digest = value_str(entry, "/artifact_digest")?;
+    if !valid_digest(digest) {
+        return None;
+    }
+    for graph in [lock, plan] {
+        let effective = graph.get("effective_set")?.as_array()?;
+        let mut pins = effective
+            .iter()
+            .filter(|item| value_str(item, "/identity") == Some(pack_id));
+        let pin = pins.next()?;
+        if pins.next().is_some()
+            || value_str(pin, "/role") != Some("pack")
+            || value_str(pin, "/artifact_digest") != Some(digest)
+        {
+            return None;
+        }
+    }
+    for binding in plan.get("bindings")?.as_array()? {
+        if value_str(binding, "/pack_id") == Some(pack_id)
+            && (value_str(binding, "/artifact_digest") != Some(digest)
+                || value_str(binding, "/function_principal/parent_artifact_digest") != Some(digest)
+                || !matches!(
+                    value_str(binding, "/execution_kind"),
+                    Some("pack_vm" | "wasm" | "remote")
+                ))
+        {
+            return None;
+        }
+    }
+    for pin in lock.get("variant_pins")?.as_array()? {
+        if value_str(pin, "/pack_id") == Some(pack_id)
+            && (value_str(pin, "/artifact_digest") != Some(digest)
+                || !matches!(
+                    value_str(pin, "/execution_kind"),
+                    Some("pack_vm" | "wasm" | "remote")
+                ))
+        {
+            return None;
+        }
+    }
+    Some(digest.to_owned())
 }
 
 fn selected_ci_e2e_acceptance_pack_matches(
@@ -5504,6 +5626,357 @@ mod tests {
 
         let metadata = fs::symlink_metadata(&linked).unwrap();
         assert!(has_multiple_links(&linked, &metadata).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod external_pack_restart_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const EXTERNAL_PACK: &str = "conformance.minimal.echo";
+
+    fn digest(byte: char) -> String {
+        format!("sha256:{}", byte.to_string().repeat(64))
+    }
+
+    fn catalog() -> crate::presentation::PresentationCatalog {
+        serde_json::from_slice(
+            &fs::read(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("bundled/presentation_catalog.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn selected(with_bindings: bool) -> SelectedProfileAuthority {
+        let artifact = digest('a');
+        let pin = serde_json::json!({
+            "identity": EXTERNAL_PACK, "artifact_digest": artifact, "role": "pack"
+        });
+        let bindings = if with_bindings {
+            serde_json::json!([{
+                "pack_id": EXTERNAL_PACK,
+                "artifact_digest": artifact,
+                "function_principal": {"parent_artifact_digest": artifact},
+                "execution_kind": "pack_vm"
+            }])
+        } else {
+            serde_json::json!([])
+        };
+        let variant_pins = if with_bindings {
+            serde_json::json!([{
+                "pack_id": EXTERNAL_PACK, "artifact_digest": artifact,
+                "execution_kind": "pack_vm", "domain_kind": "dedicated_process"
+            }])
+        } else {
+            serde_json::json!([])
+        };
+        SelectedProfileAuthority {
+            profile: serde_json::json!({
+                "base": {"pack_id": "defaults-basepack", "artifact_digest": artifact},
+                "shell": {"pack_id": "shell.tauri.default", "artifact_digest": artifact},
+                "packs": [
+                    {"pack_id": "runtime.tauri.application.default", "role": "application", "artifact_digest": artifact},
+                    {"pack_id": EXTERNAL_PACK, "role": "provider", "artifact_digest": artifact}
+                ]
+            }),
+            lock: Some(
+                serde_json::json!({"effective_set": [pin.clone()], "variant_pins": variant_pins}),
+            ),
+            plan: Some(serde_json::json!({"effective_set": [pin], "bindings": bindings})),
+            profile_id: "defaults".into(),
+            profile_digest: digest('b'),
+            profile_revision: Some(digest('b')),
+            activation_id: Some("activation:external-restart-test".into()),
+            plan_digest: Some(digest('c')),
+            lock_digest: Some(digest('d')),
+            base_pack_id: "defaults-basepack".into(),
+            shell_provider_id: "shell.tauri.default".into(),
+            shell_pack_id: "shell.tauri.default".into(),
+            application_pack_id: "runtime.tauri.application.default".into(),
+            application_artifact_digest: Some(artifact),
+            launch_contribution: None,
+            pack_ids: BTreeSet::from([
+                "runtime.tauri.application.default".into(),
+                EXTERNAL_PACK.into(),
+            ]),
+        }
+    }
+
+    #[test]
+    fn active_external_provider_and_inert_pack_keep_exact_host_deferred_pins() {
+        for with_bindings in [false, true] {
+            assert_eq!(
+                deferred_external_pack_identity(
+                    &selected(with_bindings),
+                    &catalog(),
+                    EXTERNAL_PACK
+                ),
+                Some(digest('a')),
+                "with_bindings={with_bindings}"
+            );
+        }
+    }
+
+    #[test]
+    fn external_provider_delegation_requires_every_active_identity_component() {
+        for missing in [
+            "revision",
+            "activation",
+            "plan_digest",
+            "lock_digest",
+            "plan",
+            "lock",
+        ] {
+            let mut candidate = selected(true);
+            match missing {
+                "revision" => candidate.profile_revision = None,
+                "activation" => candidate.activation_id = None,
+                "plan_digest" => candidate.plan_digest = None,
+                "lock_digest" => candidate.lock_digest = None,
+                "plan" => candidate.plan = None,
+                "lock" => candidate.lock = None,
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                None,
+                "{missing}"
+            );
+        }
+    }
+
+    #[test]
+    fn external_provider_cannot_impersonate_launch_critical_or_bundled_ids() {
+        for critical in ["base", "shell", "application"] {
+            let mut candidate = selected(true);
+            match critical {
+                "base" => candidate.base_pack_id = EXTERNAL_PACK.into(),
+                "shell" => candidate.shell_pack_id = EXTERNAL_PACK.into(),
+                "application" => candidate.application_pack_id = EXTERNAL_PACK.into(),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                None,
+                "{critical}"
+            );
+        }
+        let mut known_bundle = catalog();
+        known_bundle
+            .source_manifest_digests
+            .insert(EXTERNAL_PACK.into(), digest('a'));
+        assert_eq!(
+            deferred_external_pack_identity(&selected(true), &known_bundle, EXTERNAL_PACK),
+            None
+        );
+        let mut base_backend = catalog();
+        base_backend.base_packs[0]
+            .backend_provider_ids
+            .push(EXTERNAL_PACK.into());
+        assert_eq!(
+            deferred_external_pack_identity(&selected(true), &base_backend, EXTERNAL_PACK),
+            None
+        );
+        for invalid in ["../escape", "Invalid.Pack", "", "pack/escape"] {
+            assert_eq!(
+                deferred_external_pack_identity(&selected(true), &catalog(), invalid),
+                None,
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn external_provider_requires_one_provider_row_and_exact_unique_closure_pins() {
+        for role in ["application", "backend", "contribution", "host_extension"] {
+            let mut candidate = selected(true);
+            candidate.profile["packs"][1]["role"] = Value::String(role.into());
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                None,
+                "{role}"
+            );
+        }
+        for change in ["missing", "duplicate", "invalid_digest"] {
+            let mut candidate = selected(true);
+            match change {
+                "missing" => {
+                    candidate.profile["packs"].as_array_mut().unwrap().pop();
+                }
+                "duplicate" => {
+                    let row = candidate.profile["packs"][1].clone();
+                    candidate.profile["packs"].as_array_mut().unwrap().push(row);
+                }
+                "invalid_digest" => {
+                    candidate.profile["packs"][1]["artifact_digest"] =
+                        Value::String("untrusted".into())
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                None,
+                "{change}"
+            );
+        }
+        for graph in ["lock", "plan"] {
+            for change in ["missing", "duplicate", "role", "digest", "malformed"] {
+                let mut candidate = selected(true);
+                let document = if graph == "lock" {
+                    candidate.lock.as_mut().unwrap()
+                } else {
+                    candidate.plan.as_mut().unwrap()
+                };
+                match change {
+                    "missing" => document["effective_set"] = serde_json::json!([]),
+                    "duplicate" => {
+                        let row = document["effective_set"][0].clone();
+                        document["effective_set"].as_array_mut().unwrap().push(row);
+                    }
+                    "role" => document["effective_set"][0]["role"] = Value::String("base".into()),
+                    "digest" => {
+                        document["effective_set"][0]["artifact_digest"] = Value::String(digest('f'))
+                    }
+                    "malformed" => document["effective_set"] = Value::Null,
+                    _ => unreachable!(),
+                }
+                assert_eq!(
+                    deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                    None,
+                    "{graph}:{change}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn external_provider_rejects_host_execution_and_stale_operation_pins() {
+        for path in [
+            "/bindings/0/artifact_digest",
+            "/bindings/0/function_principal/parent_artifact_digest",
+        ] {
+            let mut candidate = selected(true);
+            *candidate.plan.as_mut().unwrap().pointer_mut(path).unwrap() =
+                Value::String(digest('f'));
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                None,
+                "{path}"
+            );
+        }
+        for kind in [
+            "host_extension",
+            "in_process",
+            "declarative_only",
+            "unknown",
+        ] {
+            for graph in ["lock", "plan"] {
+                let mut candidate = selected(true);
+                if graph == "plan" {
+                    candidate.plan.as_mut().unwrap()["bindings"][0]["execution_kind"] =
+                        Value::String(kind.into());
+                } else {
+                    candidate.lock.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
+                        Value::String(kind.into());
+                }
+                assert_eq!(
+                    deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                    None,
+                    "{graph}:{kind}"
+                );
+            }
+        }
+        let mut stale_variant = selected(true);
+        stale_variant.lock.as_mut().unwrap()["variant_pins"][0]["artifact_digest"] =
+            Value::String(digest('f'));
+        assert_eq!(
+            deferred_external_pack_identity(&stale_variant, &catalog(), EXTERNAL_PACK),
+            None
+        );
+        for kind in ["pack_vm", "wasm", "remote"] {
+            let mut candidate = selected(true);
+            candidate.plan.as_mut().unwrap()["bindings"][0]["execution_kind"] =
+                Value::String(kind.into());
+            candidate.lock.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
+                Value::String(kind.into());
+            assert_eq!(
+                deferred_external_pack_identity(&candidate, &catalog(), EXTERNAL_PACK),
+                Some(digest('a')),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn deferred_external_closure_does_not_skip_bundled_artifact_verification() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-external-closure-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let candidate = selected(true);
+        let mut signed_catalog = catalog();
+        signed_catalog.source_manifest_digests.clear();
+        let mut lock = VerifiedBundleLock {
+            pack_paths: BTreeMap::new(),
+            authority_digests: BTreeMap::new(),
+            sidecar_digests: BTreeMap::new(),
+            authority_roles: BTreeMap::new(),
+        };
+        for id in [
+            &candidate.base_pack_id,
+            &candidate.shell_pack_id,
+            &candidate.application_pack_id,
+        ] {
+            let relative = format!("{id}.pack.v4.json");
+            fs::write(
+                root.join(&relative),
+                serde_json::to_vec(&serde_json::json!({
+                    "pack_api_version": "io.tobkiri.pack.v4",
+                    "pack": {"id": id, "artifact_digest": digest('a')},
+                    "migration": {"compatibility": "none"}
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            lock.pack_paths.insert(id.clone(), relative);
+        }
+        let deferred =
+            validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                .unwrap();
+        assert_eq!(
+            deferred,
+            BTreeMap::from([(EXTERNAL_PACK.into(), digest('a'))])
+        );
+        for id in [
+            &candidate.base_pack_id,
+            &candidate.shell_pack_id,
+            &candidate.application_pack_id,
+        ] {
+            let relative = &lock.pack_paths[id];
+            let mut pack = read_json(&root.join(relative), "bundled Pack fixture").unwrap();
+            pack["pack"]["artifact_digest"] = Value::String(digest('f'));
+            fs::write(root.join(relative), serde_json::to_vec(&pack).unwrap()).unwrap();
+            let error =
+                validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                    .unwrap_err();
+            assert!(
+                error
+                    .downcast_ref::<ProfileReresolutionRequired>()
+                    .is_some(),
+                "{id}:{error:#}"
+            );
+            pack["pack"]["artifact_digest"] = Value::String(digest('a'));
+            fs::write(root.join(relative), serde_json::to_vec(&pack).unwrap()).unwrap();
+        }
         fs::remove_dir_all(root).unwrap();
     }
 }

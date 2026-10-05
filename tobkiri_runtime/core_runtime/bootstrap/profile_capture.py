@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any
 
 from tobkiri_protocol.canonical import canonical_digest, strict_loads
 from tobkiri_protocol.ids import validate_canonical_id
@@ -18,15 +19,25 @@ from tobkiri_protocol.secure_persistence import (
     SecurePersistenceError,
 )
 
+from ..active_profile_store_v4 import (
+    ActiveProfilePointer,
+    ActiveProfileStore,
+    ActiveProfileStoreError,
+)
 from ..authority.v4 import AuthorityStore
 from ..authority.v4_models import authority_digest
 from ..env_compat import read_migrated_env
-from ..active_profile_store_v4 import ActiveProfileStore, ActiveProfileStoreError
+from ..hmac_key_manager import SigningKeyError
 from ..profile_definition_store_v4 import (
     ProfileDefinitionStore,
     ProfileDefinitionStoreConflict,
 )
 from ..profile_runtime_port import require_profile_runtime
+from .profile_publication import (
+    ProfilePublicationJournal,
+    candidate_matches,
+    published_candidate,
+)
 from .profile_registry import (
     bootstrap_review_catalog,
     recover_bootstrap_definition,
@@ -421,6 +432,7 @@ def _bootstrap_review_candidate(
     *, base_dir: Path | None = None, include_source_additions: bool = False
 ) -> tuple[Any, tuple[str, ...]]:
     """Return the exact bootstrap candidate without dropping active Pack selections."""
+    _recover_bootstrap_publication(base_dir=base_dir)
     runtime = require_profile_runtime()
     user_data = _user_data_root(base_dir)
     with runtime_user_data_scope(user_data):
@@ -577,8 +589,9 @@ def _ensure_profile_workspace(user_data: Path, profile_id: str) -> Path:
 
 
 def prepare_bootstrap_profile_confirmation(*, base_dir: Path | None = None) -> dict[str, Any]:
-    """Return an exact, read-only bootstrap confirmation bound to the catalog."""
+    """Finish committed publication recovery, then review an exact candidate."""
 
+    _recover_bootstrap_publication(base_dir=base_dir, discard_superseded=True)
     _resolved, confirmation = _resolve_bootstrap_candidate(base_dir=base_dir)
     return confirmation
 
@@ -587,6 +600,7 @@ def prepare_bootstrap_profile_review(
     *, base_dir: Path | None = None, include_source_additions: bool = False
 ) -> tuple[Any, dict[str, Any]]:
     """Bind the displayed Pack selection and confirmation to one captured candidate."""
+    _recover_bootstrap_publication(base_dir=base_dir, discard_superseded=True)
     candidate = _bootstrap_review_candidate(
         base_dir=base_dir, include_source_additions=include_source_additions
     )
@@ -840,6 +854,7 @@ def activation_audit_receipt(active: Any, *, base_dir: Path | None = None) -> di
 def capture_active_profile(*, base_dir: Path | None = None) -> Any:
     """Capture the exact Host-selected Profile without a bootstrap fallback."""
 
+    _recover_bootstrap_publication(base_dir=base_dir)
     user_data = _user_data_root(base_dir)
     pointers = ActiveProfileStore(user_data)
     cache = _PROFILE_CAPTURE_SCOPE.get()
@@ -949,6 +964,29 @@ def _publish_host_active_pointer(
     if not isinstance(snapshot, Mapping):
         raise ProfileResolutionDenied("active Profile activation envelope is invalid")
     pointers = ActiveProfileStore(user_data)
+    journal = ProfilePublicationJournal(user_data)
+    if journal.exists():
+        with journal.locked():
+            intent = journal.read()
+            if intent is None or not candidate_matches(active, intent["candidate"]):
+                raise ProfileResolutionDenied("Profile publication candidate changed")
+            expected = (
+                ActiveProfilePointer.from_mapping(intent["predecessor"])
+                if intent["predecessor"] is not None else None
+            )
+            current = pointers.load(verify_snapshot=True)
+            if published_candidate(current, intent):
+                journal.clear()
+                return
+            if current != expected:
+                raise ProfileResolutionDenied("Profile publication predecessor is stale")
+            pointers.commit_activation(
+                active.activation, activation_snapshot=snapshot,
+                activation_snapshot_path=relative.as_posix(), expected=expected,
+                catalog_revision=str(active.resolved.plan["catalog_revision"]),
+            )
+            journal.clear()
+            return
     current = pointers.load(verify_snapshot=True)
     if current is not None and not replace_existing:
         return
@@ -961,7 +999,120 @@ def _publish_host_active_pointer(
     )
 
 
+def _recover_bootstrap_publication(
+    *, base_dir: Path | None = None,
+    confirmation: Mapping[str, Any] | None = None,
+    discard_superseded: bool = False,
+) -> Any | None:
+    """Complete only a journaled, confirmed and still-authorized publication."""
+    user_data = _user_data_root(base_dir)
+    journal = ProfilePublicationJournal(user_data)
+    if not journal.exists():
+        return None
+    try:
+        with journal.locked():
+            intent = journal.read()
+            if intent is None:
+                return None
+            expected = (
+                ActiveProfilePointer.from_mapping(intent["predecessor"])
+                if intent["predecessor"] is not None else None
+            )
+            pointers = ActiveProfileStore(user_data)
+            current = pointers.load(verify_snapshot=True)
+            if current != expected and not published_candidate(current, intent):
+                # A different selection wins, including an ABA generation change.
+                # This old confirmation must never be retried against that head.
+                if confirmation is not None:
+                    raise ProfileResolutionDenied("Profile publication predecessor is stale")
+                if discard_superseded:
+                    journal.clear()
+                return None
+            candidate = intent["candidate"]
+            profile_id = candidate["profile_id"]
+            if profile_id != _bootstrap_profile_id():
+                raise ProfileResolutionDenied("Profile publication identity changed")
+            workspace = user_data / "workspaces" / profile_id
+            runtime = require_profile_runtime()
+            catalog = host_profile_catalog(base_dir)
+            with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
+                if not workspace.exists():
+                    if authority.active_activation_reservation(candidate["activation_id"]) is not None:
+                        raise ProfileResolutionDenied("Profile publication workspace is unavailable")
+                    journal.clear()
+                    return None
+                store = runtime.activation_store(
+                    root=workspace / "activation", workspace=workspace,
+                    profile_id=profile_id, authority=authority, catalog=catalog,
+                )
+                store.recover()
+                receipt = authority.active_activation_reservation(candidate["activation_id"])
+                if receipt is None:
+                    # Nothing committed: the existing activation journal aborts
+                    # unfinished work. A fresh exact confirmation is still required.
+                    if published_candidate(current, intent):
+                        raise ProfileResolutionDenied("Profile publication authority is unavailable")
+                    journal.clear()
+                    return None
+                active = store.load_active_snapshot()
+                if not candidate_matches(active, candidate):
+                    raise ProfileResolutionDenied("Profile publication candidate changed")
+                registered = catalog.profiles.get(profile_id)
+                if (
+                    registered is None
+                    or canonical_digest(registered) != candidate["profile_definition_digest"]
+                ):
+                    raise ProfileResolutionDenied("Profile publication definition changed")
+                if (
+                    confirmation is not None
+                    and canonical_digest(dict(confirmation)) != intent["confirmation_digest"]
+                ):
+                    raise ProfileResolutionDenied("Profile publication confirmation changed")
+                _publish_host_active_pointer(active, user_data=user_data, replace_existing=True)
+                return active
+    except (ValueError, OSError, SecurePersistenceError, ActiveProfileStoreError, SigningKeyError) as error:
+        raise ProfileResolutionDenied("Profile publication recovery failed closed") from error
+
+
 def capture_bootstrap_profile(
+    *, base_dir: Path | None = None,
+    confirmation: Mapping[str, Any] | None = None,
+    include_source_additions: bool = False,
+) -> Any:
+    """Serialize confirmed activation and finish interrupted exact publications."""
+    # Invalid source-update requests remain read-only, including an absent Host
+    # state root. Acquiring the publication lock would otherwise create it.
+    if include_source_additions:
+        if confirmation is None:
+            raise ProfileResolutionDenied("source update requires explicit confirmation")
+        active_pointer = (
+            _user_data_root(base_dir) / "workspaces" / _bootstrap_profile_id()
+            / "activation" / "active.json"
+        )
+        if not active_pointer.is_file():
+            raise ProfileResolutionDenied("source update requires an active Profile")
+    journal = ProfilePublicationJournal(_user_data_root(base_dir))
+    if confirmation is None:
+        recovered = _recover_bootstrap_publication(base_dir=base_dir)
+        if recovered is not None and not include_source_additions:
+            return recovered
+        return _capture_bootstrap_profile(
+            base_dir=base_dir, confirmation=None,
+            include_source_additions=include_source_additions,
+        )
+    with journal.locked():
+        recovered = _recover_bootstrap_publication(
+            base_dir=base_dir, confirmation=confirmation,
+        )
+        if recovered is not None:
+            return recovered
+        return _capture_bootstrap_profile(
+            base_dir=base_dir, confirmation=confirmation,
+            include_source_additions=include_source_additions,
+        )
+
+
+def _capture_bootstrap_profile(
     *,
     base_dir: Path | None = None,
     confirmation: Mapping[str, Any] | None = None,
@@ -976,6 +1127,7 @@ def capture_bootstrap_profile(
     if include_source_additions and confirmation is None:
         raise ProfileResolutionDenied("source update requires explicit confirmation")
     user_data = _user_data_root(base_dir)
+    publication_predecessor = ActiveProfileStore(user_data).load(verify_snapshot=True)
     runtime = require_profile_runtime()
     profile_id = _bootstrap_profile_id()
     state_root = user_data / "workspaces" / profile_id / "activation"
@@ -1017,6 +1169,10 @@ def capture_bootstrap_profile(
                 catalog=catalog,
             )
             if resolved_reconciliation is not None:
+                if confirmation is None:
+                    raise ProfileResolutionDenied(
+                        "bootstrap activation confirmation is required"
+                    )
                 predecessor = None
                 try:
                     predecessor = store.load_active_snapshot()
@@ -1032,14 +1188,18 @@ def capture_bootstrap_profile(
                     ):
                         raise ProfileResolutionDenied("activation confirmation was replayed")
                     predecessor_digest = predecessor.resolved.plan["profile_definition_digest"]
+                activation_id = (
+                    f"activation:{profile_id}-reconcile-"
+                    + resolved_reconciliation.plan["plan_digest"].removeprefix("sha256:")[:16]
+                )
+                ProfilePublicationJournal(user_data).begin(
+                    predecessor=publication_predecessor, resolved=resolved_reconciliation,
+                    activation_id=activation_id, confirmation=confirmation,
+                )
                 register_bootstrap_definition(
                     user_data,
                     catalog.profiles[profile_id],
                     approved_predecessor_digest=predecessor_digest,
-                )
-                activation_id = (
-                    f"activation:{profile_id}-reconcile-"
-                    + resolved_reconciliation.plan["plan_digest"].removeprefix("sha256:")[:16]
                 )
                 created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 if predecessor is None:
@@ -1078,6 +1238,13 @@ def capture_bootstrap_profile(
         raise ProfileResolutionDenied("bootstrap activation confirmation is stale or tampered")
     # Materialize legacy collections before adding the explicitly chosen template.
     host_profile_catalog(base_dir)
+    activation_id = (
+        f"activation:{profile_id}-" + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
+    )
+    ProfilePublicationJournal(user_data).begin(
+        predecessor=publication_predecessor, resolved=resolved,
+        activation_id=activation_id, confirmation=confirmation,
+    )
     register_bootstrap_definition(
         user_data, runtime.load_catalog(_bundle_root(base_dir)).profiles[profile_id]
     )

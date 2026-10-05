@@ -62,15 +62,17 @@ def test_suite_digest_binds_inputs() -> None:
     assert digest_a.startswith("sha256:")
 
 
-def test_conformance_step_verified_requires_bound_digests() -> None:
+def test_zero_operation_conformance_step_requires_bound_digests() -> None:
     install = _step("install")
     step = collector.collect_conformance_step(
-        probe_result=_probe_result("pack-a", TARGET),
+        probe_result=_probe_result(
+            "pack-a", TARGET, operation_inventory={"count": 0, "operations": []}
+        ),
         result_digest="sha256:" + "c" * 64,
         pack_id="pack-a",
         target_digest=TARGET,
-        semantic_kind="operation-mapping",
-        expected_operation_count=2,
+        semantic_kind="zero-operation",
+        expected_operation_count=0,
         parent_content_digest=CONTENT,
         install_step=install,
     )
@@ -191,3 +193,81 @@ def test_selected_packs_requires_review(tmp_path: Path) -> None:
         collector._selected_packs(args, reviews)
     args_all = type("Args", (), {"packs": ""})()
     assert collector._selected_packs(args_all, reviews) == ["pack-a"]
+
+
+@pytest.mark.parametrize("semantic_kind", ["operation-mapping", "admission-only"])
+def test_collector_does_not_convert_inventory_counts_into_execution(
+    semantic_kind: str,
+) -> None:
+    """A successful compile/install probe cannot prove its operations ran."""
+
+    probe = _probe_result("pack-a", TARGET)
+    probe["operation_inventory"]["verified_count"] = 2
+    probe["operation_executions"] = [{"outcome": "passed"}]
+    with pytest.raises(collector.CollectorError, match="no supported actual operation"):
+        collector.collect_conformance_step(
+            probe_result=probe,
+            result_digest="sha256:" + "c" * 64,
+            pack_id="pack-a",
+            target_digest=TARGET,
+            semantic_kind=semantic_kind,
+            expected_operation_count=2,
+            parent_content_digest=CONTENT,
+            install_step=_step("install"),
+        )
+
+
+@pytest.mark.parametrize("count", [True, "0", -1, None])
+def test_collector_rejects_malformed_inventory_count(count: Any) -> None:
+    """Booleans and coerced strings cannot become zero-operation evidence."""
+
+    probe = _probe_result(
+        "pack-a", TARGET, operation_inventory={"count": count, "operations": []}
+    )
+    with pytest.raises(collector.CollectorError, match="lacks operation inventory"):
+        collector.collect_conformance_step(
+            probe_result=probe,
+            result_digest="sha256:" + "c" * 64,
+            pack_id="pack-a",
+            target_digest=TARGET,
+            semantic_kind="zero-operation",
+            expected_operation_count=0,
+            parent_content_digest=CONTENT,
+            install_step=_step("install"),
+        )
+
+
+@pytest.mark.parametrize("mutation", ["empty", "omitted", "duplicate", "malformed"])
+def test_collector_requires_exact_conformance_checks(mutation: str) -> None:
+    """An empty or incomplete check list cannot manufacture zero-op success."""
+
+    probe = _probe_result(
+        "pack-a", TARGET, operation_inventory={"count": 0, "operations": []}
+    )
+    if mutation == "empty":
+        probe["checks"] = []
+    elif mutation == "omitted":
+        probe["checks"].pop()
+    elif mutation == "duplicate":
+        probe["checks"].append(probe["checks"][0])
+    else:
+        probe["checks"][0] = None
+    with pytest.raises(collector.CollectorError, match="incomplete checks"):
+        collector.collect_conformance_step(
+            probe_result=probe,
+            result_digest="sha256:" + "c" * 64,
+            pack_id="pack-a",
+            target_digest=TARGET,
+            semantic_kind="zero-operation",
+            expected_operation_count=0,
+            parent_content_digest=CONTENT,
+            install_step=_step("install"),
+        )
+
+
+def test_execution_probe_support_is_fail_closed() -> None:
+    """The real subprocess probe uses this guard before admission/install."""
+
+    collector._require_supported_execution_probe("empty", 0)
+    with pytest.raises(collector.CollectorError, match="2 inventoried operations"):
+        collector._require_supported_execution_probe("executable", 2)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from functools import partial
 import json
 import logging
@@ -26,6 +27,76 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _PACKVM_RECOVERY_ACTION = "Open Tobkiri Launcher > Packs to prepare PackVM."
+
+
+@dataclass(frozen=True)
+class _StartupFailure:
+    kind: str
+    message: str
+    recovery_action: str
+
+
+def _classify_startup_failure(error: Exception) -> _StartupFailure:
+    """Project trusted exception types to fixed, non-sensitive recovery copy.
+
+    Unknown failures must not be diagnosed as missing PackVM. Only explicit
+    causes are inspected, with a bound for malformed or cyclic exception chains.
+    Neither exception text nor provider-controlled codes reach the projection.
+    """
+    from core_runtime.authority.v4_models import AuthorityDenied
+    from core_runtime.host_contract import HostContractError
+    from ecosystem.defaultspack.domain.runtime_v4 import (
+        ActivationLockTimeout,
+        ProfileReconfirmationRequired,
+    )
+    from tobkiri_host.errors import BackendUnavailableError
+
+    current: BaseException | None = error
+    for _ in range(4):
+        if isinstance(current, AuthorityDenied):
+            if current.code == "stale_revision":
+                return _StartupFailure(
+                    "profile_session_stale",
+                    "runtime Profile session is no longer current",
+                    "Reopen the active Profile from Tobkiri Launcher.",
+                )
+            return _StartupFailure(
+                "authority_denied",
+                "runtime Profile authority validation failed",
+                "Review the active Profile and its approvals in Tobkiri Launcher.",
+            )
+        if isinstance(current, ProfileReconfirmationRequired):
+            return _StartupFailure(
+                "profile_reconfirmation_required",
+                "runtime Profile requires reconfirmation",
+                "Review and reactivate the Profile in Tobkiri Launcher.",
+            )
+        if isinstance(current, ActivationLockTimeout):
+            return _StartupFailure(
+                "profile_verification_pending",
+                "runtime Profile verification did not complete in time",
+                "Wait for Profile changes to finish, then reopen the Profile.",
+            )
+        if isinstance(current, HostContractError):
+            return _StartupFailure(
+                "host_contract_invalid",
+                "runtime Host contract validation failed",
+                "Restart Tobkiri Launcher and reopen the active Profile.",
+            )
+        if isinstance(current, BackendUnavailableError):
+            return _StartupFailure(
+                "backend_unavailable",
+                "required runtime backend is unavailable",
+                _PACKVM_RECOVERY_ACTION,
+            )
+        if current is None:
+            break
+        current = current.__cause__
+    return _StartupFailure(
+        "startup_validation_failed",
+        "runtime startup validation failed",
+        "Restart Tobkiri Launcher and review the active Profile if the failure persists.",
+    )
 
 _DIAGNOSTIC_ENV_KEYS = (
     "DEFAULTS_HTTP_HOST",
@@ -828,26 +899,29 @@ def main(argv: list[str] | None = None) -> int:
         raise
     _write_launch_event("server_started", port=port, url=url)
     chat_launch_blocked = False
+    startup_failure: _StartupFailure | None = None
     if reconfirmation_error is None:
         mark_panel_ready()
         try:
             server.assert_runtime_startup_ready()
-        except Exception:
-            # A readiness check is a backend selection only.  It never starts
-            # PackVM, requests approval, or mints authority.  Do not launch
-            # the chat page against a known-missing backend; return a bounded
-            # failure so the Launcher can enter its explicit repair flow.
-            mark_runtime_failed("required runtime backend is unavailable")
+        except Exception as error:
+            # Validation is read-only and includes Profile/Host authority as
+            # well as backend selection. Keep every failure fail-closed while
+            # selecting recovery copy from trusted types, never exception text.
+            startup_failure = _classify_startup_failure(error)
+            mark_runtime_failed(startup_failure.message)
             _write_launch_event(
                 "runtime_unavailable",
                 code="API_FAILURE",
-                recovery_action=_PACKVM_RECOVERY_ACTION,
+                failure_kind=startup_failure.kind,
+                recovery_action=startup_failure.recovery_action,
                 port=port,
                 url=url,
             )
             logger.warning(
-                "runtime startup dependency is unavailable: API_FAILURE. %s",
-                _PACKVM_RECOVERY_ACTION,
+                "runtime startup validation failed: API_FAILURE (%s). %s",
+                startup_failure.kind,
+                startup_failure.recovery_action,
             )
             chat_launch_blocked = True
         else:
@@ -872,7 +946,14 @@ def main(argv: list[str] | None = None) -> int:
         _write_launch_event(
             "chat_launch_blocked",
             code="API_FAILURE",
-            recovery_action=_PACKVM_RECOVERY_ACTION,
+            failure_kind=(
+                startup_failure.kind if startup_failure else "chat_readiness_failed"
+            ),
+            recovery_action=(
+                startup_failure.recovery_action
+                if startup_failure
+                else "Reopen the active Profile from Tobkiri Launcher."
+            ),
             port=port,
             url=url,
         )

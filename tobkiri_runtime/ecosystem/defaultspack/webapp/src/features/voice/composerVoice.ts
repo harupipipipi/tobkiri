@@ -13,6 +13,52 @@ const AUDIO_CAPABILITY_KEYS = [
   "input_audio",
 ] as const;
 
+export type ComposerVoicePhase = "idle" | "consent" | "starting" | "listening" | "transcribing" | "review" | "error";
+export type ComposerVoiceInsertMode = "insert" | "replace" | "append";
+
+export function composerVoiceLanguage(documentLanguage?: string, browserLanguage?: string): string {
+  const candidate = String(documentLanguage || browserLanguage || "").trim();
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(candidate) ? candidate : "en-US";
+}
+
+export function composerVoiceErrorMessage(errorCode: string, online = true): string {
+  const code = errorCode.trim().toLowerCase();
+  if (code === "not-allowed" || code === "service-not-allowed") {
+    return "Microphone permission was denied. Allow microphone access in browser or OS settings, then retry.";
+  }
+  if (code === "audio-capture" || code === "not-found") {
+    return "No usable microphone was found. Check the selected input device and OS microphone access.";
+  }
+  if (code === "network" || !online) {
+    return "Speech recognition could not reach its service. Check your connection or use local/offline transcription.";
+  }
+  if (code === "no-speech" || code === "nomatch") {
+    return "No speech was recognized. Check the microphone, speak clearly, and retry.";
+  }
+  if (code === "aborted") return "Voice input was cancelled. Your original draft was preserved.";
+  return "Speech recognition stopped unexpectedly. Your original draft was preserved; retry or use local/offline transcription.";
+}
+
+export function applyComposerVoiceTranscript(
+  draft: string,
+  transcript: string,
+  mode: ComposerVoiceInsertMode,
+  selection: { start: number; end: number },
+): { value: string; cursor: number } {
+  const cleanTranscript = transcript.trim();
+  if (!cleanTranscript) return { value: draft, cursor: Math.min(selection.end, draft.length) };
+  if (mode === "replace") return { value: cleanTranscript, cursor: cleanTranscript.length };
+  if (mode === "append") {
+    const separator = draft && !draft.endsWith("\n") ? "\n" : "";
+    const value = `${draft}${separator}${cleanTranscript}`;
+    return { value, cursor: value.length };
+  }
+  const start = Math.max(0, Math.min(selection.start, draft.length));
+  const end = Math.max(start, Math.min(selection.end, draft.length));
+  const value = `${draft.slice(0, start)}${cleanTranscript}${draft.slice(end)}`;
+  return { value, cursor: start + cleanTranscript.length };
+}
+
 function explicitAudioCapability(
   value: unknown,
   seen = new Set<object>(),
@@ -124,7 +170,10 @@ export function readableTranscriptionError(error: unknown): string {
   if (/local_whisper_not_configured|local transcription unavailable/i.test(raw)) {
     return "ローカル文字起こしが利用できません。Whisper の設定またはAIプロバイダー接続を確認してください。";
   }
-  return raw.trim() || "音声を文字起こしできませんでした。";
+  if (/no.speech|no_speech|silence|empty_transcript/i.test(raw)) {
+    return composerVoiceErrorMessage("no-speech");
+  }
+  return "音声を文字起こしできませんでした。接続と設定を確認して再試行してください。";
 }
 
 type ComposerTranscriptionClient = {
@@ -177,9 +226,60 @@ export async function requestComposerAudioTranscript(
     throw new Error(String(
       transcription.reason
       || transcription.code
-      || "音声を文字起こしできませんでした。",
+      || "no_speech",
     ));
   } catch (error) {
     throw new Error(readableTranscriptionError(error));
   }
+}
+
+/** Read Host permission before the OS capture prompt; never grant it here. */
+export async function assertComposerMicrophoneAllowed(
+  client: { status(): Promise<{ permissions?: { rumi?: Record<string, { granted?: boolean }> } }> } = ambientTriggerClient,
+): Promise<void> {
+  const status = await client.status();
+  if (status?.permissions?.rumi?.["host.microphone.capture"]?.granted !== true) {
+    const error = new Error("Tobkiri microphone permission is required");
+    error.name = "ComposerMicrophonePermissionError";
+    throw error;
+  }
+}
+
+/** Invalidate asynchronous capture/transcription completions after cancel or navigation. */
+export class ComposerVoiceOperation {
+  private generation = 0;
+  private scope: string | null = null;
+
+  bindScope(scope: string): void {
+    if (scope !== this.scope) this.invalidate();
+    this.scope = scope;
+  }
+  token(): number { return this.generation; }
+  next(): number { return ++this.generation; }
+  invalidate(): void { this.generation += 1; }
+  isCurrent(generation: number): boolean { return this.generation === generation; }
+
+  async settle<T>(
+    generation: number,
+    promise: Promise<T>,
+    dispose?: (value: T) => void,
+  ): Promise<T | null> {
+    const result = await promise;
+    if (!this.isCurrent(generation)) {
+      dispose?.(result);
+      return null;
+    }
+    return result;
+  }
+}
+
+/** Restore the retained selection only while the same draft remains visible. */
+export function restoreComposerVoiceSelection(
+  originalDraft: string,
+  currentDraft: string,
+  selection: { start: number; end: number },
+): { start: number; end: number } | null {
+  if (originalDraft !== currentDraft) return null;
+  const start = Math.max(0, Math.min(selection.start, currentDraft.length));
+  return { start, end: Math.max(start, Math.min(selection.end, currentDraft.length)) };
 }

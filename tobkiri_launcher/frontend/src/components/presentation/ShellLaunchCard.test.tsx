@@ -275,7 +275,8 @@ test('unsupported Windows PackVM doctor disables Shell launch and links the issu
       (candidate) => candidate.textContent?.includes('Launch Research A'),
     );
     assert.ok(launch?.disabled);
-    assert.match(container.textContent ?? '', /Windows WHPX.*Docker/);
+    assert.match(container.textContent ?? '', /bundled QEMU\/WHPX/);
+    assert.doesNotMatch(container.textContent ?? '', /Docker/);
     const issue = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
       (candidate) => candidate.textContent?.includes('Windows support issue #1494'),
     );

@@ -14,6 +14,8 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+from scripts.quality.operation_execution_evidence import operation_execution_errors
+
 
 CURATED_REVIEW_SCHEMA = "io.tobkiri.quality.pack-migration-reviews.v1"
 RUNTIME_RECEIPT_SCHEMA = "io.tobkiri.quality.pack-migration-runtime-receipts.v1"
@@ -333,10 +335,23 @@ def release_evidence_errors(
             errors.append(f"runtime_receipt_{field}_mismatch")
     isolated = runtime.get("isolated-conformance")
     semantic = review.get("semantic_record")
+    if semantic is None:
+        generated_semantic = entry.get("semantic_comparison")
+        if (
+            isinstance(generated_semantic, Mapping)
+            and canonical_digest(generated_semantic)
+            == review.get("semantic_record_digest")
+        ):
+            semantic = generated_semantic
     if not isinstance(isolated, Mapping):
         return errors
     status = isolated.get("status")
     semantic_kind = semantic.get("kind") if isinstance(semantic, Mapping) else None
+    if (
+        semantic_kind in {"admission-only", "zero-operation"}
+        and isolated.get("operation_executions") not in (None, [])
+    ):
+        errors.append("runtime_receipt_operation_execution_set_mismatch")
     if status == "not-applicable" and semantic_kind != "admission-only":
         errors.append("isolated_conformance_not_verified")
     if status != "verified":
@@ -348,10 +363,7 @@ def release_evidence_errors(
     inventory = semantic.get("operation_inventory") if isinstance(semantic, Mapping) else None
     declared = inventory.get("v4_count") if isinstance(inventory, Mapping) else None
     if isinstance(declared, int) and not isinstance(declared, bool):
-        # The executed operation inventory must equal the reviewed v4 count,
-        # so a "verified" receipt cannot silently exercise fewer operations
-        # than the semantic record describes (or invent operations for a
-        # reviewed zero-operation Pack).
+        # A count is only a consistency check, never execution evidence.
         if operation_count != declared:
             errors.append("runtime_receipt_operation_count_mismatch")
     elif (
@@ -360,4 +372,15 @@ def release_evidence_errors(
         or operation_count <= 0
     ):
         errors.append("runtime_receipt_operations_not_exercised")
+    if declared != 0 or operation_count != 0:
+        install = runtime.get("install")
+        installed_at = install.get("observed_at") if isinstance(install, Mapping) else None
+        errors.extend(
+            operation_execution_errors(
+                pack_id,
+                semantic if isinstance(semantic, Mapping) else None,
+                isolated,
+                installed_at=installed_at,
+            )
+        )
     return errors

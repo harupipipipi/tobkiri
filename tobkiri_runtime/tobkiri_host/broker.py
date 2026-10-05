@@ -958,6 +958,7 @@ class RequestBroker:
             try:
                 from .platform_backends import (
                     LinuxFirecrackerBackend,
+                    LinuxQemuBackend,
                     MacOSVZBackend,
                     ProductionIsolationBackend,
                     WindowsWHPXBackend,
@@ -968,6 +969,7 @@ class RequestBroker:
                     MacOSVZBackend,
                     WindowsWHPXBackend,
                     LinuxFirecrackerBackend,
+                    LinuxQemuBackend,
                 )
                 provider_call: Callable[..., object]
                 provider_arguments: tuple[object, ...]

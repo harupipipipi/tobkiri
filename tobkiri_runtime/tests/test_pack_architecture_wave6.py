@@ -242,7 +242,11 @@ def test_result_normalizer_redacts_secret_fields_and_keeps_widget() -> None:
 
 
 class _McpClient:
+    def __init__(self):
+        self.calls = []
+
     def invoke(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
         return {"unexpected": [args, kwargs]}
 
 
@@ -273,7 +277,8 @@ def test_legacy_projection_entrypoints_fail_closed_without_owner_access():
 
 
 def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
-    execute = create_mcp_execute_operation(_McpClient())
+    client = _McpClient()
+    execute = create_mcp_execute_operation(client)
     with pytest.raises(ValueError, match="descriptor"):
         execute(
             "execute",
@@ -281,7 +286,8 @@ def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
                 "_contract_consumer_pack_id": "rumi_tool_broker_pack",
                 "definition": {
                     "execution": {
-                        "contract_id": "rumi.service.mcp.tool.call.v1",
+                        "contract_id": "tobkiri.service.mcp.tool.call.v1",
+                        "connection_id": "test-connection",
                         "provider_instance_id": "mcp-gateway.call",
                         "operation": "search",
                     }
@@ -289,6 +295,8 @@ def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
                 "arguments": {},
             },
         )
+
+    assert client.calls == []
 
 
 def test_mcp_executor_rejects_nonbroker_consumer() -> None:

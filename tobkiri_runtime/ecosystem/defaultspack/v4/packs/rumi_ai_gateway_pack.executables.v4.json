@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:9ed96bafc711c4cef4924137071d99c5db79e4d215b1be6e0228bccc77e84d93",
+  "source_identity": "sha256:d380e595454f2dad37e80ea7c43327ba205cef3acdd61e38d9b0fe37bd0b833b",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -257,7 +257,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -291,7 +291,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
+      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -322,6 +322,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2c88aef8a2091d2829ae8f0f13a74e70c2e40eba6cb235b404e1d8a52b30b9cd",
-  "catalog_digest": "sha256:9ac8a301f381e7efc7b91fffdd2507a5110869f4884512783f98d8f189e926d2"
+  "materialization_catalog_digest": "sha256:9c8bbaacf870339fef854cc6010dfb089f95c7f9e17807432704cc4fab5c8b1c",
+  "catalog_digest": "sha256:2f1814c39973e12f9048c87230c9e716548ffc348c12f4cd4ef8855ac6ee1aca"
 }

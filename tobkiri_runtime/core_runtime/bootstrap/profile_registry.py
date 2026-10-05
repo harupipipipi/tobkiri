@@ -65,9 +65,6 @@ def bootstrap_review_catalog(
             successor_required = True
         else:
             definition_digest = active.resolved.plan["profile_definition_digest"]
-            binding_renewal_required = profile_binding_renewal_required(
-                active.resolved.plan, catalog
-            )
             identity = (
                 active.resolved.plan["profile_revision"],
                 active.activation["activation_id"],
@@ -86,6 +83,22 @@ def bootstrap_review_catalog(
         )
     if not isinstance(active_profile, Mapping):
         raise runtime.denied("bootstrap review has no verified Pack selection")
+    selected_ids = {item["pack_id"] for item in active_profile["packs"]}
+    closure_ids = selected_ids | {
+        active_profile["base"]["pack_id"],
+        active_profile["shell"]["pack_id"],
+    }
+    if not closure_ids.issubset(catalog.packs):
+        from ..pack_control_v4 import catalog_with_admitted_pack_closure
+
+        # Renewal must compare the verified active plan against the same
+        # admitted catalog used by Pack control, not the bundled subset.
+        # This loader still authenticates every external Pack and dependency.
+        catalog, _ = catalog_with_admitted_pack_closure(catalog, sorted(closure_ids))
+    if not successor_required:
+        binding_renewal_required = profile_binding_renewal_required(
+            active.resolved.plan, catalog
+        )
     candidate = deepcopy(dict(registered.profile))
     if definition_digest != canonical_digest(registered.profile):
         candidate = interrupted_source_update_predecessor(
@@ -113,15 +126,6 @@ def bootstrap_review_catalog(
             raise runtime.denied("source update requires reconfirmation")
         candidate = updated
     declared_ids = {item["pack_id"] for item in candidate["packs"]}
-    selected_ids = {item["pack_id"] for item in active_profile["packs"]}
-    closure_ids = selected_ids | {
-        active_profile["base"]["pack_id"],
-        active_profile["shell"]["pack_id"],
-    }
-    if not closure_ids.issubset(catalog.packs):
-        from ..pack_control_v4 import catalog_with_admitted_pack_closure
-
-        catalog, _ = catalog_with_admitted_pack_closure(catalog, sorted(closure_ids))
     dependency_ids = {
         dependency
         for pack_id in closure_ids

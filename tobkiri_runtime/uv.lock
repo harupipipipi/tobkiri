@@ -1053,6 +1053,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "packaging" },
     { name = "pyyaml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "typing-extensions" },
     { name = "wasmtime" },
 ]
@@ -1085,6 +1086,7 @@ requires-dist = [
     { name = "pywinauto", marker = "extra == 'computer-windows'", specifier = ">=0.6.8" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = "==2.4.1" },
     { name = "typing-extensions", specifier = ">=4.4" },
     { name = "uv", marker = "extra == 'dev'", specifier = "==0.11.14" },
     { name = "wasmtime", specifier = "==48.0.0" },

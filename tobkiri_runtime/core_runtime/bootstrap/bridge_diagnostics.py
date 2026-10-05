@@ -25,6 +25,13 @@ _PROVIDER_CODES = frozenset(
         "provider_unavailable",
         "invalid_response",
         "deadline_exceeded",
+        "denied",
+        "incompatible",
+        "invalid_request",
+        "not_configured",
+        "route_binding_invalid",
+        "route_binding_stale",
+        "route_binding_conflict",
     }
 )
 

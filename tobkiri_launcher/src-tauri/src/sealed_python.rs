@@ -3,14 +3,15 @@
 //! Integrity (the manifest and every byte named by it), environment source
 //! provenance, and the outer platform package signature are separate checks.
 //!
-//! Threat model: packaged macOS launch protects against a corrupt or
+//! Threat model: packaged POSIX launch protects against a corrupt or
 //! non-cooperating updater, cross-UID writes, and path/symlink substitution by
 //! copying through no-follow directory handles and executing from the held
 //! snapshot root. The snapshot is user-owned, so arbitrary malicious code
 //! already executing as the same UID is explicitly out of scope; this module
 //! does not describe that snapshot as OS-immutable or as an authenticity
-//! boundary. Windows and Linux release packaging stays disabled until those
-//! platforms have a real package-provenance boundary.
+//! boundary. Linux binds the running installation's identity and ownership to
+//! compile-time manifests and the same held snapshot. Windows remains gated
+//! on its platform-specific caller identity, signature and ACL proof.
 
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::{OsStr, OsString};
@@ -34,6 +35,10 @@ use sha2::{Digest, Sha256};
 use crate::config::AppConfig;
 use crate::process_utils;
 use crate::sealed_python_protocol as protocol;
+
+#[cfg(windows)]
+#[path = "sealed_python_windows.rs"]
+mod windows;
 
 pub const MANIFEST_SCHEMA: &str = "io.tobkiri.sealed-python-environment.v1";
 pub const ATTESTATION_SCHEMA: &str = protocol::ATTESTATION_SCHEMA;
@@ -374,7 +379,7 @@ struct VerifiedRuntimeOverlay {
     authority: RuntimeOverlayAuthority,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SnapshotFileIdentity {
     path: String,
@@ -389,7 +394,7 @@ struct SnapshotFileIdentity {
     changed_nanoseconds: i64,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 #[derive(Clone, Debug)]
 struct SnapshotVerification {
     files: Vec<SnapshotFileIdentity>,
@@ -403,8 +408,10 @@ struct VerifiedEnvironment {
     _interpreter_lease: File,
     environment_lease: Option<File>,
     snapshot_path: Option<PathBuf>,
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     snapshot_verification: Option<SnapshotVerification>,
+    #[cfg(windows)]
+    windows_snapshot: Option<windows::Snapshot>,
     runtime_overlay: VerifiedRuntimeOverlay,
     cleanup_authority: CleanupAuthority,
 }
@@ -910,6 +917,8 @@ where
         role_command.finish()?;
         output_log
     };
+    #[cfg(windows)]
+    windows::configure_process(&mut command)?;
     let path = if cfg!(windows) {
         format!(
             "{};{}",
@@ -1058,6 +1067,25 @@ fn packaged_packvm_bundle_binding(config: &AppConfig) -> Result<Option<PackVMBun
 fn packaged_packvm_bundle_binding_from_app_dir(
     configured_app_dir: &Path,
 ) -> Result<Option<PackVMBundleBinding>> {
+    // The native platform selects the trust boundary, never path depth or a
+    // caller-controlled .app/Contents/Resources spelling on another OS.
+    #[cfg(target_os = "macos")]
+    {
+        macos_packvm_bundle_binding_from_app_dir(configured_app_dir)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let app_dir = configured_app_dir
+            .canonicalize()
+            .context("packaged application resource root is unavailable")?;
+        portable_packvm_bundle_binding(&app_dir)
+    }
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn macos_packvm_bundle_binding_from_app_dir(
+    configured_app_dir: &Path,
+) -> Result<Option<PackVMBundleBinding>> {
     let app_dir = configured_app_dir
         .canonicalize()
         .context("packaged application resource root is unavailable")?;
@@ -1104,6 +1132,33 @@ fn packaged_packvm_bundle_binding_from_app_dir(
     }))
 }
 
+#[cfg(not(target_os = "macos"))]
+fn portable_packvm_bundle_binding(app_dir: &Path) -> Result<Option<PackVMBundleBinding>> {
+    let accelerator = if cfg!(target_os = "linux") {
+        "kvm"
+    } else if cfg!(windows) {
+        "whpx"
+    } else {
+        return Ok(None);
+    };
+    let expected = option_env!("TOBKIRI_QEMU_PACKVM_MANIFEST_SHA256").unwrap_or_default();
+    if expected.is_empty() {
+        bail!("[PACKVM_PROVENANCE_UNAVAILABLE] Launcher has no build-pinned portable VM bundle");
+    }
+    crate::packvm_bundle::verify(
+        &app_dir.join(crate::packvm_bundle::DIRECTORY),
+        expected,
+        accelerator,
+    )
+    .context("[PACKVM_PROVENANCE_INVALID] packaged VM assets failed verification")?;
+    Ok(Some(PackVMBundleBinding {
+        root: app_dir.to_path_buf(),
+        provisioning_sha256: expected.to_owned(),
+        helper_manifest_sha256: String::new(),
+        helper_team_id: String::new(),
+    }))
+}
+
 impl VerifiedEnvironment {
     fn load(config: &AppConfig) -> Result<Self> {
         if config.is_dev_workspace() {
@@ -1134,9 +1189,9 @@ impl VerifiedEnvironment {
             &sha256_bytes(&manifest_bytes),
             &runtime_resource_manifest,
         )?;
-        #[cfg(target_os = "macos")]
+        #[cfg(unix)]
         {
-            let (root, root_lease, snapshot_path, snapshot_verification) = create_macos_snapshot(
+            let (root, root_lease, snapshot_path, snapshot_verification) = create_unix_snapshot(
                 config,
                 &source_root,
                 &manifest,
@@ -1164,30 +1219,27 @@ impl VerifiedEnvironment {
                 cleanup_authority: CleanupAuthority::BeforeChildSpawn,
             })
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
         {
-            let _ = runtime_resource_manifest;
-            let root = source_root.clone();
-            let root_lease = open_directory(&source_root)?;
-            let manifest_path = root.join(MANIFEST_FILENAME);
-            let environment_lease = acquire_environment_lease(&root.join(LIFETIME_LEASE))?;
-            let interpreter_lease = open_regular(&fixed_interpreter(&root))?;
-            Ok(Self {
-                root,
-                manifest_path,
-                manifest,
-                _root_lease: root_lease,
-                _interpreter_lease: interpreter_lease,
-                environment_lease: Some(environment_lease),
-                snapshot_path: None,
-                runtime_overlay,
-                cleanup_authority: CleanupAuthority::BeforeChildSpawn,
-            })
+            windows::create(
+                config,
+                &source_root,
+                &manifest,
+                &manifest_bytes,
+                &runtime_resource_manifest,
+                &runtime_overlay,
+            )
         }
+        #[cfg(not(any(unix, windows)))]
+        bail!("[PYTHON_SEALED_PROVENANCE_UNAVAILABLE] unsupported packaged Python platform")
     }
 
     fn revalidate(&self) -> Result<()> {
-        #[cfg(target_os = "macos")]
+        #[cfg(windows)]
+        if let Some(snapshot) = &self.windows_snapshot {
+            return snapshot.revalidate(&self.manifest, &self.runtime_overlay);
+        }
+        #[cfg(unix)]
         if self.snapshot_path.is_some() {
             use std::os::fd::AsRawFd;
             return verify_snapshot_anchored(
@@ -1215,6 +1267,8 @@ impl VerifiedEnvironment {
                     .context("release parent lease before proving child lease");
             }
         }
+        #[cfg(windows)]
+        windows::release_lease(&lease)?;
         drop(lease);
         let path = self.root.join(LIFETIME_LEASE);
         verify_child_lifetime_lease(&path)?;
@@ -1225,8 +1279,14 @@ impl VerifiedEnvironment {
     fn cleanup_snapshot(&mut self) {
         self.environment_lease.take();
         if let Some(path) = self.snapshot_path.take() {
-            #[cfg(target_os = "macos")]
-            cleanup_macos_snapshot(&path, &self._root_lease);
+            #[cfg(windows)]
+            let _ = &path;
+            #[cfg(unix)]
+            cleanup_unix_snapshot(&path, &self._root_lease);
+            #[cfg(windows)]
+            if let Some(snapshot) = self.windows_snapshot.as_mut() {
+                snapshot.cleanup();
+            }
         }
     }
 
@@ -1248,13 +1308,13 @@ impl Drop for VerifiedEnvironment {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 struct PendingSnapshotCleanup {
     path: Option<PathBuf>,
     root_handle: Option<File>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl PendingSnapshotCleanup {
     fn new(path: Option<PathBuf>, root_handle: File) -> Self {
         Self {
@@ -1282,17 +1342,17 @@ impl PendingSnapshotCleanup {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl Drop for PendingSnapshotCleanup {
     fn drop(&mut self) {
         if let (Some(path), Some(root_handle)) = (self.path.take(), self.root_handle.as_ref()) {
-            cleanup_macos_snapshot(&path, root_handle);
+            cleanup_unix_snapshot(&path, root_handle);
         }
     }
 }
 
-#[cfg(target_os = "macos")]
-fn cleanup_macos_snapshot(path: &Path, root_handle: &File) {
+#[cfg(unix)]
+fn cleanup_unix_snapshot(path: &Path, root_handle: &File) {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     let Ok(path_metadata) = fs::symlink_metadata(path) else {
@@ -1324,7 +1384,7 @@ fn cleanup_macos_snapshot(path: &Path, root_handle: &File) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn canonical_private_temp_root() -> Result<PathBuf> {
     fs::canonicalize(std::env::temp_dir())
         .context("[PYTHON_SEALED_SNAPSHOT_INVALID] canonicalize private temp root")
@@ -1358,7 +1418,7 @@ pub(crate) fn is_sealed_snapshot_dir_name(name: &str) -> bool {
 /// still owns the name) and the environment lease is either absent or has
 /// no surviving shared holder (which fences a launcher whose orphaned
 /// bootstrap child is still running). Anything else is left untouched.
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 pub(crate) fn sweep_stale_macos_snapshots() {
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::MetadataExt;
@@ -1413,12 +1473,12 @@ pub(crate) fn sweep_stale_macos_snapshots() {
             continue;
         }
         if let Ok(handle) = open_directory(&path) {
-            cleanup_macos_snapshot(&path, &handle);
+            cleanup_unix_snapshot(&path, &handle);
         }
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(unix))]
 pub(crate) fn sweep_stale_macos_snapshots() {}
 
 fn build_runtime_overlay(
@@ -1459,8 +1519,8 @@ fn build_runtime_overlay(
     })
 }
 
-#[cfg(target_os = "macos")]
-fn create_macos_snapshot(
+#[cfg(unix)]
+fn create_unix_snapshot(
     config: &AppConfig,
     source_root: &Path,
     manifest: &SealedEnvironmentManifest,
@@ -1560,7 +1620,7 @@ fn create_macos_snapshot(
     })()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn open_directory_inheritable(path: &Path) -> Result<File> {
     use std::os::fd::FromRawFd;
     use std::os::unix::ffi::OsStrExt;
@@ -1578,7 +1638,7 @@ fn open_directory_inheritable(path: &Path) -> Result<File> {
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn copy_anchored_file(
     source_root: std::os::fd::RawFd,
     destination_root: std::os::fd::RawFd,
@@ -1598,7 +1658,7 @@ fn copy_anchored_file(
     )
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn copy_anchored_file_as(
     source_root: std::os::fd::RawFd,
     destination_root: std::os::fd::RawFd,
@@ -1719,7 +1779,7 @@ fn copy_anchored_file_as(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn snapshot_file_identity(relative: &Path, file: &File) -> Result<SnapshotFileIdentity> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
@@ -1741,7 +1801,7 @@ fn snapshot_file_identity(relative: &Path, file: &File) -> Result<SnapshotFileId
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn write_anchored_file(
     destination_root: std::os::fd::RawFd,
     destination_relative: &Path,
@@ -1790,7 +1850,7 @@ fn write_anchored_file(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn duplicate_fd(fd: std::os::fd::RawFd) -> Result<std::os::fd::RawFd> {
     let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
     if duplicate < 0 {
@@ -1799,7 +1859,7 @@ fn duplicate_fd(fd: std::os::fd::RawFd) -> Result<std::os::fd::RawFd> {
     Ok(duplicate)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn openat_directory(parent: std::os::fd::RawFd, name: &OsStr) -> Result<std::os::fd::RawFd> {
     use std::os::unix::ffi::OsStrExt;
     let name = std::ffi::CString::new(name.as_bytes())?;
@@ -1817,7 +1877,7 @@ fn openat_directory(parent: std::os::fd::RawFd, name: &OsStr) -> Result<std::os:
     Ok(child)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn mkdirat_open(parent: std::os::fd::RawFd, name: &OsStr) -> Result<std::os::fd::RawFd> {
     use std::os::unix::ffi::OsStrExt;
     let name = std::ffi::CString::new(name.as_bytes())?;
@@ -1829,7 +1889,7 @@ fn mkdirat_open(parent: std::os::fd::RawFd, name: &OsStr) -> Result<std::os::fd:
     openat_directory(parent, OsStr::from_bytes(name.as_bytes()))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn seal_snapshot_directories(
     root: std::os::fd::RawFd,
     manifest: &SealedEnvironmentManifest,
@@ -1856,7 +1916,7 @@ fn seal_snapshot_directories(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn openat_relative_directory(root: std::os::fd::RawFd, relative: &Path) -> Result<File> {
     use std::os::fd::FromRawFd;
 
@@ -1872,7 +1932,7 @@ fn openat_relative_directory(root: std::os::fd::RawFd, relative: &Path) -> Resul
     Ok(unsafe { File::from_raw_fd(directory) })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn openat_relative_regular(root: std::os::fd::RawFd, relative: &Path) -> Result<File> {
     use std::os::fd::FromRawFd;
     use std::os::unix::ffi::OsStrExt;
@@ -1908,7 +1968,7 @@ fn openat_relative_regular(root: std::os::fd::RawFd, relative: &Path) -> Result<
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn authenticate_snapshot_file(
     root: std::os::fd::RawFd,
     relative: &Path,
@@ -1957,7 +2017,7 @@ fn authenticate_snapshot_file(
     Ok(after)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn authenticate_snapshot_anchored(
     root: std::os::fd::RawFd,
     manifest: &SealedEnvironmentManifest,
@@ -1996,7 +2056,7 @@ fn authenticate_snapshot_anchored(
     Ok(verification)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn verify_snapshot_anchored(
     root: std::os::fd::RawFd,
     manifest: &SealedEnvironmentManifest,
@@ -2118,7 +2178,7 @@ fn portable_directory_inventory(directories: impl IntoIterator<Item = PathBuf>) 
     portable
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn collect_anchored_inventory(
     directory: std::os::fd::RawFd,
     relative: &Path,
@@ -2150,7 +2210,14 @@ fn collect_anchored_inventory(
     }
     let result = (|| {
         loop {
-            unsafe { *libc::__error() = 0 };
+            #[cfg(target_os = "macos")]
+            unsafe {
+                *libc::__error() = 0
+            };
+            #[cfg(target_os = "linux")]
+            unsafe {
+                *libc::__errno_location() = 0
+            };
             let entry = unsafe { libc::readdir(stream) };
             if entry.is_null() {
                 let error = std::io::Error::last_os_error();
@@ -2284,6 +2351,13 @@ fn required_package_provenance_kind() -> &'static str {
 
 fn verify_environment_tree(root: &Path, manifest: &SealedEnvironmentManifest) -> Result<()> {
     let metadata = fs::symlink_metadata(root)?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            bail!("[PYTHON_SEALED_INVALID] environment root is a reparse point");
+        }
+    }
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         bail!("[PYTHON_SEALED_INVALID] environment root is linked or missing");
     }
@@ -2615,7 +2689,6 @@ fn validate_attestation(
     role: PythonRole,
     verified: &VerifiedEnvironment,
 ) -> Result<()> {
-    let root = fs::canonicalize(&verified.root)?;
     let executable = fs::canonicalize(fixed_interpreter(&verified.root))?;
     let prefix = fs::canonicalize(verified.root.join(fixed_venv_prefix()))?;
     let base_prefix = fs::canonicalize(verified.root.join("runtime"))?;
@@ -2739,24 +2812,7 @@ fn verify_child_lifetime_lease(path: &Path) -> Result<()> {
         }
     }
     #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        match OpenOptions::new()
-            .read(true)
-            .write(true)
-            .share_mode(0)
-            .open(path)
-        {
-            Ok(_) => bail!(
-                "[PYTHON_SEALED_LEASE_MISSING] bootstrap did not retain the environment lease"
-            ),
-            Err(error) if error.raw_os_error() == Some(32) => {}
-            Err(error) => {
-                return Err(error)
-                    .context("[PYTHON_SEALED_LEASE_INVALID] could not test child lease")
-            }
-        }
-    }
+    windows::prove_child_lease(path)?;
     Ok(())
 }
 
@@ -2770,6 +2826,8 @@ fn acquire_environment_lease(path: &Path) -> Result<File> {
                 .context("[PYTHON_SEALED_LEASE_BUSY] environment replacement is active");
         }
     }
+    #[cfg(windows)]
+    windows::acquire_lease(&file)?;
     Ok(file)
 }
 
@@ -2808,6 +2866,13 @@ fn collect_files(
         let entry = entry?;
         let path = entry.path();
         let metadata = fs::symlink_metadata(&path)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 {
+                bail!("[PYTHON_SEALED_INVALID] sealed tree contains a reparse point");
+            }
+        }
         if metadata.file_type().is_symlink() {
             bail!("[PYTHON_SEALED_INVALID] sealed tree contains a symlink");
         }
@@ -3040,7 +3105,64 @@ fn verify_package_provenance(config: &AppConfig, provenance: &PackageProvenance)
     verify_macos_static_code(bundle)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+fn verify_package_provenance(config: &AppConfig, provenance: &PackageProvenance) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    if provenance.kind != required_package_provenance_kind() {
+        bail!("[PYTHON_SEALED_PROVENANCE_INVALID] packaged Python provenance kind mismatch");
+    }
+    // Linux's trust root is the executable the user installed and launched,
+    // not an Apple signature. Its compiled manifest hash has already been
+    // checked by VerifiedEnvironment::load. Source trees are checked below
+    // against cross-UID replacement, then copied through held no-follow FDs
+    // into the same authenticated read-only snapshot used on macOS.
+    let executable = std::env::current_exe()?.canonicalize()?;
+    let installed = fs::symlink_metadata(&executable)?;
+    let running = File::open("/proc/self/exe")?.metadata()?;
+    let uid = unsafe { libc::geteuid() };
+    if !installed.is_file()
+        || installed.file_type().is_symlink()
+        || installed.nlink() != 1
+        || installed.dev() != running.dev()
+        || installed.ino() != running.ino()
+        || (installed.uid() != 0 && installed.uid() != uid)
+        || installed.mode() & 0o022 != 0
+    {
+        bail!(
+            "[PYTHON_SEALED_PROVENANCE_INVALID] Linux Launcher identity is not installation-bound"
+        );
+    }
+    for root in [
+        config.app_dir.as_path(),
+        executable.parent().context("Launcher parent missing")?,
+    ] {
+        if !root.is_absolute() || root.canonicalize()? != root {
+            bail!("[PYTHON_SEALED_PROVENANCE_INVALID] Linux installation path is not canonical");
+        }
+        for directory in root.ancestors() {
+            let metadata = fs::symlink_metadata(directory)?;
+            // A root-owned sticky /tmp may contain a private AppImage mount;
+            // it cannot replace that next UID-owned directory.
+            let sticky_root_parent =
+                directory != root && metadata.uid() == 0 && metadata.mode() & libc::S_ISVTX != 0;
+            if !metadata.is_dir()
+                || metadata.file_type().is_symlink()
+                || (metadata.uid() != 0 && metadata.uid() != uid)
+                || (metadata.mode() & 0o022 != 0 && !sticky_root_parent)
+            {
+                bail!("[PYTHON_SEALED_PROVENANCE_INVALID] Linux installation is writable by another user");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn verify_package_provenance(config: &AppConfig, provenance: &PackageProvenance) -> Result<()> {
+    windows::verify_package_provenance(config, provenance)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn verify_package_provenance(_config: &AppConfig, provenance: &PackageProvenance) -> Result<()> {
     let required = required_package_provenance_kind();
     if provenance.kind != required {
@@ -3448,8 +3570,7 @@ mod tests {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        let log = crate::process_utils::open_child_log(&dir.join("x.log"), 8)
-            .expect("test log");
+        let log = crate::process_utils::open_child_log(&dir.join("x.log"), 8).expect("test log");
         let mut command = Command::new("/bin/true");
         let mut role_command = RoleCommand::new(&mut command);
         assert!(role_command.take_output_log().is_none());
@@ -3709,7 +3830,7 @@ mod tests {
         fs::set_permissions(root, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn test_snapshot_environment(label: &str) -> (PathBuf, VerifiedEnvironment) {
         let (source, manifest) = materialized_environment();
         let root = std::env::temp_dir().join(format!(
@@ -3758,7 +3879,7 @@ mod tests {
         (root, environment)
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn child_with_snapshot(label: &str, script: &str) -> (PathBuf, PythonChild) {
         let (path, environment) = test_snapshot_environment(label);
         let child = Command::new("/bin/sh")
@@ -3768,7 +3889,7 @@ mod tests {
         (path, PythonChild::packaged(child, environment))
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn wait_for_snapshot_cleanup(path: &Path) {
         let deadline = Instant::now() + Duration::from_secs(3);
         while path.exists() && Instant::now() < deadline {
@@ -3890,7 +4011,7 @@ mod tests {
     }
 
     #[test]
-    fn packaged_packvm_binding_is_derived_from_exact_outer_bundle_bytes() {
+    fn macos_packvm_binding_is_derived_from_exact_outer_bundle_bytes() {
         let root = std::env::temp_dir().join(format!(
             "tobkiri-packvm-bundle-binding-{}-{}",
             std::process::id(),
@@ -3908,7 +4029,7 @@ mod tests {
         .unwrap();
         fs::write(resources.join("packvm-vz-helper.manifest.v1.json"), helper).unwrap();
 
-        let binding = packaged_packvm_bundle_binding_from_app_dir(&app_dir)
+        let binding = macos_packvm_bundle_binding_from_app_dir(&app_dir)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -3923,25 +4044,69 @@ mod tests {
             b"substituted",
         )
         .unwrap();
-        let substituted = packaged_packvm_bundle_binding_from_app_dir(&app_dir)
+        let substituted = macos_packvm_bundle_binding_from_app_dir(&app_dir)
             .unwrap()
             .unwrap();
         assert_ne!(substituted.provisioning_sha256, binding.provisioning_sha256);
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(any(target_os = "linux", windows))]
     #[test]
-    fn non_bundle_runtime_has_no_packvm_binding() {
+    fn portable_binding_does_not_skip_a_shallow_resource_root() {
+        let temporary = std::env::temp_dir().canonicalize().unwrap();
+        let filesystem_root = temporary.ancestors().last().unwrap();
+        assert!(packaged_packvm_bundle_binding_from_app_dir(filesystem_root).is_err());
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn portable_binding_does_not_accept_a_foreign_macos_layout() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-packvm-foreign-layout-{}-{}",
+            std::process::id(),
+            random_nonce()
+        ));
+        let app_dir = root.join("Foreign.app/Contents/Resources/app");
+        fs::create_dir_all(&app_dir).unwrap();
+        let resources = app_dir.parent().unwrap();
+        fs::write(resources.join("packvm-vz-provisioning.v1.json"), b"{}").unwrap();
+        fs::write(resources.join("packvm-vz-helper.manifest.v1.json"), b"{}").unwrap();
+        let result = packaged_packvm_bundle_binding_from_app_dir(&app_dir);
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.is_err(),
+            "portable targets must reject VZ-only bindings"
+        );
+    }
+
+    #[test]
+    fn unbound_runtime_uses_platform_specific_packvm_binding_policy() {
         let root = std::env::temp_dir().join(format!(
             "tobkiri-packvm-unbundled-{}-{}",
             std::process::id(),
             random_nonce()
         ));
         fs::create_dir_all(&root).unwrap();
-        assert!(packaged_packvm_bundle_binding_from_app_dir(&root)
+        let result = packaged_packvm_bundle_binding_from_app_dir(&root);
+        if cfg!(any(target_os = "linux", windows)) {
+            assert!(
+                result.is_err(),
+                "portable packaged roles require bound VM assets"
+            );
+        } else {
+            assert!(result.unwrap().is_none());
+        }
+        assert!(macos_packvm_bundle_binding_from_app_dir(&root)
             .unwrap()
             .is_none());
-        fs::remove_dir(root).unwrap();
+        let nested = root.join("nested/application/resources");
+        fs::create_dir_all(&nested).unwrap();
+        if cfg!(any(target_os = "linux", windows)) {
+            assert!(packaged_packvm_bundle_binding_from_app_dir(&nested).is_err());
+        }
+        assert!(packaged_packvm_bundle_binding_from_app_dir(&root.join("missing")).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -4054,7 +4219,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn verified_environment_drop_cleans_every_pre_child_failure_stage() {
         for stage in ["configure", "revalidate", "spawn"] {
             let (path, environment) = test_snapshot_environment(stage);
@@ -4068,7 +4233,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn pending_construction_guard_cleans_partial_environment() {
         let (path, mut environment) = test_snapshot_environment("partial");
         let snapshot_path = environment.snapshot_path.take();
@@ -4080,7 +4245,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn snapshot_cleanup_never_follows_substituted_paths_or_symlinks() {
         use std::os::unix::fs::symlink;
 
@@ -4117,7 +4282,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn python_child_retains_snapshot_until_wait_kill_or_drop() {
         let (wait_path, mut waited) = child_with_snapshot("wait", "exit 0");
         assert!(wait_path.exists());
@@ -4136,7 +4301,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn child_operation_failures_preserve_snapshot_until_exit_confirmation() {
         let (try_wait_path, mut try_wait_child) = child_with_snapshot("try-wait-error", "sleep 1");
         try_wait_child.operation_failures.try_wait_once = true;
@@ -4164,7 +4329,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn kill_wait_and_repeated_status_queries_preserve_child_api() {
         let (path, mut child) = child_with_snapshot("kill-wait-api", "sleep 30");
         let pid = child.id();
@@ -4184,7 +4349,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn reaper_owned_child_completes_bounded_wait_and_caches_status() {
         let (path, mut child) = child_with_snapshot("reaper-api", "sleep 1; exit 9");
         child.operation_failures.kill_once = true;
@@ -4199,7 +4364,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn reaper_timeout_and_poll_error_are_cached_safe_residue_states() {
         for (label, timeout) in [("reaper-timeout", true), ("reaper-poll-error", false)] {
             let (path, mut child) = child_with_snapshot(label, "sleep 1");
@@ -4223,7 +4388,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn failed_reaper_handoff_preserves_snapshot_instead_of_deleting_live_imports() {
         let (path, mut child) = child_with_snapshot("handoff-error", "sleep 1");
         child.operation_failures.kill_once = true;
@@ -4243,7 +4408,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn startup_failure_paths_use_confirmed_termination_boundary() {
         for diagnostic in [
             "startup attestation failure",
@@ -4301,7 +4466,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn anchored_copy_ignores_path_replacement_and_rejects_hardlinks() {
         use std::os::fd::AsRawFd;
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -4495,7 +4660,7 @@ mod tests {
         )
         .is_err());
 
-        cleanup_macos_snapshot(&destination_path, &destination);
+        cleanup_unix_snapshot(&destination_path, &destination);
         fs::remove_dir_all(digest_rejected_path).ok();
         fs::remove_dir_all(rejected_path).ok();
         fs::remove_dir_all(source_path).ok();
@@ -4625,7 +4790,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn stale_snapshot_sweep_reaps_only_dead_owner_directories() {
         use std::os::fd::AsRawFd;
 
@@ -4720,8 +4885,10 @@ mod tests {
             _interpreter_lease: open_regular(&fixed_interpreter(&root)).unwrap(),
             environment_lease: None,
             snapshot_path: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(unix)]
             snapshot_verification: None,
+            #[cfg(windows)]
+            windows_snapshot: None,
             runtime_overlay: test_runtime_overlay(),
             cleanup_authority: CleanupAuthority::BeforeChildSpawn,
             root: root.clone(),

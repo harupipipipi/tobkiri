@@ -177,9 +177,12 @@ export function fetchDashboard(): Promise<ApiDashboard> {
 }
 
 export async function fetchFrontendCatalog(): Promise<ApiDynamicFrontendCatalog> {
+  // Like the dashboard, this authenticated projection recaptures the active
+  // Profile and verifies enabled Pack artifacts before returning contributions.
   const data = await defaultspackApiFetch<{dynamic_host?: ApiDynamicFrontendCatalog | null}>(
     frontendContractPath('GET', '/api/ui/catalog'),
     {cache: 'no-store'},
+    {timeoutMs: 30_000},
   );
   if (!data.dynamic_host) {
     throw new Error('Tobkiri dynamic frontend catalog is unavailable.');

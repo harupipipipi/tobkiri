@@ -169,14 +169,17 @@ class _WindowsApi:
         path: Path,
         *,
         directory: bool,
+        delete_access: bool = True,
         share_mode: int = _WINDOWS_HANDLE_SHARE_MODE,
     ) -> int:
-        """Open one final component without reparse or delete sharing."""
+        """Open a pinned guard or mutation handle without following reparses."""
 
         if share_mode & _WINDOWS_FILE_SHARE_DELETE:
             raise ValueError("Windows cleanup handles must not share delete access")
 
-        access = _WINDOWS_DELETE | _WINDOWS_FILE_READ_ATTRIBUTES
+        access = _WINDOWS_FILE_READ_ATTRIBUTES
+        if delete_access:
+            access |= _WINDOWS_DELETE
         flags = _WINDOWS_FILE_FLAG_OPEN_REPARSE_POINT
         if directory:
             # Root/ancestor handles are also the non-delete-sharing trust
@@ -319,6 +322,17 @@ class _WindowsApi:
     def mark_delete(self, handle: int) -> None:
         """Mark an open file or empty directory for deletion on close."""
 
+        # Re-read the mutation handle itself immediately before deletion. A
+        # pathname lstat cannot rule out a substituted or newly linked file.
+        # Retain the quarantine rather than touch an inode shared outside it.
+        metadata = _WindowsByHandleFileInformation()
+        if not self._get_file_information(wintypes.HANDLE(handle), ctypes.byref(metadata)):
+            raise self._last_error(Path("<native-handle>"))
+        if (
+            not metadata.dwFileAttributes & _WINDOWS_FILE_ATTRIBUTE_DIRECTORY
+            and metadata.nNumberOfLinks != 1
+        ):
+            raise OSError(errno.EPERM, "native Windows cleanup contains a hard-linked file")
         information = _WindowsFileDispositionInfo(DeleteFile=wintypes.BOOLEAN(True))
         if not self._set_file_information(
             wintypes.HANDLE(handle),
@@ -1427,6 +1441,12 @@ def _bind_windows_handles(
             handle = api.open(
                 expected.path,
                 directory=True,
+                # Ancestors only guard the path; they are never mutated. A
+                # DELETE-capable parent conflicts with the internal destination
+                # parent open performed by FileRenameInfo, even when we grant
+                # delete sharing. Keep the guard pinned by denying delete
+                # sharing, but do not request DELETE access on it.
+                delete_access=False,
                 share_mode=_WINDOWS_HANDLE_SHARE_MODE,
             )
             owned_handles.append(_WindowsHandleRecord(expected.path, handle, None))
@@ -1453,6 +1473,7 @@ def _bind_windows_handles(
             target_handle = api.open(
                 target,
                 directory=target_is_directory,
+                delete_access=True,
                 share_mode=_WINDOWS_HANDLE_SHARE_MODE,
             )
             owned_handles.append(_WindowsHandleRecord(target, target_handle, None))
@@ -1713,6 +1734,7 @@ def _open_windows_child_handle(
     handle = api.open(
         path,
         directory=is_directory,
+        delete_access=True,
         share_mode=_WINDOWS_HANDLE_SHARE_MODE,
     )
     native_identity: Optional[_WindowsFileIdentity] = None

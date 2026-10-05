@@ -3,6 +3,7 @@
 @import "./ui/motion/luxeMotion.css";
 @import "./styles/rumi-liquid-mobile.css";
 @import "./styles/defaults-theme.css";
+@import "./components/TaskPet.css";
 
 @theme {
   --color-zinc-50: #fafafa;
@@ -1822,4 +1823,43 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
     opacity: 1;
     pointer-events: auto;
   }
+}
+
+
+/* Beautiful UI loading, tool-chip and task-row patterns mapped to Defaults tokens.
+   See docs/beautiful_ui_adaptation.md and LICENSES/Beautiful-UI-MIT.txt. */
+.rumi-loading-pixels {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 3px;
+}
+.rumi-loading-pixels > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+.rumi-loading-pixels.is-animated > span {
+  animation: rumi-runtime-pixel-shimmer 2.4s ease-in-out infinite;
+}
+.rumi-loading-pixels > span:nth-child(3n + 2) { animation-delay: 0.2s; }
+.rumi-loading-pixels > span:nth-child(3n) { animation-delay: 0.4s; }
+@keyframes rumi-runtime-pixel-shimmer {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+.rumi-runtime-task-card {
+  border: 1px solid var(--rumi-border-subtle);
+  border-radius: 14px;
+  background: var(--rumi-surface-raised);
+  padding: 8px 10px;
+}
+.rumi-runtime-task-card .rumi-tool-activity-timeline { padding-top: 8px; }
+.rumi-runtime-task-card .rumi-tool-activity-timeline > * { border-radius: 8px; }
+.rumi-runtime-approval-card { max-width: 100%; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .rumi-loading-pixels.is-animated > span { animation: none; opacity: 0.7; }
 }

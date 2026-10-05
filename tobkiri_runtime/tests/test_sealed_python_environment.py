@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tarfile
 import types
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -426,7 +426,10 @@ def test_rootless_packaging_binding_and_identity_safe_cleanup(
         "c" * 64,
         "d" * 64,
     )
-    payload = binding.read_text(encoding="utf-8")
+    binding_bytes = binding.read_bytes()
+    assert b"\r" not in binding_bytes
+    assert binding_bytes.endswith(b"\n")
+    payload = binding_bytes.decode("utf-8")
     assert f"TOBKIRI_PACKAGING_PYTHON_SNAPSHOT={output}\n" in payload
     assert f"TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256={digest}\n" in payload
     os.environ[BUILDER.MANIFEST_SHA_ENV] = digest
@@ -481,14 +484,15 @@ def test_explicit_uv_authority_is_private_absolute_and_digest_bound(
         BUILDER._validate_pinned_uv_executable(ROOT, uv, BUILDER.target_spec(target))
 
 
-def test_macos_python_archive_authority_is_exact_and_offline_after_download(
+def test_python_archive_authority_is_exact_and_offline_after_download(
     tmp_path: Path,
 ) -> None:
-    """Each mac target names one reviewed PBS revision/digest and safe payload."""
+    """Each pinned target names one reviewed PBS revision/digest and safe payload."""
     assert BUILDER.PYTHON_BUILD_REVISION == "20260510"
     assert set(BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET) == {
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
     }
     for target, digest in BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET.items():
         assert len(digest) == 64
@@ -557,12 +561,16 @@ def test_formal_builder_rejects_external_requirements_path(tmp_path: Path) -> No
         )
 
 
+@pytest.mark.parametrize(
+    "target", ("x86_64-apple-darwin", "x86_64-pc-windows-msvc")
+)
 def test_pinned_python_archive_download_keeps_sha256_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    target: str,
 ) -> None:
     """The pinned archive download still verifies its exact SHA-256 digest."""
-    spec = BUILDER.target_spec("x86_64-apple-darwin")
+    spec = BUILDER.target_spec(target)
     payload = b"pinned archive bytes\n"
 
     class Response:
@@ -972,6 +980,10 @@ def test_pinned_python_archive_rejects_destination_symlink(tmp_path: Path) -> No
     assert not (real_destination / "python").exists()
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX mode fixture; real Windows ACL copy/tamper coverage is below",
+)
 def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
     tmp_path: Path,
 ) -> None:
@@ -984,6 +996,7 @@ def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
         "tobkiri_runtime/docs/managed-sandbox-runtime/01-overview.md": (b"overview\n"),
         "tobkiri_runtime/module.py": b"VALUE = 1\n",
         "tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json": b"{}\n",
+        "tobkiri_runtime/payload.bin": b"\n\r\n\x1a\x00" + bytes(range(256)),
     }
     entries = []
     source.chmod(0o700)
@@ -1033,6 +1046,9 @@ def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
         source, tmp_path / "copied", inventory_digest, release_digest
     )
     assert (copied / "tobkiri_runtime/module.py").read_bytes() == b"VALUE = 1\n"
+    assert (copied / "tobkiri_runtime/payload.bin").read_bytes() == (
+        payloads["tobkiri_runtime/payload.bin"]
+    )
     source.chmod(0o700)
     (source / "tobkiri_runtime").chmod(0o700)
     extra = source / "tobkiri_runtime" / "unexpected.py"
@@ -3225,6 +3241,7 @@ def test_sealed_basename_alone_does_not_select_packaged_imports(
     old_ecosystem = sys.modules.get("ecosystem")
     old_defaultspack = sys.modules.get("ecosystem.defaultspack")
     module = types.ModuleType("sealed_desktop_test")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
     module.__file__ = str(desktop_path)
     module.__package__ = ""
     source = desktop_path.read_text(encoding="utf-8")
@@ -3312,6 +3329,7 @@ def test_explicit_scope_selects_custom_named_snapshot_for_defaultspack(
     ):
         sys.modules.pop(module_name, None)
     module = types.ModuleType("custom_snapshot_desktop_test")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
     module.__file__ = str(desktop_path)
     module.__package__ = ""
     core_runtime = types.ModuleType("core_runtime")
@@ -3785,3 +3803,990 @@ def test_all_tauri_build_callsites_are_mac_release_gated() -> None:
     guard = 'if [[ "$mode" == "production" && "$presentation_platform" != "macos" ]]'
     assert guard in helper
     assert helper.index(guard) < helper.index(raw_needle)
+
+
+def test_windows_python_archive_is_exact_reviewed_vendor_release() -> None:
+    """Windows selects the hash-reviewed standalone runtime, never host Python."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    assert BUILDER._python_archive_url(spec) == (
+        "https://github.com/astral-sh/python-build-standalone/releases/download/"
+        "20260510/cpython-3.13.13%2B20260510-x86_64-pc-windows-msvc"
+        "-install_only_stripped.tar.gz"
+    )
+    assert BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple] == (
+        "e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834"
+    )
+
+
+def test_windows_python_archive_extracts_implicit_directory_layout(
+    tmp_path: Path,
+) -> None:
+    """The vendor Windows tar uses regular files with implicit directories."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    archive = tmp_path / "windows.tar.gz"
+    paths = (
+        "python.exe",
+        "python313.dll",
+        "vcruntime140.dll",
+        "Lib/os.py",
+        "DLLs/_ssl.pyd",
+        "Lib/venv/scripts/nt/venvlauncher.exe",
+    )
+    _write_archive(
+        archive,
+        tuple(_archive_member(f"python/{path}") for path in paths),
+    )
+    runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "output")
+    assert BUILDER._runtime_python(runtime, spec) == runtime / "python.exe"
+    for path in paths:
+        assert (runtime / path).is_file()
+        assert not (runtime / path).is_symlink()
+
+
+@pytest.mark.skipif(
+    os.name != "nt"
+    or not os.environ.get("TOBKIRI_WINDOWS_PYTHON_ARCHIVE")
+    or not os.environ.get("TOBKIRI_WINDOWS_PINNED_UV"),
+    reason="requires Windows and the pinned PBS archive and uv executable",
+)
+def test_windows_pinned_runtime_relocates_without_external_python(
+    tmp_path: Path,
+) -> None:
+    """Move both runtime and uv venv; prove imports cannot use the original base."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    archive = Path(os.environ["TOBKIRI_WINDOWS_PYTHON_ARCHIVE"])
+    uv = Path(os.environ["TOBKIRI_WINDOWS_PINNED_UV"])
+    assert hashlib.sha256(archive.read_bytes()).hexdigest() == (
+        BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple]
+    )
+    assert hashlib.sha256(uv.read_bytes()).hexdigest() == (
+        BUILDER.UV_BINARY_SHA256_BY_TARGET[spec.triple]
+    )
+    build_root = tmp_path / "original-build"
+    build_root.mkdir()
+    extracted = BUILDER._extract_pinned_python_archive(
+        archive, build_root / "extracted"
+    )
+    # Validate the actual vendor native payload before attempting execution:
+    # Windows CRT text-mode descriptors can silently expand LF into CRLF.
+    with tarfile.open(archive, "r:gz") as vendor:
+        native_members = [
+            member for member in vendor.getmembers()
+            if member.isreg() and member.name.lower().endswith((".exe", ".dll", ".pyd"))
+        ]
+        assert any(member.name == "python/python.exe" for member in native_members)
+        for member in native_members:
+            source = vendor.extractfile(member)
+            assert source is not None
+            with source:
+                expected = source.read()
+            actual = extracted.joinpath(*Path(member.name).parts[1:]).read_bytes()
+            assert len(actual) == member.size, member.name
+            assert hashlib.sha256(actual).digest() == hashlib.sha256(expected).digest(), member.name
+    runtime = build_root / "runtime"
+    extracted.rename(runtime)
+    venv = build_root / "venv"
+    environment = _clean_sealed_test_environment()
+    environment.update(
+        {"UV_NO_CONFIG": "1", "UV_PYTHON_DOWNLOADS": "never"}
+    )
+    subprocess.run(
+        [
+            os.fspath(uv), "venv", os.fspath(venv),
+            "--python", os.fspath(runtime / "python.exe"),
+            "--relocatable", "--no-project", "--offline",
+        ],
+        env=environment,
+        cwd=build_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    BUILDER._normalize_venv(venv, runtime, spec, home="runtime")
+    site = venv / "Lib" / "site-packages"
+    (site / "installed_probe.py").write_text("VALUE = 'sealed'\n", encoding="utf-8")
+    moved = tmp_path / "relocated closure with spaces"
+    build_root.rename(moved)
+    assert not build_root.exists()
+    environment["PATH"] = os.pathsep.join(
+        os.fspath(moved / part) for part in ("venv/Scripts", "runtime")
+    )
+    result = subprocess.run(
+        [
+            os.fspath(moved / "venv/Scripts/python.exe"), "-I", "-B", "-c",
+            "import _ssl, _hashlib, _ctypes, sqlite3, encodings, "
+            "installed_probe, json, sys; "
+            "print(json.dumps({'version': '.'.join(map(str, sys.version_info[:3])), "
+            "'prefix': sys.prefix, 'base_prefix': sys.base_prefix, "
+            "'executable': sys.executable, 'stdlib': encodings.__file__, "
+            "'package': installed_probe.__file__, 'value': installed_probe.VALUE}))",
+        ],
+        cwd=moved,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(result.stdout)
+    assert report["version"] == BUILDER.PYTHON_VERSION
+    assert report["value"] == "sealed"
+    for field, relative in (
+        ("prefix", "venv"),
+        ("base_prefix", "runtime"),
+        ("executable", "venv/Scripts/python.exe"),
+    ):
+        assert Path(report[field]).resolve() == (moved / relative).resolve()
+    assert Path(report["stdlib"]).resolve().is_relative_to(moved / "runtime")
+    assert Path(report["package"]).resolve().is_relative_to(moved / "venv")
+
+
+def test_archive_chmod_does_not_fallback_to_following_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing POSIX no-follow implementation must fail closed."""
+    if os.name == "nt":
+        pytest.skip("POSIX-only no-follow failure contract")
+    calls = []
+
+    def unsupported(*args: object, **kwargs: object) -> None:
+        calls.append((args, kwargs))
+        raise NotImplementedError("no no-follow chmod")
+
+    monkeypatch.setattr(BUILDER.os, "chmod", unsupported)
+    with pytest.raises(NotImplementedError):
+        BUILDER._chmod_archive_path(tmp_path / "leaf", 0o444)
+    assert len(calls) == 1
+    assert calls[0][1] == {"follow_symlinks": False}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows handle attribute test")
+def test_windows_archive_chmod_uses_handle_not_os_chmod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python 3.12 lacking no-follow chmod still sets readonly without fallback."""
+    leaf = tmp_path / "file"
+    leaf.write_bytes(b"archive")
+
+    def unsupported(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Windows archive permissions must use held handles")
+
+    monkeypatch.setattr(BUILDER.os, "chmod", unsupported)
+    try:
+        BUILDER._chmod_archive_path(leaf, 0o444)
+        assert leaf.stat().st_file_attributes & 1
+        BUILDER._chmod_archive_path(leaf, 0o644)
+        assert not leaf.stat().st_file_attributes & 1
+    finally:
+        BUILDER._chmod_windows_archive_path(leaf, 0o644)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction rejection test")
+def test_windows_archive_chmod_rejects_reparse_ancestor(tmp_path: Path) -> None:
+    """An intermediate junction cannot redirect a readonly attribute update."""
+    target = tmp_path / "target"
+    target.mkdir()
+    leaf = target / "file"
+    leaf.write_bytes(b"unchanged")
+    junction = tmp_path / "junction"
+    cmd = Path(os.environ["SystemRoot"]) / "System32/cmd.exe"
+    subprocess.run(
+        [os.fspath(cmd), "/d", "/c", "mklink", "/J",
+         os.fspath(junction), os.fspath(target)],
+        check=True, capture_output=True, text=True,
+    )
+    try:
+        with pytest.raises(BUILDER.SealedEnvironmentError, match="reparse point"):
+            BUILDER._chmod_archive_path(junction / "file", 0o444)
+        assert not leaf.stat().st_file_attributes & 1
+    finally:
+        junction.rmdir()
+
+
+@pytest.mark.parametrize("use_dirfd", (False, True))
+def test_python_archive_preserves_binary_bytes_for_files_and_materialized_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_dirfd: bool,
+) -> None:
+    """CRT text mode must never translate LF/CRLF or interpret Ctrl-Z as EOF."""
+    if use_dirfd and not BUILDER._archive_dirfd_supported():
+        pytest.skip("descriptor-relative archive operations unavailable")
+    monkeypatch.setattr(BUILDER, "_archive_dirfd_supported", lambda: use_dirfd)
+    payload = b"MZ\x00\x00\n\r\n\x1a\xff" + bytes(range(256)) * 3
+    archive = tmp_path / "binary.tar.gz"
+    member, data = _archive_member("python/python.exe", payload=payload)
+    alias, alias_data = _archive_member(
+        "python/alias.exe", member_type=tarfile.SYMTYPE, linkname="python.exe",
+    )
+    _write_archive(archive, ((member, data), (alias, alias_data)))
+    runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "output")
+    for name in ("python.exe", "alias.exe"):
+        actual = (runtime / name).read_bytes()
+        assert actual == payload
+        assert len(actual) == len(payload)
+        assert hashlib.sha256(actual).digest() == hashlib.sha256(payload).digest()
+        assert not (runtime / name).is_symlink()
+
+
+def test_application_snapshot_copy_preserves_all_binary_bytes(tmp_path: Path) -> None:
+    """Raw descriptor readers and writers preserve native/source closure bytes."""
+    payload = b"\n\r\n\x1a\x00" + bytes(range(256)) * 3
+    source = tmp_path / "source.bin"
+    source.write_bytes(payload)
+    entry = BUILDER._ApplicationClosureEntry(
+        "source.bin", "file", BUILDER._application_entry_identity(source.stat()), False,
+    )
+    target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+    destination = tmp_path / "copy.bin"
+    BUILDER._copy_snapshot_file(source, destination, entry, BUILDER.target_spec(target))
+    assert destination.read_bytes() == payload
+
+
+def _windows_source_fixture(tmp_path: Path):
+    source = tmp_path / "native-source"
+    source.mkdir()
+    payloads = {
+        "run.py": b"print('sealed')\r\n\x1a\x00",
+        "tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json": b"{}\n",
+    }
+    entries = []
+    for relative, payload in payloads.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        entries.append(
+            {
+                "path": relative,
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "executable": relative == "run.py",
+            }
+        )
+    authority = entries[-1]["sha256"]
+    document = {
+        "schema": BUILDER.SOURCE_SNAPSHOT_SCHEMA,
+        "source_commit": "a" * 40,
+        "source_tree": "b" * 40,
+        "source_manifest_sha256": authority,
+        "files": entries,
+    }
+    encoded = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    (source / BUILDER.SOURCE_SNAPSHOT_MANIFEST).write_bytes(encoded)
+    manifest = hashlib.sha256(encoded).hexdigest()
+    frame = {key: value for key, value in document.items() if key != "files"}
+    frame["source_inventory_sha256"] = manifest
+    release = hashlib.sha256(
+        (json.dumps(frame, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    ).hexdigest()
+    return source, payloads, manifest, release
+
+
+def _fake_windows_snapshot(monkeypatch, source: Path, destination: Path):
+    """Exercise orchestration on POSIX; this is not native Windows acceptance."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+
+    class Api:
+        def __init__(self):
+            self.handles = {}
+            self.sealed = {}
+            self.next_handle = 1
+            self.deleted = []
+            self.events = []
+
+        def identity(self, handle, directory):
+            path = self.handles[handle]
+            metadata = path.lstat()
+            if path.is_symlink() or (not directory and metadata.st_nlink != 1):
+                raise module.SnapshotError("reparse or hardlink")
+            if path.is_dir() != directory:
+                raise module.SnapshotError("wrong type")
+            return metadata.st_dev, metadata.st_ino, directory
+
+        def open(self, path, directory, *, delete=False):
+            handle = self.next_handle
+            self.next_handle += 1
+            self.handles[handle] = path
+            try:
+                pin = module.Pin(path, handle, self.identity(handle, directory))
+            except BaseException:
+                self.close(handle)
+                raise
+            self.events.append(("open-delete" if delete else "open", path))
+            return pin
+
+        def close(self, handle):
+            self.handles.pop(handle)
+
+        def verify_acl(self, handle, sealed):
+            path = self.handles[handle]
+            if self.sealed.get(path, True) != sealed:
+                raise module.SnapshotError("unsafe DACL")
+
+        def set_acl(self, handle, sealed):
+            self.sealed[self.handles[handle]] = sealed
+            self.events.append(("seal" if sealed else "unseal", self.handles[handle]))
+
+        def create(self, parent, name, directory):
+            path = parent.path / name
+            if directory:
+                path.mkdir()
+            else:
+                with path.open("xb"):
+                    pass
+            self.sealed[path] = False
+            return self.open(path, directory)
+
+        def read(self, pin):
+            return pin.path.read_bytes()
+
+        def write(self, pin, payload):
+            pin.path.write_bytes(payload)
+            self.set_acl(pin.handle, True)
+            pin.sealed = True
+
+        def delete(self, pin):
+            self.deleted.append(pin.path)
+            pin.path.rmdir() if pin.identity[2] else pin.path.unlink()
+
+    api = Api()
+
+    def pin_chain(self, path):
+        pin = api.open(path, True)
+        self.ancestors.append(pin)
+        return pin
+
+    monkeypatch.setattr(snapshot_type, "pin_chain", pin_chain)
+    return snapshot_type(source, destination, api=api), api, module
+
+
+def test_windows_source_snapshot_preserves_bytes_and_holds_lifetime(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """ACL/held scope substitutes for POSIX modes without losing Git semantics."""
+    source, payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, _module = _fake_windows_snapshot(monkeypatch, source, destination)
+    monkeypatch.setattr(
+        BUILDER.os, "fchmod", lambda *args: pytest.fail("POSIX chmod"), raising=False
+    )
+    with guard:
+        copied = BUILDER._copy_verified_source_snapshot(
+            source,
+            destination,
+            manifest,
+            release,
+            _windows_snapshot=guard,
+        )
+        assert copied == destination
+        for relative, payload in payloads.items():
+            assert (copied / relative).read_bytes() == payload
+        assert api.handles
+        assert all(pin.sealed for pin in guard.outputs.values())
+        assert not api.deleted
+    assert not destination.exists()
+    assert not api.handles
+    assert source.exists()
+
+
+@pytest.mark.parametrize("damage", ["manifest", "release", "bytes", "extra-directory"])
+def test_windows_source_snapshot_rejects_digest_or_inventory_damage(
+    monkeypatch,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    if damage == "manifest":
+        manifest = "0" * 64
+    elif damage == "release":
+        release = "0" * 64
+    elif damage == "bytes":
+        (source / "run.py").write_bytes(b"tampered")
+    else:
+        (source / "unlisted").mkdir()
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    with pytest.raises((BUILDER.SealedEnvironmentError, module.SnapshotError)):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+    assert not destination.exists()
+    assert not api.handles
+
+
+@pytest.mark.parametrize("damage", ["reparse", "hardlink", "acl"])
+def test_windows_source_snapshot_rejects_unsafe_native_authority(
+    monkeypatch,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    source, _payloads, _manifest, _release = _windows_source_fixture(tmp_path)
+    target = source / "run.py"
+    if damage == "hardlink":
+        os.link(target, tmp_path / "outside")
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, tmp_path / "copy")
+    if damage == "acl":
+        api.sealed[target] = False
+    elif damage == "reparse":
+        identity = api.identity
+
+        def reject_reparse(handle, directory):
+            if api.handles[handle] == target:
+                raise module.SnapshotError("reparse")
+            return identity(handle, directory)
+
+        api.identity = reject_reparse
+    with pytest.raises(module.SnapshotError):
+        with guard:
+            pytest.fail("unsafe source was accepted")
+    assert not api.handles
+    assert not (tmp_path / "copy").exists()
+
+
+def test_windows_source_snapshot_cleanup_retains_unowned_entries(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    with pytest.raises(module.SnapshotError, match="inventory changed"):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+            (destination / "unowned").write_text("do not delete")
+    assert (destination / "unowned").read_text() == "do not delete"
+    assert not api.deleted
+    assert not api.handles
+
+
+def test_windows_source_snapshot_cleanup_never_deletes_replacement(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    original_open = api.open
+
+    def replace_at_delete(path, directory, *, delete=False):
+        if delete and path.name == "run.py":
+            path.rename(path.with_name("original-retained.py"))
+            path.write_bytes(b"foreign")
+        return original_open(path, directory, delete=delete)
+
+    api.open = replace_at_delete
+    with pytest.raises(module.SnapshotError, match="cleanup.*identity changed"):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+    assert (destination / "run.py").read_bytes() == b"foreign"
+    assert destination / "run.py" not in api.deleted
+    assert not api.handles
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["a\\b", "a:b", "a/../b", "NUL.txt", "a.", "a ", "/root", "a//b", "C:/a"],
+)
+def test_windows_source_snapshot_rejects_windows_path_aliases(relative: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    with pytest.raises(module.SnapshotError):
+        module.safe_relative(relative)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires real Windows DACL/share APIs")
+@pytest.mark.parametrize(
+    "damage", [None, "manifest", "release", "bytes", "extra-directory"]
+)
+def test_windows_source_snapshot_native_copy_acl_lifetime_and_cleanup(
+    tmp_path: Path,
+    damage: str | None,
+) -> None:
+    """Native acceptance: real protected source, binary copy, share lock, cleanup."""
+    source, payloads, manifest, release = _windows_source_fixture(tmp_path)
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = module.NativeApi()
+    # Use atomic, protected creation just like the coordinator; inherited
+    # temporary-directory ownership is deliberately not trusted.
+    raw_source = source.with_name("fixture-bytes")
+    source.rename(raw_source)
+    if damage == "bytes":
+        (raw_source / "run.py").write_bytes(b"tampered")
+    elif damage == "extra-directory":
+        (raw_source / "unlisted").mkdir()
+    elif damage == "manifest":
+        manifest = "0" * 64
+    elif damage == "release":
+        release = "0" * 64
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, source.name, True)
+    pins = [root]
+    by_relative = {"": root}
+    try:
+        for path in sorted(raw_source.rglob("*")):
+            relative = path.relative_to(raw_source)
+            parent_name = relative.parent.as_posix()
+            pin = api.create(
+                by_relative["" if parent_name == "." else parent_name],
+                path.name,
+                path.is_dir(),
+            )
+            pins.append(pin)
+            by_relative[relative.as_posix()] = pin
+            if path.is_file():
+                api.write(pin, path.read_bytes())
+        for pin in reversed(pins):
+            api.set_acl(pin.handle, True)
+        destination = tmp_path / "copy"
+        if damage is not None:
+            with pytest.raises(
+                (BUILDER.SealedEnvironmentError, OSError), match="committed source"
+            ):
+                with BUILDER._verified_source_snapshot(
+                    source, destination, manifest, release
+                ):
+                    pytest.fail("unsafe native snapshot was accepted")
+            assert not destination.exists()
+            return
+        with BUILDER._verified_source_snapshot(source, destination, manifest, release):
+            for relative, payload in payloads.items():
+                assert (destination / relative).read_bytes() == payload
+            with pytest.raises(OSError):
+                (destination / "run.py").write_bytes(b"tamper")
+            with pytest.raises(OSError):
+                destination.rename(tmp_path / "moved")
+            with pytest.raises(OSError):
+                (source / "run.py").write_bytes(b"tamper")
+        assert not destination.exists()
+    finally:
+        for pin in reversed(pins):
+            api.set_acl(pin.handle, False)
+            api.close(pin.handle)
+        api.close(parent.handle)
+
+
+def test_windows_source_writer_reopens_independent_read_objects(monkeypatch) -> None:
+    """Reduced DuplicateHandle access would retain the writer's share reservation."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    opened, closed = [], []
+
+    class Kernel:
+        @staticmethod
+        def WriteFile(handle, payload, length, count, overlapped):
+            count._obj.value = length
+            return 1
+
+        @staticmethod
+        def FlushFileBuffers(handle):
+            return 1
+
+        @staticmethod
+        def CreateFileW(
+            path, access, sharing, attributes, disposition, flags, template
+        ):
+            opened.append((path, access, sharing, disposition, flags))
+            return 20 + len(opened)
+
+    api.kernel = Kernel()
+    api.identity = lambda handle, directory: (1, 2, False)
+    api.set_acl = lambda handle, sealed: None
+    api.verify_acl = lambda handle, sealed: None
+    api.close = closed.append
+    api.read = lambda pin: b"exact\r\n\x1a\0"
+    pin = module.Pin(Path("source.py"), 10, (1, 2, False))
+    api.write(pin, b"exact\r\n\x1a\0")
+    assert [item[2] for item in opened] == [3, 1]
+    assert all(item[1] == module.READ | module.WRITE_DAC for item in opened)
+    assert all(item[3:] == (3, 0x200000) for item in opened)
+    assert closed == [10, 21]
+    assert pin.handle == 22 and pin.sealed
+
+
+def test_windows_source_scope_propagates_consumer_failure_and_cleans(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, _module = _fake_windows_snapshot(monkeypatch, source, destination)
+    # Replace only this module's platform view, never pathlib's global os.name.
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    monkeypatch.setattr(
+        BUILDER, "_load_windows_source_snapshot", lambda: lambda *args: guard
+    )
+    with pytest.raises(RuntimeError, match="consumer failed"):
+        with BUILDER._verified_source_snapshot(source, destination, manifest, release):
+            assert api.handles and destination.exists()
+            raise RuntimeError("consumer failed")
+    assert not destination.exists() and not api.handles
+
+
+def test_windows_source_workspace_never_falls_back_to_generic_cleanup(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    calls = []
+    monkeypatch.setattr(
+        BUILDER, "_load_cleanup_remove", lambda: lambda *a, **kw: calls.append(a)
+    )
+    workspace = None
+    with pytest.raises(RuntimeError, match="unsafe cleanup"):
+        with BUILDER._sealed_build_workspace(tmp_path) as raw:
+            workspace = Path(raw)
+            (workspace / "foreign").write_bytes(b"retain")
+            raise RuntimeError("unsafe cleanup")
+    assert workspace and (workspace / "foreign").read_bytes() == b"retain"
+    assert not calls
+
+
+def test_windows_native_reader_rewinds_each_binary_read() -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    payload = b"\r\n\x1a\x00binary"
+
+    class Kernel:
+        offset = 0
+        seeks = []
+
+        def SetFilePointerEx(self, handle, distance, result, origin):
+            self.seeks.append((handle, distance, origin))
+            self.offset = distance
+            return 1
+
+        def ReadFile(self, handle, buffer, size, count, overlapped):
+            chunk = payload[self.offset : self.offset + size]
+            module.c.memmove(buffer, chunk, len(chunk))
+            count._obj.value = len(chunk)
+            self.offset += len(chunk)
+            return 1
+
+    api.kernel = Kernel()
+    pin = module.Pin(Path("source.bin"), 10, (1, 2, False))
+    assert api.read(pin) == payload
+    assert api.read(pin) == payload
+    assert api.kernel.seeks == [(10, 0, 0), (10, 0, 0)]
+
+
+def test_windows_native_create_rejects_multiple_components() -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    with pytest.raises(module.SnapshotError, match="one path component"):
+        api.create(module.Pin(Path("root"), 10, (1, 2, True)), "a/b", False)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires real Windows reparse/ACL APIs")
+@pytest.mark.parametrize("kind", ["symlink", "hardlink"])
+def test_windows_source_snapshot_native_rejects_aliased_entry(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """The native FILE_ATTRIBUTE_REPARSE_POINT/link-count checks fail closed."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = module.NativeApi()
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, "unsafe-source", True)
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"outside authority")
+    alias = root.path / "alias.bin"
+    # A held directory pin intentionally blocks CreateHardLink's directory
+    # write open. Construct the pre-existing attack before pinning/sealing,
+    # then recover owner-control on the same creation-bound directory identity.
+    api.close(root.handle)
+    root.handle = 0
+    api.close(parent.handle)
+    parent.handle = 0
+    try:
+        try:
+            if kind == "symlink":
+                try:
+                    alias.symlink_to(outside)
+                except OSError as exc:
+                    if getattr(exc, "winerror", None) == 1314:
+                        pytest.skip("native runner lacks symbolic-link privilege")
+                    raise
+            else:
+                os.link(outside, alias)
+        finally:
+            parent = api.open(tmp_path, True)
+            handle = api.kernel.CreateFileW(
+                str(root.path),
+                module.READ | module.WRITE_DAC,
+                1,
+                None,
+                3,
+                0x200000 | 0x2000000,
+                None,
+            )
+            if handle in (None, module.c.c_void_p(-1).value):
+                raise module.c.WinError(module.c.get_last_error())
+            root.handle = handle
+            assert api.identity(handle, True) == root.identity
+        api.set_acl(root.handle, True)
+        with pytest.raises(module.SnapshotError, match="reparse, hardlink"):
+            with snapshot_type(root.path, None):
+                pytest.fail("aliased native source entry was accepted")
+        assert outside.read_bytes() == b"outside authority"
+    finally:
+        if root.handle:
+            api.set_acl(root.handle, False)
+            api.close(root.handle)
+        if parent.handle:
+            api.close(parent.handle)
+        if alias.exists() or alias.is_symlink():
+            alias.unlink()
+
+
+@pytest.mark.parametrize("path", [r"C:\snapshot", r"\\?\C:\snapshot"])
+def test_windows_source_chain_accepts_only_local_disk_prefixes(path: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    guard = object.__new__(snapshot_type)
+    guard.ancestors = []
+    calls = []
+
+    def opened(path, directory):
+        calls.append(path)
+        return module.Pin(path, len(calls), (1, len(calls), True))
+
+    guard.api = types.SimpleNamespace(open=opened)
+    guard.pin_chain(PureWindowsPath(path))
+    assert calls and str(calls[-1]) == path
+
+
+@pytest.mark.parametrize(
+    "path",
+    [r"\\server\share\snapshot", r"\\.\C:\snapshot", r"C:snapshot", r"\snapshot"],
+)
+def test_windows_source_chain_rejects_nonlocal_or_device_prefixes(path: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    guard = object.__new__(snapshot_type)
+    with pytest.raises(module.SnapshotError, match="local absolute"):
+        guard.pin_chain(PureWindowsPath(path))
+
+
+def _minimal_amd64_pe() -> bytes:
+    payload = bytearray(256)
+    payload[:2] = b"MZ"
+    payload[0x3C:0x40] = (64).to_bytes(4, "little")
+    payload[64:68] = b"PE\0\0"
+    payload[68:70] = (0x8664).to_bytes(2, "little")
+    payload[70:72] = (1).to_bytes(2, "little")
+    payload[84:86] = (112).to_bytes(2, "little")
+    payload[86:88] = (2).to_bytes(2, "little")
+    payload[88:90] = (0x20B).to_bytes(2, "little")
+    return bytes(payload)
+
+
+@pytest.mark.parametrize(
+    "damage", [None, "dos", "offset", "machine", "dll", "optional"]
+)
+def test_windows_uv_requires_native_amd64_pe(damage: str | None) -> None:
+    payload = bytearray(_minimal_amd64_pe())
+    if damage == "dos":
+        payload[:2] = b"#!"
+    elif damage == "offset":
+        payload[0x3C:0x40] = (9999).to_bytes(4, "little")
+    elif damage == "machine":
+        payload[68:70] = (0xAA64).to_bytes(2, "little")
+    elif damage == "dll":
+        payload[86:88] = (0x2002).to_bytes(2, "little")
+    elif damage == "optional":
+        payload[88:90] = (0x10B).to_bytes(2, "little")
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    if damage is None:
+        BUILDER._validate_windows_uv_pe(bytes(payload), spec)
+    else:
+        with pytest.raises(BUILDER.SealedEnvironmentError, match="AMD64 PE"):
+            BUILDER._validate_windows_uv_pe(bytes(payload), spec)
+
+
+def test_windows_uv_requires_exact_vendor_banner_target() -> None:
+    target = "x86_64-pc-windows-msvc"
+    identity = BUILDER.parse_uv_version(
+        "uv 0.11.14 (3fdfdc7d4 2026-05-12 x86_64-pc-windows-msvc)\n",
+        expected_target=target,
+    )
+    assert identity.target == target and identity.version == "0.11.14"
+    with pytest.raises(BUILDER.SealedEnvironmentError):
+        BUILDER.parse_uv_version(
+            "uv 0.11.14 (3fdfdc7d4 2026-05-12)\n",
+            expected_target=target,
+        )
+
+
+def test_windows_uv_environment_ignores_process_search_paths(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import contextlib
+
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    native = sys.modules[snapshot_type.__module__]
+    events = []
+
+    @contextlib.contextmanager
+    def system_environment(cache):
+        events.append("held")
+        yield {
+            "SystemRoot": "C:\\Windows",
+            "PATH": "C:\\Windows\\System32",
+            "TEMP": str(cache),
+            "TMP": str(cache),
+        }
+        events.append("released")
+
+    monkeypatch.setattr(native, "system_environment", system_environment)
+    monkeypatch.setattr(BUILDER, "_load_windows_source_snapshot", lambda: snapshot_type)
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    for key in ("PATH", "SystemRoot", "PYTHONPATH", "UV_INDEX_URL", "__COMPAT_LAYER"):
+        monkeypatch.setenv(key, "attacker")
+    with BUILDER._uv_environment(tmp_path) as environment:
+        assert events == ["held"]
+        assert environment["PATH"] == "C:\\Windows\\System32"
+        assert environment["SystemRoot"] == "C:\\Windows"
+        assert environment["TEMP"] == str(tmp_path)
+        assert not {"PYTHONPATH", "UV_INDEX_URL", "__COMPAT_LAYER"} & environment.keys()
+        assert environment["UV_PYTHON_DOWNLOADS"] == "never"
+    assert events == ["held", "released"]
+
+
+@pytest.mark.skipif(
+    os.name != "nt"
+    or not os.environ.get("TOBKIRI_WINDOWS_PINNED_UV")
+    or not os.environ.get("TOBKIRI_WINDOWS_PYTHON_ARCHIVE"),
+    reason="requires Windows with pinned uv and PBS native artifacts",
+)
+def test_windows_native_uv_private_lease_and_clear_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real uv version and offline venv copy execute under held native authority."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    payload = Path(os.environ["TOBKIRI_WINDOWS_PINNED_UV"]).read_bytes()
+    assert (
+        hashlib.sha256(payload).hexdigest()
+        == BUILDER.UV_BINARY_SHA256_BY_TARGET[spec.triple]
+    )
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    native = sys.modules[snapshot_type.__module__]
+    api = native.NativeApi()
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, "uv-stage", True)
+    executable = api.create(root, "uv.exe", False)
+    try:
+        api.write(executable, payload)
+        api.set_acl(root.handle, True)
+        cache = tmp_path / "cache"
+        cache.mkdir()
+        archive = Path(os.environ["TOBKIRI_WINDOWS_PYTHON_ARCHIVE"])
+        assert (
+            hashlib.sha256(archive.read_bytes()).hexdigest()
+            == BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple]
+        )
+        runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "runtime")
+        for key in ("PATH", "SystemRoot", "WINDIR", "PYTHONPATH", "UV_INDEX_URL"):
+            monkeypatch.setenv(key, "attacker-controlled-value")
+        assert (
+            BUILDER._validate_pinned_uv_executable(tmp_path, executable.path, spec)
+            == executable.path
+        )
+        with BUILDER._windows_uv_lease(executable.path, spec):
+            with pytest.raises(OSError):
+                executable.path.write_bytes(b"replace")
+            with pytest.raises(OSError):
+                root.path.rename(tmp_path / "replacement")
+        venv = tmp_path / "copied-venv"
+        BUILDER._run_uv(
+            executable.path,
+            [
+                "venv",
+                venv,
+                "--python",
+                runtime / "python.exe",
+                "--no-project",
+                "--offline",
+                "--link-mode",
+                "copy",
+            ],
+            root.path,
+            cache,
+        )
+        assert (venv / "Scripts/python.exe").is_file()
+    finally:
+        api.set_acl(executable.handle, False)
+        api.set_acl(root.handle, False)
+        api.close(executable.handle)
+        api.close(root.handle)
+        api.close(parent.handle)
+
+
+@pytest.mark.parametrize("damage", ["digest", "architecture", "extra-dll"])
+def test_windows_uv_lease_rejects_before_any_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    payload = bytearray(_minimal_amd64_pe())
+    if damage == "architecture":
+        payload[68:70] = (0xAA64).to_bytes(2, "little")
+    if damage != "digest":
+        monkeypatch.setitem(
+            BUILDER.UV_BINARY_SHA256_BY_TARGET,
+            spec.triple,
+            hashlib.sha256(payload).hexdigest(),
+        )
+
+    class Guard:
+        inputs = {"": object(), "uv.exe": object()}
+
+        def __init__(self, *args):
+            if damage == "extra-dll":
+                self.inputs = {**self.inputs, "injected.dll": object()}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, path):
+            return bytes(payload)
+
+        def verify(self, *args):
+            pass
+
+    monkeypatch.setattr(BUILDER, "_load_windows_source_snapshot", lambda: Guard)
+    with pytest.raises(BUILDER.SealedEnvironmentError):
+        with BUILDER._windows_uv_lease(Path.cwd() / "uv.exe", spec):
+            pytest.fail("unsafe Windows uv reached the consumer")

@@ -24,6 +24,8 @@ rpds-py==0.30.0 ; python_full_version < '3.11' \
     --hash=sha256:e7536cd91353c5273434b4e003cbda89034d67e7710eab8761fd918ec6c69cf8
 rpds-py==2026.6.3 ; python_full_version >= '3.11' \
     --hash=sha256:f4d78253f6996be4901669ad25319f842f740eccf4d58e3c7f3dd39e6dde1d8f
+tomli==2.4.1 ; python_full_version < '3.11' \
+    --hash=sha256:eb0dc4e38e6a1fd579e5d50369aa2e10acfc9cace504579b2faabb478e76941a
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
 wasmtime==48.0.0 \

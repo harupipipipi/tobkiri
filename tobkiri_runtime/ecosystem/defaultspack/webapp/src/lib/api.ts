@@ -2070,6 +2070,7 @@ export type ToolUiMetadata = {
   composer_description?: string;
   composer_icon?: string;
   composer_action?: ComposerWidgetAction;
+  icon_attention?: unknown;
 };
 
 export type ToolCapabilityRequirements = {
@@ -2107,6 +2108,7 @@ export type SidebarItem = {
   tags?: string[];
   risk?: "low" | "medium" | "high" | string | null;
   ui?: ToolUiMetadata;
+  presentation?: import("./widgetAttention").WidgetPresentation;
   tool_info?: ToolInfo;
   origin?: {
     kind: string;
@@ -3989,6 +3991,9 @@ async function nativeCodingApprovalOperatorForDigest(
 }
 
 export const api = {
+  // The current v4 frontend contract map has no steer operation. Do not send
+  // legacy requests or imply that a saved turn can accept extra instructions.
+  supportsConversationSteering: false,
   listConversations(options?: ConversationListOptions) {
     return request<{ conversations: Conversation[]; total: number }>(
       withQuery(defaultspackContractRoute("api/chat/conversations"), options),
@@ -4766,11 +4771,16 @@ export const api = {
     client_sequence?: number;
     expected_revision?: number;
   } & Partial<Omit<CommandInvocationRequest, "command_ref" | "args" | "conversation_id">>): Promise<ComposerCommandExecuteResult> {
+    const { command, conversation_id, ...invocation } = payload;
     const result = await request<CommandProtocolInvocationResult>(
       defaultspackContractRoute("api/command-protocol/v1/invoke"),
       {
         method: "POST",
-        body: JSON.stringify({ ...payload, command_ref: payload.command }),
+        body: JSON.stringify({
+          ...invocation,
+          command_ref: command,
+          ...(conversation_id == null ? {} : { conversation_id }),
+        }),
       },
     );
     if (result.status === "failed") {

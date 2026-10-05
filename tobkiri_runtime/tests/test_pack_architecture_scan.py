@@ -401,7 +401,7 @@ def test_unscoped_kernel_discovery_secret_and_domain_branch_are_detected(
     _pack(tmp_path, "pack_a")
     kernel = tmp_path / "tobkiri_runtime" / "core_runtime"
     kernel.mkdir(parents=True)
-    (kernel / "unsafe.py").write_text(
+    (kernel / "unsafe_pack.py").write_text(
         "packs = ecosystem_root.glob('*')\n"
         "token = os.environ.get('GLOBAL_API_TOKEN')\n"
         "if pack_id == 'pack_a':\n"
@@ -804,3 +804,23 @@ def test_main_rejects_candidate_baseline_without_reference(
 
     assert _scanner().main() == 2
     assert "reference baseline is required" in capsys.readouterr().err
+
+
+def test_runtime_policy_is_independent_of_checkout_directory_name(tmp_path: Path) -> None:
+    scanner = _scanner()
+    results = []
+    for name in ("neutral", "pack-profile-startup", "secret-provider_compiler"):
+        root = tmp_path / name
+        _pack(root, "pack_a")
+        kernel = root / "tobkiri_runtime/core_runtime"
+        kernel.mkdir(parents=True)
+        for filename in ("paths.py", "pack_loader.py"):
+            (kernel / filename).write_text(
+                "packs = ecosystem_root.glob('*')\n"
+                "token = os.environ.get('GLOBAL_API_TOKEN')\n"
+                "if pack_id in {'.', '..'}:\n    pass\n"
+            )
+        results.append({item.identity for item in scanner.scan_repository(root)})
+    assert results[0] == results[1] == results[2]
+    assert any("unscoped_pack_discovery" in item for item in results[0])
+    assert any("unscoped_global_secret" in item for item in results[0])

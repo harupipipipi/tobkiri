@@ -82,7 +82,11 @@ UV_BINARY_SHA256_BY_TARGET = {
     "x86_64-pc-windows-msvc": "442b73298cf8648217e5bc232588bb1067f98ea5b40beea18e43c9c7929c020c",
     "x86_64-unknown-linux-gnu": "b5cbc3a3f35debad0b4770811efd190bcf460b654114d6a3f71e0ce298468e5d",
 }
+# Vendor release asset digests: https://github.com/astral-sh/
+# python-build-standalone/releases/expanded_assets/20260510
+# Windows archive bytes were independently SHA-256 checked against that metadata.
 PYTHON_ARCHIVE_SHA256_BY_TARGET = {
+    "x86_64-pc-windows-msvc": "e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834",
     "aarch64-apple-darwin": "16d2332d950178968534e65fe09f01f876d13af1147176fd0c77a74c9e4d1a4b",
     "x86_64-apple-darwin": "8937475b0b8536d391270da4510488cb41ecd21040b63f9d8f84a8b1cdd491fc",
 }
@@ -626,7 +630,12 @@ def _copy_snapshot_file(
     current = source.lstat()
     if _application_entry_identity(current) != entry.identity:
         raise SealedEnvironmentError(f"application closure changed before copy: {source}")
-    source_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    source_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     source_fd = os.open(source, source_flags)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination_flags = (
@@ -635,6 +644,7 @@ def _copy_snapshot_file(
         | os.O_EXCL
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
     )
     destination_fd = -1
     try:
@@ -2929,15 +2939,95 @@ def parse_uv_version(
     return identity
 
 
+def _validate_windows_uv_pe(payload: bytes, spec: TargetSpec) -> None:
+    """Require a native AMD64 executable in addition to the locked member hash."""
+    offset = int.from_bytes(payload[0x3C:0x40], "little") if len(payload) >= 64 else 0
+    if (
+        not spec.windows
+        or spec.architecture != "x86_64"
+        or payload[:2] != b"MZ"
+        or not 64 <= offset <= len(payload) - 26
+        or payload[offset : offset + 4] != b"PE\0\0"
+        or int.from_bytes(payload[offset + 4 : offset + 6], "little") != 0x8664
+        or int.from_bytes(payload[offset + 6 : offset + 8], "little") == 0
+        or int.from_bytes(payload[offset + 20 : offset + 22], "little") < 112
+        or offset + 24 + int.from_bytes(payload[offset + 20 : offset + 22], "little")
+        > len(payload)
+        or not int.from_bytes(payload[offset + 22 : offset + 24], "little") & 0x2
+        or int.from_bytes(payload[offset + 22 : offset + 24], "little") & 0x2000
+        or payload[offset + 24 : offset + 26] != b"\x0b\x02"
+    ):
+        raise SealedEnvironmentError("pinned uv is not a native AMD64 PE executable")
+
+
+@contextlib.contextmanager
+def _windows_uv_lease(candidate: Path, spec: TargetSpec):
+    """Keep the exact private uv executable and its namespace pinned at spawn."""
+    if not candidate.is_absolute() or candidate.name != "uv.exe":
+        raise SealedEnvironmentError("pinned Windows uv path must be absolute uv.exe")
+    with _load_windows_source_snapshot()(candidate.parent, None) as guard:
+        if set(guard.inputs) != {"", "uv.exe"}:
+            raise SealedEnvironmentError(
+                "pinned uv authority contains unexpected entries"
+            )
+        payload = guard.read("uv.exe")
+        if (
+            hashlib.sha256(payload).hexdigest()
+            != UV_BINARY_SHA256_BY_TARGET[spec.triple]
+        ):
+            raise SealedEnvironmentError("pinned uv executable SHA256 mismatch")
+        _validate_windows_uv_pe(payload, spec)
+        guard.verify(guard.inputs, candidate.parent)
+        yield candidate
+        guard.verify(guard.inputs, candidate.parent)
+        if guard.read("uv.exe") != payload:
+            raise SealedEnvironmentError(
+                "pinned uv executable changed during execution"
+            )
+
+
+@contextlib.contextmanager
+def _uv_environment(cache: Path):
+    """Use a clear environment and OS-derived trusted Windows DLL search paths."""
+    environment = {
+        "HOME": os.fspath(cache),
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+        PYTHON_BYTECODE_ENVIRONMENT: "1",
+        "TMPDIR": os.fspath(cache),
+        "UV_CACHE_DIR": os.fspath(cache / "uv-cache"),
+        "UV_NO_CONFIG": "1",
+        "UV_NO_PROGRESS": "1",
+        "UV_PYTHON_DOWNLOADS": "never",
+    }
+    if os.name == "nt":
+        snapshot = _load_windows_source_snapshot()
+        native = sys.modules[snapshot.__module__]
+        with native.system_environment(cache) as system:
+            environment.update(system)
+            yield environment
+    else:
+        yield environment
+
+
 def _uv_version(uv: Path, expected_target: str) -> UvVersionIdentity:
     try:
-        result = subprocess.run(
-            [os.fspath(uv), "--version"],
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        with contextlib.ExitStack() as scope:
+            kwargs = {}
+            if os.name == "nt":
+                scope.enter_context(_windows_uv_lease(uv, target_spec(expected_target)))
+                kwargs = {
+                    "env": scope.enter_context(_uv_environment(uv.parent)),
+                    "cwd": uv.parent,
+                }
+            result = subprocess.run(
+                [os.fspath(uv), "--version"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                **kwargs,
+            )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise SealedEnvironmentError(f"cannot execute pinned uv binary: {uv}") from exc
     return parse_uv_version(result.stdout or "", expected_target=expected_target)
@@ -2962,6 +3052,11 @@ def _validate_pinned_uv_executable(
     if uv_path is not None and not candidate.is_absolute():
         raise SealedEnvironmentError("explicit pinned uv path must be absolute")
     candidate = candidate.absolute()
+    if os.name == "nt":
+        # The native version invocation itself acquires and retains the complete
+        # ACL/identity/digest/PE lease until the child has exited.
+        _uv_version(candidate, spec.triple)
+        return candidate
     authority_root = _assert_root(bundled_root if uv_path is None else candidate.parent)
     if uv_path is None:
         if candidate != expected.absolute():
@@ -3002,23 +3097,25 @@ def _run_uv(
     cwd: Path,
     cache: Path,
 ) -> None:
-    environment = {
-        "HOME": os.fspath(cache),
-        "LC_ALL": "C",
-        "PATH": "/usr/bin:/bin",
-        PYTHON_BYTECODE_ENVIRONMENT: "1",
-        "TMPDIR": os.fspath(cache),
-        "UV_CACHE_DIR": os.fspath(cache / "uv-cache"),
-        "UV_NO_CONFIG": "1",
-        "UV_NO_PROGRESS": "1",
-    }
     try:
-        subprocess.run(
-            [os.fspath(uv), *[os.fspath(argument) for argument in arguments]],
-            cwd=cwd,
-            env=environment,
-            check=True,
-        )
+        with contextlib.ExitStack() as scope:
+            if os.name == "nt":
+                scope.enter_context(
+                    _windows_uv_lease(uv, target_spec("x86_64-pc-windows-msvc"))
+                )
+                # Windows searches the working directory for dependent DLLs.
+                # Require the same protected, pinned source closure at spawn.
+                source = scope.enter_context(_load_windows_source_snapshot()(cwd, None))
+                source.verify(source.inputs, cwd)
+            environment = scope.enter_context(_uv_environment(cache))
+            subprocess.run(
+                [os.fspath(uv), *[os.fspath(argument) for argument in arguments]],
+                cwd=cwd,
+                env=environment,
+                check=True,
+            )
+            if os.name == "nt":
+                source.verify(source.inputs, cwd)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise SealedEnvironmentError(
             f"uv sealed-environment command failed: {arguments}"
@@ -3281,12 +3378,86 @@ def _write_archive_file(
         os.close(fd)
 
 
-def _chmod_archive_path(path: Path, mode: int) -> None:
-    """Apply a safe mode without following a final symlink."""
+def _chmod_windows_archive_path(path: Path, mode: int) -> None:
+    """Set readonly by handle while retaining a no-reparse ancestor chain."""
+    import ctypes
+    from ctypes import wintypes
+
+    class FileBasicInfo(ctypes.Structure):
+        _fields_ = [
+            ("CreationTime", ctypes.c_longlong),
+            ("LastAccessTime", ctypes.c_longlong),
+            ("LastWriteTime", ctypes.c_longlong),
+            ("ChangeTime", ctypes.c_longlong),
+            ("FileAttributes", wintypes.DWORD),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    create.restype = wintypes.HANDLE
+    get_info = kernel.GetFileInformationByHandleEx
+    get_info.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+    ]
+    get_info.restype = wintypes.BOOL
+    set_info = kernel.SetFileInformationByHandle
+    set_info.argtypes = get_info.argtypes
+    set_info.restype = wintypes.BOOL
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    absolute = Path(os.path.abspath(path))
+    handles = []
     try:
+        # OPEN_REPARSE_POINT only protects the final component. Open every
+        # ancestor first and deny write/delete sharing until mutation finishes.
+        paths = [*reversed(absolute.parents), absolute]
+        for index, current in enumerate(paths):
+            leaf = index == len(paths) - 1
+            access = 0x0080 | (0x0100 if leaf else 0)  # READ/WRITE_ATTRIBUTES
+            handle = create(
+                os.fspath(current), access, 0x0001, None, 3,
+                0x00200000 | 0x02000000, None,
+            )
+            if handle == ctypes.c_void_p(-1).value:
+                raise ctypes.WinError(ctypes.get_last_error())
+            handles.append(handle)
+            info = FileBasicInfo()
+            if not get_info(handle, 0, ctypes.byref(info), ctypes.sizeof(info)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if info.FileAttributes & REPARSE_POINT:
+                raise SealedEnvironmentError(
+                    f"archive chmod path contains a reparse point: {current}"
+                )
+            if not leaf and not info.FileAttributes & 0x0010:
+                raise SealedEnvironmentError(
+                    f"archive chmod ancestor is not a directory: {current}"
+                )
+        # Windows chmod implements only the readonly attribute. Zero timestamps
+        # leave them unchanged; preserve all unrelated attributes.
+        attributes = info.FileAttributes
+        attributes = attributes & ~1 if mode & stat.S_IWRITE else attributes | 1
+        attributes = (attributes & ~0x0080) or 0x0080  # NORMAL stands alone
+        update = FileBasicInfo(FileAttributes=attributes)
+        if not set_info(handle, 0, ctypes.byref(update), ctypes.sizeof(update)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        for handle in reversed(handles):
+            close(handle)
+
+
+def _chmod_archive_path(path: Path, mode: int) -> None:
+    """Apply archive mode without following links, including on Python 3.12."""
+    if os.name == "nt":
+        _chmod_windows_archive_path(path, mode)
+    else:
+        # Unsupported no-follow chmod must fail closed, never retry with a
+        # symlink-following path operation.
         os.chmod(path, mode, follow_symlinks=False)
-    except TypeError:  # pragma: no cover - only old platform Python builds
-        os.chmod(path, mode)
 
 
 def _create_archive_symlink(
@@ -3433,6 +3604,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                     assert root_fd is not None
                     parent_fd = _ensure_archive_directory_fd(root_fd, parent_parts)
                     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    flags |= getattr(os, "O_BINARY", 0)
                     flags |= getattr(os, "O_NOFOLLOW", 0)
                     flags |= getattr(os, "O_CLOEXEC", 0)
                     try:
@@ -3456,6 +3628,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                             f"duplicate pinned CPython archive member: {member.name}"
                         )
                     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    flags |= getattr(os, "O_BINARY", 0)
                     flags |= getattr(os, "O_NOFOLLOW", 0)
                     file_fd = os.open(file_path, flags, 0o600)
                 mode = _archive_file_mode(member)
@@ -3480,6 +3653,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                         assert root_fd is not None
                         parent_fd = _ensure_archive_directory_fd(root_fd, parent_parts)
                         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                        flags |= getattr(os, "O_BINARY", 0)
                         flags |= getattr(os, "O_NOFOLLOW", 0)
                         flags |= getattr(os, "O_CLOEXEC", 0)
                         try:
@@ -3501,6 +3675,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                                 f"duplicate pinned CPython archive member: {member.name}"
                             )
                         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                        flags |= getattr(os, "O_BINARY", 0)
                         flags |= getattr(os, "O_NOFOLLOW", 0)
                         file_fd = os.open(link_file_path, flags, 0o600)
                     mode = _archive_file_mode(terminal_member)
@@ -4001,33 +4176,88 @@ def replace_environment_application_closure(
             raise
 
 
+def _load_windows_source_snapshot():
+    path = SCRIPT_DIR / "windows_source_snapshot.py"
+    spec = importlib.util.spec_from_file_location("tobkiri_windows_source_snapshot", path)
+    if spec is None or spec.loader is None:
+        raise SealedEnvironmentError("cannot load native source snapshot helper")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.WindowsSnapshot
+
+
+@contextlib.contextmanager
+def _verified_source_snapshot(source, destination, manifest_digest, release_digest):
+    """Keep native source and sealed-copy handles live through every consumer."""
+    if os.name != "nt":
+        yield _copy_verified_source_snapshot(
+            source, destination, manifest_digest, release_digest
+        )
+        return
+    with _load_windows_source_snapshot()(source, destination) as guard:
+        yield _copy_verified_source_snapshot(
+            source, destination, manifest_digest, release_digest,
+            _windows_snapshot=guard,
+        )
+
+
+@contextlib.contextmanager
+def _sealed_build_workspace(parent: Path):
+    """Do not let a generic rmtree bypass failed native snapshot cleanup."""
+    if os.name != "nt":
+        with tempfile.TemporaryDirectory(prefix=".sealed-python-build-", dir=parent) as raw:
+            yield raw
+        return
+    work = Path(tempfile.mkdtemp(prefix=".sealed-python-build-", dir=parent))
+    identity = _directory_identity(work)
+    # On failure retain the private work directory for diagnosis. In particular,
+    # a failed held-handle cleanup must never fall through to pathname deletion.
+    yield os.fspath(work)
+    _load_cleanup_remove()(
+        work, owner_root=parent, operation="remove sealed Python build workspace",
+        expected_identity=identity,
+    )
+
+
 def _copy_verified_source_snapshot(
     source_root: Path,
     destination: Path,
     expected_manifest_digest: str,
     expected_release_digest: str,
+    *,
+    _windows_snapshot=None,
 ) -> Path:
     """Copy exactly the digest-bound committed snapshot through opened files."""
+    if os.name == "nt" and _windows_snapshot is None:
+        raise SealedEnvironmentError("Windows source copy requires a held snapshot scope")
     if not re.fullmatch(r"[0-9a-f]{64}", expected_manifest_digest):
         raise SealedEnvironmentError("source inventory digest must be raw SHA-256")
     manifest_path = source_root / SOURCE_SNAPSHOT_MANIFEST
-    descriptor = os.open(manifest_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    try:
-        metadata = os.fstat(descriptor)
-        encoded = b""
-        while chunk := os.read(descriptor, 1024 * 1024):
-            encoded += chunk
-        after = os.fstat(descriptor)
-    finally:
-        os.close(descriptor)
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_nlink != 1
-        or metadata.st_mode & 0o222
-        or (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
-        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-        or hashlib.sha256(encoded).hexdigest() != expected_manifest_digest
-    ):
+    if _windows_snapshot is not None:
+        encoded = _windows_snapshot.read(SOURCE_SNAPSHOT_MANIFEST)
+        safe_manifest = True  # The native reader checked held identity and DACL.
+    else:
+        descriptor = os.open(
+            manifest_path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            encoded = b""
+            while chunk := os.read(descriptor, 1024 * 1024):
+                encoded += chunk
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        safe_manifest = (
+            stat.S_ISREG(metadata.st_mode)
+            and metadata.st_nlink == 1
+            and not metadata.st_mode & 0o222
+            and (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
+            == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        )
+    if not safe_manifest or hashlib.sha256(encoded).hexdigest() != expected_manifest_digest:
         raise SealedEnvironmentError("committed source inventory authority changed")
 
     def reject_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -4072,7 +4302,8 @@ def _copy_verified_source_snapshot(
         raise SealedEnvironmentError("committed source release domain mismatch")
     entries = document["files"]
     expected_paths: list[str] = []
-    destination.mkdir(mode=0o700)
+    if _windows_snapshot is None:
+        destination.mkdir(mode=0o700)
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != {
             "path",
@@ -4094,41 +4325,60 @@ def _copy_verified_source_snapshot(
         ):
             raise SealedEnvironmentError("committed source entry is unsafe or unsorted")
         source = source_root.joinpath(*Path(relative).parts)
-        source_descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        try:
-            opened = os.fstat(source_descriptor)
-            payload = b""
-            while chunk := os.read(source_descriptor, 1024 * 1024):
-                payload += chunk
-            closed = os.fstat(source_descriptor)
-        finally:
-            os.close(source_descriptor)
+        if _windows_snapshot is not None:
+            # executable is Git-manifest semantics on Windows, not st_mode.
+            # Authority comes from the pinned native object and protected ACL.
+            payload = _windows_snapshot.read(relative)
+            safe_source = True
+        else:
+            source_descriptor = os.open(
+                source,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+            )
+            try:
+                opened = os.fstat(source_descriptor)
+                payload = b""
+                while chunk := os.read(source_descriptor, 1024 * 1024):
+                    payload += chunk
+                closed = os.fstat(source_descriptor)
+            finally:
+                os.close(source_descriptor)
+            safe_source = (
+                stat.S_ISREG(opened.st_mode)
+                and opened.st_nlink == 1
+                and not opened.st_mode & 0o222
+                and bool(opened.st_mode & 0o111) == entry["executable"]
+                and (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+                == (closed.st_dev, closed.st_ino, closed.st_size, closed.st_mtime_ns)
+            )
         if (
-            not stat.S_ISREG(opened.st_mode)
-            or opened.st_nlink != 1
-            or opened.st_mode & 0o222
-            or bool(opened.st_mode & 0o111) != entry["executable"]
-            or (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
-            != (closed.st_dev, closed.st_ino, closed.st_size, closed.st_mtime_ns)
+            not safe_source
             or len(payload) != entry["size"]
             or hashlib.sha256(payload).hexdigest() != entry["sha256"]
         ):
             raise SealedEnvironmentError(f"committed source bytes changed: {relative}")
-        target = destination.joinpath(*Path(relative).parts)
-        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        target_descriptor = os.open(
-            target,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o500 if entry["executable"] else 0o400,
-        )
-        try:
-            offset = 0
-            while offset < len(payload):
-                offset += os.write(target_descriptor, payload[offset:])
-            os.fsync(target_descriptor)
-            os.fchmod(target_descriptor, 0o500 if entry["executable"] else 0o400)
-        finally:
-            os.close(target_descriptor)
+        if _windows_snapshot is not None:
+            _windows_snapshot.write(relative, payload)
+        else:
+            target = destination.joinpath(*Path(relative).parts)
+            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            target_descriptor = os.open(
+                target,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+                0o500 if entry["executable"] else 0o400,
+            )
+            try:
+                offset = 0
+                while offset < len(payload):
+                    written = os.write(target_descriptor, payload[offset:])
+                    if written <= 0:
+                        raise SealedEnvironmentError("committed source copy short write")
+                    offset += written
+                os.fsync(target_descriptor)
+                os.fchmod(target_descriptor, 0o500 if entry["executable"] else 0o400)
+            finally:
+                os.close(target_descriptor)
         expected_paths.append(relative)
     # Git tree order compares the slash separator with the next path byte,
     # while the filesystem walk sorts each path component independently.
@@ -4162,6 +4412,9 @@ def _copy_verified_source_snapshot(
         or manifest_entry["sha256"] != document["source_manifest_sha256"]
     ):
         raise SealedEnvironmentError("runtime source manifest authority mismatch")
+    if _windows_snapshot is not None:
+        _windows_snapshot.verify_inventory(expected_paths, SOURCE_SNAPSHOT_MANIFEST)
+        _windows_snapshot.seal()
     return destination
 
 
@@ -4192,16 +4445,14 @@ def build_environment(
     _remove_owned_output(output_root)
     published = False
     try:
-        with tempfile.TemporaryDirectory(
-            prefix=".sealed-python-build-", dir=source_parent
-        ) as raw:
+        with _sealed_build_workspace(source_parent) as raw, contextlib.ExitStack() as scope:
             work = Path(raw)
-            verified_source = _copy_verified_source_snapshot(
+            verified_source = scope.enter_context(_verified_source_snapshot(
                 repo_root,
                 work / "source",
                 source_inventory_sha256 or "",
                 release_digest or "",
-            )
+            ))
             requirements_path = verified_source / requirements_relative
             cache = work / "cache"
             cache.mkdir(mode=0o700)
@@ -4299,12 +4550,15 @@ def _write_packaging_binding(
         not source_snapshot.is_absolute()
         or source_snapshot.is_symlink()
         or not source_snapshot.is_dir()
-        or stat.S_IMODE(source_snapshot.stat().st_mode) != 0o500
+        or (os.name != "nt" and stat.S_IMODE(source_snapshot.stat().st_mode) != 0o500)
         or not re.fullmatch(r"[0-9a-f]{40}", source_tree)
         or not re.fullmatch(r"[0-9a-f]{64}", source_inventory_sha256)
         or not re.fullmatch(r"[0-9a-f]{64}", release_digest)
     ):
         raise SealedEnvironmentError("invalid committed source snapshot binding")
+    if os.name == "nt":
+        with _load_windows_source_snapshot()(source_snapshot, None) as guard:
+            guard.verify(guard.inputs, source_snapshot)
     payload = (
         f"{MANIFEST_SHA_ENV}={digest}\n"
         f"TOBKIRI_PACKAGING_PYTHON={python}\n"
@@ -4327,7 +4581,7 @@ def _write_packaging_binding(
             raise SealedEnvironmentError(
                 "packaging environment output escapes RUNNER_TEMP"
             ) from exc
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     descriptor = os.open(path, flags, 0o600)

@@ -97,19 +97,27 @@ import {
   modelSelectorSchemaForSurface,
 } from "../features/models";
 import { ActionApprovalControl } from "../features/tools/ActionApprovalControl";
+import { ToolModeControl } from "../features/tools/ToolModeControl";
 import { ProjectPicker } from "../features/projects/ProjectPicker";
 import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
 import { ToolSelectionReviewCard } from "../features/tools/ToolSelectionReviewCard";
 import {
-  appendVoiceTranscript,
+  applyComposerVoiceTranscript,
+  assertComposerMicrophoneAllowed,
+  composerVoiceErrorMessage,
+  composerVoiceLanguage,
+  ComposerVoiceOperation,
   isAudioAttachment,
   readableTranscriptionError,
   requestComposerAudioTranscript,
-  shouldTranscribeVoiceInput,
+  restoreComposerVoiceSelection,
   transcriptAttachmentFromAudio,
+  type ComposerVoiceInsertMode,
+  type ComposerVoicePhase,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
-import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
+import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation } from "../lib/composerWidgets";
+import { WidgetAttentionIcon } from "../lib/widgetAttention";
 import {
   COMPOSER_REFERENCE_MIME,
   composerReferencesAsMarkdown,
@@ -124,7 +132,8 @@ import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComp
 import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
 import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
-import { startPinchAudioRecorder, type ActiveAudioRecorder, type AmbientAudioRecording } from "../ambient/ambientMedia";
+import { declarativeIconForName } from "../lib/declarativeIcons";
+import { startPinchAudioRecorder, type ActiveAudioRecorder } from "../ambient/ambientMedia";
 import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
 
 export { composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
@@ -389,6 +398,8 @@ function ComposerTextareaResizeButton({
 }
 
 function composerIconForName(iconName: string | undefined, fallback: LucideIcon): LucideIcon {
+  const declaredIcon = declarativeIconForName(iconName);
+  if (declaredIcon) return declaredIcon;
   const normalized = String(iconName ?? "").trim().toLowerCase();
   if (/search|browser|web|globe/.test(normalized)) return Search;
   if (/file|document|pdf|text/.test(normalized)) return FileText;
@@ -1517,7 +1528,12 @@ function DroppedWidgetChip({
             : "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
         }`}
       >
-        <ConversationIcon size={11} className="flex-shrink-0" />
+        <WidgetAttentionIcon
+          attention={widget.presentation?.icon_attention}
+          widgetId={widget.id}
+        >
+          <ConversationIcon size={11} className="flex-shrink-0" />
+        </WidgetAttentionIcon>
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1537,7 +1553,12 @@ function DroppedWidgetChip({
         onClick={() => onAction?.(widget)}
         className="inline-flex max-w-[160px] items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
       >
-        <Icon size={10} />
+        <WidgetAttentionIcon
+          attention={widget.presentation?.icon_attention}
+          widgetId={widget.id}
+        >
+          <Icon size={10} />
+        </WidgetAttentionIcon>
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1551,7 +1572,12 @@ function DroppedWidgetChip({
   }`;
   const toolToggleContent = (
     <>
-      <ToolIcon size={11} className="flex-shrink-0" />
+      <WidgetAttentionIcon
+        attention={widget.presentation?.icon_attention}
+        widgetId={widget.id}
+      >
+        <ToolIcon size={11} className="flex-shrink-0" />
+      </WidgetAttentionIcon>
       <span className="truncate">{widget.label}</span>
     </>
   );
@@ -2936,11 +2962,14 @@ function ModelCommandCandidatePopup({
 }
 
 export function ComposerRenderer({
+  surfaceMode = "standard",
+  submissionDisabled = false,
   input,
   placeholder,
   isNewConversation = false,
   isGenerating,
   selectedProfile,
+  widgetContext,
   favoriteProfiles,
   modelProfiles = [],
   modelSelectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA,
@@ -2957,6 +2986,7 @@ export function ComposerRenderer({
   modelStatusIndicators = [],
   voiceInputEnabled = true,
   voiceInputUseAi = false,
+  voiceScopeKey,
   manualRuntimeModeSelectionEnabled = false,
   mode = "chat",
   codingContext = null,
@@ -2970,6 +3000,7 @@ export function ComposerRenderer({
   entityReferences = [],
   selectedToolIds = [],
   actionApprovalMode = "ask",
+  toolSelectionMode = "auto",
   toolSelectionTargets = [],
   toolSelectionReview = null,
   keyboardButtonNavigation = true,
@@ -2982,6 +3013,7 @@ export function ComposerRenderer({
   onOpenModelManager,
   onOpenToolSettings,
   onActionApprovalModeChange,
+  onToolSelectionModeChange,
   onToolSelectionTargetRemove,
   onToolSelectionReviewApprove,
   onToolSelectionReviewEdit,
@@ -3038,9 +3070,15 @@ export function ComposerRenderer({
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [selectedModelCandidateIndex, setSelectedModelCandidateIndex] = useState(0);
   const [composerPopoverStyle, setComposerPopoverStyle] = useState<CSSProperties | undefined>(undefined);
-  const [voiceStatus, setVoiceStatus] = useState<"idle" | "starting" | "listening" | "transcribing" | "error">("idle");
+  const [voiceStatus, setVoiceStatus] = useState<ComposerVoicePhase>("idle");
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceLanguage, setVoiceLanguage] = useState(() => composerVoiceLanguage(
+    typeof document === "undefined" ? undefined : document.documentElement.lang,
+    typeof navigator === "undefined" ? undefined : navigator.language,
+  ));
+
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [textareaCollapsed, setTextareaCollapsed] = useState(false);
   const [textareaCanCollapse, setTextareaCanCollapse] = useState(false);
@@ -3054,7 +3092,10 @@ export function ComposerRenderer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
+  const voiceGenerationRef = useRef(new ComposerVoiceOperation());
+  const attachmentTranscriptionRef = useRef(new ComposerVoiceOperation());
   const voiceStartedAtRef = useRef(0);
+  const voiceOriginalDraftRef = useRef({ value: input, selection: { start: input.length, end: input.length } });
   const chromeWidgetNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const submissionLockRef = useRef<ComposerSubmissionLock | null>(null);
   const lastModelPickerRequestIdRef = useRef(modelPickerRequestId);
@@ -3087,7 +3128,7 @@ export function ComposerRenderer({
     () => templateComposerFeatureFlags(composerInput?.feature_flags),
     [composerInput?.feature_flags],
   );
-  const templateAllowsSlashCommands = templateFeatureFlags.slash_commands !== false;
+  const templateAllowsSlashCommands = surfaceMode !== "thread" && templateFeatureFlags.slash_commands !== false;
   const templateComposerInfoItems = useMemo(() => {
     const items = [
       ...templateAcceptedModalities.map((modality) => TEMPLATE_COMPOSER_MODALITY_LABELS[modality] ?? modality),
@@ -3098,17 +3139,17 @@ export function ComposerRenderer({
     return [...new Set(items)].slice(0, 6);
   }, [templateAcceptedModalities, templateFeatureFlags]);
   const templateHasModalityLimit = templateAcceptedModalities.length > 0;
-  const templateAllowsFileAttachments = templateFeatureFlags.file_attachments !== false
+  const templateAllowsFileAttachments = surfaceMode !== "thread" && templateFeatureFlags.file_attachments !== false
     && templateFeatureFlags.attachments !== false
     && (!templateHasModalityLimit || templateAcceptedModalities.some((item) => (
       item === "file" || item === "files" || item === "image" || item === "images" || item === "audio" || item === "video"
     )));
-  const templateAllowsVoiceInput = templateFeatureFlags.voice_input !== false
+  const templateAllowsVoiceInput = surfaceMode !== "thread" && templateFeatureFlags.voice_input !== false
     && templateFeatureFlags.voice !== false
     && (!templateHasModalityLimit || templateAcceptedModalities.some((item) => (
       item === "voice" || item === "speech" || item === "audio"
     )));
-  const templateAllowsAtMentions = templateFeatureFlags.at_mentions !== false
+  const templateAllowsAtMentions = surfaceMode !== "thread" && templateFeatureFlags.at_mentions !== false
     && templateFeatureFlags.mentions !== false;
 	  const toolItems = useMemo(() => [...inlineExtensions, ...belowExtensions], [inlineExtensions, belowExtensions]);
   const mentionSkills = useMemo(
@@ -3129,8 +3170,10 @@ export function ComposerRenderer({
   );
 	  const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
   const visibleDroppedWidgets = useMemo(
-    () => droppedWidgets.filter((widget) => widget.metadata?.source !== "composer_at_mention"),
-    [droppedWidgets],
+    () => droppedWidgets
+      .filter((widget) => widget.metadata?.source !== "composer_at_mention")
+      .map((widget) => widgetWithCurrentPresentation(widget, toolItems)),
+    [droppedWidgets, toolItems],
   );
   const visibleToolWidgetIdSet = useMemo(
     () => new Set(
@@ -3179,8 +3222,8 @@ export function ComposerRenderer({
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
-  const steeringControlsPending = isGenerating && !steerControlsReady;
-  const isSteerMode = isGenerating && steerControlsReady && !isNewConversation;
+  const steeringControlsPending = surfaceMode !== "thread" && isGenerating && !steerControlsReady;
+  const isSteerMode = surfaceMode !== "thread" && isGenerating && steerControlsReady && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
     mode,
@@ -3819,19 +3862,22 @@ export function ComposerRenderer({
   const requestAudioTranscript = useCallback(async (
     file: AttachedFile,
     metadata: Record<string, unknown>,
+    language = "ja",
   ): Promise<string> => {
     return requestComposerAudioTranscript(file, {
       profile: selectedProfile,
-      language: "ja",
+      language,
       metadata,
     });
   }, [selectedProfile]);
 
   const transcribeAttachedAudio = useCallback(async (file: AttachedFile) => {
+    const generation = attachmentTranscriptionRef.current.token();
     const transcript = await requestAudioTranscript(file, {
       action: "replace_audio_attachment_with_transcript",
       source_attachment_id: file.id,
     });
+    if (!attachmentTranscriptionRef.current.isCurrent(generation)) return;
     const transcriptFile = transcriptAttachmentFromAudio(file, transcript);
     onFileRemove?.(file.id);
     onFileAttach?.([transcriptFile]);
@@ -3880,7 +3926,9 @@ export function ComposerRenderer({
   const handleSubmitWithApiKeyGuard = useCallback(
     (event: React.SyntheticEvent) => {
       event.preventDefault();
+      if (voiceStatus !== "idle" && !isGenerating) return;
       if (isGenerating) {
+        if (surfaceMode === "thread") { if (event.type === "click") onStopGenerating?.(); return; }
         if (!steerControlsReady) return;
         const prompt = input.trim();
         if (prompt && !steerBusy) {
@@ -3890,7 +3938,7 @@ export function ComposerRenderer({
         }
         return;
       }
-      if (pendingMentionAttachmentPaths.length > 0) return;
+      if (submissionDisabled || pendingMentionAttachmentPaths.length > 0) return;
       if (needsApiKey(selectedProfile)) {
         if (selectedProfile) setApiKeyPromptProfile(selectedProfile);
         return;
@@ -3901,7 +3949,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerControlsReady],
+    [surfaceMode, submissionDisabled, voiceStatus, attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerControlsReady],
   );
 
   const handleSendButtonClick = useCallback(
@@ -3921,28 +3969,52 @@ export function ComposerRenderer({
   }, [voiceStatus]);
 
   useEffect(() => () => {
+    voiceGenerationRef.current.invalidate();
+    attachmentTranscriptionRef.current.invalidate();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
   }, []);
 
   const cancelVoiceInput = useCallback(() => {
+    voiceGenerationRef.current.invalidate();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
     setVoiceElapsedSeconds(0);
-    setVoiceError(null);
+    setVoiceError("");
+    setVoiceTranscript("");
     setVoiceStatus("idle");
-    window.setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
+    const selection = voiceOriginalDraftRef.current.selection;
+    window.setTimeout(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+      const restored = restoreComposerVoiceSelection(
+        voiceOriginalDraftRef.current.value, textareaRef.current?.value ?? "", selection,
+      );
+      if (restored) textareaRef.current?.setSelectionRange(restored.start, restored.end);
+    }, 0);
   }, []);
+
+  useEffect(() => {
+    const scope = JSON.stringify([voiceScopeKey, widgetContext?.activeConversationId, selectedProfile?.profile_id, isGenerating]);
+    voiceGenerationRef.current.bindScope(scope);
+    attachmentTranscriptionRef.current.bindScope(scope);
+    voiceRecorderRef.current?.cancel();
+    voiceRecorderRef.current = null;
+    setVoiceElapsedSeconds(0);
+    setVoiceTranscript("");
+    setVoiceError("");
+    setVoiceStatus("idle");
+  }, [voiceScopeKey, widgetContext?.activeConversationId, selectedProfile?.profile_id, isGenerating]);
 
   const stopAndTranscribeVoice = useCallback(async () => {
     const recorder = voiceRecorderRef.current;
     if (!recorder) return;
+    const generation = voiceGenerationRef.current.next();
     voiceRecorderRef.current = null;
     setVoiceStatus("transcribing");
-    setVoiceError(null);
-    let recording: AmbientAudioRecording | null = null;
+    setVoiceError("");
     try {
-      recording = await recorder.stop();
+      const recording = await recorder.stop();
+      if (!voiceGenerationRef.current.isCurrent(generation)) return;
       const audioFile: AttachedFile = {
         id: `voice-${Date.now()}`,
         name: `voice-${new Date().toISOString().replace(/[:.]/g, "-")}.${recording.extension}`,
@@ -3950,61 +4022,127 @@ export function ComposerRenderer({
         type: recording.mimeType,
         dataUrl: recording.dataUrl,
       };
-      if (!shouldTranscribeVoiceInput(selectedProfile, voiceInputUseAi)) {
-        onFileAttach?.([audioFile]);
-        setVoiceStatus("idle");
-        setVoiceElapsedSeconds(0);
-        return;
-      }
       const transcript = await requestAudioTranscript(audioFile, {
         duration_ms: recording.durationMs,
-        action: voiceInputUseAi
-          ? "voice_input_transcription"
-          : "automatic_transcription_for_unsupported_model",
-      });
-      onInputChange(appendVoiceTranscript(input, transcript));
-      setVoiceStatus("idle");
-      setVoiceElapsedSeconds(0);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "音声入力に失敗しました";
-      if (recording && onFileAttach) {
-        onFileAttach([{
-          id: `voice-${Date.now()}`,
-          name: `voice-${new Date().toISOString().replace(/[:.]/g, "-")}.${recording.extension}`,
-          size: recording.size,
-          type: recording.mimeType,
-          dataUrl: recording.dataUrl,
-        }]);
-        setVoiceError(`${message}。録音をファイルとして添付しました。`);
-      } else {
-        setVoiceError(message);
+        action: "reviewable_voice_input",
+        voice_input_use_ai: voiceInputUseAi,
+      }, voiceLanguage);
+      if (!voiceGenerationRef.current.isCurrent(generation)) return;
+      if (!transcript.trim()) {
+        setVoiceError(composerVoiceErrorMessage("no-speech"));
+        setVoiceStatus("error");
+        return;
       }
+      setVoiceTranscript(transcript.trim());
+      setVoiceElapsedSeconds(0);
+      setVoiceStatus("review");
+    } catch (error) {
+      if (!voiceGenerationRef.current.isCurrent(generation)) return;
+      setVoiceError(error instanceof Error && error.message.trim()
+        ? error.message
+        : composerVoiceErrorMessage("unknown", typeof navigator === "undefined" ? true : navigator.onLine));
       setVoiceStatus("error");
-    } finally {
-      window.setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
     }
-  }, [input, onFileAttach, onInputChange, requestAudioTranscript, selectedProfile, voiceInputUseAi]);
+  }, [requestAudioTranscript, voiceInputUseAi, voiceLanguage]);
 
-  const toggleVoiceInput = useCallback(async () => {
-    if (!voiceInputEnabled || !templateAllowsVoiceInput) return;
-    if (voiceStatus === "listening") {
-      await stopAndTranscribeVoice();
-      return;
-    }
-    if (voiceStatus === "starting" || voiceStatus === "transcribing") return;
+  const startVoiceRecording = useCallback(async () => {
+    if (!voiceInputEnabled || !templateAllowsVoiceInput || isGenerating) return;
+    const generation = voiceGenerationRef.current.next();
+    const selectionStart = textareaRef.current?.selectionStart ?? input.length;
+    const selectionEnd = textareaRef.current?.selectionEnd ?? selectionStart;
+    voiceOriginalDraftRef.current = {
+      value: input,
+      selection: { start: selectionStart, end: selectionEnd },
+    };
     setVoiceStatus("starting");
-    setVoiceError(null);
+    setVoiceError("");
+    setVoiceTranscript("");
     try {
-      const recorder = await startPinchAudioRecorder();
+      await assertComposerMicrophoneAllowed();
+      if (!voiceGenerationRef.current.isCurrent(generation)) return;
+      const recorder = await voiceGenerationRef.current.settle(
+        generation, startPinchAudioRecorder(), (lateRecorder) => lateRecorder.cancel(),
+      );
+      if (!recorder) return;
       voiceRecorderRef.current = recorder;
       voiceStartedAtRef.current = performance.now();
       setVoiceElapsedSeconds(0);
       setVoiceStatus("listening");
     } catch (error) {
-      setVoiceError(error instanceof Error ? error.message : "マイクを開始できませんでした");
+      if (!voiceGenerationRef.current.isCurrent(generation)) return;
+      const errorName = error instanceof Error ? error.name.toLowerCase() : "";
+      const code = errorName === "notallowederror" || errorName === "securityerror"
+        ? "not-allowed"
+        : errorName === "notfounderror" || errorName === "devicesnotfounderror"
+          ? "not-found"
+          : "unknown";
+      setVoiceError(errorName === "composermicrophonepermissionerror"
+        ? "Tobkiri のマイク利用許可が必要です。設定の Host Permissions で状態を確認してください。"
+        : composerVoiceErrorMessage(code, typeof navigator === "undefined" ? true : navigator.onLine));
       setVoiceStatus("error");
     }
-  }, [stopAndTranscribeVoice, templateAllowsVoiceInput, voiceInputEnabled, voiceStatus]);
+  }, [input, isGenerating, templateAllowsVoiceInput, voiceInputEnabled]);
+
+  const applyVoiceTranscript = useCallback((mode: ComposerVoiceInsertMode) => {
+    if (input !== voiceOriginalDraftRef.current.value) {
+      setVoiceError("下書きが変更されました。音声を再確認してください。現在の下書きは保持されています。");
+      setVoiceStatus("error");
+      return;
+    }
+    const result = applyComposerVoiceTranscript(
+      voiceOriginalDraftRef.current.value,
+      voiceTranscript,
+      mode,
+      voiceOriginalDraftRef.current.selection,
+    );
+    onInputChange(result.value);
+    setVoiceStatus("idle");
+    setVoiceTranscript("");
+    setVoiceError("");
+    window.setTimeout(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+      textareaRef.current?.setSelectionRange(result.cursor, result.cursor);
+    }, 0);
+  }, [input, onInputChange, voiceTranscript]);
+
+  const toggleVoiceInput = useCallback(async () => {
+    if (!voiceInputEnabled || !templateAllowsVoiceInput || isGenerating) return;
+    if (voiceStatus === "listening") {
+      await stopAndTranscribeVoice();
+      return;
+    }
+    if (voiceStatus === "starting" || voiceStatus === "transcribing") return;
+    if (voiceStatus !== "review") {
+      const start = textareaRef.current?.selectionStart ?? input.length;
+      voiceOriginalDraftRef.current = {
+        value: input,
+        selection: { start, end: textareaRef.current?.selectionEnd ?? start },
+      };
+    }
+    setVoiceError("");
+    setVoiceStatus(voiceStatus === "review" ? "review" : "consent");
+  }, [input, isGenerating, stopAndTranscribeVoice, templateAllowsVoiceInput, voiceInputEnabled, voiceStatus]);
+
+  useEffect(() => {
+    if (!["starting", "listening", "transcribing"].includes(voiceStatus)) return undefined;
+    const failCapture = (code: string) => {
+      voiceGenerationRef.current.invalidate();
+      voiceRecorderRef.current?.cancel();
+      voiceRecorderRef.current = null;
+      setVoiceError(composerVoiceErrorMessage(code));
+      setVoiceStatus("error");
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") failCapture("aborted");
+    };
+    const handleDeviceChange = () => failCapture("audio-capture");
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
+    };
+  }, [voiceStatus]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -4323,12 +4461,15 @@ export function ComposerRenderer({
       mobile: "hide",
       width: COMPOSER_CHROME_WIDTHS.icon,
       render: () => (
-		        <button
-		          type="button"
+	        <button
+	          type="button"
 	          tabIndex={chromeButtonTabIndex}
-	          aria-label={isVoiceListening ? "音声入力を停止" : "音声入力を開始"}
-		          disabled={!voiceInputEnabled || !templateAllowsVoiceInput || voiceStatus === "starting" || voiceStatus === "transcribing"}
-		          title={isVoiceListening ? "録音を停止して文字起こし" : voiceStatus === "transcribing" ? "文字起こし中" : voiceInputUseAi ? "音声入力（AI文字起こし）" : "音声入力"}
+	          aria-label={isVoiceListening ? "Stop voice input and review transcript" : voiceStatus === "review" ? "Review captured voice transcript" : "Start reviewable voice input"}
+	          aria-pressed={isVoiceListening}
+	          aria-expanded={voiceStatus !== "idle"}
+	          aria-controls="composer-voice-panel"
+		          disabled={!voiceInputEnabled || !templateAllowsVoiceInput || isGenerating || voiceStatus === "starting" || voiceStatus === "transcribing"}
+		          title={isVoiceListening ? "Stop and review voice input" : "Reviewable voice input"}
 		          onClick={() => void toggleVoiceInput()}
 	          className={isVoiceListening ? "rumi-icon-button is-live" : "rumi-icon-button"}
 	        >
@@ -4404,6 +4545,27 @@ export function ComposerRenderer({
           tabIndex={chromeButtonTabIndex}
           onModeChange={(nextMode) => onActionApprovalModeChange?.(nextMode)}
           onOpenSettings={onOpenToolSettings}
+        />
+      ),
+    },
+    {
+      id: "tool-selection-control",
+      slot: "leading",
+      homeSlot: "toolbar-leading",
+      order: 52,
+      visible: Boolean(onToolSelectionModeChange),
+      width: { basis: "auto", min: "4rem", max: "8.5rem", shrink: 1 },
+      className: "rumi-composer-dock-control",
+      render: () => (
+        <ToolModeControl
+          mode={toolSelectionMode}
+          availableModes={["auto", "manual", "none"]}
+          manualCount={selectedToolIds.length}
+          disabled={isGenerating}
+          surfaceClassName={COMPOSER_CONTROL_SURFACE_CLASSNAME}
+          tabIndex={chromeButtonTabIndex}
+          onModeChange={(nextMode) => onToolSelectionModeChange?.(nextMode)}
+          onOpenPicker={onOpenToolSettings}
         />
       ),
     },
@@ -4577,18 +4739,18 @@ export function ComposerRenderer({
           aria-label={isGenerating
             ? (steeringControlsPending
               ? "会話を準備中"
-              : input.trim() ? "追加指示を送る" : "生成を停止")
+              : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={steeringControlsPending || (!isGenerating && (
-            pendingMentionAttachmentPaths.length > 0
+          disabled={steeringControlsPending || (isGenerating ? surfaceMode === "thread" && !onStopGenerating : (
+            submissionDisabled || pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
           ))}
           title={isGenerating
             ? (steeringControlsPending
               ? "会話を準備中"
-              : input.trim() ? "追加指示を送る" : "停止")
+              : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
@@ -4596,7 +4758,7 @@ export function ComposerRenderer({
             "h-8 min-h-8 w-8 min-w-8"
           } ${
             isGenerating && !steeringControlsPending
-              ? input.trim()
+              ? (surfaceMode !== "thread" && input.trim())
                 ? "bg-zinc-100 text-zinc-950 hover:bg-white"
                 : "bg-zinc-100 text-zinc-900 hover:bg-white"
               : pendingMentionAttachmentPaths.length > 0 || (!input.trim() && attachedFiles.length === 0)
@@ -4606,7 +4768,7 @@ export function ComposerRenderer({
         >
           {steeringControlsPending ? (
             <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : isGenerating && !input.trim() ? (
+          ) : isGenerating && !(surfaceMode !== "thread" && input.trim()) ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
           ) : isGenerating ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
@@ -4618,14 +4780,15 @@ export function ComposerRenderer({
     },
   ];
 
-  const conversationFileAttachWidget = chromeWidgets.find((widget) => widget.id === "file-attach" && widget.visible !== false);
-  const leadingChromeWidgets = composerChromeWidgetsForSlot(chromeWidgets, "leading")
+  const availableChromeWidgets = surfaceMode === "thread" ? chromeWidgets.filter((widget) => widget.id === "send") : chromeWidgets;
+  const conversationFileAttachWidget = availableChromeWidgets.find((widget) => widget.id === "file-attach" && widget.visible !== false);
+  const leadingChromeWidgets = composerChromeWidgetsForSlot(availableChromeWidgets, "leading")
     .filter((widget) => widget.id !== "file-attach");
-  const trailingChromeWidgets = composerChromeWidgetsForSlot(chromeWidgets, "trailing");
-  const newConversationInlineLeadingWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "editor-leading");
-  const newConversationTopRightWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "editor-trailing");
-  const newConversationInlineActionWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "toolbar-leading");
-  const newConversationTrailingWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "toolbar-trailing");
+  const trailingChromeWidgets = composerChromeWidgetsForSlot(availableChromeWidgets, "trailing");
+  const newConversationInlineLeadingWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "editor-leading");
+  const newConversationTopRightWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "editor-trailing");
+  const newConversationInlineActionWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "toolbar-leading");
+  const newConversationTrailingWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "toolbar-trailing");
   const menuFolders = templateAllowsSlashCommands
     ? ([
         ["tools", "Tools", Wrench],
@@ -4890,53 +5053,91 @@ export function ComposerRenderer({
           )}
 
           {voiceStatus !== "idle" && (
-            <div className="rumi-voice-capture mx-3 mt-2 flex min-h-11 items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2" role="status" aria-live="polite">
-              <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${voiceStatus === "error" ? "bg-rose-500/10 text-rose-300" : "bg-white/[0.06] text-zinc-100"}`}>
-                {voiceStatus === "error" ? <CircleAlert size={15} aria-hidden="true" /> : voiceStatus === "starting" || voiceStatus === "transcribing" ? <Loader2 size={15} className="animate-spin" /> : <WarmActionIcon kind="mic" size="sm" />}
-              </span>
-              <span className="min-w-0 flex-1">
-                {voiceStatus === "listening" ? (
-                  <span className="flex items-center gap-3">
-                    <span className="rumi-voice-waveform" aria-hidden="true">
-                      {Array.from({ length: 18 }, (_, index) => <i key={index} style={{ animationDelay: `${(index % 6) * -90}ms` }} />)}
-                    </span>
-                    <span className="flex-shrink-0 font-mono text-[11px] tabular-nums text-zinc-400">{formatVoiceDuration(voiceElapsedSeconds)}</span>
-                  </span>
-                ) : (
-                  <span className={`block truncate text-[11px] ${voiceStatus === "error" ? "text-rose-200" : "text-zinc-400"}`}>
-                    {voiceStatus === "starting" ? "マイクを準備中..." : voiceStatus === "transcribing" ? "音声を文字起こし中..." : voiceError || "音声入力に失敗しました"}
-                  </span>
-                )}
-              </span>
-              {voiceStatus === "error" && (
-                <ErrorCopyAction
-                  copyText={voiceError || "音声入力に失敗しました"}
-                  label="音声入力エラーをコピー"
-                />
-              )}
-              {voiceStatus === "listening" && (
-                <button
-                  type="button"
-                  aria-label="録音を停止して文字起こし"
-                  title="録音を停止して文字起こし"
-                  onClick={() => void stopAndTranscribeVoice()}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-transform hover:scale-105"
-                >
-                  <Square size={10} fill="currentColor" />
-                </button>
-              )}
-              {(voiceStatus === "listening" || voiceStatus === "error") && (
-                <button
-                  type="button"
-                  aria-label={voiceStatus === "listening" ? "録音をキャンセル" : "音声エラーを閉じる"}
-                  title={voiceStatus === "listening" ? "キャンセル" : "閉じる"}
-                  onClick={cancelVoiceInput}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
-                >
+            <section
+              id="composer-voice-panel"
+              aria-labelledby="composer-voice-heading"
+              className="rumi-voice-capture mx-3 mt-2 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-3"
+            >
+              <div className="flex items-start gap-3">
+                <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${voiceStatus === "error" ? "bg-rose-500/10 text-rose-300" : "bg-white/[0.06] text-zinc-100"}`}>
+                  {voiceStatus === "error" ? <CircleAlert size={15} aria-hidden="true" /> : voiceStatus === "starting" || voiceStatus === "transcribing" ? <Loader2 size={15} className="animate-spin" /> : <WarmActionIcon kind="mic" size="sm" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 id="composer-voice-heading" className="text-sm font-medium text-zinc-100">
+                    {voiceStatus === "consent" ? "Reviewable voice input" : voiceStatus === "listening" ? "Recording voice input" : voiceStatus === "review" ? "Review transcript" : voiceStatus === "error" ? "Voice input unavailable" : voiceStatus === "transcribing" ? "Creating transcript" : "Preparing microphone"}
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-zinc-400">
+                    Microphone use requires Tobkiri permission and OS permission. Audio is recorded in memory and sent to your configured Tobkiri transcription route. It is never inserted into the draft automatically; the configured provider may process it under that route&apos;s settings.
+                  </p>
+                </div>
+                <button type="button" onClick={cancelVoiceInput} aria-label="Close voice input" title="Close" className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-100">
                   <X size={14} />
                 </button>
+              </div>
+
+              {voiceStatus === "consent" && (
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="min-w-44 flex-1 text-xs text-zinc-300">
+                    Transcription language
+                    <select value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.currentTarget.value)} className="mt-1 block h-9 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-100 outline-none focus:border-sky-400/50">
+                      {!['en-US', 'en-GB', 'ja-JP', 'ko-KR', 'zh-CN'].includes(voiceLanguage) && <option value={voiceLanguage}>{voiceLanguage}</option>}
+                      <option value="en-US">English (US)</option>
+                      <option value="en-GB">English (UK)</option>
+                      <option value="ja-JP">日本語</option>
+                      <option value="ko-KR">한국어</option>
+                      <option value="zh-CN">中文（简体）</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => void startVoiceRecording()} className="min-h-9 rounded-lg bg-zinc-100 px-3 text-sm font-medium text-zinc-950 hover:bg-white">
+                    Start microphone
+                  </button>
+                </div>
               )}
-            </div>
+
+              {(voiceStatus === "starting" || voiceStatus === "transcribing") && (
+                <p className="mt-3 text-xs text-zinc-300" role="status" aria-live="polite">
+                  {voiceStatus === "starting" ? "Waiting for microphone access…" : "Transcribing the captured audio…"}
+                </p>
+              )}
+
+              {voiceStatus === "listening" && (
+                <div className="mt-3 flex items-center gap-3" role="status" aria-live="polite">
+                  <span className="rumi-voice-waveform flex-1" aria-hidden="true">
+                    {Array.from({ length: 18 }, (_, index) => <i key={index} style={{ animationDelay: `${(index % 6) * -90}ms` }} />)}
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-zinc-300">{formatVoiceDuration(voiceElapsedSeconds)}</span>
+                  <button type="button" onClick={() => void stopAndTranscribeVoice()} className="flex min-h-9 items-center gap-2 rounded-lg bg-zinc-100 px-3 text-sm font-medium text-zinc-950 hover:bg-white">
+                    <Square size={10} fill="currentColor" />
+                    Stop and review
+                  </button>
+                  <button type="button" onClick={cancelVoiceInput} className="min-h-9 rounded-lg px-3 text-sm text-zinc-300 hover:bg-white/[0.06]">Discard</button>
+                </div>
+              )}
+
+              {voiceStatus === "review" && (
+                <div className="mt-3">
+                  <label className="block text-xs text-zinc-300">
+                    Editable transcript
+                    <textarea value={voiceTranscript} onChange={(event) => setVoiceTranscript(event.currentTarget.value)} rows={3} className="mt-1 block max-h-40 min-h-20 w-full resize-y rounded-lg border border-white/10 bg-zinc-950/70 px-3 py-2 text-sm leading-5 text-zinc-100 outline-none focus:border-sky-400/50" />
+                  </label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => applyVoiceTranscript("insert")} disabled={!voiceTranscript.trim()} className="min-h-9 rounded-lg bg-zinc-100 px-3 text-sm font-medium text-zinc-950 disabled:opacity-40">Insert at cursor</button>
+                    <button type="button" onClick={() => applyVoiceTranscript("append")} disabled={!voiceTranscript.trim()} className="min-h-9 rounded-lg border border-white/10 px-3 text-sm text-zinc-200 disabled:opacity-40">Append</button>
+                    <button type="button" onClick={() => applyVoiceTranscript("replace")} disabled={!voiceTranscript.trim()} className="min-h-9 rounded-lg border border-white/10 px-3 text-sm text-zinc-200 disabled:opacity-40">Replace draft</button>
+                    <button type="button" onClick={() => setVoiceStatus("consent")} className="min-h-9 rounded-lg px-3 text-sm text-zinc-300 hover:bg-white/[0.06]">Record again</button>
+                    <button type="button" onClick={cancelVoiceInput} className="min-h-9 rounded-lg px-3 text-sm text-zinc-300 hover:bg-white/[0.06]">Discard</button>
+                  </div>
+                </div>
+              )}
+
+              {voiceStatus === "error" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2" role="alert">
+                  <p className="mr-auto text-xs text-rose-200">{voiceError || composerVoiceErrorMessage("unknown")}</p>
+                  <ErrorCopyAction copyText={voiceError || composerVoiceErrorMessage("unknown")} label="Copy voice input error" />
+                  <button type="button" onClick={() => { setVoiceError(""); setVoiceStatus("consent"); }} className="min-h-9 rounded-lg border border-white/10 px-3 text-sm text-zinc-100">Try again</button>
+                </div>
+              )}
+            </section>
           )}
 
           {!isNewConversation && visibleSteerPreviewItems.length > 0 && (
@@ -5084,6 +5285,7 @@ export function ComposerRenderer({
                       autoFocus
                       rows={1}
                       value={input}
+                      readOnly={voiceStatus !== "idle" || (surfaceMode === "thread" && isGenerating)}
                       data-template-composer-input={templateComposerInputId || undefined}
                       onChange={(event) => {
                         resizeComposerTextarea(event.currentTarget);
@@ -5190,6 +5392,7 @@ export function ComposerRenderer({
                     ref={textareaRef}
                     rows={1}
                     value={input}
+                    readOnly={voiceStatus !== "idle" || (surfaceMode === "thread" && isGenerating)}
                     data-template-composer-input={templateComposerInputId || undefined}
                     onChange={(event) => {
                       resizeComposerTextarea(event.currentTarget);

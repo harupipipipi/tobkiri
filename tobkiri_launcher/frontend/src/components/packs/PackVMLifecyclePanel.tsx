@@ -411,7 +411,8 @@ export function PackVMLifecyclePanel() {
     : null;
   const cleanupConfirmation = doctor ? cleanupConfirmationForInstance(doctor.instance) : '';
   const hasActiveOperation = Boolean(operation && operationIsPolling(operation.state));
-  const hostSupportsPackVM = doctor?.platform === 'macos-arm64';
+  const hostSupportsPackVM = doctor !== null
+    && ['macos-arm64', 'linux-amd64', 'windows-amd64'].includes(doctor.platform);
   const canPrepareNewPlan = Boolean(
     hostSupportsPackVM
     && !doctor?.ready

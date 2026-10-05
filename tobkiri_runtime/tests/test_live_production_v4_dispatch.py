@@ -5,9 +5,12 @@ from __future__ import annotations
 import time
 import threading
 import json
+import socket
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+import urllib.request
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -42,6 +45,7 @@ from ecosystem.rumi_credential_broker_pack.runtime.store import (
     KEY_VERSION,
 )
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
 from tobkiri_host.backends import (
     REQUIRED_PRODUCTION_GATES,
     BackendRegistry,
@@ -58,6 +62,58 @@ from tobkiri_host.models import (
 from tobkiri_host.ports import FinalAuthorizationQuery
 from tobkiri_host.runtime import V4DispatchSession
 from tobkiri_protocol.canonical import canonical_digest
+
+
+@pytest.fixture(autouse=True)
+def _deny_production_test_internet(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """Fail on unmocked HTTP, DNS, or Internet sockets in this test module.
+
+    Production Host factories load into digest-specific modules, so patching
+    only the canonical catalog module would miss their transport. Fail rather
+    than returning an offline fallback, which could conceal a startup request.
+    The credentialed case below explicitly supplies its own fake transport.
+    """
+
+    def deny_http(url: object, *_args: object, **_kwargs: object) -> None:
+        endpoint = urlsplit(str(getattr(url, "full_url", url)))
+        # Report only the host, never credentials, query strings, or payloads.
+        pytest.fail(
+            "unmocked HTTP in offline production dispatch test: "
+            f"{endpoint.hostname or '<unknown>'}",
+        )
+
+    def deny_dns(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unmocked DNS in offline production dispatch test")
+
+    monkeypatch.setattr(urllib.request, "urlopen", deny_http)
+    monkeypatch.setattr(socket, "create_connection", deny_dns)
+    for resolver in (
+        "getaddrinfo",
+        "gethostbyname",
+        "gethostbyname_ex",
+        "gethostbyaddr",
+        "getnameinfo",
+    ):
+        monkeypatch.setattr(socket, resolver, deny_dns)
+
+    def guard_socket_method(method_name: str) -> None:
+        original = getattr(socket.socket, method_name)
+
+        def guarded(
+            connection: socket.socket, *args: object, **kwargs: object
+        ) -> object:
+            if connection.family in {socket.AF_INET, socket.AF_INET6}:
+                pytest.fail(
+                    "unmocked Internet socket in offline production dispatch "
+                    f"test: {method_name}",
+                )
+            return original(connection, *args, **kwargs)
+
+        monkeypatch.setattr(socket.socket, method_name, guarded)
+
+    for method_name in ("connect", "connect_ex", "send", "sendall", "sendto", "sendmsg"):
+        if hasattr(socket.socket, method_name):
+            guard_socket_method(method_name)
 
 
 def _bundle_root() -> Path:
@@ -211,6 +267,10 @@ def test_production_dispatch_executes_credentialed_provider_request(
         },
         expected_revision=0,
     )
+    ModelRegistry("defaults", user_data_root=user_data).save({
+        "model_profile_id": "profile.production-test", "model_id": "model",
+        "metadata": {"provider_connection_id": "provider.production-test"},
+    }, expected_revision=0)
     observed: list[tuple[str | None, float]] = []
     from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
 
@@ -282,10 +342,7 @@ def test_production_dispatch_executes_credentialed_provider_request(
         ai_request = {
             "profile_id": envelope.context.profile_id,
             "messages": envelope.payload["messages"],
-            "requirements": {
-                "preferred_model_id": envelope.payload["model"],
-                "preferred_provider_instance_id": "provider.compatibility.generate",
-            },
+            "model_reference": {"profile_id": "profile.production-test"},
             "deadline": int(time.time()) + 30,
         }
         response = backend.capability_bridge(
@@ -504,7 +561,9 @@ def test_direct_vz_auth_failure_never_falls_back_to_path_lima_or_mints_authority
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(vz, "_default_state_dir", lambda: user_data / "packvm-vz")
     monkeypatch.setattr(vz, "_packaged_packvm_bundle_binding", lambda: None)
-    lifecycle = PackVMLifecycleV4(vz.default_packvm_provisioner())
+    lifecycle = PackVMLifecycleV4(vz.MacOSVZProvisioner(
+        state_dir=user_data / "packvm-vz", platform_system="Darwin", machine="arm64",
+    ))
     active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
     binding = next(
         item

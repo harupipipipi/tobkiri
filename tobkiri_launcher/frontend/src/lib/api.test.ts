@@ -515,6 +515,49 @@ test('operation status uses the canonical GET target and a fresh authenticated r
   assert.notEqual(headers['X-Tobkiri-Request-ID'], requestId);
 });
 
+test('frontend catalog allows slow Profile verification without replaying the read', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent('GET /api/ui/catalog')}`);
+    assert.equal(init?.cache, 'no-store');
+    reads += 1;
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+        success: true, data: {dynamic_host: {contributions: []}},
+      }))), 12_000);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+
+  const pending = fetchFrontendCatalog();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(12_000);
+  assert.deepEqual((await pending).contributions, []);
+  assert.equal(reads, 1);
+});
+
+test('frontend catalog retains a bounded verification deadline without replay', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (_input, init) => {
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+  const bounded = assert.rejects(fetchFrontendCatalog(), /(?:timed out after|exceeded) 30000ms/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(30_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
 test('operation status reads allow a slow bounded verification without replaying it', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   let reads = 0;

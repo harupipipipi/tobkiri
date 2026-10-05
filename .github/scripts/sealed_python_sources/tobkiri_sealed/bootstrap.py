@@ -99,6 +99,7 @@ _PACKVM_BUNDLE_BINDING_KEYS = (
     "helper_manifest_sha256",
     "helper_team_id",
 )
+_PORTABLE_PACKVM_BINDING_KEYS = ("root", "provisioning_sha256", "platform")
 
 
 class SealedBootstrapError(RuntimeError):
@@ -148,7 +149,9 @@ class _SealedDispatchScope:
         self._environment_digest = environment_digest
         self._target = tuple(target)
         if packvm_bundle_binding is not None:
-            if tuple(packvm_bundle_binding) != _PACKVM_BUNDLE_BINDING_KEYS:
+            if tuple(packvm_bundle_binding) not in {
+                _PACKVM_BUNDLE_BINDING_KEYS, _PORTABLE_PACKVM_BINDING_KEYS
+            }:
                 raise SealedBootstrapError("sealed PackVM bundle binding is invalid")
             self._packvm_bundle_binding: Mapping[str, str] | None = MappingProxyType(
                 dict(packvm_bundle_binding)
@@ -617,6 +620,10 @@ def _verify_packvm_bundle_binding(
         raise SealedBootstrapError("sealed PackVM bundle launch binding is invalid")
     if all(value == "" for value in supplied):
         return None
+    if application_bundle_root and provisioning_sha256 and not helper_manifest_sha256 and not helper_team_id:
+        return _verify_portable_packvm_binding(
+            application_bundle_root, provisioning_sha256, outer_runtime_manifest_sha256
+        )
     if not application_bundle_root or not all(
         _is_sha256_identity(value) for value in (provisioning_sha256, helper_manifest_sha256)
     ):
@@ -681,6 +688,60 @@ def _verify_packvm_bundle_binding(
             "helper_team_id": helper_team_id,
         }
     )
+
+
+def _verify_portable_packvm_binding(
+    application_root: str, provisioning_sha256: str, outer_sha256: str
+) -> Mapping[str, str]:
+    """Bind portable VM assets to the Launcher-verified outer resource inventory.
+
+    The Launcher separately compares the VM manifest to its compile-time
+    digest. This inventory check connects that identity to the same application
+    resource domain as the sealed Python overlay; it is not a signature check.
+    """
+    if not _is_sha256_identity(provisioning_sha256) or not _is_sha256_identity(outer_sha256):
+        raise SealedBootstrapError("sealed portable PackVM digest is invalid")
+    application = _assert_real_directory(
+        Path(application_root), "sealed portable application root", require_immutable=False
+    )
+    bundle = _assert_real_directory(
+        application / "packvm-qemu", "sealed portable PackVM root", require_immutable=False
+    )
+    outer = _read_bound_regular_bytes(
+        application / OUTER_RUNTIME_MANIFEST_NAME, "sealed outer runtime manifest", 4 * 1024 * 1024
+    )
+    provisioning = _read_bound_regular_bytes(
+        bundle / "packvm-qemu-provisioning.v1.json", "sealed portable PackVM manifest", 2 * 1024 * 1024
+    )
+    if _sha256_bytes(outer) != outer_sha256 or _sha256_bytes(provisioning) != provisioning_sha256:
+        raise SealedBootstrapError("sealed portable PackVM binding changed")
+    try:
+        inventory = json.loads(outer)
+        manifest = json.loads(provisioning)
+        entries = inventory["entries"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SealedBootstrapError("sealed portable PackVM inventory is invalid") from exc
+    if (
+        not isinstance(inventory, dict)
+        or inventory.get("schema") != "io.tobkiri.runtime-resource-manifest.v1"
+        or not isinstance(entries, list)
+        or not isinstance(manifest, dict)
+        or manifest.get("schema") != "io.tobkiri.packvm-qemu-provisioning.v1"
+        or manifest.get("architecture") != "amd64"
+    ):
+        raise SealedBootstrapError("sealed portable PackVM contract is invalid")
+    matches = [entry for entry in entries if isinstance(entry, dict) and entry.get("path") ==
+               "packvm-qemu/packvm-qemu-provisioning.v1.json"]
+    if matches != [{"path": "packvm-qemu/packvm-qemu-provisioning.v1.json",
+                    "size": len(provisioning), "sha256": provisioning_sha256}]:
+        raise SealedBootstrapError("sealed outer inventory does not bind the PackVM manifest")
+    platform = {"kvm": "linux", "whpx": "windows"}.get(manifest.get("accelerator"))
+    host = "windows" if sys.platform == "win32" else "linux" if sys.platform.startswith("linux") else None
+    if platform is None or platform != host:
+        raise SealedBootstrapError("sealed portable PackVM platform is invalid")
+    return MappingProxyType({"root": str(bundle),
+                             "provisioning_sha256": f"sha256:{provisioning_sha256}",
+                             "platform": platform})
 
 
 def _group_digest(entries: Sequence[dict[str, Any]]) -> str:
@@ -1296,22 +1357,70 @@ def _attestation(
     }
 
 
+class _WindowsSharedLease:
+    """Use a real shared byte lock; CRT LK_RLCK is actually exclusive."""
+
+    def __init__(self, handle: Any) -> None:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        class Overlapped(ctypes.Structure):
+            _fields_ = [
+                ("Internal", ctypes.c_size_t),
+                ("InternalHigh", ctypes.c_size_t),
+                ("Offset", wintypes.DWORD),
+                ("OffsetHigh", wintypes.DWORD),
+                ("hEvent", wintypes.HANDLE),
+            ]
+
+        self._ctypes = ctypes
+        self._native_handle = msvcrt.get_osfhandle(handle.fileno())
+        self._overlapped = Overlapped()
+        self._kernel = ctypes.WinDLL(
+            "kernel32.dll", use_last_error=True, winmode=0x00000800
+        )
+        self._kernel.LockFileEx.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+            wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(Overlapped),
+        ]
+        self._kernel.LockFileEx.restype = wintypes.BOOL
+        self._kernel.UnlockFileEx.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+            wintypes.DWORD, ctypes.POINTER(Overlapped),
+        ]
+        self._kernel.UnlockFileEx.restype = wintypes.BOOL
+        # LOCKFILE_FAIL_IMMEDIATELY without LOCKFILE_EXCLUSIVE_LOCK. The
+        # Launcher's shared lock can coexist; an updater's exclusive lock
+        # cannot. Offset zero and length one match the Rust lease protocol.
+        if not self._kernel.LockFileEx(
+            self._native_handle, 0x00000001, 0, 1, 0,
+            ctypes.byref(self._overlapped),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def release(self) -> None:
+        if not self._kernel.UnlockFileEx(
+            self._native_handle, 0, 1, 0,
+            self._ctypes.byref(self._overlapped),
+        ):
+            raise self._ctypes.WinError(self._ctypes.get_last_error())
+
+
 class _LifetimeLease:
     """Hold a shared OS lock on ``lease.v1`` until the role exits."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.handle = None
+        self._windows_lease = None
 
     def __enter__(self) -> "_LifetimeLease":
         _assert_regular_file(self.path, "sealed lifetime lease")
         handle = self.path.open("rb")
         try:
             if os.name == "nt":
-                import msvcrt
-
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_RLCK, 1)
+                self._windows_lease = _WindowsSharedLease(handle)
             else:
                 import fcntl
 
@@ -1327,10 +1436,8 @@ class _LifetimeLease:
             return
         try:
             if os.name == "nt":
-                import msvcrt
-
-                self.handle.seek(0)
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+                if self._windows_lease is not None:
+                    self._windows_lease.release()
             else:
                 import fcntl
 
@@ -1338,6 +1445,7 @@ class _LifetimeLease:
         finally:
             self.handle.close()
             self.handle = None
+            self._windows_lease = None
 
 
 def _load_role(root: Path, role: str):

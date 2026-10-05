@@ -5,7 +5,9 @@ export type FrontendContributionKind =
   | "action"
   | "data_source"
   | "settings"
-  | "command";
+  | "command"
+  | "view";
+// Views contain inert declarations; the shipped renderer registry owns code.
 
 export type FrontendContributionMode =
   | "application_builtin"
@@ -35,6 +37,9 @@ export type VerifiedFrontendContribution = {
   renderer?: string | null;
   action_contract?: string | null;
   data_source_contract?: string | null;
+  operation_id?: string;
+  // Host-captured executable effect class; views cannot grant this property.
+  read_only?: boolean;
   schema?: Record<string, unknown> | null;
   view?: Record<string, unknown> | null;
   module?: {

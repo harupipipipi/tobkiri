@@ -310,6 +310,7 @@ export type PendingChatRequest = {
   ownerTurnObserved?: boolean;
   requestFingerprint?: string;
   startedAt: number;
+  updatedAt?: number;
   status: string;
   toolNames: string[];
   toolStartedAt?: Record<string, number>;

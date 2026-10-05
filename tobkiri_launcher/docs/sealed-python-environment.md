@@ -194,6 +194,52 @@ ordinary user-owned snapshots cannot provide that guarantee.
 Windows/Linux installer and release publication is intentionally disabled until
 their platform signing and native runtime validation are explicitly re-enabled.
 
+### Windows runtime execution boundary
+
+`sealed_python_windows.rs` implements the Windows runtime side independently
+of the remaining installer/build-time portability work. It is not evidence
+that a native Windows installer has been released or smoke-tested.
+
+* Release builds require `TOBKIRI_WINDOWS_SIGNER_CERT_SHA256`, the lowercase
+  SHA-256 of the actual Authenticode leaf certificate's DER bytes. It is
+  compiled into Launcher; an end-user environment variable cannot replace it.
+* Launcher opens its own installed executable without write/delete sharing,
+  verifies Authenticode with Windows `WinVerifyTrust`, checks the exact signer
+  certificate, and requires runtime resources beside that executable. The
+  already compiled Python and outer resource manifest hashes bind payloads to
+  that authenticated caller. Unsigned or differently signed callers fail closed.
+* Verification is offline and uses installed Windows trust. It does not claim
+  fresh online certificate revocation status and never downloads a runtime.
+* Snapshot roots and descendants use explicit protected ACLs owned by the
+  current user. After copying and hashing, the user has read/execute access;
+  SYSTEM and Administrators retain administrative control. Every component is
+  opened without following reparse points; all ancestor directories and all
+  snapshot files are held without write/delete sharing for the child's life.
+  Hardlinks, alternate data streams, reserved DOS names, case aliases, and
+  extra/missing inventory are rejected.
+* Cleanup waits for confirmed child exit. Abandoned live-child snapshots stay
+  protected rather than being deleted. Windows stale-snapshot reclamation is
+  not yet implemented.
+* The parent and bootstrap use real shared `LockFileEx` byte-zero leases.
+  `msvcrt.LK_RLCK` is deliberately not used: Windows treats it as an exclusive
+  lock, which cannot coexist with the parent's shared lease. An exclusive
+  probe proves that the child holds a lock, not merely an open file handle.
+
+The Windows Rust tests cover ACL sealing, write/replacement refusal, hardlinks,
+unsigned caller rejection, and genuine child-lease proof. Their bodies compile
+for `x86_64-pc-windows-gnu` in the cloud source harness; executing those tests and
+all three packaged Python roles still requires native Windows. Run the focused
+Python lease tests with:
+
+```bash
+python -m pytest .github/scripts/tests/test_windows_sealed_lease.py -q
+```
+
+The native shared-lock interoperability test is skipped on other platforms.
+A release must use the real signing certificate supplied by the release
+pipeline; this implementation creates no signing credentials or unsigned
+production exception.
+
 The packaging lane owns the generator, resource assembly, and Python boundary;
 the core Rust `sealed_python.rs` implementation remains the owner of launcher
 binding/launch validation. Integration must keep the two implementations
@@ -213,3 +259,40 @@ snapshot-`sys.path` behavior. Full CPython/native-extension construction is
 deferred to the integration lane while the shared Cargo target is being
 cleaned; it must cover native macOS relocation and all three role smokes before
 the macOS release workflow is considered green.
+
+### Windows standalone CPython input
+
+The Windows x64 builder consumes the same reviewed Astral
+`python-build-standalone` release as macOS: CPython `3.13.13`, build `20260510`,
+`x86_64-pc-windows-msvc-install_only_stripped.tar.gz`. The vendor release asset
+metadata is available at
+<https://github.com/astral-sh/python-build-standalone/releases/expanded_assets/20260510>.
+Its SHA-256 is
+`e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834`;
+the downloaded archive bytes were independently checked against that value.
+The normal bounded, hash-checking downloader and safe archive extractor are
+used unchanged. This input pin does not replace the Windows package signature,
+manifest, ACL, or relocation checks, and does not enable the Windows release gate.
+
+The archive supplies the base interpreter, standard library, extension modules,
+and Visual C++ runtime DLLs. The venv alone is **not** self-contained: `uv venv
+--relocatable` still writes a `home` pointing at its base Python. Assembly rewrites
+that field to `runtime`, and the launcher must run with the sealed closure root
+as its working directory. Both `runtime/` and `venv/` must move together.
+
+The opt-in Windows acceptance test checks the exact archive and uv binary hashes,
+creates the venv offline, moves the entire closure (making the original build path
+unavailable), then imports standard-library native modules and an installed probe.
+It requires the reported executable, prefix, base prefix and module origins to be
+inside the moved closure. From a clean committed checkout on a Windows host with
+the pinned inputs, run:
+
+```powershell
+$env:TOBKIRI_WINDOWS_PYTHON_ARCHIVE = '<path to the pinned tar.gz>'
+$env:TOBKIRI_WINDOWS_PINNED_UV = '<path to pinned uv 0.11.14 uv.exe>'
+python -B -m pytest tobkiri_runtime/tests/test_sealed_python_environment.py -q -k windows_pinned_runtime_relocates
+```
+
+This isolated input/relocation test is additional evidence, not a substitute for
+native full closure build, fixed-role smoke tests, installer signature validation,
+and Windows lease/ACL/process-containment acceptance.

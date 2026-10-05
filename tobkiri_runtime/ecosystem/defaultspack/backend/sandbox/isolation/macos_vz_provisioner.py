@@ -3031,8 +3031,18 @@ class MacOSVZProvisioner:
             os.close(descriptor)
 
 
-def default_packvm_provisioner() -> MacOSVZProvisioner:
-    """Return direct VZ on supported macOS and no Lima default elsewhere."""
+def default_packvm_provisioner() -> Any:
+    """Select the native, authenticated VM substrate without a weaker fallback."""
+
+    system = host_platform.system()
+    if system == "Linux":
+        from .linux_qemu_provisioner import default_linux_packvm_provisioner
+
+        return default_linux_packvm_provisioner()
+    if system == "Windows":
+        from .windows_whpx_provisioner import default_windows_packvm_provisioner
+
+        return default_windows_packvm_provisioner()
 
     if os.environ.get("RUMI_ENVIRONMENT") == "development":
         user_data_root = Path(os.environ.get("RUMI_USER_DATA", "").strip())

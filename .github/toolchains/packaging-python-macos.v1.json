@@ -8,7 +8,7 @@
   "installer_url": "https://www.python.org/ftp/python/3.13.13/python-3.13.13-macos11.pkg",
   "release_page": "https://www.python.org/downloads/release/python-31313/",
   "requirements_path": "tobkiri_runtime/requirements.txt",
-  "requirements_sha256": "87b85dd41638f1c0c79cf0439933e1b1fa124863eea8e9ec9b232125143188f1",
+  "requirements_sha256": "4e8f8d976e3da0364c63069969e4fa529c188c5cfc9e1648ce37c90eb8af2a57",
   "schema": "tobkiri.packaging-python-macos.v1",
   "version": "3.13.13"
 }

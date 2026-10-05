@@ -2052,7 +2052,14 @@ class PackAPIHandler(
             if hasattr(self, "headers")
             else ""
         )
-        identity = self._current_health_execution_identity()
+        # Pending probes deliberately skipped capture (activation or another
+        # health probe owns it). Do not re-enter capture through assert_current.
+        # Verified Profiles still require the current execution identity fence.
+        identity = (
+            self._current_health_execution_identity()
+            if health.get("active_profile_ready") is not False
+            else None
+        )
         if identity is not None:
             health.update(identity.as_mapping())
         manager = self.__class__._panel_auth_manager

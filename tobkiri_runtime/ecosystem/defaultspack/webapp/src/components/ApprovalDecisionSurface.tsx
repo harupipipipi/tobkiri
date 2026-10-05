@@ -41,6 +41,7 @@ export function ApprovalDecisionSurface({ approval, onApprove, onDeny, onOpenTru
   useEffect(() => {
     if (!keyboardShortcuts || !pending || approval.trustedWindowRequired) return;
     const listener = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (event.key === keyboardShortcuts.deny) { event.preventDefault(); onDeny?.(); }
@@ -51,7 +52,7 @@ export function ApprovalDecisionSurface({ approval, onApprove, onDeny, onOpenTru
   }, [approval.trustedWindowRequired, keyboardShortcuts, onApprove, onDeny, pending]);
 
   return (
-    <section aria-labelledby={headingId} className={cn("rounded-xl border border-amber-500/30 bg-zinc-950 p-3 shadow-2xl", className)} data-approval-source={approval.source}>
+    <section aria-labelledby={headingId} className={cn("rumi-runtime-approval-card rounded-2xl border border-amber-500/30 bg-[var(--rumi-surface-raised)] p-4 shadow-2xl", className)} data-approval-source={approval.source}>
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200"><ShieldAlert size={15} /></span>
         <div className="min-w-0 flex-1">

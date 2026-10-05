@@ -10,11 +10,13 @@ import secrets
 import stat
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Protocol
+from typing import Any, Protocol
+
 from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
 from tobkiri_host.admission import (
     AdmissionEstimate,
@@ -26,51 +28,51 @@ from tobkiri_host.admission import (
     dead_owner_reservation_ids,
 )
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
+from tobkiri_host.authority_approval_window import (
+    AuthorityApprovalWindowController,
+)
 from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
 from tobkiri_host.broker import (
     AdmissionTicket,
     NestedCancellationProof,
     RequestAdmissionPort,
 )
-from tobkiri_host.composition import AuthorityCeilings
-from tobkiri_host.authority_approval_window import (
-    AuthorityApprovalWindowController,
-)
 from tobkiri_host.chat_approval_continuation import (
     ChatApprovalContinuationController,
 )
-from tobkiri_host.model_search import ModelSearchController
+from tobkiri_host.composition import AuthorityCeilings
 from tobkiri_host.contracts import (
     AdapterPlanner,
     ResolvedOperationBinding,
     StructuralAdapter,
 )
 from tobkiri_host.effects import InMemoryReconciliationStore
-from tobkiri_host.operation_cancellation import (
-    OwnedCancellationBinding,
-    OwnedCancellationHandles,
-    nested_cancellation_proof_for,
+from tobkiri_host.errors import BackendUnavailableError
+from tobkiri_host.interactive_effects import (
+    LateBoundInteractiveEffectPort,
+    PendingEffectController,
 )
-from tobkiri_host.packvm_bridge_budget import PackVMBridgeBudgetRegistry
 from tobkiri_host.materialization import MaterializationCoordinator
+from tobkiri_host.model_search import ModelSearchController
 from tobkiri_host.models import (
     ArtifactVariant,
     ContractOperation,
     ExecutionKind,
     FunctionArtifact,
     OpaqueAuthorityRef,
-    PackArtifact,
     PackageKind,
+    PackArtifact,
     RequestContext,
 )
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationBinding,
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
+)
+from tobkiri_host.packvm_bridge_budget import PackVMBridgeBudgetRegistry
 from tobkiri_host.ports import (
     AuthorityApprovalWindowOpenCommand,
     InteractiveApprovalGetQuery,
-)
-from tobkiri_host.errors import BackendUnavailableError
-from tobkiri_host.interactive_effects import (
-    LateBoundInteractiveEffectPort,
-    PendingEffectController,
 )
 from tobkiri_host.runtime import ProductionRuntimeV4, V4DispatchSession
 from tobkiri_host.workspace_mutation import (
@@ -80,17 +82,27 @@ from tobkiri_host.workspace_mutation import (
 )
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT,
     SAVED_CONVERSATION_OPERATION,
     validate_saved_conversation_input,
 )
-from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.secure_persistence import (
     SecureDirectory,
     SecurePersistenceError,
 )
 
+from core_runtime.local_model_authority import (
+    LOCAL_REGISTRY_CONTRACT,
+    LocalModelInvocationBinding,
+    LocalModelRequest,
+    capture_local_model_binding,
+    create_local_model_transport,
+)
+from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
+
+from ..authority.pack_approval_binding import pack_approval_snapshot_digest
 from ..authority.v4 import (
     ApprovalRecord,
     AuthorityDenied,
@@ -106,6 +118,29 @@ from ..authority.v4 import (
     ProviderAuthorityRecord,
     authority_digest,
 )
+from ..credential_transport import (
+    AuthorizedEnvelopeCredentialTransport,
+    CredentialMaterialStoreFactory,
+)
+from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
+from ..global_contract_dispatch import (
+    GlobalContractClient,
+)
+from ..host_provider_backend_v4 import (
+    CapturedHostPackDataV4,
+    ExactHostProviderBackendV4,
+    HostProviderCaptureContextV4,
+    HostProviderInvocationContextV4,
+)
+from ..host_provider_data_v4 import HostProviderDataCaptureV4
+from ..host_provider_hooks_v4 import load_host_provider_factory
+from ..interactive_effect_coordinator import (
+    INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
+    INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID,
+    INTERACTIVE_EFFECT_SPECS,
+    CapturedInteractiveEffectRoute,
+    HostInteractiveEffectService,
+)
 from ..pack_catalog_backend_v4 import (
     PackControlBackendV4,
 )
@@ -120,29 +155,6 @@ from ..panel_auth import (
     PanelAuthBinding,
     PanelAuthManager,
     get_panel_auth_manager,
-)
-from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
-from ..credential_transport import (
-    AuthorizedEnvelopeCredentialTransport,
-    CredentialMaterialStoreFactory,
-)
-from ..global_contract_dispatch import (
-    GlobalContractClient,
-)
-from ..host_provider_backend_v4 import (
-    CapturedHostPackDataV4,
-    ExactHostProviderBackendV4,
-    HostProviderCaptureContextV4,
-    HostProviderInvocationContextV4,
-)
-from ..host_provider_data_v4 import HostProviderDataCaptureV4
-from ..host_provider_hooks_v4 import load_host_provider_factory
-from ..interactive_effect_coordinator import (
-    CapturedInteractiveEffectRoute,
-    HostInteractiveEffectService,
-    INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
-    INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID,
-    INTERACTIVE_EFFECT_SPECS,
 )
 
 
@@ -1008,18 +1020,14 @@ def _commit_plan_authority(
             f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
             f"{target_suffix}.{record_identity}"
         ),
-        snapshot_digest=canonical_digest(
-            {
-                "ceremony": f"{profile_identity}.activate",
-                "activation_id": activation["activation_id"],
-                "plan_digest": activation["plan_digest"],
-                "profile_authority_snapshot_digest": activation[
-                    "profile_authority_snapshot_digest"
-                ],
-                "security_epoch": activation["security_epoch"],
-                "scope": scope.to_dict(),
-                "pack_approval_revision": pack_approval_revision,
-            }
+        snapshot_digest=pack_approval_snapshot_digest(
+            profile_id=profile_identity,
+            activation_id=activation["activation_id"],
+            plan_digest=activation["plan_digest"],
+            profile_authority_digest=activation["profile_authority_snapshot_digest"],
+            security_epoch=activation["security_epoch"],
+            scope=scope.to_dict(),
+            approval_revision=pack_approval_revision,
         ),
         actor_id=(
             "user.pack-approval"
@@ -1090,6 +1098,7 @@ def _packvm_approval_provenance(
     target_pack_id: str,
     optional_pack_ids: set[str],
     pack_ids_by_artifact_digest: Mapping[str, set[str]],
+    approval_roots_by_pack: Mapping[str, set[str]] | None = None,
 ) -> tuple[bool, str | None]:
     """Resolve one unambiguous optional-Pack approval source for a PackVM edge."""
 
@@ -1100,9 +1109,57 @@ def _packvm_approval_provenance(
     approval_pack_ids = {
         pack_id for pack_id in (target_pack_id, caller_pack_id) if pack_id in optional_pack_ids
     }
-    if len(approval_pack_ids) > 1:
+    if not approval_pack_ids:
+        return True, None
+    covering_roots: set[str] | None = None
+    for pack_id in approval_pack_ids:
+        roots = (
+            {pack_id} if approval_roots_by_pack is None
+            else set(approval_roots_by_pack.get(pack_id, ()))
+        )
+        covering_roots = roots if covering_roots is None else covering_roots & roots
+    if not covering_roots or len(covering_roots) != 1:
         return False, None
-    return True, next(iter(approval_pack_ids), None)
+    return True, next(iter(covering_roots))
+
+
+def _optional_pack_approval_roots(
+    catalog: Any, optional_pack_ids: set[str]
+) -> dict[str, set[str]]:
+    """Bind each optional member to its selected signed dependency roots.
+
+    Pack control approves roots, not the effective closure's dependency-only
+    members. Traverse the already verified catalog without inventing a new
+    caller edge or choosing among overlapping approval roots.
+    """
+    dependencies = {
+        pack_id: set(manifest["requirements"]["pack_dependencies"])
+        for pack_id, manifest in catalog.packs.items()
+    }
+    if not optional_pack_ids.issubset(dependencies):
+        raise AuthorityDenied("optional Pack dependency catalog is incomplete")
+    dependency_ids = {
+        dependency
+        for pack_id in optional_pack_ids
+        for dependency in dependencies[pack_id]
+        if dependency in optional_pack_ids
+    }
+    roots = optional_pack_ids - dependency_ids
+    coverage: dict[str, set[str]] = {pack_id: set() for pack_id in optional_pack_ids}
+    for root in sorted(roots):
+        pending = [root]
+        visited: set[str] = set()
+        while pending:
+            pack_id = pending.pop()
+            if pack_id in visited:
+                continue
+            visited.add(pack_id)
+            if pack_id not in dependencies:
+                raise AuthorityDenied("signed Pack dependency is unavailable")
+            if pack_id in coverage:
+                coverage[pack_id].add(root)
+            pending.extend(dependencies[pack_id] - visited)
+    return coverage
 
 
 def _static_profile_pack_ids(
@@ -1513,6 +1570,11 @@ def capture_production_dispatch(
     ):
         raise AuthorityDenied("Authority store is not bound to the captured Profile activation")
     active = persisted_active
+    from .external_profile_catalog import catalog_for_verified_active_profile
+
+    catalog = catalog_for_verified_active_profile(
+        catalog, active, user_data=authority_user_data,
+    )
     activation_suffix = str(active.activation["fencing_token"])
 
     profile = active.resolved.profile
@@ -1914,6 +1976,7 @@ def capture_production_dispatch(
         for item in profile.get("packs", ())
         if str(item["pack_id"]) not in static_profile_pack_ids
     }
+    approval_roots_by_pack = _optional_pack_approval_roots(catalog, optional_pack_ids)
     pack_ids_by_artifact_digest: dict[str, set[str]] = {}
     for item in lock["effective_set"]:
         pack_ids_by_artifact_digest.setdefault(
@@ -2000,6 +2063,7 @@ def capture_production_dispatch(
             target_pack_id=resolved_binding.artifact.pack_id,
             optional_pack_ids=optional_pack_ids,
             pack_ids_by_artifact_digest=pack_ids_by_artifact_digest,
+            approval_roots_by_pack=approval_roots_by_pack,
         )
         if not provenance_valid:
             continue
@@ -2321,7 +2385,10 @@ def capture_production_dispatch(
         return response
 
     from .saved_bridge import (
-        ALLOWED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result, project_saved_tool_result,
+        ALLOWED_TARGETS,
+        SavedBridgeCallbacks,
+        project_saved_ai_result,
+        project_saved_tool_result,
     )
 
     saved_bridge_cancellation_proof: contextvars.ContextVar[
@@ -2474,6 +2541,7 @@ def capture_production_dispatch(
     close_callbacks: list[Callable[[], None]] = []
     cancellation_handles = OwnedCancellationHandles()
     cancellation_roles: dict[str, tuple[str, str, str]] = {}
+    local_model_bindings: dict[str, LocalModelInvocationBinding] = {}
     close_callbacks.append(cancellation_handles.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
@@ -2625,6 +2693,9 @@ def capture_production_dispatch(
                         self._presentation_owner[1],
                     ),
                 )
+            except Exception as error:
+                log_nested_dispatch_failure(contract_id, operation_id, error)
+                raise
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)
 
@@ -2698,17 +2769,34 @@ def capture_production_dispatch(
                 if include_credentials and credential_store_binding is not None
                 else None
             )
-            self._client = GlobalContractClient(
-                session=_InvocationSession(
-                    self._envelope,
-                    presentation_owner=(
-                        self._presentation_owner_principal_id,
-                        self._presentation_owner_session_id,
-                    ),
+            invocation_session = _InvocationSession(
+                self._envelope,
+                presentation_owner=(
+                    self._presentation_owner_principal_id,
+                    self._presentation_owner_session_id,
                 ),
+            )
+            local_binding = local_model_bindings.get(provider_principal.principal_id)
+            local_transport = create_local_model_transport(
+                envelope=self._envelope, principal=provider_principal,
+                authority_store=authority_store, user_data_root=authority_user_data,
+                registry_snapshot=lambda: invocation_session.invoke(
+                    LOCAL_REGISTRY_CONTRACT,
+                    local_binding.registry_operation_id,
+                    {"profile_id": profile_id},
+                ),
+                assert_current=self.assert_current,
+                binding=local_binding,
+            ) if (
+                local_binding is not None
+                and LOCAL_REGISTRY_CONTRACT in allowed_contract_ids
+            ) else None
+            self._client = GlobalContractClient(
+                session=invocation_session,
                 allowed_contract_ids=allowed_contract_ids,
                 consumer_pack_id=consumer_pack_id,
                 host_credential_transport=transport,
+                host_local_model_transport=local_transport,
             )
             self._client_binding = binding
             return self._client
@@ -2773,6 +2861,28 @@ def capture_production_dispatch(
         if factory.function_id != function_id:
             raise AuthorityDenied("Host Provider hook Function identity changed")
         loaded_host_factories.append((function_id, captured_bindings, factory, backend_id))
+        local_request = getattr(factory, "local_model_request", None)
+        if local_request is not None:
+            if type(local_request) is not LocalModelRequest:
+                raise AuthorityDenied("Host local model declaration is invalid")
+            for binding in captured_bindings:
+                principal = _binding_principal(binding)
+                matches = tuple(
+                    edge for edge in captured_edges
+                    if edge.caller == principal
+                    and edge.resolved_binding.operation.contract_id == LOCAL_REGISTRY_CONTRACT
+                    and edge.resolved_binding.operation.operation_id == local_request.registry_operation_id
+                )
+                if (
+                    binding.operation.contract_id != local_request.contract_id
+                    or len(matches) != 1
+                    or matches[0].target != _binding_principal(matches[0].resolved_binding)
+                    or principal.principal_id in local_model_bindings
+                ):
+                    raise AuthorityDenied("Host local model dependency binding is invalid")
+                local_model_bindings[principal.principal_id] = capture_local_model_binding(
+                    binding, matches[0].resolved_binding,
+                )
         cancellation_group = getattr(factory, "cancellation_group", None)
         if cancellation_group is not None:
             role = getattr(factory, "cancellation_role", None)

@@ -1,15 +1,17 @@
+import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
 import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
 import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
 import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
-import type { PendingToolReview, ToolSelectionChip } from "../features/tools/types";
+import type { PendingToolReview, ToolSelectionChip, ToolSelectionMode } from "../features/tools/types";
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
@@ -66,6 +68,7 @@ export type ComposerExtensionItem = {
   /** Explicit catalog service identifier, when this tool belongs to an integration. */
   serviceId?: string;
   ui?: SidebarItem["ui"];
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
 };
 
 export type ComposerSkillItem = {
@@ -131,6 +134,7 @@ export type TitleBarRendererProps = {
 };
 
 export type HistoryBoardRendererProps = {
+  profileId?: string;
   activeChatId: string | null;
   chatItems: ChatItem[];
   account?: NonNullable<UICatalog["app"]>["account"];
@@ -199,6 +203,8 @@ export type ChatMessagesRendererProps = {
 };
 
 export type ComposerRendererProps = {
+  surfaceMode?: "standard" | "thread";
+  submissionDisabled?: boolean;
   widgetContext?: WidgetConversationContext;
   input: string;
   placeholder: string;
@@ -221,6 +227,7 @@ export type ComposerRendererProps = {
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
+  voiceScopeKey?: string;
   manualRuntimeModeSelectionEnabled?: boolean;
   mode?: AppMode;
   codingContext?: CodingContext | null;
@@ -234,6 +241,7 @@ export type ComposerRendererProps = {
   entityReferences?: ComposerEntityReference[];
   selectedToolIds?: string[];
   actionApprovalMode?: ActionApprovalMode;
+  toolSelectionMode?: ToolSelectionMode;
   toolSelectionTargets?: ToolSelectionChip[];
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
@@ -246,6 +254,7 @@ export type ComposerRendererProps = {
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
   onActionApprovalModeChange?: (mode: ActionApprovalMode) => void;
+  onToolSelectionModeChange?: (mode: ToolSelectionMode) => void;
   onToolSelectionTargetRemove?: (target: ToolTarget) => void;
   onToolSelectionReviewApprove?: () => void;
   onToolSelectionReviewEdit?: () => void;
@@ -320,6 +329,7 @@ export type RightSidebarRendererProps = {
   workspaceTabs?: WorkspaceTab[];
   workspaceTabsEnabled?: boolean;
   workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;
@@ -328,7 +338,7 @@ export type RightSidebarRendererProps = {
   onToggleYolo?: () => void;
   onWorkspaceTabSelect?: (tabId: string) => void;
   onWorkspaceTabClose?: (tabId: string) => void;
-  onWorkspaceTabCreate?: (kind: WorkspaceTabKind) => void;
+  onWorkspaceTabCreate?: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
@@ -338,6 +348,7 @@ export type RightSidebarRendererProps = {
 };
 
 export type SettingsModalRendererProps = {
+  extensionSettings?: ReactNode;
   isOpen: boolean;
   activeSectionId?: string | null;
   catalog: UICatalog | null;
@@ -406,5 +417,6 @@ export type DroppedWidget = {
   sourceItemId?: string;
   description?: string;
   icon?: string;
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
   metadata?: Record<string, unknown>;
 };

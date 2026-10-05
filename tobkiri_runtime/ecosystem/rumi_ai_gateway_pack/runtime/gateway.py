@@ -787,8 +787,10 @@ def _resolve_model_reference(
     parameters = dict(profile.get("parameters") or {})
     parameters.update(dict(request.get("parameters") or {}))
     request["parameters"] = parameters
-    if request.get("credential_handle") is None:
-        request["credential_handle"] = profile.get("credential_handle")
+    # Legacy model profiles may retain an opaque credential reference, but
+    # credentials belong exclusively to the current Provider connection owner.
+    # Do not turn that stored metadata into a caller-supplied credential override.
+    # Explicit request handles remain intact so the adapter can reject them.
     metadata = profile.get("metadata")
     metadata = metadata if isinstance(metadata, Mapping) else {}
     connection_id = metadata.get("provider_connection_id")

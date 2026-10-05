@@ -806,6 +806,16 @@ class AuthorityKernel:
             raise AuthorityDenied("exact scope is not bound to this request")
 
         self._validate_call_chain(context, caller, grant, request_scope)
+        deadlines = [now + self._lease_ttl_seconds]
+        for record in (grant, provider):
+            if record.expires_at is not None:
+                deadlines.append(record.expires_at)
+        if provider.host_extension_id != "runtime-tcb":
+            trust = self.store.get_host_extension_trust(provider.host_extension_id)
+            if trust is None:
+                raise AuthorityDenied("Host Extension trust is unavailable")
+            if trust.expires_at is not None:
+                deadlines.append(trust.expires_at)
         lease = InvocationLease(
             lease_id="lease-" + secrets.token_hex(16),
             request_id=context.request_id,
@@ -834,7 +844,7 @@ class AuthorityKernel:
             audit_reservation_id="audit-" + secrets.token_hex(16),
             security_epoch=epoch,
             issued_at=now,
-            expires_at=now + self._lease_ttl_seconds,
+            expires_at=min(deadlines),
             call_chain=context.call_chain,
         )
         revocation_targets = (

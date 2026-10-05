@@ -1,11 +1,17 @@
+import { chatMessageToUiMessage } from "./lib/chatUiMessage";
+import { FrontendViewSlot } from "./host/FrontendViewSlot";
+import { viewsForSlot, matchesViewReference, type CatalogViewReference, type ViewSlot } from "./host/catalogViewRegistry";
+import { useVerifiedFrontendHost } from "./host/VerifiedFrontendHostContext";
+import { iconAttentionForConversation } from "./lib/widgetAttention";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
-import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
+import { AppWindow, Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
   CompanyWorkspacePanel,
   resolveCompanyWorkspaceHint,
   resolveCompanyWorkspaceHintFromGroup,
 } from "./components/company/CompanyWorkspacePanel";
+import { TaskPet } from "./components/TaskPet";
 import { AmbientTriggerPanel } from "./ambient/AmbientTriggerPanel";
 import { DefaultsConsoleWindow } from "./ambient/DefaultsConsoleWindow";
 import { AdaptiveRuntimePage } from "./adaptive";
@@ -38,10 +44,16 @@ import {
   WORKSPACE_TAB_CREATE_OPTIONS,
   WorkspaceLaunchpad,
   WorkspaceTabBar,
+  closeWorkspaceTab,
   createWorkspaceTab,
+  restoreLastClosedWorkspaceTab,
+  rememberClosedWorkspaceTab,
   workspaceTabDisplayTitle,
+  type ClosedWorkspaceTab,
+  workspaceTabsForConversation,
   type WorkspaceTab,
   type WorkspaceTabKind,
+  type WorkspaceTabCreateOption,
 } from "./components/WorkspaceTabs";
 import {
   initialActiveWorkspaceTabIdForPathname,
@@ -49,13 +61,13 @@ import {
   workspaceKindForPathname,
   workspaceUrlForKind,
 } from "./lib/workspaceRouting";
-import { applicationPathname, profileScreenPathFromLocation } from "./lib/profileRoute";
+import { applicationPathname, parseProfileScreenPath, profileScreenPathFromLocation } from "./lib/profileRoute";
 import { UiPrecisionComparator } from "./pages/UiPrecisionComparator";
 import { ConversationShareLanding, ImportedConversationNotice } from "./pages/ConversationShareLanding";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -72,6 +84,11 @@ import {
 import type { ConversationToolPreferences } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
 import {
+  buildConversationPresentations,
+  conversationTimestamp,
+  type ConversationPresentation,
+} from "./features/conversations/conversationPresentation";
+import {
   AUTHORITY_WAITING_TEXT,
   authorityApprovalTitle,
   pendingAuthorityApproval,
@@ -82,6 +99,7 @@ import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, t
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
+import { conversationVisibleInHistory } from "./lib/conversationVisibility";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./lib/conversationView";
 import { cn } from "./lib/cn";
@@ -94,7 +112,6 @@ import {
   composerSkillMentionWidget,
   composerToolMentionWidget,
   isSafeLocalEndpoint,
-  normalizeComposerMentionMetadata,
   publicComposerWidgetMetadata,
   reconcileComposerSemanticDraft,
   skillMentionIdsFromText,
@@ -113,11 +130,10 @@ import { fileToAttachment } from "./lib/attachments";
 import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
-import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
-import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
+import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutDisposition } from "./lib/keyboardShortcuts";
 import {
   PENDING_CHAT_REQUEST_TTL_MS,
   canClearSavedTurnStopFailureError,
@@ -1491,7 +1507,10 @@ function externalConversationSection(conversation: Conversation): { id: string; 
   };
 }
 
-function toChatItem(conversation: Conversation): ChatItem {
+function toChatItem(
+  conversation: Conversation,
+  presentation?: ConversationPresentation,
+): ChatItem {
   const section = externalConversationSection(conversation);
   const metadata = conversation.metadata ?? {};
   const groupId = cleanOptionalString(conversation.group_id) ?? cleanOptionalString(metadata.group_id ?? metadata.groupId);
@@ -1501,7 +1520,7 @@ function toChatItem(conversation: Conversation): ChatItem {
   };
   return {
     id: conversation.id,
-    title: conversation.title,
+    title: presentation?.title ?? conversation.title,
     date: formatBoardDate(conversation.updated_at),
     type: "chat",
     parentId: conversation.parent_conversation_id ?? null,
@@ -1514,10 +1533,15 @@ function toChatItem(conversation: Conversation): ChatItem {
     companyId: typeof normalizedMetadata.company_id === "string" ? normalizedMetadata.company_id : null,
     workspaceId: typeof normalizedMetadata.workspace_id === "string" ? normalizedMetadata.workspace_id : null,
     metadata: normalizedMetadata,
+    presentation,
   };
 }
 
-function buildChatItems(conversations: Conversation[]): ChatItem[] {
+function buildChatItems(
+  conversations: Conversation[],
+  presentations: Readonly<Record<string, ConversationPresentation | undefined>> = {},
+): ChatItem[] {
+  conversations = conversations.filter(conversationVisibleInHistory);
   const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
   const childIds = new Set<string>();
 
@@ -1543,7 +1567,10 @@ function buildChatItems(conversations: Conversation[]): ChatItem[] {
       .filter((child): child is Conversation => Boolean(child))
       .sort((a, b) => b.updated_at - a.updated_at)
       .map(build);
-    return { ...toChatItem(conversation), children: linkedChildren };
+    return {
+      ...toChatItem(conversation, presentations[conversation.id]),
+      children: linkedChildren,
+    };
   };
 
   return conversations
@@ -2706,6 +2733,7 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       sourcePackId: item.tool_info?.source_pack_id,
       serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
+      presentation: item.presentation,
     }));
 }
 
@@ -3020,6 +3048,30 @@ function modelCommandInputQuery(value: string): string | null {
 
 export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
+  const verifiedHost = useVerifiedFrontendHost();
+  const runtimeProfileId = verifiedHost?.catalog.profile_id ?? parseProfileScreenPath(window.location.pathname)?.profileId ?? "unavailable";
+  const viewNavigationGuardsRef = useRef(new Map<string, () => boolean>());
+  const registerViewNavigationGuard = useCallback((ownerId: string, guard: (() => boolean) | null) => {
+    if (guard) viewNavigationGuardsRef.current.set(ownerId, guard);
+    else viewNavigationGuardsRef.current.delete(ownerId);
+  }, []);
+  const canLeavePackViews = useCallback(() => {
+    for (const guard of viewNavigationGuardsRef.current.values()) {
+      try { if (!guard()) return false; } catch { return false; }
+    }
+    return true;
+  }, []);
+  const navigationLocationRef = useRef(window.location.href);
+  navigationLocationRef.current = window.location.href;
+  const [hasVisibleModal, setHasVisibleModal] = useState(false);
+  useEffect(() => {
+    const update = () => setHasVisibleModal(Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'],[role='alertdialog'],[aria-modal='true'],dialog[open]"))
+      .some((element) => element.getClientRects().length > 0 && !element.hidden));
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["role", "aria-modal", "hidden", "open", "style", "class"] });
+    update();
+    return () => observer.disconnect();
+  }, []);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
   useEffect(() => {
     let disposed = false;
@@ -3056,6 +3108,9 @@ export function ChatApp() {
   const [commandProtocolInfo, setCommandProtocolInfo] = useState<ResolvedCommandCatalog | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const liveTaskContextRef = useRef({ profileId: runtimeProfileId, conversationId: activeConversationId });
+  liveTaskContextRef.current = { profileId: runtimeProfileId, conversationId: activeConversationId };
+  const [taskPetSnapshot, setTaskPetSnapshot] = useState<{ profileId: string; snapshot: SavedTurnEventSnapshot } | null>(null);
   const widgetContext = useMemo(
     () => createWidgetConversationContext(activeConversationId),
     [activeConversationId],
@@ -3113,6 +3168,7 @@ export function ChatApp() {
   const [showPromptUsageInMessages, setShowPromptUsageInMessages] = useLocalStorage("rumi-show-prompt-usage-in-messages", true);
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => initialWorkspaceTabsForPathname(window.location.pathname));
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(() => initialActiveWorkspaceTabIdForPathname(window.location.pathname));
+  const closedWorkspaceTabsRef = useRef<{ profileId: string; tabs: ClosedWorkspaceTab[] }>({ profileId: runtimeProfileId, tabs: [] });
   const [isHistoryMinimized, setIsHistoryMinimized] = useLocalStorage("rumi-history-minimized", false);
   const [isNewChatLaunching, setIsNewChatLaunching] = useState(false);
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
@@ -3127,7 +3183,6 @@ export function ChatApp() {
   const [settledBrowserApprovalKeys, setSettledBrowserApprovalKeys] = useState<string[]>([]);
   const [pendingCommandApproval, setPendingCommandApproval] = useState<PendingCommandApproval | null>(null);
   const [pendingHighRiskCommand, setPendingHighRiskCommand] = useState<PendingHighRiskCommand | null>(null);
-  const [commandProgressEvents, setCommandProgressEvents] = useState<Array<Record<string, unknown>>>([]);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof api.health>> | null>(null);
   const [backendConnectionState, setBackendConnectionState] = useState<BackendConnectionState>("online");
   const [backendConnectionNote, setBackendConnectionNote] = useState<string | null>(null);
@@ -3154,12 +3209,16 @@ export function ChatApp() {
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
-  const pendingStorageKey = "rumi-pending-chat-requests";
+  const pendingStorageKey = `rumi-pending-chat-requests:${encodeURIComponent(runtimeProfileId)}`;
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
   const pendingRequestsRef = useRef<Record<string, PendingChatRequest>>(pendingRequests);
   const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
   const [unwrittenSavedTurnDrafts, setUnwrittenSavedTurnDrafts] = useState<UnwrittenSavedTurnDraft[]>([]);
   const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
+  const [conversationReadAt, setConversationReadAt] = useLocalStorage<Record<string, number>>(
+    `rumi-conversation-read-at-v1:${encodeURIComponent(runtimeProfileId)}`,
+    {},
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldFollowMessagesRef = useRef(true);
@@ -3263,16 +3322,66 @@ export function ChatApp() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [shareDialogOpen]);
 
-  const rawSidebarItems: SidebarItem[] = catalog?.sidebar.items ?? [];
-  const chatItems = buildChatItems(conversations);
+  const rawSidebarItems: SidebarItem[] = useMemo(() => (catalog?.sidebar.items ?? []).map((item) => ({
+    ...item,
+    presentation: item.presentation ? {
+      ...item.presentation,
+      icon_attention: iconAttentionForConversation(item.presentation.icon_attention, activeConversationId),
+    } : item.presentation,
+    ui: item.ui ? {
+      ...item.ui,
+      icon_attention: iconAttentionForConversation(item.ui.icon_attention, activeConversationId),
+    } : item.ui,
+  })), [catalog?.sidebar.items, activeConversationId]);
+  const markConversationRead = useCallback((conversationId: string) => {
+    const listedUpdatedAt = conversationTimestamp(
+      conversations.find((conversation) => conversation.id === conversationId)?.updated_at,
+    );
+    const readAt = Math.max(Date.now(), listedUpdatedAt);
+    setConversationReadAt((current) => (
+      (current[conversationId] ?? 0) >= readAt
+        ? current
+        : { ...current, [conversationId]: readAt }
+    ));
+  }, [conversations, setConversationReadAt]);
+  const conversationPresentations = useMemo(
+    () => buildConversationPresentations(conversations, {
+      activeConversationId,
+      runningConversationId: isGenerating ? activeConversationId : null,
+      pendingRequests,
+      readAtByConversation: conversationReadAt,
+    }),
+    [activeConversationId, conversationReadAt, conversations, isGenerating, pendingRequests],
+  );
+  const chatItems = buildChatItems(conversations, conversationPresentations);
+  useEffect(() => {
+    setConversationReadAt((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const conversation of conversations) {
+        if (conversation.id in next) continue;
+        const metadata = conversation.metadata ?? {};
+        if (metadata.unread === true || metadata.is_unread === true) continue;
+        next[conversation.id] = conversationTimestamp(conversation.updated_at) || Date.now();
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [conversations, setConversationReadAt]);
+  useEffect(() => {
+    if (activeConversationId) markConversationRead(activeConversationId);
+  }, [activeConversation?.updated_at, activeConversationId, markConversationRead]);
   const recentSpotlightResults = useMemo(
     () => conversations
+      .filter(conversationVisibleInHistory)
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
       .slice(0, 10)
       .map(conversationToSearchResult),
     [conversations, spotlightFilter],
   );
-  const visibleSpotlightResults = spotlightQuery.trim() ? spotlightResults : recentSpotlightResults;
+  const hiddenConversationIds = new Set(conversations.filter((conversation) => !conversationVisibleInHistory(conversation)).map((conversation) => conversation.id));
+  const visibleSpotlightResults = (spotlightQuery.trim() ? spotlightResults : recentSpotlightResults)
+    .filter((result) => !hiddenConversationIds.has(result.conversation_id));
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
   const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
@@ -3386,12 +3495,10 @@ export function ChatApp() {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (!savedTurnViewFenceRef.current.matches(ticket)) return tab;
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
-      const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
-      if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
+      if (tab.conversationId || !activeConversationId) return tab;
       return {
         ...tab,
         conversationId: activeConversationId,
-        title: nextTitle,
       };
     }));
   }, [activeChatTitle, activeConversation?.id, activeConversationId, activeWorkspaceTabId]);
@@ -3404,11 +3511,22 @@ export function ChatApp() {
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
   const workspaceTabsEnabled = parseCommandBoolean(settingsValues.general?.workspace_tabs_enabled, true);
   const subagentTeamsEnabled = parseCommandBoolean(settingsValues.automation?.subagent_teams_enabled, true);
-  const workspaceTabCreateOptions = useMemo(
-    () => WORKSPACE_TAB_CREATE_OPTIONS.filter((option) => (
-      option.kind !== "subagents" || subagentTeamsEnabled
-    )),
-    [subagentTeamsEnabled],
+  const registeredWorkspaceViews = useMemo(
+    () => verifiedHost ? viewsForSlot(verifiedHost.catalog, "workspace_tab", verifiedHost.activePlanHash) : [],
+    [verifiedHost],
+  );
+  const workspaceTabCreateOptions = useMemo<WorkspaceTabCreateOption[]>(
+    () => [
+      ...WORKSPACE_TAB_CREATE_OPTIONS.filter((option) => option.kind !== "subagents" || subagentTeamsEnabled),
+      ...registeredWorkspaceViews.map(({ item, reference }) => ({
+        kind: "extension" as const,
+        label: item.label,
+        description: item.description ?? "Installed Pack view",
+        icon: AppWindow,
+        viewReference: reference,
+      })),
+    ],
+    [subagentTeamsEnabled, registeredWorkspaceViews],
   );
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
@@ -3589,6 +3707,32 @@ export function ChatApp() {
       setStoredSelectedToolIds(reconciled.selectedToolIds);
     }
   }, [droppedWidgets, input, isGeneratingForActiveView, selectedToolIds, setStoredSelectedToolIds]);
+  useEffect(() => {
+    setTaskPetSnapshot(null);
+  }, [runtimeProfileId, activeConversationId]);
+  useEffect(() => {
+    if (!activeConversationId || !pendingRequest?.savedTurn || !pendingRequest.operationId) return;
+    const profileId = runtimeProfileId;
+    const conversationId = activeConversationId;
+    const turnId = pendingRequest.operationId;
+    let disposed = false;
+    let polling = false;
+    const readSnapshot = async () => {
+      if (disposed || polling) return;
+      polling = true;
+      try {
+        const snapshot = await api.getSavedTurnEvents(turnId, conversationId);
+        const current = liveTaskContextRef.current;
+        if (!disposed && current.profileId === profileId && current.conversationId === conversationId) {
+          setTaskPetSnapshot({ profileId, snapshot });
+        }
+      } catch { /* The passive display retains its last confirmed snapshot. */ }
+      finally { polling = false; }
+    };
+    void readSnapshot();
+    const timer = window.setInterval(() => { void readSnapshot(); }, 2000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [runtimeProfileId, activeConversationId, pendingRequest?.savedTurn, pendingRequest?.operationId]);
   const activeSteerRefreshContext = steerRefreshContextKey(
     activeConversationId,
     pendingRequest?.savedTurn ? pendingRequest.operationId : null,
@@ -4202,9 +4346,13 @@ export function ChatApp() {
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
+    const storedRequest = {
+      ...request,
+      updatedAt: request.updatedAt ?? request.startedAt ?? Date.now(),
+    };
     updatePendingRequests((current) => ({
       ...current,
-      [request.conversationId]: request,
+      [request.conversationId]: storedRequest,
     }));
   };
 
@@ -4866,6 +5014,10 @@ export function ChatApp() {
 
   useEffect(() => {
     const handlePopState = () => {
+      if (!canLeavePackViews()) {
+        window.history.pushState(null, "", navigationLocationRef.current);
+        return;
+      }
       setError(null);
       const routeKind = workspaceKindForPathname(window.location.pathname) ?? "chat";
       const selectedTabId = routeKind !== "chat"
@@ -5018,6 +5170,14 @@ export function ChatApp() {
             );
           }
           setCurrentSteerItems(savedTurnGuidanceItems(turn));
+          if (turn.status !== "running" && turn.status !== "waiting") {
+            const snapshot = await api.getSavedTurnEvents(pendingRequest.operationId, activeConversationId).catch(() => null);
+            if (disposed) return;
+            if (snapshot && liveTaskContextRef.current.profileId === runtimeProfileId
+              && liveTaskContextRef.current.conversationId === activeConversationId) {
+              setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
+            }
+          }
           const terminalNotice = savedTurnTerminalNotice(
             turn,
             activeConversationId,
@@ -5283,6 +5443,8 @@ export function ChatApp() {
   }, [pendingRequests, activeConversationId]);
 
   const handleNewTask = (options?: HistoryBoardNewTaskOptions) => {
+    if (!canLeavePackViews()) return false;
+    toolSelectionController.resetDraft();
     const nextContext = workspaceContextFromHistoryOptions(options);
     const nextTab = createWorkspaceTab("chat", { title: "New Conversation" });
     if (workspaceTabsEnabled) {
@@ -5308,11 +5470,12 @@ export function ChatApp() {
     dismissedComposerMentionToolsRef.current.clear();
     setComposerEntityReferences([]);
     replaceChatIdInUrl(null, false);
+    return true;
   };
 
   const startSettingsChat = () => {
     const draft = createSettingsModeDraft(settingsAssistantSkill);
-    handleNewTask();
+    if (!handleNewTask()) return;
     setMode("agent");
     setInput(draft.input);
     setDroppedWidgets(draft.widgets);
@@ -5410,9 +5573,11 @@ export function ChatApp() {
   };
 
   const handleHistoryClick = (conversationId: string) => {
+    if (!canLeavePackViews()) return;
     setError(null);
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
+    markConversationRead(conversationId);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
     let targetTabId = activeWorkspaceTabId;
     if (!workspaceTabsEnabled) {
@@ -6711,11 +6876,13 @@ export function ChatApp() {
     }
   };
 
-  const activateWorkspaceTab = (tab: WorkspaceTab) => {
+  const activateWorkspaceTab = (tab: WorkspaceTab, navigationApproved = false) => {
+    if (!navigationApproved && tab.id !== activeWorkspaceTabId && !canLeavePackViews()) return;
     setActiveWorkspaceTabId(tab.id);
     setError(null);
     if (tab.kind === "chat") {
       handleModeChange("agent", false);
+      if (tab.conversationId) markConversationRead(tab.conversationId);
       pushWorkspaceRoute("chat", tab.conversationId ?? null);
       void loadConversation(tab.conversationId ?? null, false, tab.id);
       return;
@@ -6729,7 +6896,7 @@ export function ChatApp() {
       return;
     }
     handleModeChange("agent", false);
-    pushWorkspaceRoute(tab.kind, activeConversationId);
+    pushWorkspaceRoute(tab.kind === "extension" ? "chat" : tab.kind, activeConversationId);
     if (tab.kind === "calendar" || tab.kind === "kanban") {
       return;
     }
@@ -6743,37 +6910,91 @@ export function ChatApp() {
   };
 
   const handleWorkspaceTabSelect = (tabId: string) => {
+    if (tabId !== activeWorkspaceTabId && !canLeavePackViews()) return;
     const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
-    if (tab) activateWorkspaceTab(tab);
+    if (tab) activateWorkspaceTab(tab, true);
   };
 
-  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
-    const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind);
-    if (!option || option.disabled) return;
+  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind, reference?: CatalogViewReference): boolean => {
+    const registered = kind === "extension" && reference
+      ? registeredWorkspaceViews.find((view) => matchesViewReference(view, reference))
+      : null;
+    if (kind === "extension" && !registered) return false;
+    const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind && (
+      kind !== "extension" || candidate.viewReference?.contributionId === registered?.item.contribution_id
+    ));
+    if (!option || option.disabled || !canLeavePackViews()) return false;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
+      ...(registered ? { viewReference: registered.reference } : {}),
     });
     if (!workspaceTabsEnabled) {
       setWorkspaceTabs((current) => current.map((currentTab) => (
         currentTab.id === activeWorkspaceTabId ? tab : currentTab
       )));
-      activateWorkspaceTab(tab);
-      return;
+      activateWorkspaceTab(tab, true);
+      return true;
     }
     setWorkspaceTabs((current) => [...current, tab]);
-    activateWorkspaceTab(tab);
+    activateWorkspaceTab(tab, true);
+    return true;
   };
 
-  const handleWorkspaceTabClose = (tabId: string) => {
-    if (workspaceTabs.length <= 1) return;
-    const closedIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
-    const nextTabs = workspaceTabs.filter((tab) => tab.id !== tabId);
-    setWorkspaceTabs(nextTabs);
-    if (activeWorkspaceTabId === tabId) {
-      const nextTab = nextTabs[Math.max(0, closedIndex - 1)] ?? nextTabs[0];
-      if (nextTab) activateWorkspaceTab(nextTab);
-    }
+  const handleWorkspaceTabClose = (tabId: string): boolean => {
+    const result = closeWorkspaceTab(workspaceTabs, activeWorkspaceTabId, tabId);
+    if (!result.closedTab || (tabId === activeWorkspaceTabId && !canLeavePackViews())) return false;
+    const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
+      ? closedWorkspaceTabsRef.current.tabs : [];
+    closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: rememberClosedWorkspaceTab(history, result.closedTab) };
+    setWorkspaceTabs(result.tabs);
+    if (result.nextActiveTab) activateWorkspaceTab(result.nextActiveTab, true);
+    return true;
   };
+
+  const handleWorkspaceTabRestore = (): boolean => {
+    if (!canLeavePackViews()) return false;
+    const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
+      ? closedWorkspaceTabsRef.current.tabs : [];
+    const result = restoreLastClosedWorkspaceTab(workspaceTabs, history);
+    closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: result.closedTabs };
+    if (!result.restoredTab) return false;
+    setWorkspaceTabs(result.tabs);
+    activateWorkspaceTab(result.restoredTab, true);
+    return true;
+  };
+
+  useEffect(() => {
+    const handleWorkspaceTabShortcut = (event: KeyboardEvent) => {
+      // Global capture runs before a dialog can prevent its own key event.
+      // Never change the workspace behind a settings, search, or share modal.
+      const { action, consume } = workspaceTabShortcutDisposition(event);
+      if (!consume) return;
+      // Even a vetoed close/restore stays inside this Application.
+      event.preventDefault();
+      event.stopPropagation();
+      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],dialog[open]'))
+        .some((dialog) => dialog.getClientRects().length > 0);
+      if (!action || !workspaceTabsEnabled || isSettingsOpen || isSpotlightOpen || shareDialogOpen || visibleDialog) return;
+      if (action === "create_chat") {
+        handleWorkspaceTabCreate("chat");
+      } else if (action === "close_active") {
+        handleWorkspaceTabClose(activeWorkspaceTabId);
+      } else {
+        handleWorkspaceTabRestore();
+      }
+    };
+    window.addEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+    return () => window.removeEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+  }, [
+    activeConversationId,
+    activeWorkspaceTabId,
+    isSettingsOpen,
+    isSpotlightOpen,
+    shareDialogOpen,
+    runtimeProfileId,
+    workspaceTabsEnabled,
+    workspaceTabs,
+  ]);
 
   const handleCodingBranchSwitch = (branch: string, create = false) => {
     void api.switchGitBranch(branch, create, { workspace_id: effectiveWorkspaceId })
@@ -8112,6 +8333,11 @@ export function ChatApp() {
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
+      const petSnapshot = await api.getSavedTurnEvents(operationId, conversation.id).catch(() => null);
+      const petContext = liveTaskContextRef.current;
+      if (petSnapshot && petContext.profileId === runtimeProfileId && petContext.conversationId === conversation.id) {
+        setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot: petSnapshot });
+      }
       const snapshot = await api.getConversation(conversation.id);
       const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
       if (snapshotState === "pending") {
@@ -8390,6 +8616,7 @@ export function ChatApp() {
     scope: KanbanBoardScope = { type: "global", id: "default" },
     label = "All Rumi Runs",
   ) => {
+    if (!canLeavePackViews()) return;
     if (!workspaceTabsEnabled) {
       const tab = createWorkspaceTab("kanban", {
         title: label || "Kanban",
@@ -8399,7 +8626,7 @@ export function ChatApp() {
       setWorkspaceTabs((current) => current.map((currentTab) => (
         currentTab.id === activeWorkspaceTabId ? tab : currentTab
       )));
-      activateWorkspaceTab(tab);
+      activateWorkspaceTab(tab, true);
       return;
     }
     const existingTab = workspaceTabs.find((tab) => (
@@ -8408,7 +8635,7 @@ export function ChatApp() {
       && (tab.kanbanScope?.id ?? "default") === scope.id
     ));
     if (existingTab) {
-      activateWorkspaceTab(existingTab);
+      activateWorkspaceTab(existingTab, true);
       return;
     }
     const tab = createWorkspaceTab("kanban", {
@@ -8417,7 +8644,7 @@ export function ChatApp() {
       kanbanScopeLabel: label || "Kanban",
     });
     setWorkspaceTabs((current) => [...current, tab]);
-    activateWorkspaceTab(tab);
+    activateWorkspaceTab(tab, true);
   };
 
   const handleKanbanModeToggle = () => {
@@ -8441,11 +8668,27 @@ export function ChatApp() {
     openKanbanScope({ type: "group", id: group.id }, group.title);
   };
 
+  const renderViewSlot = (slot: ViewSlot, reference?: CatalogViewReference) => {
+    if (!verifiedHost) return reference ? <p role="status">This Pack view is unavailable in the current Profile.</p> : null;
+    if (!reference && !viewsForSlot(verifiedHost.catalog, slot, verifiedHost.activePlanHash).length) return null;
+    return <FrontendViewSlot
+      {...verifiedHost}
+      onNavigationGuardChange={registerViewNavigationGuard}
+      slot={slot}
+      contributionId={reference?.contributionId}
+      reference={reference}
+      context={{ conversation_id: activeConversationId ?? undefined, turn_id: pendingRequest?.operationId }}
+    />;
+  };
+
   const renderComposer = (isCentered = false) => {
     if (!isCentered && activeConversation?.metadata?.shared_read_only === true) {
       return <div role="status" className="mx-3 mb-3 flex min-h-14 items-center justify-center border border-zinc-800 bg-zinc-950 px-4 text-center text-sm text-zinc-400">Read-only imported copy. Import the share again with continue mode to send messages.</div>;
     }
-    return <Renderers.composer
+    return <>
+      {renderViewSlot("composer_above")}
+      <Renderers.composer
+      voiceScopeKey={`${runtimeProfileId}:${activeConversationId ?? ""}`}
       widgetContext={widgetContext}
       input={input}
       placeholder={isCentered ? getNewConversationPlaceholder() : placeholder}
@@ -8481,6 +8724,7 @@ export function ChatApp() {
       entityReferences={composerEntityReferences}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
+      toolSelectionMode={toolSelectionController.state.effectiveMode}
       toolSelectionTargets={toolSelectionController.state.overrideChips}
       toolSelectionReview={toolSelectionController.state.pendingReview}
       keyboardButtonNavigation={keyboardButtonNavigation}
@@ -8493,6 +8737,7 @@ export function ChatApp() {
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
       onActionApprovalModeChange={handleActionApprovalModeChange}
+      onToolSelectionModeChange={toolSelectionController.setTurnMode}
       onToolSelectionTargetRemove={handleToolSelectionTargetRemove}
       onToolSelectionReviewApprove={handleToolReviewApprove}
       onToolSelectionReviewEdit={handleToolReviewEdit}
@@ -8530,7 +8775,9 @@ export function ChatApp() {
       onProjectSelect={handleComposerProjectSelect}
       onProjectDirectorySelect={handleDirectorySelect}
       onProjectStoragePrepare={handlePrepareChatGroupStorage}
-    />;
+    />
+    {renderViewSlot("composer_below")}
+    </>;
   };
 
   if (isLoading) {
@@ -8555,6 +8802,8 @@ export function ChatApp() {
             isHistoryMinimized ? "rumi-history-rail is-compact" : "rumi-history-pane rumi-layer-panel",
           )}>
             <Renderers.historyBoard
+              key={runtimeProfileId}
+              profileId={runtimeProfileId}
               activeChatId={activeConversationId}
               chatItems={chatItems}
               account={catalog?.app?.account}
@@ -8586,6 +8835,8 @@ export function ChatApp() {
           </div>
         )}
 
+        {renderViewSlot("sidebar")}
+
         <main
           className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]", isActivityPreviewPresent && "has-activity-preview", isActivityPreviewPresent && !isActivityPreviewVisible && "is-closing-preview")}
           style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
@@ -8613,6 +8864,7 @@ export function ChatApp() {
                 tabs={workspaceTabs}
                 activeTabId={activeWorkspaceTabId}
                 createOptions={workspaceTabCreateOptions}
+                conversationPresentations={conversationPresentations}
                 onSelect={handleWorkspaceTabSelect}
                 onClose={handleWorkspaceTabClose}
                 onCreate={handleWorkspaceTabCreate}
@@ -8621,7 +8873,14 @@ export function ChatApp() {
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
-                title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
+                title={activeWorkspaceTab
+                  ? workspaceTabDisplayTitle(
+                    activeWorkspaceTab,
+                    activeWorkspaceTab.conversationId
+                      ? conversationPresentations[activeWorkspaceTab.conversationId]
+                      : undefined,
+                  )
+                  : activeChatTitle}
                 showPreview={effectiveShowPreview}
                 canShowPreview={showRegion("activity_preview") && canShowCanvas}
                 canOpenSettings={showRegion("settings_modal")}
@@ -8631,6 +8890,8 @@ export function ChatApp() {
                 onOpenSettings={openSettingsHome}
               />
             )}
+
+            {isChatWorkspace && renderViewSlot("chat_header")}
 
             {backendConnectionState !== "online" && (
               <ErrorNotice
@@ -8657,7 +8918,13 @@ export function ChatApp() {
               <ImportedConversationNotice importMode={activeConversation.metadata?.shared_import_mode} onDismiss={() => setProvenanceDismissedFor(activeConversation.id)} />
             )}
 
-            {isDesktopsWorkspace ? (
+            {activeWorkspaceKind === "extension" ? (
+              <section className="min-h-0 flex-1 overflow-auto p-4" aria-label={activeWorkspaceTab?.title ?? "Pack view"}>
+                {activeWorkspaceTab?.viewReference
+                  ? renderViewSlot("workspace_tab", activeWorkspaceTab.viewReference)
+                  : <p role="status">This Pack view is unavailable in the current Profile.</p>}
+              </section>
+            ) : isDesktopsWorkspace ? (
               <DesktopMonitorWorkspace />
             ) : isKanbanMode ? (
               <KanbanWorkspacePanel
@@ -8821,18 +9088,6 @@ export function ChatApp() {
                     </button>
                   </section>
                 )}
-                {commandProgressEvents.length > 0 && (
-                  <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3" aria-label="Command progress">
-                    <h3 className="text-xs font-semibold text-zinc-300">Command progress</h3>
-                    <ol className="mt-2 space-y-1 text-[11px] text-zinc-500">
-                      {commandProgressEvents.map((event, index) => (
-                        <li key={`${String(event.invocation_id ?? "invocation")}:${String(event.sequence ?? index)}`}>
-                          {String(event.sequence ?? "•")} · {String(event.type ?? "progress")}
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
-                )}
                 {commandProtocolInfo && (
                   <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
@@ -8842,7 +9097,6 @@ export function ChatApp() {
                       <dt>revision</dt><dd className="font-mono">{commandProtocolInfo.catalog_revision}</dd>
                       <dt>rollout</dt><dd>{commandProtocolInfo.rollout?.phase ?? "unavailable"}</dd>
                       <dt>diagnostics</dt><dd>{commandProtocolInfo.diagnostics?.length ?? 0}</dd>
-                      <dt>events</dt><dd>{commandProgressEvents.length}</dd>
                     </dl>
                   </details>
                 )}
@@ -8956,6 +9210,7 @@ export function ChatApp() {
             workspaceTabs={workspaceTabs}
             workspaceTabsEnabled={workspaceTabsEnabled}
             workspaceTabCreateOptions={workspaceTabCreateOptions}
+            conversationPresentations={conversationPresentations}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}
@@ -8998,6 +9253,7 @@ export function ChatApp() {
 
       {showRegion("settings_modal") && (
         <Renderers.settingsModal
+          extensionSettings={isSettingsOpen ? renderViewSlot("settings") : null}
           isOpen={isSettingsOpen}
           activeSectionId={requestedSettingsSectionId}
           catalog={catalog}
@@ -9014,7 +9270,7 @@ export function ChatApp() {
           loadState={settingsLoadState}
           modelProfilesLoadState={modelProfilesLoadState}
           locale={locale}
-          onClose={() => setIsSettingsOpen(false)}
+          onClose={() => { if (canLeavePackViews()) setIsSettingsOpen(false); }}
           onStartSettingsChat={startSettingsChat}
           onOpenSection={openSettingsSection}
           onRetryLoad={() => { void refreshCatalog(); }}
@@ -9022,6 +9278,22 @@ export function ChatApp() {
           onSettingChange={handleSettingChange}
         />
       )}
+
+      <TaskPet
+        profileId={runtimeProfileId}
+        snapshotProfileId={taskPetSnapshot?.profileId ?? null}
+        snapshot={taskPetSnapshot?.snapshot ?? null}
+        scope={activeConversationId && (pendingRequest?.operationId || taskPetSnapshot?.snapshot.terminal) ? {
+          profileId: runtimeProfileId,
+          conversationId: activeConversationId,
+          turnId: pendingRequest?.operationId ?? taskPetSnapshot!.snapshot.turn_id,
+        } : null}
+        taskText={activeChatTitle}
+        activityText={pendingRequest?.status}
+        hidden={Boolean(hasVisibleModal || isSettingsOpen || isSpotlightOpen || shareDialogOpen || pendingCommandApproval
+          || pendingHighRiskCommand || visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
+        raised={!isNewConversation && isChatWorkspace}
+      />
 
       <TransientAlert
         alert={transientAlert}

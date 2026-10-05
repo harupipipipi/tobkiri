@@ -12,10 +12,11 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from .pack_boundary import finite_children
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.validation import validate_document
+
+from .pack_boundary import finite_children
 
 
 class PackSdkError(ValueError):
@@ -400,10 +401,92 @@ _SCAFFOLD_GENERATED = frozenset(
 )
 
 
+def ensure_scaffold_refresh_safe(pack_root: Path) -> None:
+    """Refuse to regenerate authored authority from an inert scaffold source.
+
+    This is also the CLI preflight: it must run before adding component files.
+    Refresh cannot infer executable declarations from the scaffold source, so
+    silently replacing an authored Pack with empty catalogs would lose work.
+    """
+    root = Path(pack_root)
+    source = root / "scaffold-source.v1.json"
+    if root.is_symlink() or source.is_symlink() or not source.is_file():
+        raise PackSdkError("scaffold-source.v1.json is required in a safe Pack root")
+    try:
+        source_document = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise PackSdkError("scaffold source is invalid") from error
+    if (
+        not isinstance(source_document, dict)
+        or source_document.get("source_api_version") != "io.tobkiri.pack-scaffold-source.v1"
+        or source_document.get("authority") != "none"
+        or not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", str(source_document.get("pack_id") or ""))
+    ):
+        raise PackSdkError("scaffold source is invalid")
+    paths = {name: root / name for name in _SCAFFOLD_GENERATED}
+    present = {name for name, path in paths.items() if path.exists() or path.is_symlink()}
+    if not present:
+        return  # Initial, unpublished scaffold construction.
+    if present != _SCAFFOLD_GENERATED:
+        raise PackSdkError("scaffold authority is incomplete; existing files were not changed")
+    documents: dict[str, Any] = {}
+    schemas = {
+        "pack.v4.json": "pack", "contracts.v4.json": "pack_contract_catalog",
+        "artifact-index.v4.json": "pack_artifact_index",
+        "executables.v4.json": "executable_catalog",
+    }
+    for name, path in paths.items():
+        if path.is_symlink() or not path.is_file():
+            raise PackSdkError("scaffold authority files must be regular files")
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+            validate_document(document, schemas[name])
+        except (OSError, ValueError, ProtocolError) as error:
+            raise PackSdkError("scaffold authority is invalid; existing files were not changed") from error
+        documents[name] = document
+    manifest = documents["pack.v4.json"]
+    inert_requirements = {
+        "pack_dependencies": {}, "contract_dependencies": [], "capabilities": [],
+        "network": {"allowed_domains": [], "allowed_ports": []}, "secrets": [],
+        "execution_boundary": "declarative_only", "approval_policy": "none",
+        "workspace_boundary": "pack_local",
+    }
+    if (
+        any(manifest[field] for field in ("functions", "contracts", "operation_catalog", "provider_catalog"))
+        or documents["contracts.v4.json"]["contracts"]
+        or documents["executables.v4.json"]["variants"]
+        or manifest["pack"]["kind"] != "normal_sandbox"
+        or manifest["requirements"] != inert_requirements
+        or set(manifest["pack"]) != {"id", "version", "kind", "artifact_digest", "display_name"}
+        or (
+            manifest["integrity"]["source_identity"] == canonical_digest(source_document)
+            and any(manifest["pack"][field] != expected for field, expected in (
+                ("id", source_document["pack_id"]),
+                ("version", str(source_document.get("version") or "0.1.0")),
+                ("display_name", str(source_document.get("display_name") or source_document["pack_id"])),
+            ))
+        )
+        or manifest["migration"] != {
+            "compatibility": "none", "legacy_ids": [], "removal_wave": 0,
+            "sunset_at": "2026-08-05",
+        }
+        or manifest["provenance"].get("generator") != "tobkiri.core_runtime.pack_sdk"
+        or any(
+            item["kind"] != ("sidecar" if item["path"] in {source.name, "executables.v4.json"} else "asset")
+            for item in manifest["artifacts"]
+        )
+    ):
+        raise PackSdkError(
+            "scaffold refresh supports only inert scaffolds; authored Pack declarations "
+            "were not changed. Use the Pack's own authoring workflow."
+        )
+
+
 def refresh_scaffold_artifacts(pack_root: Path) -> None:
     """Regenerate and validate all Pack v4 authority files for a scaffold."""
 
     root = Path(pack_root)
+    ensure_scaffold_refresh_safe(root)
     source_path = root / "scaffold-source.v1.json"
     if root.is_symlink() or source_path.is_symlink() or not source_path.is_file():
         raise PackSdkError("scaffold-source.v1.json is required in a safe Pack root")

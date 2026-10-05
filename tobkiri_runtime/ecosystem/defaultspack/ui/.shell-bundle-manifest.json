@@ -1035,8 +1035,8 @@
       },
       {
         "path": "src/features/tools/ToolModeControl.tsx",
-        "size": 7410,
-        "sha256": "7e984e29eb5232a795426513e4ced4f5f48143d742ca7928197cc76ccbbd98c1"
+        "size": 7556,
+        "sha256": "e4c6560a2ce452127da56faf0ee88d54b7002c6467f480e65e7f2c43297edd6b"
       },
       {
         "path": "src/features/tools/ToolOverrideChips.tsx",
@@ -1060,8 +1060,8 @@
       },
       {
         "path": "src/features/tools/useToolSelectionController.ts",
-        "size": 9106,
-        "sha256": "96cc958c8ad708ba1e0d67bd88170caa49dd37276cf8db14523e126c42cbf829"
+        "size": 9269,
+        "sha256": "2dea94b6db5fef2021f68b5c061f1d49db0bea66bd728f50279b7407ad44dae0"
       },
       {
         "path": "src/features/voice/composerVoice.test.ts",
@@ -1470,8 +1470,8 @@
       },
       {
         "path": "src/lib/highRiskCommand.test.ts",
-        "size": 4706,
-        "sha256": "7874457ddd302722271668766e57d559c9af818968c46242f73ddb7315ea210e"
+        "size": 5109,
+        "sha256": "dc9bc3289213cda279774727b1389c4fd43e30b234e58ff0683d1dba28b9d808"
       },
       {
         "path": "src/lib/highRiskCommand.ts",

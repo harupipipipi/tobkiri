@@ -193,70 +193,73 @@ afterEach(async () => {
   surface = null;
 });
 
-test('PackVM GUI completes prepare, consent, provision, doctor, and hides host paths', {concurrency: false}, async () => {
-  const doctorControl = configureStore();
-  const {routes, bodies} = installFetch(async (route, init) => {
-    if (route === '/api/v4/packvm/prepare') return jsonResponse(plan);
-    if (route === '/api/v4/packvm/consent') return jsonResponse(consent);
-    if (route === '/api/v4/packvm/provision') {
-      const body = JSON.parse(String(init?.body)) as {operation_id: string};
-      doctorControl.setNextDoctor(healthyDoctor);
-      return jsonResponse({...operation('succeeded'), operation_id: body.operation_id});
-    }
-    throw new Error(`unexpected route ${route}`);
+for (const platform of ['macos-arm64', 'linux-amd64', 'windows-amd64']) {
+  test(`PackVM GUI completes explicit provisioning on ${platform} and hides host paths`, {concurrency: false}, async () => {
+    const doctorControl = configureStore({...notReadyDoctor, platform});
+    const {routes, bodies} = installFetch(async (route, init) => {
+      if (route === '/api/v4/packvm/prepare') return jsonResponse(plan);
+      if (route === '/api/v4/packvm/consent') return jsonResponse(consent);
+      if (route === '/api/v4/packvm/provision') {
+        const body = JSON.parse(String(init?.body)) as {operation_id: string};
+        doctorControl.setNextDoctor({...healthyDoctor, platform});
+        return jsonResponse({...operation('succeeded'), operation_id: body.operation_id});
+      }
+      throw new Error(`unexpected route ${route}`);
+    });
+    assert.ok(surface);
+    await renderPanel(surface.root);
+    assert.ok(
+      surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]'),
+    );
+    assert.equal(
+      surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]')
+        ?.classList.contains('lucide-triangle-alert'),
+      true,
+    );
+
+    await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
+    await settle();
+    assert.match(surface.container.textContent ?? '', /Pinned plan/);
+    assert.match(surface.container.textContent ?? '', /Configuration digest/);
+    assert.match(surface.container.textContent ?? '', /Guest runner digest/);
+    assert.match(surface.container.textContent ?? '', /Required host free space/);
+    assert.match(surface.container.textContent ?? '', /6.0 GiB/);
+    assert.match(surface.container.textContent ?? '', /Pinned image download/);
+    assert.doesNotMatch(surface.container.textContent ?? '', /Users\/haru|limactl/);
+
+    const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert.ok(checkbox);
+    await act(async () => checkbox.click());
+    await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
+    await settle();
+    assert.match(surface.container.textContent ?? '', /Plan consent recorded/);
+
+    await act(async () => buttonWithText(surface.container, 'Provision PackVM').click());
+    await settle();
+    assert.match(surface.container.textContent ?? '', /Healthy and attested/);
+    assert.match(surface.container.textContent ?? '', /Provisioned/);
+    assert.deepEqual(routes, [
+      '/api/v4/packvm/prepare',
+      '/api/v4/packvm/consent',
+      '/api/v4/packvm/provision',
+    ]);
+    assert.deepEqual(bodies[1], {
+      plan_digest: plan.plan_digest,
+      ceremony_nonce: plan.ceremony_nonce,
+      confirmation: plan.confirmation,
+      approve_image_download: true,
+    });
+    assert.equal(bodies[2].consent_id, consent.consent_id);
+    assert.match(String(bodies[2].operation_id), /^[0-9a-f-]{36}$/i);
   });
-  assert.ok(surface);
-  await renderPanel(surface.root);
-  assert.ok(
-    surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]'),
-  );
-  assert.equal(
-    surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]')
-      ?.classList.contains('lucide-triangle-alert'),
-    true,
-  );
 
-  await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
-  await settle();
-  assert.match(surface.container.textContent ?? '', /Pinned plan/);
-  assert.match(surface.container.textContent ?? '', /Configuration digest/);
-  assert.match(surface.container.textContent ?? '', /Guest runner digest/);
-  assert.match(surface.container.textContent ?? '', /Required host free space/);
-  assert.match(surface.container.textContent ?? '', /6.0 GiB/);
-  assert.match(surface.container.textContent ?? '', /Pinned image download/);
-  assert.doesNotMatch(surface.container.textContent ?? '', /Users\/haru|limactl/);
+}
 
-  const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
-  assert.ok(checkbox);
-  await act(async () => checkbox.click());
-  await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
-  await settle();
-  assert.match(surface.container.textContent ?? '', /Plan consent recorded/);
-
-  await act(async () => buttonWithText(surface.container, 'Provision PackVM').click());
-  await settle();
-  assert.match(surface.container.textContent ?? '', /Healthy and attested/);
-  assert.match(surface.container.textContent ?? '', /Provisioned/);
-  assert.deepEqual(routes, [
-    '/api/v4/packvm/prepare',
-    '/api/v4/packvm/consent',
-    '/api/v4/packvm/provision',
-  ]);
-  assert.deepEqual(bodies[1], {
-    plan_digest: plan.plan_digest,
-    ceremony_nonce: plan.ceremony_nonce,
-    confirmation: plan.confirmation,
-    approve_image_download: true,
-  });
-  assert.equal(bodies[2].consent_id, consent.consent_id);
-  assert.match(String(bodies[2].operation_id), /^[0-9a-f-]{36}$/i);
-});
-
-test('PackVM GUI explains the unsupported Windows host without offering VZ actions', {concurrency: false}, async () => {
+test('PackVM GUI explains an unsupported architecture without offering VM actions', {concurrency: false}, async () => {
   configureStore({
     ...notReadyDoctor,
-    platform: 'windows-amd64',
-    reason: 'This build can provision PackVM only on macOS on Apple Silicon. Use a supported macOS host.',
+    platform: 'linux-arm64',
+    reason: 'This build does not support PackVM on this host platform.',
   });
   const {routes} = installFetch(async (route) => {
     throw new Error(`unexpected route ${route}`);
@@ -264,7 +267,7 @@ test('PackVM GUI explains the unsupported Windows host without offering VZ actio
   assert.ok(surface);
   await renderPanel(surface.root);
   assert.equal(surface.container.textContent?.includes('Prepare plan'), false);
-  assert.match(surface.container.textContent ?? '', /UNSUPPORTED_PLATFORM:.*macOS on Apple Silicon/);
+  assert.match(surface.container.textContent ?? '', /UNSUPPORTED_PLATFORM:.*does not support PackVM/);
   assert.equal(surface.container.textContent?.includes('Stop PackVM'), false);
   assert.equal(surface.container.textContent?.includes('Clean up PackVM'), false);
   assert.deepEqual(routes, []);

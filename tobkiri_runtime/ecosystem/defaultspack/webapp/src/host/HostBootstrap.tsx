@@ -14,6 +14,7 @@ import {
   contributionsForRoute,
 } from "./DynamicFrontendHost";
 import { PackRouteNavigation } from "./PackRouteNavigation";
+import { VerifiedFrontendHostProvider } from "./VerifiedFrontendHostContext";
 import type {
   CapturedCapabilityInvocation,
   FrontendCapabilityInvoker,
@@ -276,7 +277,8 @@ export function ProfileScreenHost({
   capabilities: FrontendCapabilityInvoker;
 }) {
   return (
-    <>
+    <VerifiedFrontendHostProvider key={catalog.profile_id}
+      value={{ catalog, activePlanHash: catalog.plan_hash, capabilities }}>
       <DynamicFrontendHost
         catalog={catalog}
         route={route}
@@ -288,7 +290,7 @@ export function ProfileScreenHost({
         route={route}
         activePlanHash={catalog.plan_hash}
       />
-    </>
+    </VerifiedFrontendHostProvider>
   );
 }
 
