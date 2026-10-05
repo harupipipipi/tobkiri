@@ -933,13 +933,21 @@ def test_parent_cancellation_targets_inner_request_without_claiming_termination(
 
 
 @pytest.mark.parametrize(
-    ("cancel_fails", "release_on_cancel", "confirmed"),
-    [(False, True, True), (True, True, False), (False, False, False)],
+    ("cancel_fails", "release_on_cancel", "confirmed", "worker_failure_wins"),
+    [
+        (False, True, True, False),
+        (True, True, False, False),
+        (False, False, False, False),
+        (False, True, True, True),
+        (True, True, False, True),
+    ],
 )
 def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exit(
     cancel_fails: bool,
     release_on_cancel: bool,
     confirmed: bool,
+    worker_failure_wins: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Broker wiring cannot turn a late result into a stopped confirmation."""
 
@@ -975,6 +983,7 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
         guard=lambda: None,
     )
     entered, release, child_exited, worker_completed = (Event() for _ in range(4))
+    poll_entered, allow_poll_result = Event(), Event()
 
     class CancellableBackend(FakeBackend):
         def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
@@ -984,6 +993,8 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
             entered.set()
             assert parent.cancellation_requested.wait(timeout=2)
             try:
+                if worker_failure_wins:
+                    raise InterruptedError("provider observed authenticated cancellation")
                 assert release.wait()
                 # A late successful value must remain fenced by Broker cancellation.
                 return self.outcome
@@ -1002,6 +1013,24 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
         timeout_ms=1000,
         backend=CancellableBackend([]),
     )
+    if worker_failure_wins:
+        submit = fixture.broker._executor.submit
+
+        def submit_with_poll_gate(*args: Any, **kwargs: Any) -> Future[Any]:
+            """Let the real child fail during Broker's blocked result poll."""
+
+            future = submit(*args, **kwargs)
+            result = future.result
+
+            def gated_result(timeout: float | None = None) -> Any:
+                poll_entered.set()
+                assert allow_poll_result.wait(2), "result poll was not released"
+                return result(timeout=timeout)
+
+            monkeypatch.setattr(future, "result", gated_result)
+            return future
+
+        monkeypatch.setattr(fixture.broker._executor, "submit", submit_with_poll_gate)
     worker_errors: list[BaseException] = []
     observation = None
     worker: Thread | None = None
@@ -1030,7 +1059,12 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
             worker = Thread(target=invoke_child)
             worker.start()
             assert entered.wait(timeout=2)
+            if worker_failure_wins:
+                assert poll_entered.wait(2), "Broker did not enter its result poll"
             observation = cancel.request("turn")
+            if worker_failure_wins:
+                assert child_exited.wait(2), "cancelled provider did not exit"
+                allow_poll_result.set()
             assert worker_completed.wait(timeout=2)
             if not release_on_cancel:
                 assert not child_exited.is_set()
@@ -1038,6 +1072,7 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
         assert observation is not None
         assert observation.wait_for_verified_drain(time.monotonic() + 0.1) is confirmed
     finally:
+        allow_poll_result.set()
         release.set()
         assert child_exited.wait(timeout=2)
         if worker is not None:
