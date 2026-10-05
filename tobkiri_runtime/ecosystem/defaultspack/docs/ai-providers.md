@@ -98,6 +98,18 @@ OPENAI_API_KEY=ogw_live_...
 OPENAI_MODEL=mimo-v2-omni
 ```
 
+### OpenCode Zen
+
+OpenCode Zen の account-visible model は live inventory から読み込み、
+`opencode-zen/<model-id>` として OpenAI Chat Completions 経路で実行する。
+MiMo V2.5 Free を含む tool 対応モデルでは、選択済み tool schema と
+`tool_choice` を provider request に引き渡す。
+
+stream 応答では、空でない `finish_reason` を応答の終端として扱い、遅延した
+`[DONE]` や socket EOF を待たずに会話を完了する。これにより回答表示後も
+composer が `tool 準備中` のまま残る状態を防ぐ。usage は終端 chunk までに
+届いた値を保存し、終端後の任意 usage-only chunk は待たない。
+
 ### Cloud OpenAI-compatible providers
 
 Groq / Cerebras / NVIDIA NIM / Moonshot AI は manifest-first provider として追加されている。API key が設定されている場合、`detect_available_providers()` で runtime provider として検出される。
