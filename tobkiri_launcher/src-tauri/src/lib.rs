@@ -4001,8 +4001,15 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "browser-access-approval" && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
-                if let Some(config) = window.app_handle().try_state::<AppConfig>() { browser_access::close(window.app_handle(), config.inner()); }
+            if window.label() == "browser-access-approval"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+                )
+            {
+                if let Some(config) = window.app_handle().try_state::<AppConfig>() {
+                    browser_access::close(window.app_handle(), config.inner());
+                }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if should_send_to_background_on_close(window.label()) {

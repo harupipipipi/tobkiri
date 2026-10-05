@@ -40,6 +40,7 @@ const jsonResponse = (data: object, status = 200) => ({
 test("approval claims the session and returns to the exact chat target", async ({ page }) => {
   await page.clock.install();
   await showCeremony(page);
+  await page.clock.runFor(300);
   await page.screenshot({ path: test.info().outputPath("browser-access-request.png") });
   await page.route("**/api/panel/browser-access/request", (route) =>
     route.fulfill(jsonResponse({ request_id: "request-1" })),
