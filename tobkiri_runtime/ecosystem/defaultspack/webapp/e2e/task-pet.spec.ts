@@ -158,8 +158,16 @@ test("native child keeps a newer event over delayed context and delegates drag a
   await expect(page.getByText("新しい状態")).toBeVisible();
   await page.evaluate(() => (window as unknown as { __nativePet: NativeDouble }).__nativePet.emit("task-pet-state", { profileId: "default", view: null }));
   await expect(page.getByText("新しい状態")).toBeVisible();
-  await page.getByRole("button", { name: "ペットをドラッグして移動" }).click();
+  const handle = page.getByRole("button", { name: "ペットをドラッグして移動" });
+  await handle.evaluate((element) => {
+    element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
+  });
+  expect((await nativePet(page)).filter((call) => call.command === "drag_task_pet")).toEqual([]);
+  await handle.hover();
+  await page.mouse.down();
   await expect.poll(async () => (await nativePet(page)).some((call) => call.command === "drag_task_pet")).toBe(true);
+  await page.mouse.up();
   await page.getByRole("button", { name: "非表示" }).click();
   await expect.poll(async () => (await nativePet(page)).some((call) => call.command === "hide_task_pet")).toBe(true);
   expect(apiRequests).toEqual([]);

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "71994e5fa565a4463f2dcc62e9b428de0a5ead0ceb5b5a7a32094c71eb71378a",
+    "digest": "81d786d33310651966e960dbcbdb49b1c893ec02127564e26fb30f007fda48f2",
     "entries": [
       {
         "path": "index.html",
@@ -480,8 +480,8 @@
       },
       {
         "path": "src/components/TaskPetWindow.tsx",
-        "size": 7158,
-        "sha256": "94e6db6c182838c184f15198c2fd1e0b8684b4a969ef70ff1f86adb5d9c48aaa"
+        "size": 7266,
+        "sha256": "028c8c57fa40e45c4bad397f5655fd75fb6e6d376bcac00f08a9431a6a893689"
       },
       {
         "path": "src/components/TitleBar.test.tsx",
@@ -2341,7 +2341,7 @@
     ]
   },
   "bundle": {
-    "digest": "1506dbf48fa698b81208d00d67b9c56cc562c84624900a7fd8dbd97bb8df5cab",
+    "digest": "9b9a363a2b65947f04ec9a526d9c17cf948f981f724f20d4cb088df740dc1453",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2350,8 +2350,8 @@
       },
       {
         "path": "shell-app.js",
-        "size": 31600,
-        "sha256": "86af89476e574d693b3e8717888634a118ddfe452ee887887b69de2e9669544b"
+        "size": 31650,
+        "sha256": "0d8104d33ed109481722b7ab83997ca555b769593db0ab3477b3fca8b4649f4e"
       },
       {
         "path": "shell-defaultspack-app.js",

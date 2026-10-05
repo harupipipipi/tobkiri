@@ -112,12 +112,14 @@ export function TaskPetWindow({ profileId }: { profileId: string }) {
     window.addEventListener("pointercancel", state.up);
     try {
       const invoke = await loadTauriInvoke();
+      if (dragState.current !== state) return;
       if (!invoke) {
         state.mode = "browser";
         window.moveTo(state.startLeft + state.lastX - state.startX, state.startTop + state.lastY - state.startY);
         if (state.released) finishDragListeners();
         return;
       }
+      if (state.released) { finishDragListeners(); return; }
       state.mode = "native";
       await invoke("drag_task_pet");
       if (state.released) finishDragListeners();
