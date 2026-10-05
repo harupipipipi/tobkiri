@@ -12,6 +12,7 @@
     "frontendDist": "./splash"
   },
   "app": {
+    "macOSPrivateApi": true,
     "security": {
       "csp": "default-src 'self' http://localhost:8765 http://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost http://localhost:8765 http://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*"
     },
