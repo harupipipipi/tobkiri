@@ -67,7 +67,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -98,7 +98,7 @@ import { subscribeAuthorityApprovalSettlements } from "./lib/authorityApprovalEv
 import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
-import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
+import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, orderConversationMessages } from "./lib/chat";
 import { conversationVisibleInHistory } from "./lib/conversationVisibility";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./lib/conversationView";
@@ -1578,95 +1578,8 @@ function buildChatItems(
     .map(build);
 }
 
-function normalizeBlocks(message: ChatMessage): ChatContentBlock[] {
-  if (typeof message.content === "string") {
-    return [{ type: "text", text: message.content }];
-  }
-  return message.content;
-}
-
-function chatMessageMetadataRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-}
-
-const CANONICAL_SAVED_USER_MESSAGE_ID = /^message:[a-f0-9]{64}$/;
-const STABLE_OWNER_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
-
-function canonicalOwnerTurnId(message: ChatMessage): string | undefined {
-  const turnId = message.metadata?.turn_id;
-  return message.role === "user"
-    && CANONICAL_SAVED_USER_MESSAGE_ID.test(message.id)
-    && typeof message.conversation_id === "string"
-    && STABLE_OWNER_TURN_ID.test(message.conversation_id)
-    && typeof turnId === "string"
-    && STABLE_OWNER_TURN_ID.test(turnId)
-    ? turnId
-    : undefined;
-}
-
 export function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
-  const isUser = message.role === "user";
-  const metadata = message.metadata ?? {};
-  const thinking = metadata.thinking as Record<string, unknown> | undefined;
-  const timing = metadata.timing as Record<string, unknown> | undefined;
-  const pendingApproval = metadata.pending_approval;
-  const pendingAuthorityApproval = chatMessageMetadataRecord(metadata.pendingAuthorityApproval ?? metadata.pending_authority_approval);
-  const authorityFollowup = chatMessageMetadataRecord(metadata.authority_followup ?? metadata.authorityFollowup);
-  const chatDisplay = chatMessageMetadataRecord(metadata.chat_display ?? metadata.chatDisplay);
-  const promptUsage = metadata.prompt_usage && typeof metadata.prompt_usage === "object" && !Array.isArray(metadata.prompt_usage)
-    ? metadata.prompt_usage as NonNullable<ChatUiMessage["metadata"]>["promptUsage"]
-    : undefined;
-  const attachedToolCount = Number(metadata.attached_tool_count ?? 0);
-  const thinkingDuration = String(timing?.thinking_duration_label ?? "")
-    || boundedDurationLabel(timing?.thinking_started_at, timing?.completed_at);
-  const displayMetadata = {
-    ...(authorityFollowup ? { authorityFollowup } : {}),
-    ...(chatDisplay ? { chatDisplay } : {}),
-  };
-  const explicitMentions = normalizeComposerMentionMetadata(metadata.mentions);
-  const fallbackMentions = explicitMentions.length === 0 && Array.isArray(metadata.dropped_widgets)
-    ? composerMentionMetadataFromWidgets(metadata.dropped_widgets as DroppedWidget[])
-    : [];
-  const mentions = explicitMentions.length > 0 ? explicitMentions : fallbackMentions;
-  const ownerTurnId = canonicalOwnerTurnId(message);
-  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0 || ownerTurnId
-    ? {
-        ...displayMetadata,
-        ...(mentions.length > 0 ? { mentions } : {}),
-        ...(ownerTurnId ? { turn_id: ownerTurnId } : {}),
-      }
-    : undefined;
-  return {
-    id: message.id,
-    conversationId: message.conversation_id,
-    createdAt: message.created_at,
-    role: isUser ? "user" : "agent",
-    content: normalizeBlocks(message),
-    rawText: messageToText(message),
-    widget: message.widget,
-    events: message.events ?? [],
-    toolLogs: message.tool_logs ?? [],
-    metadata: isUser
-      ? userMetadata
-      : {
-          executionTime: formatRelativeTime(message.created_at),
-          modelName: profile?.display_name ?? String(message.model ?? ""),
-          thinkingLabel: String(thinking?.state ?? ""),
-          thinkingDuration,
-          thinkingTranscript: String(thinking?.transcript ?? ""),
-          interrupted: metadata.interrupted === true || message.finish_reason === "interrupted",
-          interruptionReason: String(metadata.interruption_reason ?? ""),
-          attachedToolCount,
-          pendingApproval: pendingApproval && typeof pendingApproval === "object" && !Array.isArray(pendingApproval)
-            ? pendingApproval as Record<string, unknown>
-            : undefined,
-          pendingAuthorityApproval,
-          ...displayMetadata,
-          promptUsage,
-        },
-  };
+  return chatMessageToUiMessage(message, profile);
 }
 
 function optimisticUserMessage(
@@ -3495,10 +3408,12 @@ export function ChatApp() {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (!savedTurnViewFenceRef.current.matches(ticket)) return tab;
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
-      if (tab.conversationId || !activeConversationId) return tab;
+      const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
+      if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
       return {
         ...tab,
         conversationId: activeConversationId,
+        title: nextTitle,
       };
     }));
   }, [activeChatTitle, activeConversation?.id, activeConversationId, activeWorkspaceTabId]);
@@ -3711,7 +3626,8 @@ export function ChatApp() {
     setTaskPetSnapshot(null);
   }, [runtimeProfileId, activeConversationId]);
   useEffect(() => {
-    if (!activeConversationId || !pendingRequest?.savedTurn || !pendingRequest.operationId) return;
+    if (!activeConversationId || !pendingRequest?.savedTurn || !pendingRequest.operationId
+      || pendingRequest.ownerTurnObserved !== true) return;
     const profileId = runtimeProfileId;
     const conversationId = activeConversationId;
     const turnId = pendingRequest.operationId;
@@ -3732,7 +3648,13 @@ export function ChatApp() {
     void readSnapshot();
     const timer = window.setInterval(() => { void readSnapshot(); }, 2000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [runtimeProfileId, activeConversationId, pendingRequest?.savedTurn, pendingRequest?.operationId]);
+  }, [
+    runtimeProfileId,
+    activeConversationId,
+    pendingRequest?.savedTurn,
+    pendingRequest?.operationId,
+    pendingRequest?.ownerTurnObserved,
+  ]);
   const activeSteerRefreshContext = steerRefreshContextKey(
     activeConversationId,
     pendingRequest?.savedTurn ? pendingRequest.operationId : null,
@@ -6648,20 +6570,6 @@ export function ChatApp() {
     return applied.appliedPaths;
   };
 
-  const followCommandProgress = async (invocationId: string, ticket: ConversationLoadTicket) => {
-    try {
-      for await (const event of api.streamCommandInvocationEvents(invocationId)) {
-        if (conversationViewLoaderRef.current.matches(ticket)) {
-          setCommandProgressEvents((current) => [...current, event].slice(-12));
-        }
-      }
-    } catch (streamError) {
-      if (streamError instanceof DOMException && streamError.name === "AbortError") return;
-      if (!conversationViewLoaderRef.current.matches(ticket)) return;
-      setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
-    }
-  };
-
   const executeComposerCommand = async (commandId: string, rawInput = `/${commandId}`): Promise<boolean | void> => {
     let ticket = conversationViewLoaderRef.current.capture();
     const commandUiIsCurrent = () => conversationViewLoaderRef.current.matches(ticket);
@@ -6736,7 +6644,6 @@ export function ChatApp() {
       }
       const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
       const invocationId = createCommandInvocationId(parsed.command.id);
-      void followCommandProgress(invocationId, ticket);
       const result: ComposerCommandExecuteResult = await api.executeResolvedUiCommand({
         command: resolvedCommandName,
         args: commandArgs,

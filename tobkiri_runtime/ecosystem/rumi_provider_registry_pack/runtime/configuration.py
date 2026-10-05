@@ -102,6 +102,29 @@ def prepare_configuration(
     }
 
 
+def _connection_record(
+    request: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    credential_handle: str | None,
+) -> dict[str, Any]:
+    """Build the exact public provider record covered by the prepared request."""
+    record: dict[str, Any] = {
+        "provider_instance_id": plan["provider_instance_id"],
+        "adapter_id": plan["adapter_id"],
+        "endpoint": plan["endpoint"],
+        "credential_handle": credential_handle,
+    }
+    if request.get("display_name"):
+        record["display_name"] = request["display_name"]
+    if request.get("catalog_provider_id"):
+        # Discovery metadata does not attest account access or capabilities.
+        # It is covered by the frozen request digest and never grants authority.
+        record["metadata"] = {
+            "catalog_provider_id": request["catalog_provider_id"],
+        }
+    return record
+
+
 def execute_configuration(
     registry: ProviderRegistry,
     client: GlobalContractClient,
@@ -121,12 +144,7 @@ def execute_configuration(
     if dict(plan) != prepare_configuration(registry, request):
         raise PermissionError("provider configuration changed after preparation")
     if request["protocol"] == "local-openai-compatible":
-        record = {
-            "provider_instance_id": plan["provider_instance_id"],
-            "adapter_id": plan["adapter_id"],
-            "endpoint": plan["endpoint"],
-            "credential_handle": None,
-        }
+        record = _connection_record(request, plan, None)
         try:
             registry.save(record, expected_revision=plan["expected_revision"])
         except Exception:
@@ -171,19 +189,7 @@ def execute_configuration(
         or created.get("consumer_pack_id") != consumer_pack_id
     ):
         raise RuntimeError("provider credential save was not confirmed")
-    record: dict[str, Any] = {
-        "provider_instance_id": plan["provider_instance_id"],
-        "adapter_id": plan["adapter_id"], "endpoint": plan["endpoint"],
-        "credential_handle": handle,
-    }
-    if request.get("display_name"):
-        record["display_name"] = request["display_name"]
-    if request.get("catalog_provider_id"):
-        # Discovery metadata does not attest account access or capabilities.
-        # It is covered by the frozen request digest and never grants authority.
-        record["metadata"] = {
-            "catalog_provider_id": request["catalog_provider_id"],
-        }
+    record = _connection_record(request, plan, handle)
     try:
         registry.save(record, expected_revision=plan["expected_revision"])
     except Exception:

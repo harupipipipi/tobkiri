@@ -1,1 +1,10 @@
-{"schema_version":"rumi.artifact-manifest.v1","artifacts":[{"path":"runtime/inspect.py","sha256":"2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d","role":"runtime"}]}
+{
+  "schema_version": "rumi.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "path": "runtime/inspect.py",
+      "sha256": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+      "role": "runtime"
+    }
+  ]
+}

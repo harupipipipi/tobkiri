@@ -1093,6 +1093,9 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
   await page.addInitScript(() => {
     localStorage.clear();
     sessionStorage.clear();
+    // The floating pet is covered by component tests. Keep contract-test
+    // pointer targets deterministic while exercising chat controls.
+    localStorage.setItem("tobkiri.task-pet.enabled.v2:defaults", "false");
     if (selectedToolIds.length) {
       localStorage.setItem("rumi-selected-tool-ids", JSON.stringify(selectedToolIds));
     }

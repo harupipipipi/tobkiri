@@ -102,9 +102,7 @@ test("undeclared conversation steering never sends a request", async (context) =
     throw new Error("no steer route is declared");
   };
   assert.equal(api.supportsConversationSteering, false);
-  for (const action of ["list", "enqueue"]) {
-    await assert.rejects(api.conversationSteer({ action, prompt: "keep this draft" }), /まだ対応していません/);
-  }
+  assert.equal("conversationSteer" in api, false);
   assert.equal(calls, 0);
 });
 

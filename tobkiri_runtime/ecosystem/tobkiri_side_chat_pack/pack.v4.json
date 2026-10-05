@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:8abe39ab7de58c002b83892c391b42a4c857f47d926c61473996ce2413b427eb",
+      "digest": "sha256:43d161b28a042f4273181d64ab8b215c4a97ca87ebb806a209da099520703768",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
+      "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
       "kind": "sidecar",
       "path": "frontend/contributions/side-chat.json"
     },
@@ -32,7 +32,7 @@
       "operations": [
         "tobkiri_side_chat_pack.side-chat-resource"
       ],
-      "revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c"
+      "revision_digest": "sha256:de98695677924f6672194313ccff2ebb7e037b9cb225121d3be32ceaa1e91f70"
     },
     {
       "contract_id": "tobkiri.action.side-chat.v1",
@@ -61,7 +61,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c",
+      "contract_revision_digest": "sha256:de98695677924f6672194313ccff2ebb7e037b9cb225121d3be32ceaa1e91f70",
       "id": "tobkiri_side_chat_pack.resource",
       "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "isolation": "dedicated_process",
@@ -82,9 +82,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:12f9e46baf1bd2d2309a0c1ef4c8ba7f9fcdaca37e1bd4b4d04c926a0178370e",
-    "contract_catalog_digest": "sha256:c0b4bbc9c21ef9276af3bfe444d8519c812e9fd012fa9b642cbaf098fa40c275",
-    "source_identity": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd"
+    "artifact_set_digest": "sha256:edd891e0e2f0567176962156f8e0c0a318e8f59db1c98d0868b205ba96df70d4",
+    "contract_catalog_digest": "sha256:49bc478c40bc2d2db900fb1df382a4af0be7f8c2cfcb1f280a4125e6147dc3d3",
+    "source_identity": "sha256:1ae0d4a25944e6b4e0dfee6b1ad2745c57b95b32afbb0ba1c291da79702bb74e"
   },
   "migration": {
     "compatibility": "read_only",
@@ -107,8 +107,7 @@
     {
       "contract_reference": "tobkiri.resource.side-chat.v1",
       "effect_ceiling": [
-        "capability:conversation.side.read",
-        "host:brokered-execution"
+        "capability:conversation.side.read"
       ],
       "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
       "owner": "tobkiri_side_chat_pack",
@@ -128,7 +127,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:12f9e46baf1bd2d2309a0c1ef4c8ba7f9fcdaca37e1bd4b4d04c926a0178370e",
+    "artifact_digest": "sha256:edd891e0e2f0567176962156f8e0c0a318e8f59db1c98d0868b205ba96df70d4",
     "display_name": "Tobkiri Side Chat",
     "id": "tobkiri_side_chat_pack",
     "kind": "host_extension",
@@ -138,7 +137,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd",
+        "digest": "sha256:1ae0d4a25944e6b4e0dfee6b1ad2745c57b95b32afbb0ba1c291da79702bb74e",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -149,7 +148,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd",
+    "source_digest": "sha256:1ae0d4a25944e6b4e0dfee6b1ad2745c57b95b32afbb0ba1c291da79702bb74e",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_side_chat_pack"
   },

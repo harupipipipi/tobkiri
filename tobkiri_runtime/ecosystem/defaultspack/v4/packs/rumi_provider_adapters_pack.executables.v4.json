@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:22c90b70ecfd01c790195ecf6a4a0e244b404420fa24059b0aa53c979eba8add",
+  "source_identity": "sha256:daadd6d8332b9ca40fe2f6d06f98f9b994d96d5c1eaadb4235d61aca75037b2f",
   "variants": [
     {
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.embedding.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
+      "implementation_digest": "sha256:9f7d639de4a211bb157e401c269179685a8d79fc127e86f9b05290dc739a9567",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.generate.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
+      "implementation_digest": "sha256:9f7d639de4a211bb157e401c269179685a8d79fc127e86f9b05290dc739a9567",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.image.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
+      "implementation_digest": "sha256:9f7d639de4a211bb157e401c269179685a8d79fc127e86f9b05290dc739a9567",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -109,7 +109,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
+      "implementation_digest": "sha256:9f7d639de4a211bb157e401c269179685a8d79fc127e86f9b05290dc739a9567",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -140,6 +140,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8f0e37e0e868fe97995515f1d5a56ad3fe1ab13472040a76cc46a0f06bcd28d2",
-  "catalog_digest": "sha256:5061eb5116577d34dff66c41a20a2fa69518f9faaa784a4942c44af73d805ea7"
+  "materialization_catalog_digest": "sha256:e5337bff5a08b7be994b9bbd06fc2abcb8dd84c089160485423154910c80011b",
+  "catalog_digest": "sha256:b8b054ba9135756214a98e24c6541a3ab540bf36070d8cfbe518eb89444a91f4"
 }

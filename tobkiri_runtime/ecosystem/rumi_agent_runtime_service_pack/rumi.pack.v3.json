@@ -142,7 +142,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "artifact_hash": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "contract_id": "rumi.resource.agent.runtime.v1",
       "id": "agent-runtime-resource",
       "loader": "python",
@@ -150,7 +150,7 @@
       "symbol": "create_agent_runtime_resource"
     },
     {
-      "artifact_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "artifact_hash": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "contract_id": "rumi.action.agent.run.v1",
       "id": "agent-runtime-control",
       "loader": "python",
@@ -158,7 +158,7 @@
       "symbol": "create_agent_control"
     },
     {
-      "artifact_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "artifact_hash": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "contract_id": "rumi.action.job.adapter.v1",
       "id": "agent-turn-job-adapter",
       "loader": "python",
@@ -227,9 +227,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:e872fc8bbaf2c134c6039673e1747ee68494ec99b2eda4c4fa85f922dbdd751e",
+            "artifact_digest": "sha256:5ebe66eb0823582ecdf1551d5beae02bf274bfd39ce6155c74b06e5f245b95ba",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3"
+            "source_identity": "sha256:2a3336c92e04fb812ed81386f6d9bf28352558eaf3582fb7fd0e046ad6e9900c"
           },
           "owner_surfaces": [
             "agent_runtime_process_state"
@@ -240,7 +240,7 @@
         "pack_identity": "rumi:ecosystem/rumi_agent_runtime_service_pack",
         "provenance": {
           "build_identity": "rumi_agent_runtime_service_pack:1.0.0",
-          "content_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+          "content_hash": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
           "signature": null,
           "trust_class": "local"
         },
@@ -279,7 +279,7 @@
       "owner": "rumi_agent_runtime_service_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3"
+      "source_identity": "sha256:2a3336c92e04fb812ed81386f6d9bf28352558eaf3582fb7fd0e046ad6e9900c"
     }
   },
   "migration": {
@@ -371,7 +371,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_agent_runtime_service_pack:1.0.0",
-    "content_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+    "content_hash": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
     "signature": null,
     "trust_class": "local"
   },

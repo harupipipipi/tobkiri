@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7403c9d79b50226bcaee68fbff4a31c6a335ad42920271141f2e00c5c7220326",
+  "catalog_digest": "sha256:8a66ff3ec55a2c65f9000cf46f89a4a2c8ae884bbcac80ebeefc89c8fe8db012",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:efd2d17407f42a4130521a262219701d9704911984b53e2d42f297c7d9f129c9",
+  "source_identity": "sha256:9019616cb54bbbf26ee5593981901cb2bb64c2106c142702151df3c5b6b0b0f8",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -294,37 +294,6 @@
                         "type": "array"
                       }
                     ]
-                  },
-                  "context_binding": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "context_digest": {
-                        "pattern": "^sha256:[0-9a-f]{64}$",
-                        "type": "string"
-                      },
-                      "parent_conversation_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "parent_revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": 1,
-                        "type": "integer"
-                      },
-                      "profile_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "version": {
-                        "const": "tobkiri.conversation-context-binding.v1"
-                      }
-                    },
-                    "required": [
-                      "version",
-                      "profile_id",
-                      "parent_conversation_id",
-                      "parent_revision",
-                      "context_digest"
-                    ],
-                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -580,7 +549,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:e6e5c3a88086f5d3edf4adca597c92d4d6aa55a4551de84668bedb4950f0fac3",
+          "revision_digest": "sha256:2db17ce69a03f84b664aced320cc15df2bbbeacd4e294f9a9f1e4b0c80a70e7b",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

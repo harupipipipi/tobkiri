@@ -403,7 +403,9 @@ class LinuxQemuProcess(QemuProcessCore[LinuxQemuLaunchConfig, subprocess.Popen[b
                     connection.connect(_socket_address(directory))
                     pid, uid, _gid = struct.unpack(
                         "3i",
-                        connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12),
+                        connection.getsockopt(
+                            socket.SOL_SOCKET, getattr(socket, "SO_PEERCRED"), 12
+                        ),
                     )
                     if uid != os.geteuid() or pid != self.pid:
                         raise BackendUnavailableError(

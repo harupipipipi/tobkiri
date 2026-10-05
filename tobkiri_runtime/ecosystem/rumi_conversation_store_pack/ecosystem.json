@@ -17,9 +17,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:0831d254d907b43317de4a9effcf708dcef75215d429d9adf58a0969e0ea0ccb",
+      "artifact_digest": "sha256:d991f9b6b0b3fb8117327bc747ad395bb4e19de9e38af90940ba16f93e43bca2",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:4b50877550de061887067f635db237c92113bd345f4e10c87acfa771ac6810b9"
+      "source_identity": "sha256:e94856947883b8663acce58ba549add12a374d568fd054717b1fbe466aead036"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -27,7 +27,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:4b50877550de061887067f635db237c92113bd345f4e10c87acfa771ac6810b9"
+      "source_content_hash": "sha256:e94856947883b8663acce58ba549add12a374d568fd054717b1fbe466aead036"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
@@ -48,7 +48,7 @@
   "pack_identity": "rumi:ecosystem/rumi_conversation_store_pack",
   "provenance": {
     "build_identity": "rumi_conversation_store_pack:1.0.0",
-    "content_hash": "sha256:7e4adc19a2d06180993f4f75550de151b77e3307a0a18b238cecd22c506f2e85",
+    "content_hash": "sha256:5a48a54906cfcc484a2fae2d4f9d69b3deaa6365e63da9bf43e88192d2b2e159",
     "signature": null,
     "trust_class": "local"
   },

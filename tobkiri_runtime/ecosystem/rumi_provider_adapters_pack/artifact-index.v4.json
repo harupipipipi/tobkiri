@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:3006c876477e7396809d1eec9e6bdec3123efd65604f9a07d440ecbdec494fca",
+  "artifact_set_digest": "sha256:34ed6a6ce893f2f1ad80e461ede40e705773485420f9a6dc5fe8b346921a7bb4",
   "artifacts": [
     {
-      "digest": "sha256:f1fc94047b4c16d99b00678d8b5ca6b66478844fe8f38f95715cb767cb59c6e9",
+      "digest": "sha256:3dcb2c14cf8df737aa2794d8b4c39001289540fac8301fdbcb004aa17266c101",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:6d9525aa3ffd368cdc0ad5dbf60b742fae454a5dade2f8cdb2e064dd2c42bb47",
+      "digest": "sha256:5abfffe69339e7325e1df2986f34828b476e87f8e7ef073773bb11fafdd1dfaf",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:22c90b70ecfd01c790195ecf6a4a0e244b404420fa24059b0aa53c979eba8add",
+      "digest": "sha256:daadd6d8332b9ca40fe2f6d06f98f9b994d96d5c1eaadb4235d61aca75037b2f",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,16 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774",
+      "digest": "sha256:9f7d639de4a211bb157e401c269179685a8d79fc127e86f9b05290dc739a9567",
       "path": "runtime/adapter.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6",
+      "path": "runtime/streaming.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:a0b0888d1afb87e739f7eb4124e0066eaab8876bc85e23fd0824108430d083c0"
+    "signed_digest": "sha256:188e36ae9c4037d226a2b3920fb0f85795ea4196ca646d814bad3cbfd2113475"
   },
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99"
+  "source_identity": "sha256:a5d40602793e48b8c640e77cbcb5bfcb522d71868016d26693fa835b7c917837"
 }

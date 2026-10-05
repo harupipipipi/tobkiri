@@ -1118,10 +1118,14 @@ test("SettingsModalRenderer renders template model_api_routes through registered
   assert.match(html, /data-model-search-picker="settings"/);
   assert.match(html, /Gemini 2\.5 Flash/);
   assert.match(html, /google\/main/);
-  assert.match(html, /min-h-11/);
+  assert.match(html, /1\. 設定するモデル/);
+  assert.match(html, /2\. 使用するAPIキー/);
+  assert.match(html, /placeholder="API key を検索"/);
   assert.match(html, /API keyを追加/);
-  assert.match(html, /モデルルート作成（キー保存とは別操作）/);
+  assert.match(html, /使いたいモデルを選ぶ/);
   assert.match(html, /aria-label="Provider connection ID"/);
+  assert.match(html, /登録済みの接続がありません/);
+  assert.doesNotMatch(html, /モデルルート作成/);
   assert.doesNotMatch(html, /data-settings-routing-overview/);
 });
 

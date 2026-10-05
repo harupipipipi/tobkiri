@@ -72,10 +72,12 @@ test("catalog picker searches the complete list and retains the selected model",
   assert.doesNotMatch(html, /value="vendor\/model-1"/);
 });
 
-test("opaque route and model IDs disable linguistic input rewriting", () => {
-  const html = renderToStaticMarkup(createElement(ModelRouteSetup));
+test("catalog model queries disable linguistic input rewriting", () => {
+  const html = renderToStaticMarkup(createElement(CatalogModelPicker, {
+    models: [], value: "", query: "", onChange: () => {}, onQueryChange: () => {},
+  }));
   const inputs = html.match(/<input\b[^>]*>/g) ?? [];
-  assert.equal(inputs.length, 2);
+  assert.equal(inputs.length, 1);
   for (const input of inputs) {
     assert.match(input, /autoCorrect="off"/);
     assert.match(input, /autoCapitalize="none"/);

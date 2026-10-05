@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_side_chat_pack",
-  "source_identity": "sha256:0b1011c4fb4d3c5d82b2bb4bc4f8262d114a7af6bafe2c9f8c25094ad099bf80",
+  "source_identity": "sha256:b1eb5fe3aaabf307794f7bba50201422d6e5e8681fa7970b9924476225eff740",
   "variants": [
     {
       "variant_id": "tobkiri_side_chat_pack.manage.python",
@@ -96,7 +96,7 @@
         {
           "contract_id": "tobkiri.resource.side-chat.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c",
+          "revision_digest": "sha256:de98695677924f6672194313ccff2ebb7e037b9cb225121d3be32ceaa1e91f70",
           "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
           "input_schema": {
             "additionalProperties": false,
@@ -167,7 +167,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "privileged",
+          "effect_class": "read",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -305,6 +305,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:b8f8101389f2bc10783eed7c794cd1311f23bf74ab8bb75dae201137b109c536",
-  "catalog_digest": "sha256:8473d5fb12772bab860a870d697a7de72827759f4adec8bd503769a50a2f01d1"
+  "materialization_catalog_digest": "sha256:273b8ed0ae21f4056b684cb1ca23bc2c7ed2dd12296d255031e95e06783f6f7a",
+  "catalog_digest": "sha256:7b967f48318c663314e99d58d8abbb1cfcfdb0a15678eea1426fa3184806743d"
 }

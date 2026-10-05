@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:60cd851039332d4b2dfc41b71c4d05b65547b13038d8708d7f7e8f890984608a",
+  "source_identity": "sha256:1fa559eb82ddc749837b0f7a8fbfa8ac24aec6d9f2231bb9e48172f453c03ad6",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e6e5c3a88086f5d3edf4adca597c92d4d6aa55a4551de84668bedb4950f0fac3",
+          "revision_digest": "sha256:2db17ce69a03f84b664aced320cc15df2bbbeacd4e294f9a9f1e4b0c80a70e7b",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -280,37 +280,6 @@
                         "type": "array"
                       }
                     ]
-                  },
-                  "context_binding": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "context_digest": {
-                        "pattern": "^sha256:[0-9a-f]{64}$",
-                        "type": "string"
-                      },
-                      "parent_conversation_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "parent_revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": 1,
-                        "type": "integer"
-                      },
-                      "profile_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "version": {
-                        "const": "tobkiri.conversation-context-binding.v1"
-                      }
-                    },
-                    "required": [
-                      "version",
-                      "profile_id",
-                      "parent_conversation_id",
-                      "parent_revision",
-                      "context_digest"
-                    ],
-                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -589,6 +558,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:7403c9d79b50226bcaee68fbff4a31c6a335ad42920271141f2e00c5c7220326",
-  "catalog_digest": "sha256:d7ff25893313722aa922107e97f2c482a8cbdc966e5dda99e86e51f265e8d056"
+  "materialization_catalog_digest": "sha256:8a66ff3ec55a2c65f9000cf46f89a4a2c8ae884bbcac80ebeefc89c8fe8db012",
+  "catalog_digest": "sha256:d523799b874d747d9d39db62e66026fbbe04d4e73a848e62817658f09772d684"
 }

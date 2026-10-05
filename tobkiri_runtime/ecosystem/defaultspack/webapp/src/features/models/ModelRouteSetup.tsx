@@ -93,6 +93,7 @@ export function CatalogModelPicker({ models, value, query, onChange, onQueryChan
   return <div className="grid gap-2">
     <label className="grid gap-1 text-xs">モデルを検索
       <input type="search" className={field} aria-label="モデルを検索" value={query}
+        autoCorrect="off" autoCapitalize="none" spellCheck={false}
         onChange={(event) => onQueryChange(event.target.value)} placeholder="名前で検索" />
     </label>
     <label className="grid gap-1 text-xs">モデル一覧（{models.length}件）
@@ -208,7 +209,8 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
           <input type="checkbox" checked={manual} onChange={(event) => { setManual(event.target.checked); setModel(""); }} />モデルIDを指定する
         </label>}
         {manualModel && <label className="mt-2 grid gap-1 text-xs">モデルID
-          <input className={field} value={model} onChange={(event) => setModel(event.target.value)} placeholder="ProviderのモデルID" />
+          <input className={field} value={model} autoCorrect="off" autoCapitalize="none" spellCheck={false}
+            onChange={(event) => setModel(event.target.value)} placeholder="ProviderのモデルID" />
         </label>}
       </details>
     </>}

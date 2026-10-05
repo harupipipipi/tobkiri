@@ -164,7 +164,6 @@ class ConversationStore:
                 "completion_candidate": None,
             })
             current["lifecycle"] = source
-            current["conversation_revision"] += 1
             state["conversations"][conversation_id] = current
             state["revision"] += 1
             self._write(state)

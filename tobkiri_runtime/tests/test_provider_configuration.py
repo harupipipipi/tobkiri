@@ -150,7 +150,11 @@ def test_local_configuration_never_writes_a_credential_and_recovers_owner_ack(
 ) -> None:
     registry = ProviderRegistry("defaults", user_data_root=tmp_path)
     client = _Client(tmp_path)
-    request = _local_request()
+    request = {
+        **_local_request(),
+        "display_name": "ローカル Gemma 3",
+        "catalog_provider_id": "openai_compatible",
+    }
     plan = prepare_configuration(registry, request)
     assert plan["endpoint"] == "http://127.0.0.1:1234/v1"
     original_save = registry.save
@@ -170,7 +174,10 @@ def test_local_configuration_never_writes_a_credential_and_recovers_owner_ack(
     )
     assert result["provider_instance_id"] == "provider.local-fixture"
     assert client.calls == []
-    assert registry.snapshot()["providers"][0]["credential_handle"] is None
+    saved = registry.snapshot()["providers"][0]
+    assert saved["credential_handle"] is None
+    assert saved["display_name"] == "ローカル Gemma 3"
+    assert saved["metadata"] == {"catalog_provider_id": "openai_compatible"}
     with pytest.raises(PermissionError, match="changed after preparation"):
         execute_configuration(
             registry,

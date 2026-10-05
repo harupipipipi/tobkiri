@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:80c97030aca0b5ec7479e670514a59898dcab0cdf4283b7d3385aafc2fa0e3af",
+      "digest": "sha256:cea1f9273f3f6a6a2b9f6016450a896c0b8b3f06d7ad357b422200a0a810458b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/clock.py"
     },
     {
-      "digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
       "kind": "executable",
       "path": "runtime/scheduler.py"
     }
@@ -53,7 +53,7 @@
     {
       "contract_revision_digest": "sha256:cf57aea51e42b9b54319983e24d9512ea1653eb6a9a8c46d822c3f22d85ef879",
       "id": "rumi_scheduler_runtime_pack.scheduler.control",
-      "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_scheduler_runtime_pack.scheduler-control"
@@ -63,7 +63,7 @@
     {
       "contract_revision_digest": "sha256:890fbb4e270e2305549f060847f102118b0a6ab467aef515875bcc6c599168c9",
       "id": "rumi_scheduler_runtime_pack.scheduler.status",
-      "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_scheduler_runtime_pack.scheduler-resource"
@@ -72,9 +72,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:552e4171d4f06a0677d2315a61950216ada9cff90d26794accac7eac5761c7a5",
-    "contract_catalog_digest": "sha256:116541787ed69011ee98e2e2386770e7384247adf3395c8e58bf25e153ae9eac",
-    "source_identity": "sha256:6628f641c038a751e3761d30ac3bddbc44e7bb1d840ed302dab331792cbf24f3"
+    "artifact_set_digest": "sha256:d93bef49391cc124728ad86e90be28077aecca15a75a4c3b71d630e1fe4485fd",
+    "contract_catalog_digest": "sha256:0cd4f1b0d9907c95c98000bea39d54d6d567ff9c4b9f759316a78b79ce5fc948",
+    "source_identity": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4"
   },
   "migration": {
     "compatibility": "read_only",
@@ -122,7 +122,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:552e4171d4f06a0677d2315a61950216ada9cff90d26794accac7eac5761c7a5",
+    "artifact_digest": "sha256:d93bef49391cc124728ad86e90be28077aecca15a75a4c3b71d630e1fe4485fd",
     "display_name": "Rumi Scheduler Runtime",
     "id": "rumi_scheduler_runtime_pack",
     "kind": "host_extension",
@@ -132,7 +132,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:6628f641c038a751e3761d30ac3bddbc44e7bb1d840ed302dab331792cbf24f3",
+        "digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -143,7 +143,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:6628f641c038a751e3761d30ac3bddbc44e7bb1d840ed302dab331792cbf24f3",
+    "source_digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
   },

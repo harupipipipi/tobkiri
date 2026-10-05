@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:cffc636e81f761f34f1e82ff98a95d9e659d184fbe5faa6126bb43da787fc4ee",
+  "catalog_digest": "sha256:fe2184a219d03d09b97db668754ca7fbd2f1746c4cfa30dedbfcf1f570a37422",
   "pack_id": "rumi_scheduler_runtime_pack",
-  "source_identity": "sha256:6628f641c038a751e3761d30ac3bddbc44e7bb1d840ed302dab331792cbf24f3",
+  "source_identity": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
   "variants": [
     {
       "architecture": "any",
@@ -67,7 +67,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_scheduler_runtime_pack.scheduler.control",
-      "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
       "implementation_path": "runtime/scheduler.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -135,7 +135,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_scheduler_runtime_pack.scheduler.status",
-      "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
       "implementation_path": "runtime/scheduler.py",
       "materialization_mode": "on_demand",
       "operations": [

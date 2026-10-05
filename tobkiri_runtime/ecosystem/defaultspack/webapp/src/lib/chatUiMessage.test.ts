@@ -20,6 +20,20 @@ test("shared message adapter preserves canonical content and conversation identi
   assert.deepEqual(chatMessageToUiMessage(message({ content: "Input bytes" })).content, [{ type: "text", text: "Input bytes" }]);
 });
 
+test("shared message adapter preserves only a verified saved-turn owner binding", () => {
+  const canonical = message({
+    id: `message:${"a".repeat(64)}`,
+    role: "user",
+    conversation_id: "conversation-1",
+    metadata: { turn_id: "turn-1" },
+  });
+  assert.equal(chatMessageToUiMessage(canonical).metadata?.turn_id, "turn-1");
+  assert.equal(chatMessageToUiMessage({ ...canonical, metadata: { turn_id: "../invalid" } }).metadata?.turn_id, undefined);
+  assert.equal(chatMessageToUiMessage({ ...canonical, id: "local-saved-turn:client" }).metadata?.turn_id, undefined);
+  assert.equal(chatMessageToUiMessage({ ...canonical, conversation_id: "../invalid" }).metadata?.turn_id, undefined);
+  assert.equal(chatMessageToUiMessage({ ...canonical, role: "assistant" }).metadata?.turn_id, undefined);
+});
+
 test("shared message adapter retains real thinking timing, pending approval and interrupted state", () => {
   const adapted = chatMessageToUiMessage(message({
     finish_reason: "interrupted",

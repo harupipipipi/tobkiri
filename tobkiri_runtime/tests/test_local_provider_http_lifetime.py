@@ -56,9 +56,15 @@ class _Invocation:
     """Represent the Host-owned context, outside the model's payload mapping."""
 
     def __init__(
-        self, endpoint: str, *, cancellation: threading.Event, deadline: float,
+        self,
+        endpoint: str,
+        *,
+        cancellation: threading.Event,
+        deadline: float,
+        streaming: bool = False,
     ) -> None:
         self.endpoint = endpoint
+        self.streaming = streaming
         self.envelope = SimpleNamespace(
             cancellation_requested=cancellation, deadline_monotonic=deadline,
         )
@@ -71,8 +77,11 @@ class _Invocation:
             raise PermissionError("Host invocation is no longer current")
 
     def contract_client(self, **kwargs: Any) -> "_Invocation":
+        allowed_contract_ids = {adapter.REGISTRY_CONTRACT}
+        if self.streaming:
+            allowed_contract_ids.add(adapter.PROGRESS_CONTRACT)
         assert kwargs == {
-            "allowed_contract_ids": frozenset({adapter.REGISTRY_CONTRACT}),
+            "allowed_contract_ids": frozenset(allowed_contract_ids),
             "consumer_pack_id": "rumi_provider_adapters_pack",
         }
         return self
@@ -200,6 +209,7 @@ def test_captured_host_lifetime_interrupts_real_local_io_and_drains(
         invocation = _Invocation(
             endpoint, cancellation=cancellation,
             deadline=time.monotonic() + (0.5 if ending == "deadline" else 10),
+            streaming=streaming,
         )
         invoke = _captured_invoke(streaming=streaming)
 

@@ -841,10 +841,14 @@ class SavedBridgeCallbacks:
                     "request_id": arguments["request_id"],
                     "ai_input_digest": payload_digest(arguments),
                 })
-                value = progress.get("value")
-                if progress.get("status") != "ok" or not isinstance(value, Mapping) or not isinstance(value.get("progress_id"), str):
+                progress_value = progress.get("value")
+                if (
+                    progress.get("status") != "ok"
+                    or not isinstance(progress_value, Mapping)
+                    or not isinstance(progress_value.get("progress_id"), str)
+                ):
                     raise AuthorityDenied("saved live progress reservation failed")
-                arguments["progress_id"] = value["progress_id"]
+                arguments["progress_id"] = progress_value["progress_id"]
             outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (

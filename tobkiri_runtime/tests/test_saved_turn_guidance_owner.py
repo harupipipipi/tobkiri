@@ -23,10 +23,13 @@ from ecosystem.defaultspack.runtime import saved_conversation as application
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.host import TurnHostFactoryV4
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    COMPLETION_CONTRACT,
+    COMPLETION_OPERATION,
     LIFECYCLE_CONTRACT,
     LIFECYCLE_OPERATION,
     RECEIPT_CONTRACT,
     RECEIPT_OPERATION,
+    RECONCILE_CONTRACTS,
     SAVED_CONTRACTS,
     execute_saved_turn,
     reconcile_saved_turn,
@@ -66,6 +69,7 @@ class _OwnerSession:
         self.receipt_reply: Callable[[Any], Any] = lambda value: value
         self.lose_result: set[str] = set()
         self.lose_claim: set[str] = set()
+        self.lose_confirmation: set[str] = set()
 
     def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
         """No ambient provider lookup is used by this finite transport."""
@@ -81,6 +85,16 @@ class _OwnerSession:
         """Dispatch real lifecycle/message code and a controlled model outcome."""
         self.calls.append((contract_id, operation, deepcopy(dict(payload))))
         target = (contract_id, operation)
+        if target == (COMPLETION_CONTRACT, COMPLETION_OPERATION):
+            assert payload["profile_id"] == self.profile_id
+            assert payload["operation"] == "confirm"
+            turn_id = str(payload["turn_id"])
+            if turn_id in self.lose_confirmation:
+                self.lose_confirmation.remove(turn_id)
+                raise TimeoutError("completion confirmation acknowledgement lost")
+            turn = self.turns.get(turn_id)
+            assert turn is not None
+            return self.conversations.confirm_saved_completion(turn)
         if target == (LIFECYCLE_CONTRACT, LIFECYCLE_OPERATION):
             assert payload["profile_id"] == self.profile_id
             initial = {
@@ -131,6 +145,7 @@ class _OwnerSession:
                     "value": {
                         "status": "ok",
                         "output": f"Reply to {initial['request']['content']}",
+                        "finish_reason": "stop",
                     },
                 }
             else:
@@ -142,7 +157,7 @@ class _OwnerSession:
 def _client(session: _OwnerSession, *, reader_only: bool = False) -> GlobalContractClient:
     return GlobalContractClient(
         session=session,
-        allowed_contract_ids=(frozenset({RECEIPT_CONTRACT}) if reader_only else SAVED_CONTRACTS),
+        allowed_contract_ids=(RECONCILE_CONTRACTS if reader_only else SAVED_CONTRACTS),
         consumer_pack_id="rumi_turn_runtime_pack",
     )
 
@@ -335,6 +350,30 @@ def test_lost_guidance_ack_replays_before_stale_revision_and_rebinding_is_denied
     assert session.turns.get("turn-1") == first
 
 
+def test_lost_completion_confirmation_blocks_guidance_until_reconciliation(
+    tmp_path: Path,
+) -> None:
+    """A durable completion cannot dispatch guidance before owner confirmation."""
+    session = _OwnerSession(tmp_path)
+    child_id = _child_id("turn-1", "guidance-1")
+    session.lose_confirmation.add("turn-1")
+    session.before_model = lambda initial: (
+        _attach(session, "guidance-1")
+        if initial["request"]["turn_id"] == "turn-1"
+        else None
+    )
+
+    first = _run(session)
+    assert first["status"] == "reconciliation_required"
+    assert session.turns.get(child_id) is None
+    assert session.turns.get("turn-1")["guidance"][0]["status"] == "queued"
+
+    recovered = _run(session)
+    assert recovered["status"] == "completed"
+    assert session.turns.get(child_id)["status"] == "completed"
+    assert session.turns.get("turn-1")["guidance"][0]["status"] == "sent"
+
+
 def test_guidance_ack_replay_after_root_handoff_does_not_attach_to_child(
     tmp_path: Path,
 ) -> None:
@@ -446,7 +485,6 @@ def test_lost_child_result_recovers_from_real_receipt_without_model_retry(
     _run(session)
     assert session.turns.get(child_id)["status"] == "waiting"
     assert session.turns.get("turn-1")["guidance"][0]["status"] == "consumed"
-    before = session.conversations.path.read_bytes()
     offset = len(session.calls)
     recovered = reconcile_saved_turn(
         session.turns,
@@ -461,7 +499,9 @@ def test_lost_child_result_recovers_from_real_receipt_without_model_retry(
     )
     assert [call[:2] for call in session.calls[offset:]] == [
         (RECEIPT_CONTRACT, RECEIPT_OPERATION),
+        (COMPLETION_CONTRACT, COMPLETION_OPERATION),
     ]
+    before = session.conversations.path.read_bytes()
     _run(session)
     assert session.turns.get("turn-1")["guidance"][0]["status"] == "sent"
     assert len(session.model_inputs) == 2

@@ -175,11 +175,14 @@ def execute_saved_turn(
     if not claim["claimed"]:
         # A running snapshot may still have a live executor. Do not rewrite it
         # as terminal or treat a repeat request as a restart/recovery signal.
-        recovered = _reconcile(store, claim["turn"], client, guard)
+        recovered, completion_confirmed = _reconcile_state(
+            store, claim["turn"], client, guard,
+        )
         result = recovered or {"status": "existing", "turn": claim["turn"]}
         if result["turn"].get("status") == "completed":
             return _drain_guidance(
                 store, result, client, guard, track_execution, _guidance_depth,
+                completion_confirmed=completion_confirmed,
             )
         return result
     record = claim["turn"]
@@ -249,15 +252,17 @@ def execute_saved_turn(
         if current is None:
             raise ValueError("saved execution lost its durable record")
         return {"status": "reconciliation_required", "turn": current}
+    confirmed_result, completion_confirmed = _confirm_completion(
+        store, {"status": "completed", "turn": settled}, client, guard,
+    )
     return _drain_guidance(
         store,
-        _confirm_completion(
-            store, {"status": "completed", "turn": settled}, client, guard,
-        ),
+        confirmed_result,
         client,
         guard,
         track_execution,
         _guidance_depth,
+        completion_confirmed=completion_confirmed,
     )
 
 
@@ -268,16 +273,19 @@ def _drain_guidance(
     guard: Callable[[], None],
     track_execution: Callable[[str], AbstractContextManager[None]],
     depth: int,
+    *,
+    completion_confirmed: bool,
 ) -> dict[str, Any]:
     """Run bounded, durable guidance children after an acknowledged turn."""
 
-    if depth >= 8:
+    if result.get("status") not in {"completed", "existing"} or depth >= 8:
         return result
     parent_id = str(result["turn"]["id"])
     source_id = parent_id
     parent = store.get(parent_id)
     if parent is None:
         raise ValueError("saved guidance parent is unavailable")
+    source_confirmed = completion_confirmed
     attempts = 0
     for item in parent.get("guidance", []):
         value = item.get("value")
@@ -289,6 +297,7 @@ def _drain_guidance(
                 child = store.get(child_id)
                 if child is not None and child.get("status") == "completed":
                     source_id = _latest_completed_guidance_source(store, child_id)
+                    source_confirmed = True
                     continue
             break
         attempts += 1
@@ -305,6 +314,8 @@ def _drain_guidance(
             {"parent_turn_id": parent_id, "guidance_id": guidance_id}
         ).removeprefix("sha256:")
         followup = item.get("followup_input")
+        if not source_confirmed and not isinstance(followup, Mapping):
+            break
         if not isinstance(followup, Mapping):
             followup = {
                 "request": {
@@ -329,10 +340,17 @@ def _drain_guidance(
         child = child_result.get("turn")
         if not isinstance(child, Mapping):
             break
-        store.confirm_guidance_followup(parent_id, guidance_id, child_id)
         if child.get("status") != "completed":
+            store.confirm_guidance_followup(parent_id, guidance_id, child_id)
             break
+        if child_result.get("status") not in {"completed", "existing"}:
+            return {
+                "status": "reconciliation_required",
+                "turn": store.get(parent_id) or result["turn"],
+            }
+        store.confirm_guidance_followup(parent_id, guidance_id, child_id)
         source_id = _latest_completed_guidance_source(store, child_id)
+        source_confirmed = True
         refreshed = store.get(parent_id)
         if refreshed is not None:
             result = {"status": "completed", "turn": refreshed}
@@ -452,15 +470,26 @@ def _reconcile(
     client: GlobalContractClient,
     guard: Callable[[], None],
 ) -> dict[str, Any] | None:
+    result, _confirmed = _reconcile_state(store, record, client, guard)
+    return result
+
+
+def _reconcile_state(
+    store: DurableTurnRuntime,
+    record: Mapping[str, Any],
+    client: GlobalContractClient,
+    guard: Callable[[], None],
+) -> tuple[dict[str, Any] | None, bool]:
+    """Reconcile a saved turn and retain confirmation state for guidance."""
     if record["status"] == "completed":
-        result = _confirm_completion(
+        result, confirmed = _confirm_completion(
             store, {"status": "completed", "turn": record}, client, guard,
         )
         if result["status"] == "completed":
             result["status"] = "existing"
-        return result
+        return result, confirmed
     if record["status"] not in {"running", "waiting"}:
-        return None
+        return None, False
     guard()
     response = client.invoke(
         RECEIPT_CONTRACT,
@@ -480,7 +509,7 @@ def _reconcile(
         raise ValueError("saved receipt response is invalid")
     receipt = decoded["receipt"]
     if receipt is None or isinstance(receipt, dict) and "result_reference" not in receipt:
-        return None
+        return None, False
     if (
         not isinstance(receipt, dict)
         or set(receipt)
@@ -552,7 +581,10 @@ def _reconcile(
             result_reference=reference,
         )
     except TurnConflict:
-        return {"status": "reconciliation_required", "turn": store.get(record["id"])}
+        return (
+            {"status": "reconciliation_required", "turn": store.get(record["id"])},
+            False,
+        )
     return _confirm_completion(
         store, {"status": "completed", "turn": result}, client, guard,
     )
@@ -563,10 +595,10 @@ def _confirm_completion(
     result: dict[str, Any],
     client: GlobalContractClient,
     guard: Callable[[], None],
-) -> dict[str, Any]:
-    """Confirm only immutable successful settlement; retry without execution."""
+) -> tuple[dict[str, Any], bool]:
+    """Confirm immutable settlement and retain promotion state for guidance."""
     if result["status"] != "completed" or result["turn"]["status"] != "completed":
-        return result
+        return result, False
     try:
         guard()
         confirmed = client.invoke(
@@ -584,8 +616,8 @@ def _confirm_completion(
     except Exception:
         # The immutable turn is completed, but the append source remains a
         # candidate. Reconciliation can retry this one action after restart.
-        return {"status": "reconciliation_required", "turn": result["turn"]}
-    return result
+        return {"status": "reconciliation_required", "turn": result["turn"]}, False
+    return result, confirmed["confirmed"]
 
 
 def _settle(

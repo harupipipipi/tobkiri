@@ -6,6 +6,7 @@ from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import sqlite3
 from threading import Barrier, Event, Thread
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -22,6 +23,7 @@ from core_runtime.invocation_scope_v4 import (
 )
 from core_runtime.local_model_transport import LocalModelBinding, LocalModelTransport
 from ecosystem.rumi_provider_adapters_pack.runtime.streaming import ProviderStream
+from ecosystem.rumi_turn_runtime_pack.runtime import progress as progress_module
 from ecosystem.rumi_turn_runtime_pack.runtime.progress import TurnProgressJournal
 from tests.test_credential_broker_pack import _dispatched_envelope, _https_transport
 from tobkiri_protocol.canonical import canonical_digest
@@ -69,6 +71,18 @@ def _journal(path: Path) -> tuple[TurnProgressJournal, str]:
         execution="lease.request",
     )
     return journal, identity
+
+
+def _journal_rows(path: Path) -> tuple[int, int]:
+    """Count journal rows through the same immutable SQLite URI mode."""
+    connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    try:
+        return tuple(
+            int(connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
+            for table in ("progress", "chunks")
+        )
+    finally:
+        connection.close()
 
 
 @pytest.mark.parametrize("interrupt", [None, "cancel", "epoch", "revocation"])
@@ -344,6 +358,79 @@ def test_journal_replay_order_claim_expiry_and_terminal_are_fenced(
     journal.clock = lambda: time.time() + 121
     with pytest.raises(PermissionError):
         journal.read(identity, owner="owner", capture="capture", cursor=0)
+
+
+def test_progress_resource_reads_open_readonly_and_leave_journal_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resource reads must work without SQLite write access or journal mutation."""
+    journal, identity = _journal(tmp_path)
+    journal.publish(
+        identity,
+        owner="owner",
+        capture="capture",
+        producer="producer",
+        producer_input_digest="input",
+        execution="lease.request",
+        cursor=1,
+        event={"type": "text_delta", "delta": "first"},
+    )
+    original_mode = journal.path.stat().st_mode & 0o777
+    before = journal.path.read_bytes(), journal.path.stat().st_mtime_ns
+    before_rows = _journal_rows(journal.path)
+    original_connect = sqlite3.connect
+    connections: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connections.append((args, kwargs))
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(progress_module.sqlite3, "connect", connect)
+    try:
+        journal.path.chmod(0o400)
+        try:
+            assert journal.find("turn", owner="owner", capture="capture") == identity
+            assert journal.read(identity, owner="owner", capture="capture", cursor=0)[
+                "events"
+            ] == [{"cursor": 1, "event": {"type": "text_delta", "delta": "first"}}]
+        finally:
+            journal.path.chmod(original_mode)
+    finally:
+        monkeypatch.undo()
+    assert connections == [
+        ((f"{journal.path.resolve().as_uri()}?mode=ro",), {"timeout": 1, "uri": True}),
+        ((f"{journal.path.resolve().as_uri()}?mode=ro",), {"timeout": 1, "uri": True}),
+    ]
+    assert (journal.path.read_bytes(), journal.path.stat().st_mtime_ns) == before
+    assert _journal_rows(journal.path) == before_rows
+
+
+def test_expired_progress_resource_does_not_delete_its_journal_rows(
+    tmp_path: Path,
+) -> None:
+    """Expiry denies resource reads and waits for a future write to purge rows."""
+    journal, identity = _journal(tmp_path)
+    before = journal.path.read_bytes(), _journal_rows(journal.path)
+    journal.clock = lambda: time.time() + 121
+
+    with pytest.raises(KeyError, match="unavailable"):
+        journal.find("turn", owner="owner", capture="capture")
+    with pytest.raises(PermissionError, match="expired"):
+        journal.read(identity, owner="owner", capture="capture", cursor=0)
+
+    assert (journal.path.read_bytes(), _journal_rows(journal.path)) == before
+
+
+def test_missing_progress_resource_journal_is_unavailable_without_creating_it(
+    tmp_path: Path,
+) -> None:
+    """A missing owner journal is unavailable instead of being initialized by a read."""
+    journal = TurnProgressJournal(tmp_path / "missing-progress.sqlite3")
+
+    with pytest.raises(KeyError, match="unavailable"):
+        journal.find("turn", owner="owner", capture="capture")
+
+    assert not journal.path.exists()
 
 
 def test_raw_provider_thinking_is_only_a_state_not_public_text() -> None:

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CredentialTransferModal } from "../../../components/CredentialTransferModal";
 import { ErrorNotice } from "../../../components/ErrorNotice";
 import { cn } from "../../../lib/cn";
+import { redactDiagnosticText } from "../../../lib/clientDiagnostics";
 import { allowCleartextMobileQr } from "../../../lib/mobileCleartextQr";
 import {
   apiKeySetupSaveEnabled,
@@ -34,6 +35,16 @@ import {
   selectedProviderKind,
   SettingsFieldShell,
 } from "./settingsFieldRendererUtils";
+
+/** Return save feedback without echoing an API key or endpoint into the UI. */
+export function apiKeySetupSaveErrorMessage(error: unknown): string {
+  const detail = redactDiagnosticText(
+    error instanceof Error ? error.message : error,
+    320,
+  );
+  const prefix = "APIキーを保存できませんでした。入力と承認状況を確認してから保存し直してください。";
+  return detail ? `${prefix} 詳細: ${detail}` : prefix;
+}
 
 export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionValues, onChange }: SettingsFieldRendererProps) {
   const targetFieldId = apiKeySetupTargetFieldId(field);
@@ -160,7 +171,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       window.dispatchEvent(new Event("tobkiri-provider-connections-changed"));
     } catch (saveErrorValue) {
       setSaveState("idle");
-      setSaveError(saveErrorValue instanceof Error ? saveErrorValue.message : "API key save failed.");
+      setSaveError(apiKeySetupSaveErrorMessage(saveErrorValue));
     }
   };
 

@@ -616,10 +616,12 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    assert len(guards) == 10  # Confirmation checks before and after its nested action.
-    assert invoke(factory.operation_id, session.initial, invocation) == {
-        "status": "existing", "turn": result["turn"],
-    }
+    # Receipt settlement and completion confirmation each recheck the capture.
+    assert len(guards) == 13
+    repeated = invoke(factory.operation_id, session.initial, invocation)
+    assert repeated["status"] == "existing"
+    assert repeated["turn"] == result["turn"]
+    assert repeated["input_context_receipt"]["delivery_status"] == "not_applicable"
     assert session.calls == 1
 
 

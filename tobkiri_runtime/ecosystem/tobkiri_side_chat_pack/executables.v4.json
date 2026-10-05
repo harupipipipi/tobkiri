@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:b8f8101389f2bc10783eed7c794cd1311f23bf74ab8bb75dae201137b109c536",
+  "catalog_digest": "sha256:273b8ed0ae21f4056b684cb1ca23bc2c7ed2dd12296d255031e95e06783f6f7a",
   "pack_id": "tobkiri_side_chat_pack",
-  "source_identity": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd",
+  "source_identity": "sha256:1ae0d4a25944e6b4e0dfee6b1ad2745c57b95b32afbb0ba1c291da79702bb74e",
   "variants": [
     {
       "architecture": "any",
@@ -94,7 +94,7 @@
         {
           "contract_id": "tobkiri.resource.side-chat.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
+          "effect_class": "read",
           "error_schema": {
             "type": "object"
           },
@@ -166,7 +166,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c",
+          "revision_digest": "sha256:de98695677924f6672194313ccff2ebb7e037b9cb225121d3be32ceaa1e91f70",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

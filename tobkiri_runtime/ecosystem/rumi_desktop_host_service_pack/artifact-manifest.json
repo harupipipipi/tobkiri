@@ -3,7 +3,7 @@
     {
       "path": "runtime/service.py",
       "role": "runtime",
-      "sha256": "978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de"
+      "sha256": "sha256:978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

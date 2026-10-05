@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:9dd707a55b627f56ba922b8cf1543efef92c6377248d92262640111594d198bb",
+      "digest": "sha256:85634fe47c6520cb996b8f5cda24ed1cdcc0d5ec69ddee1cadce5d0f4e1f0690",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "kind": "executable",
       "path": "runtime/runtime.py"
     }
@@ -38,7 +38,7 @@
     {
       "contract_revision_digest": "sha256:59d361e84a3eaf53a8ac92ed8c38fff4e3fa5d5fd1d8519e3c1bc3e3133c3307",
       "id": "rumi_agent_runtime_service_pack.agent-runtime.control",
-      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_agent_runtime_service_pack.agent-runtime-control"
@@ -48,7 +48,7 @@
     {
       "contract_revision_digest": "sha256:acf89f9d5731e2b87bd358058717c0ecd7f19e292673ff99dd93e166aa592ea5",
       "id": "rumi_agent_runtime_service_pack.agent-runtime.status",
-      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_agent_runtime_service_pack.agent-runtime-resource"
@@ -58,7 +58,7 @@
     {
       "contract_revision_digest": "sha256:d318cdaf4adb0ae87b1b50e3c19cc91069cd4bcd2c13eda3e903478f75b8448a",
       "id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
-      "implementation_digest": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_agent_runtime_service_pack.agent-turn-job-adapter"
@@ -67,9 +67,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:e872fc8bbaf2c134c6039673e1747ee68494ec99b2eda4c4fa85f922dbdd751e",
-    "contract_catalog_digest": "sha256:845715e18579f4ff27be3630f8049191920b0e832e0561854bed6eef7b23a705",
-    "source_identity": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3"
+    "artifact_set_digest": "sha256:5ebe66eb0823582ecdf1551d5beae02bf274bfd39ce6155c74b06e5f245b95ba",
+    "contract_catalog_digest": "sha256:05e3ecf68051e7c29bcf4d6d0b060c8b57c2d0eee22a590858ae9dd870b86048",
+    "source_identity": "sha256:2a3336c92e04fb812ed81386f6d9bf28352558eaf3582fb7fd0e046ad6e9900c"
   },
   "migration": {
     "compatibility": "read_only",
@@ -116,7 +116,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:e872fc8bbaf2c134c6039673e1747ee68494ec99b2eda4c4fa85f922dbdd751e",
+    "artifact_digest": "sha256:5ebe66eb0823582ecdf1551d5beae02bf274bfd39ce6155c74b06e5f245b95ba",
     "display_name": "Rumi Agent Runtime Service",
     "id": "rumi_agent_runtime_service_pack",
     "kind": "normal_sandbox",
@@ -126,7 +126,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3",
+        "digest": "sha256:2a3336c92e04fb812ed81386f6d9bf28352558eaf3582fb7fd0e046ad6e9900c",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -137,7 +137,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3",
+    "source_digest": "sha256:2a3336c92e04fb812ed81386f6d9bf28352558eaf3582fb7fd0e046ad6e9900c",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_agent_runtime_service_pack"
   },

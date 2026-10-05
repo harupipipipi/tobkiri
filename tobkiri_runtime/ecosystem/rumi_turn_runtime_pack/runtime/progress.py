@@ -30,7 +30,7 @@ class TurnProgressJournal:
         """Reserve one saved AI stage once, with its authenticated owner/capture."""
         binding = validate_begin(binding)
         identity = canonical_digest(dict(binding)).removeprefix("sha256:")
-        with self._connection() as connection:
+        with self._write_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._purge(connection)
             if connection.execute("SELECT count(*) FROM progress").fetchone()[0] >= 64:
@@ -66,9 +66,9 @@ class TurnProgressJournal:
         producer_input_digest: str,
     ) -> None:
         """Seal one exact producer before its transport begins; no retry binding."""
-        with self._connection() as connection:
+        with self._write_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = self._record(connection, identity, owner, capture)
+            row = self._write_record(connection, identity, owner, capture)
             if row[4] or json.loads(row[3])["ai_input_digest"] != ai_input_digest:
                 raise PermissionError("progress producer binding changed")
             connection.execute(
@@ -93,9 +93,9 @@ class TurnProgressJournal:
         encoded = canonical_json(event)
         if type(cursor) is not int or not 1 <= cursor <= MAX_EVENTS:
             raise ValueError("progress cursor is invalid")
-        with self._connection() as connection:
+        with self._write_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = self._record(connection, identity, owner, capture)
+            row = self._write_record(connection, identity, owner, capture)
             if row[4:6] != (producer, producer_input_digest) or row[8] or row[9] != execution:
                 raise PermissionError("progress producer is unavailable")
             count, size = connection.execute(
@@ -124,9 +124,9 @@ class TurnProgressJournal:
         execution: str,
     ) -> None:
         """Consume the one producer reservation before it opens any transport."""
-        with self._connection() as connection:
+        with self._write_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = self._record(connection, identity, owner, capture)
+            row = self._write_record(connection, identity, owner, capture)
             if row[4:6] != (producer, producer_input_digest) or row[9] or row[8]:
                 raise PermissionError("progress producer execution already claimed")
             connection.execute("UPDATE progress SET execution=? WHERE id=?", (execution, identity))
@@ -142,50 +142,66 @@ class TurnProgressJournal:
         """Return a bounded provisional page without publishing or starting AI."""
         if type(cursor) is not int or not 0 <= cursor <= MAX_EVENTS:
             raise ValueError("progress cursor is invalid")
-        with self._connection() as connection:
-            row = self._record(connection, identity, owner, capture)
-            if cursor > row[6]:
-                raise ValueError("progress cursor is ahead of producer")
-            events, size = [], 0
-            for sequence, body in connection.execute(
-                "SELECT cursor, body FROM chunks WHERE id=? AND cursor>? ORDER BY cursor LIMIT 128",
-                (identity, cursor),
-            ):
-                size += len(body.encode())
-                if size > 64 * 1024:
-                    break
-                events.append({"cursor": sequence, "event": json.loads(body)})
-            return {
-                "version": VERSION,
-                "provisional": True,
-                "binding": json.loads(row[3]),
-                "events": events,
-                "cursor": events[-1]["cursor"] if events else cursor,
-                "provider_complete": bool(row[8]),
-                "expires_at_ms": int(row[7] * 1000),
-            }
+        try:
+            with self._read_connection() as connection:
+                row = self._read_record(connection, identity, owner, capture)
+                if cursor > row[6]:
+                    raise ValueError("progress cursor is ahead of producer")
+                events, size = [], 0
+                for sequence, body in connection.execute(
+                    "SELECT cursor, body FROM chunks WHERE id=? AND cursor>? "
+                    "ORDER BY cursor LIMIT 128",
+                    (identity, cursor),
+                ):
+                    size += len(body.encode())
+                    if size > 64 * 1024:
+                        break
+                    events.append({"cursor": sequence, "event": json.loads(body)})
+                return {
+                    "version": VERSION,
+                    "provisional": True,
+                    "binding": json.loads(row[3]),
+                    "events": events,
+                    "cursor": events[-1]["cursor"] if events else cursor,
+                    "provider_complete": bool(row[8]),
+                    "expires_at_ms": int(row[7] * 1000),
+                }
+        except (FileNotFoundError, sqlite3.OperationalError) as error:
+            raise KeyError("live progress is unavailable") from error
 
     def find(self, turn_id: str, *, owner: str, capture: str) -> str:
         """Find only this authenticated owner's latest unexpired saved AI stage."""
-        with self._connection() as connection:
-            self._purge(connection)
-            rows = connection.execute(
-                "SELECT id, binding FROM progress WHERE owner=? AND capture=? "
-                "ORDER BY expires DESC",
-                (owner, capture),
-            )
-            for identity, binding in rows:
-                if json.loads(binding)["turn_id"] == turn_id:
-                    return str(identity)
+        try:
+            with self._read_connection() as connection:
+                rows = connection.execute(
+                    "SELECT id, binding FROM progress WHERE owner=? AND capture=? "
+                    "AND expires>? ORDER BY expires DESC",
+                    (owner, capture, self.clock()),
+                )
+                for identity, binding in rows:
+                    if json.loads(binding)["turn_id"] == turn_id:
+                        return str(identity)
+        except (FileNotFoundError, sqlite3.OperationalError) as error:
+            raise KeyError("live progress is unavailable") from error
         raise KeyError("live progress is unavailable")
 
-    def _record(
+    def _write_record(
         self, connection: sqlite3.Connection, identity: str, owner: str, capture: str
     ) -> tuple[Any, ...]:
         self._purge(connection)
         row = connection.execute("SELECT * FROM progress WHERE id=?", (identity,)).fetchone()
         if row is None or row[1:3] != (owner, capture):
             raise PermissionError("progress owner or capture does not match")
+        return tuple(row)
+
+    def _read_record(
+        self, connection: sqlite3.Connection, identity: str, owner: str, capture: str
+    ) -> tuple[Any, ...]:
+        row = connection.execute("SELECT * FROM progress WHERE id=?", (identity,)).fetchone()
+        if row is None or row[1:3] != (owner, capture):
+            raise PermissionError("progress owner or capture does not match")
+        if row[7] <= self.clock():
+            raise PermissionError("progress page has expired")
         return tuple(row)
 
     def _purge(self, connection: sqlite3.Connection) -> None:
@@ -196,7 +212,7 @@ class TurnProgressJournal:
         connection.execute("DELETE FROM progress WHERE expires<=?", (self.clock(),))
 
     @contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
+    def _write_connection(self) -> Iterator[sqlite3.Connection]:
         # The Turn owner has already validated/created its durable root.
         if self.path.is_symlink() or not self.path.parent.is_dir():
             raise PermissionError("progress owner path is unavailable")
@@ -214,5 +230,18 @@ class TurnProgressJournal:
         try:
             with connection:
                 yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def _read_connection(self) -> Iterator[sqlite3.Connection]:
+        """Open the journal without creating, cleaning, or committing anything."""
+        if self.path.is_symlink() or not self.path.is_file():
+            raise FileNotFoundError(self.path)
+        connection = sqlite3.connect(
+            f"{self.path.resolve().as_uri()}?mode=ro", timeout=1, uri=True
+        )
+        try:
+            yield connection
         finally:
             connection.close()

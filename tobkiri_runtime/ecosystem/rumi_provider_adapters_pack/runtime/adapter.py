@@ -349,7 +349,7 @@ def _local_openai_compatible(
             first.get("finish_reason") if isinstance(first, Mapping) else None
         ),
     }
-    return result
+    return _stream_result(result) if streaming else result
 
 
 def _local_post(
@@ -591,6 +591,34 @@ def _provider_model_id(request: Mapping[str, Any]) -> str:
     return model_id
 
 
+def _stream_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Project one completed local response into the compatibility event shape.
+
+    Local OpenAI-compatible endpoints are intentionally finite HTTP requests.
+    This helper does not publish progress: hosted providers publish only actual
+    received stream frames through ``stream_request``.
+    """
+    events: list[dict[str, Any]] = []
+    output = str(result.get("output") or "")
+    if output:
+        events.append({"type": "text_delta", "delta": output})
+    for intent in result.get("tool_intents") or []:
+        if isinstance(intent, Mapping):
+            events.append(
+                {
+                    "type": "tool_intent_delta",
+                    "tool_intent": dict(intent),
+                }
+            )
+    events.extend(
+        [
+            {"type": "usage", "usage": dict(result.get("usage") or {})},
+            {"type": "finish", "finish_reason": result.get("finish_reason")},
+        ]
+    )
+    return {"events": events}
+
+
 def _endpoint(connection: Mapping[str, Any], suffix: str) -> str:
     endpoint = str(connection.get("endpoint") or "").rstrip("/")
     if not endpoint.startswith(("http://", "https://")):
@@ -656,6 +684,20 @@ class ProviderAdapterHostFactoryV4:
 
     def __init__(self, function_id: str) -> None:
         self.function_id = function_id
+        operation_factory = _PROVIDER_OPERATIONS[function_id][1]
+        self.local_model_request = (
+            LocalModelRequest(
+                "tobkiri.service.ai.provider.generate.v1",
+                REGISTRY_GENERATE_OPERATION,
+            )
+            if operation_factory is create_generate_operation
+            else LocalModelRequest(
+                "tobkiri.service.ai.provider.stream.v1",
+                REGISTRY_STREAM_OPERATION,
+            )
+            if operation_factory is create_stream_operation
+            else None
+        )
 
     def capture(
         self,
