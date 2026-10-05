@@ -400,37 +400,16 @@ class RequestBroker:
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("request broker is closed")
-        if parent_cancellation is not None:
-            if type(parent_cancellation) is not threading.Event:
-                raise ValueError("parent cancellation signal is invalid")
-            if parent_cancellation.is_set():
-                raise RequestCancellationRequestedError("parent cancellation was requested")
-        elif parent_cancellation_proof is not None:
-            raise ValueError("parent cancellation proof requires a cancellation signal")
-        if parent_cancellation_proof is not None:
-            from .operation_cancellation import _NestedCancellationProof
-
-            if type(parent_cancellation_proof) is not _NestedCancellationProof:
-                raise ValueError("parent cancellation proof is invalid")
-            try:
-                parent_cancellation_proof.validate_parent(
-                    cast(threading.Event, parent_cancellation)
-                )
-            except PermissionError as exc:
-                raise ValueError("parent cancellation proof is invalid") from exc
-        if parent_deadline_monotonic is not None:
-            if (
-                type(parent_deadline_monotonic) not in (int, float)
-                or not math.isfinite(parent_deadline_monotonic)
-            ):
-                raise ValueError("parent request deadline is invalid")
-            if parent_deadline_monotonic <= time.monotonic():
-                raise RequestTimedOutError("parent request deadline expired")
+        _validate_parent_cancellation(parent_cancellation, parent_cancellation_proof)
+        if execution_guard is not None:
+            execution_guard()
+        _validate_parent_deadline(parent_deadline_monotonic, time.monotonic)
         prepared = self._prepare_invocation(
             frame,
             context,
@@ -451,6 +430,7 @@ class RequestBroker:
             before_dispatch=before_dispatch,
             cancellation_requested=parent_cancellation,
             nested_cancellation_proof=parent_cancellation_proof,
+            execution_guard=execution_guard,
         )
 
     def invoke_prepared(
@@ -464,6 +444,10 @@ class RequestBroker:
         monotonic_clock: Callable[[], float] = time.monotonic,
         before_dispatch: Callable[[], None] | None = None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
+        cancellation_requested: threading.Event | None = None,
+        nested_cancellation_proof: NestedCancellationProof | None = None,
+        execution_guard: Callable[[], None] | None = None,
+        parent_deadline_monotonic: float | None = None,
     ) -> Mapping[str, Any]:
         """Execute one durable Host snapshot without re-running adapters.
 
@@ -473,11 +457,15 @@ class RequestBroker:
         an immediate invocation.  When ``pending_effect_link`` is supplied,
         each lease lifecycle commit also carries the pending-effect CAS the
         link produces, so the lease and the durable effect settle atomically.
+        Cancellation bindings and the repeatable execution guard are private
+        Host inputs, preserved through the ordinary backend-entry gate.
         """
 
         with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("request broker is closed")
+        _validate_parent_cancellation(cancellation_requested, nested_cancellation_proof)
+        _validate_parent_deadline(parent_deadline_monotonic, monotonic_clock)
         if not isinstance(snapshot, PreparedInvocationSnapshot):
             raise TypeError("prepared invocation snapshot is required")
         if pending_effect_link is not None and not isinstance(
@@ -491,6 +479,8 @@ class RequestBroker:
             wall_clock=wall_clock,
             monotonic_clock=monotonic_clock,
         )
+        if parent_deadline_monotonic is not None:
+            deadline = min(deadline, parent_deadline_monotonic)
         return self._execute_prepared(
             PreparedInvocation(
                 binding=prepared.binding,
@@ -508,6 +498,9 @@ class RequestBroker:
             monotonic_clock=monotonic_clock,
             before_dispatch=before_dispatch,
             pending_effect_link=pending_effect_link,
+            cancellation_requested=cancellation_requested,
+            nested_cancellation_proof=nested_cancellation_proof,
+            execution_guard=execution_guard,
         )
 
     def _execute_prepared(
@@ -521,6 +514,7 @@ class RequestBroker:
         cancellation_requested: threading.Event | None = None,
         nested_cancellation_proof: NestedCancellationProof | None = None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -528,6 +522,8 @@ class RequestBroker:
         payload = _thaw_payload(prepared.normalized_payload)
         request_digest = prepared.request_digest
         deadline = prepared.deadline_monotonic
+        if execution_guard is not None:
+            execution_guard()
         try:
             self._authority.check_static_path(
                 StaticAuthorityQuery(
@@ -565,6 +561,8 @@ class RequestBroker:
                 f"{binding.operation.operation_id}"
             ),
         )
+        if execution_guard is not None:
+            execution_guard()
         ticket = self._admission.acquire(
             scope,
             estimate,
@@ -709,6 +707,7 @@ class RequestBroker:
                 nested_cancellation_proof,
                 acceptance_request_id,
                 pending_effect_link,
+                execution_guard,
             )
         except Exception:
             if lease_issued:
@@ -903,12 +902,15 @@ class RequestBroker:
         nested_cancellation_proof: NestedCancellationProof | None,
         acceptance_request_id: str | None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
         proof = nested_cancellation_proof
         child_id: int | None = None
         provider_entry_claimed = threading.Event()
         try:
+            if execution_guard is not None:
+                execution_guard()
             recheck_kwargs: dict[str, Any] = {}
             if pending_effect_link is not None:
                 # Fused commit: the pending-effect CAS and the lease's
@@ -1004,7 +1006,19 @@ class RequestBroker:
                         raise TimeoutError(
                             "request deadline expired before provider entry"
                         )
+                    if execution_guard is not None:
+                        execution_guard()
                     provider_entry_claimed.set()
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if monotonic_clock() >= deadline:
+                        raise TimeoutError(
+                            "request deadline expired before provider entry"
+                        )
+                    if execution_guard is not None:
+                        execution_guard()
                     if envelope.cancellation_requested.is_set():
                         raise RequestCancellationRequestedError(
                             "request cancellation was requested"
@@ -1438,6 +1452,45 @@ def _context_fingerprint(context: RequestContext) -> Mapping[str, Any]:
         },
         "context fingerprint",
     )
+
+
+def _validate_parent_deadline(
+    deadline: float | None, monotonic_clock: Callable[[], float]
+) -> None:
+    """Reject malformed or expired absolute Host parent deadlines."""
+
+    if deadline is None:
+        return
+    if type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise ValueError("parent request deadline is invalid")
+    if deadline <= monotonic_clock():
+        raise RequestTimedOutError("parent request deadline expired")
+
+
+def _validate_parent_cancellation(
+    cancellation_requested: threading.Event | None,
+    nested_cancellation_proof: NestedCancellationProof | None,
+) -> None:
+    """Validate Host cancellation bindings before request preparation."""
+
+    if cancellation_requested is not None:
+        if type(cancellation_requested) is not threading.Event:
+            raise ValueError("parent cancellation signal is invalid")
+        if cancellation_requested.is_set():
+            raise RequestCancellationRequestedError("parent cancellation was requested")
+    elif nested_cancellation_proof is not None:
+        raise ValueError("parent cancellation proof requires a cancellation signal")
+    if nested_cancellation_proof is not None:
+        from .operation_cancellation import _NestedCancellationProof
+
+        if type(nested_cancellation_proof) is not _NestedCancellationProof:
+            raise ValueError("parent cancellation proof is invalid")
+        try:
+            nested_cancellation_proof.validate_parent(
+                cast(threading.Event, cancellation_requested)
+            )
+        except PermissionError as exc:
+            raise ValueError("parent cancellation proof is invalid") from exc
 
 
 def _fresh_prepared_deadline(

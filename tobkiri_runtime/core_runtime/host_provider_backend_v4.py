@@ -27,6 +27,8 @@ from tobkiri_host.ports import (
 )
 from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
+from core_runtime.captured_wake_v4 import CapturedWakePortV4
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 
 
 class HostProviderInvocationContextV4(Protocol):
@@ -43,6 +45,10 @@ class HostProviderInvocationContextV4(Protocol):
     @property
     def presentation_owner_session_id(self) -> str:
         """Return the Host-preserved session which originated this call chain."""
+
+    @property
+    def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
+        """Return Host-private authenticated ancestry, never client payload claims."""
 
     @property
     def cancellation(self) -> OwnedCancellationBinding:
@@ -126,6 +132,9 @@ class HostProviderCaptureContextV4:
     interactive_effect_port: InteractiveEffectPort | None = None
     workspace_mutation_port: WorkspaceMutationPort | None = None
     declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
+    # Supplied only to a verified factory declaring one fixed wake target.
+    # It cannot reuse an invocation, choose a caller/target or mint a Grant.
+    wake_port: CapturedWakePortV4 | None = None
 
 
 @dataclass(frozen=True)
@@ -238,15 +247,19 @@ class ExactHostProviderBackendV4:
             or request.target_domain.value != contribution.domain_id
         ):
             raise AuthorizationError("Host Provider envelope binding is invalid")
-        return ProviderOutcome(
+        invocation = self._invocation_context(request)
+        invocation.assert_current()
+        outcome = ProviderOutcome(
             dict(
                 contribution.invoke(
                     request.operation_id,
                     request.payload,
-                    self._invocation_context(request),
+                    invocation,
                 )
             )
         )
+        invocation.assert_current()
+        return outcome
 
     def cancel(self, request_id: str) -> None:
         """Accept cancellation; individual providers observe durable fences."""

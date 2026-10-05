@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import contextvars
 import re
 import secrets
 import time
 from typing import Any, Callable, Mapping
+
+from core_runtime.workflow_v4.attempt_binding import authority_query
 
 from .models import (
     ApprovalState,
@@ -325,12 +328,28 @@ class WorkflowEngineV4:
             run = self.store.transition_run(
                 run_id, expected={RunState.QUEUED}, target=RunState.RUNNING
             )
-        if RunState(run["state"]) is not RunState.RUNNING:
+        if RunState(run["state"]) not in {
+            RunState.RUNNING,
+            RunState.WAITING_APPROVAL,
+        }:
             raise WorkflowConflict("workflow run cannot advance")
         definition = self.store.get_revision(run["revision_digest"])
         compiled = require_mapping(definition.get("compiled"), "compiled definition")
         self._validate_run_snapshot(run, compiled)
         attempts = self.store.list_attempts(run_id)
+        if RunState(run["state"]) is RunState.WAITING_APPROVAL:
+            waiting = next(
+                (
+                    item
+                    for item in attempts
+                    if item["state"] == StepAttemptState.WAITING_APPROVAL.value
+                ),
+                None,
+            )
+            if waiting is None:
+                raise WorkflowConflict("workflow approval checkpoint is unavailable")
+            result = self.execute_step(run_id, waiting["step_id"])
+            return {"run": self.store.get_run(run_id), "attempts": [result]}
         succeeded = {
             item["step_id"]
             for item in attempts
@@ -357,7 +376,11 @@ class WorkflowEngineV4:
         with ThreadPoolExecutor(
             max_workers=concurrency, thread_name_prefix="workflow-v4"
         ) as executor:
-            results = list(executor.map(lambda item: self.execute_step(run_id, item), ready))
+            futures = [
+                executor.submit(contextvars.copy_context().run, self.execute_step, run_id, item)
+                for item in ready
+            ]
+            results = [future.result() for future in futures]
         return {"run": self.store.get_run(run_id), "attempts": results}
 
     def pause_run(self, run_id: str) -> dict[str, Any]:
@@ -664,27 +687,7 @@ class WorkflowEngineV4:
     def _authority_request(
         self, run: Mapping[str, Any], attempt: Mapping[str, Any]
     ) -> dict[str, Any]:
-        request = attempt["request"]
-        return {
-            "authority_api_version": "io.tobkiri.workflow-authority.v4",
-            "workflow_id": run["definition_id"],
-            "workflow_revision_digest": run["revision_digest"],
-            "run_id": run["run_id"],
-            "step_id": attempt["step_id"],
-            "attempt_number": attempt["attempt_number"],
-            "request_id": request["request_id"],
-            "request_digest": attempt["request_digest"],
-            "effect_digest": digest(request["effect_ceiling"]),
-            "call_chain": request["call_chain"],
-            "idempotency_key": request["idempotency_key"],
-            "function_principal_id": request["function_principal_id"],
-            "contract_id": request["contract_id"],
-            "contract_revision_digest": request["contract_revision_digest"],
-            "operation_id": request["operation_id"],
-            "activation_id": run["activation_id"],
-            "activation_digest": run["activation_digest"],
-            "security_epoch": run["security_epoch"],
-        }
+        return authority_query(run, attempt)
 
     def _materialize_request(
         self, run: Mapping[str, Any], step: Mapping[str, Any], attempt_number: int

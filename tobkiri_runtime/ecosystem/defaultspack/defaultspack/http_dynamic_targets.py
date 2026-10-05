@@ -7,12 +7,17 @@ can be used. This module only interprets Defaultspack's UI catalog shape.
 
 from __future__ import annotations
 
+import json
 from typing import Mapping
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 
 from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding,
     HTTPContractTarget,
 )
+from .v4_view_contract import validate_public_input
 
 
 def defaultspack_dynamic_capability_targets(
@@ -49,6 +54,18 @@ def defaultspack_dynamic_capability_targets(
             function_id = str(operation.get("function_id") or provider_id).strip()
             if not contract_id or not operation_id or not provider_id:
                 continue
+            input_schema = _captured_input_schema(operation.get("input_schema"))
+            payload_keys = (
+                frozenset(json.loads(input_schema)["properties"]) - {"profile_id"}
+                if input_schema
+                else _payload_keys(contract_id, operation_id)
+            )
+            if not input_schema and contract_id not in {
+                "tobkiri.service.media.inspect.v1",
+                "tobkiri.acceptance.packvm.sandbox.v1",
+                "tobkiri.workflow.v4",
+            }:
+                continue
             targets.append(
                 HTTPContractTarget(
                     contribution_id=f"pack.{pack_id}.{operation_id}",
@@ -56,11 +73,15 @@ def defaultspack_dynamic_capability_targets(
                     operation_id=operation_id,
                     provider_id=provider_id,
                     function_id=function_id,
-                    allowed_payload_keys=_payload_keys(contract_id, operation_id),
+                    allowed_payload_keys=payload_keys,
                     owner_pack_id=pack_id,
                     artifact_digest=artifact_digest,
+                    input_schema=input_schema,
                 )
             )
+    # A public ID cannot choose one of several contracts/providers by order.
+    identities = [target.contribution_id for target in targets]
+    targets = [target for target in targets if identities.count(target.contribution_id) == 1]
     return tuple(
         sorted(
             targets,
@@ -73,13 +94,55 @@ def defaultspack_dynamic_capability_targets(
     )
 
 
+def _captured_input_schema(value: object) -> bytes:
+    """Admit only finite object inputs from the Host operation catalog."""
+    if (
+        not isinstance(value, Mapping)
+        or value.get("type") != "object"
+        or value.get("additionalProperties") is not False
+        or not isinstance(value.get("properties"), Mapping)
+        or len(value["properties"]) > 64
+    ):
+        return b""
+    try:
+        validate_public_input({key: None for key in value["properties"] if key != "profile_id"})
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+            "utf-8"
+        )
+        if len(encoded) > 65536 or _has_external_reference(value):
+            return b""
+        Draft202012Validator.check_schema(value)
+        return encoded
+    except (SchemaError, TypeError, ValueError, RecursionError):
+        return b""
+
+
+def _has_external_reference(value: object) -> bool:
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > 4096 or depth > 64:
+            return True
+        if isinstance(current, Mapping):
+            for key in ("$ref", "$dynamicRef", "$recursiveRef"):
+                if key in current and (
+                    not isinstance(current[key], str)
+                    or not current[key].startswith("#/")
+                ):
+                    return True
+            pending.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, list):
+            pending.extend((item, depth + 1) for item in current)
+    return False
+
+
 def _payload_keys(contract_id: str, operation_id: str) -> frozenset[str]:
     """Return the finite payload schema admitted by the generic UI bridge."""
 
     if contract_id == "tobkiri.service.media.inspect.v1":
-        return frozenset(
-            {"name", "path", "encoding", "max_bytes", "start_line", "end_line"}
-        )
+        return frozenset({"name", "path", "encoding", "max_bytes", "start_line", "end_line"})
     if contract_id == "tobkiri.acceptance.packvm.sandbox.v1":
         prefix = "tobkiri_packvm_sandbox_qa_pack."
         scenarios = {
@@ -101,9 +164,7 @@ def _payload_keys(contract_id: str, operation_id: str) -> frozenset[str]:
             "definition.list": frozenset(),
             "definition.get": frozenset({"definition_id"}),
             "definition.create": frozenset({"definition_id", "document"}),
-            "definition.update": frozenset(
-                {"definition_id", "document", "if_match"}
-            ),
+            "definition.update": frozenset({"definition_id", "document", "if_match"}),
             "definition.delete": frozenset({"definition_id", "if_match"}),
             "definition.validate": frozenset({"document"}),
             "definition.publish": frozenset({"definition_id", "if_match"}),

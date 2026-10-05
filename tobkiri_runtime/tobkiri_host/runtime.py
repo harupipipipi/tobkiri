@@ -119,6 +119,7 @@ class ProductionRuntimeV4:
         owned_authority_store: AuthorityStore | None = None,
         close_callbacks: tuple[Callable[[], None], ...] = (),
         stop_callbacks: tuple[Callable[[], None], ...] = (),
+        before_close_callbacks: tuple[Callable[[], None], ...] = (),
     ) -> "V4DispatchSession":
         """Bind request ports to identities from this captured composition."""
         return V4DispatchSession(
@@ -138,6 +139,7 @@ class ProductionRuntimeV4:
             owned_authority_store=owned_authority_store,
             close_callbacks=close_callbacks,
             stop_callbacks=stop_callbacks,
+            before_close_callbacks=before_close_callbacks,
         )
 
 
@@ -161,8 +163,11 @@ class V4DispatchSession:
     owned_authority_store: AuthorityStore | None = None
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()
+    before_close_callbacks: tuple[Callable[[], None], ...] = ()
     _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
     _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
+    _completed_pre_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
+    _closing: Any = field(default_factory=threading.Event, init=False, repr=False, compare=False)
 
     def cancel_pending_reads(self) -> None:
         """Fence server-owned reads at a reusable stop/restart boundary."""
@@ -175,10 +180,23 @@ class V4DispatchSession:
         """Fence dispatch and retry failed cleanup without skipping other owners."""
 
         with self._close_lock:
-            self.broker.close()
+            self._closing.set()
+            failed = False
+            for index, callback in enumerate(self.before_close_callbacks):
+                if index in self._completed_pre_closes:
+                    continue
+                try:
+                    callback()
+                except Exception:
+                    failed = True
+                else:
+                    self._completed_pre_closes.add(index)
+            try:
+                self.broker.close()
+            except Exception:
+                failed = True
             if isinstance(self.broker, RequestBroker) and self.broker.has_undrained_requests():
                 raise RuntimeError("captured Provider is still draining")
-            failed = False
             for index, callback in enumerate(self.close_callbacks):
                 if index in self._completed_closes:
                     continue
@@ -216,9 +234,14 @@ class V4DispatchSession:
     def assert_current(self) -> None:
         """Fail closed when the persisted activation no longer matches."""
 
+        self._assert_open()
         if self.current_capture_check is None:
             raise RuntimeError("v4 dispatch session has no current-capture verifier")
         self.current_capture_check()
+
+    def _assert_open(self) -> None:
+        if self._closing.is_set():
+            raise RuntimeError("captured dispatch session is closing")
 
     def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
         """Return metadata pinned when this session was constructed."""
@@ -227,6 +250,7 @@ class V4DispatchSession:
     def assert_operation_ready(self, contract_id: str, operation_id: str) -> None:
         """Require an exact selected binding and production-ready backend."""
 
+        self._assert_open()
         binding = self.broker._catalog.resolve_pinned(contract_id, operation_id)
         backend = self.broker._backends.select(binding)
         providers = tuple(
@@ -263,6 +287,7 @@ class V4DispatchSession:
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -272,6 +297,7 @@ class V4DispatchSession:
         The optional parent deadline is a Host-only absolute ceiling, never
         derived from application payload fields or renewed for nested work.
         """
+        self._assert_open()
         arguments = dict(payload)
         session_id = str(arguments.pop("_session_id", "")).strip()
         parameter_count = len(inspect.signature(self.context_for).parameters)
@@ -305,6 +331,7 @@ class V4DispatchSession:
             and parent_cancellation is None
             and parent_cancellation_proof is None
             and before_dispatch is None
+            and execution_guard is None
         ):
             return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
@@ -315,6 +342,7 @@ class V4DispatchSession:
             parent_cancellation=parent_cancellation,
             parent_cancellation_proof=parent_cancellation_proof,
             before_dispatch=before_dispatch,
+            execution_guard=execution_guard,
         )
 
     def run_packvm_acceptance(
@@ -326,6 +354,7 @@ class V4DispatchSession:
     ) -> AcceptanceReceipt:
         """Run one finite CI/E2E scenario and consume its Broker-owned receipt."""
 
+        self._assert_open()
         operation_scenario = {
             "original_deadline": "deadline_hold",
             "cancel": "cancel_hold",

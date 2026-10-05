@@ -5178,6 +5178,14 @@ export function ChatApp() {
               setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
             }
           }
+          if (turn.status !== "running" && turn.status !== "waiting") {
+            const snapshot = await api.getSavedTurnEvents(pendingRequest.operationId, activeConversationId).catch(() => null);
+            if (disposed) return;
+            if (snapshot && liveTaskContextRef.current.profileId === runtimeProfileId
+              && liveTaskContextRef.current.conversationId === activeConversationId) {
+              setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
+            }
+          }
           const terminalNotice = savedTurnTerminalNotice(
             turn,
             activeConversationId,

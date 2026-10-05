@@ -18,6 +18,7 @@ from tobkiri_protocol.saved_conversation import (
 )
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 from .saved_turn_plan import SavedTurnPlan, STRATEGY, TOOL
+from tobkiri_protocol.turn_progress_v1 import AI_STREAM
 
 from .continuation_chain import ChainIdentity, ContinuationChains
 from .continuation_session import ContinuationSession
@@ -88,16 +89,13 @@ class SavedGuestTurns:
             deadline = now + MAX_SAVED_TURN_LIFETIME_SECONDS
             identity = ChainIdentity(key[0], key[1], binding_digest, deadline)
             plan = SavedTurnPlan(request["payload"]["request"])
-            tool_plan = (
-                plan
-                if plan.enabled or plan.strategy_reference is not None
-                else None
-            )
+            tool_plan = plan
             session = ContinuationSession(
                 identity,
                 tuple(dict.fromkeys((*TARGETS, STRATEGY, TOOL)))
-                if tool_plan
-                else TARGETS,
+                if plan.strategy_reference is not None else
+                tuple(dict.fromkeys((*TARGETS, TOOL))) if plan.enabled else
+                tuple(dict.fromkeys((*TARGETS, AI_STREAM))),
                 chains=self._chains,
                 target_selector=(lambda: plan.target) if tool_plan else None,
                 max_intent_bytes=MAX_SAVED_INPUT_BYTES,

@@ -1,27 +1,172 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_company_state_store_pack",
-  "source_identity": "sha256:04cf26ce2e1e9bd249d4e6ce9dab2cd12ad4dda11b8b78abc0b9eef7ab4ee116",
+  "source_identity": "sha256:0ad95dc7226098f9b4d2438e415814284dc5c79a03e21a05d479834551a2e1e7",
   "variants": [
     {
       "variant_id": "rumi_company_state_store_pack.company-state.action.python",
       "function_id": "rumi_company_state_store_pack.company-state.action",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-      "execution_kind": "pack_vm",
+      "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
+      "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
       "runtime_abi": "python3.13",
-      "backend": "tobkiri.python-pack-v4",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
-      "execution_domain_profile": "sandbox.default.v1",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.action.company.state.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:d0c3f520322553871e3a352cfe6a8eaa0036514526ade9cea2f3f355b1e70cd7",
+          "revision_digest": "sha256:da56983a36f194ea0e57202956512780f492d26ca23291c1b82f270cb30167fb",
           "operation_id": "rumi_company_state_store_pack.company-state-action",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "company_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "conversation_group_id": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "description": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "details": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "expected_entity_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "fencing_token": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "idempotency_key": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "lease_duration_ms": {
+                "maximum": 3600000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "legacy_state": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "member": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "member_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "metadata": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "name": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "company.create",
+                  "company.update",
+                  "company.delete",
+                  "agent.upsert",
+                  "agent.delete",
+                  "role.upsert",
+                  "role.delete",
+                  "member.upsert",
+                  "member.delete",
+                  "channel.upsert",
+                  "channel.delete",
+                  "route.upsert",
+                  "route.delete",
+                  "task.upsert",
+                  "task.delete",
+                  "task.transition",
+                  "task.claim",
+                  "lease.renew",
+                  "inbound.append",
+                  "message.append",
+                  "migration.operations.import"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "record": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "record_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "replace_settings": {
+                "type": "boolean"
+              },
+              "role": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "settings": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "status": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "task_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "updates": {
+                "maxProperties": 64,
+                "type": "object"
+              }
+            },
+            "required": [
+              "operation",
+              "company_id",
+              "expected_revision"
+            ],
             "type": "object"
           },
           "output_schema": {
@@ -30,7 +175,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "read",
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -41,21 +186,65 @@
       "variant_id": "rumi_company_state_store_pack.company-state.resource.python",
       "function_id": "rumi_company_state_store_pack.company-state.resource",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-      "execution_kind": "pack_vm",
+      "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
+      "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
       "runtime_abi": "python3.13",
-      "backend": "tobkiri.python-pack-v4",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
-      "execution_domain_profile": "sandbox.default.v1",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.resource.company.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e479e9a2bc9e07eee9dbc84480b00f3ff66eca7b5b7deb2a529ee53c355b1467",
+          "revision_digest": "sha256:ea0c3f641fb0198f7aa632088231cbda3330d64c01d5ffdfb74494e3c98a6f9b",
           "operation_id": "rumi_company_state_store_pack.company-state-resource",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "after_sequence": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "company_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "cursor": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "kind": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "limit": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "timeline"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation"
+            ],
             "type": "object"
           },
           "output_schema": {
@@ -72,6 +261,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:d5337dfbbd20ee981b3e56202bcc2b77dd91e56f6a9b757bc7d55aa6f65ebdd0",
-  "catalog_digest": "sha256:702ec4e14d45612557664f77b31b461dd10e1807ea03993f77fc3300dd73abcc"
+  "materialization_catalog_digest": "sha256:970636cd6a8084278544a7bf03f58b54494d9d33caaa01107377019659a68360",
+  "catalog_digest": "sha256:6344658463296a4c6b64713d18ea317e5a3cd17f6a72681df5594a5aecf13bb0"
 }

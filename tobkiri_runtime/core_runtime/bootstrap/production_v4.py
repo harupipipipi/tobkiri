@@ -101,6 +101,11 @@ from core_runtime.local_model_authority import (
     create_local_model_transport,
 )
 from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
+from core_runtime.captured_wake_v4 import (
+    CapturedWakeDeclarationV4, CapturedWakeDriverV4, LateBoundWakePortV4,
+    close_captured_wake_drivers_v4,
+)
+from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
 
 from ..authority.pack_approval_binding import pack_approval_snapshot_digest
 from ..authority.v4 import (
@@ -133,6 +138,10 @@ from ..host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
+from ..invocation_scope_v4 import (
+    CapturedInvocationScopeV4, ParentInvocationScopesV4,
+    assert_dispatched_invocation, execution_session_id,
+)
 from ..host_provider_hooks_v4 import load_host_provider_factory
 from ..interactive_effect_coordinator import (
     INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
@@ -2267,6 +2276,7 @@ def capture_production_dispatch(
             bridge_session_id,
             outer_edge.target.principal_id,
             presentation_owner_for(outer_request),
+            parent_invocation=capture_invocation_scope(outer_request),
         )
         try:
             provider_result = dispatch.invoke(
@@ -2450,15 +2460,33 @@ def capture_production_dispatch(
                 if target[0]
                 in {
                     "tobkiri.service.ai.generate.v1",
+                    "tobkiri.service.ai.stream.v1",
                     "tobkiri.service.ai.strategy.dispatch.v1",
                 }
                 else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
             ),
         )
 
+    def saved_stream_available(
+        outer_request: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> bool:
+        from tobkiri_protocol.turn_progress_v1 import (
+            AI_STREAM, ACTION, ACTION_OPERATION, RESOURCE, RESOURCE_OPERATION,
+        )
+        try:
+            require_saved_targets(outer_request, (
+                AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
+            ))
+            outcome = saved_dispatch(outer_request, (ACTION, ACTION_OPERATION), {"phase": "ready"})
+            value = outcome.get("value")
+            return outcome.get("status") == "ok" and isinstance(value, Mapping) and value.get("ready") is True
+        except (AuthorityDenied, PermissionError, RuntimeError, ValueError):
+            return False
+
     saved_callbacks = SavedBridgeCallbacks(
         saved_dispatch,
         require_saved_targets,
+        saved_stream_available,
     )
 
     def saved_capability_bridge(
@@ -2563,6 +2591,7 @@ def capture_production_dispatch(
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
     presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
+    parent_invocation_scopes = ParentInvocationScopesV4()
     caller_session_bindings_lock = threading.RLock()
 
     def authority_session_id(session_id: str, caller_principal_id: str) -> str:
@@ -2611,10 +2640,25 @@ def capture_production_dispatch(
         finally:
             release_presentation_owner(context.caller_session_id)
 
+    def capture_invocation_scope(envelope: Any) -> CapturedInvocationScopeV4:
+        with caller_session_bindings_lock:
+            parent = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
+
+        def guard() -> None:
+            assert_dispatched_invocation(envelope, authority_store)
+            if parent is not None:
+                parent.assert_current()
+            if not dispatch_holder:
+                raise AuthorityDenied("captured dispatch is unavailable")
+            dispatch_holder[0].assert_current()
+
+        return CapturedInvocationScopeV4(envelope, guard, parent)
+
     def bind_nested_session(
         session_id: str,
         caller_principal_id: str,
         presentation_owner: tuple[str, str],
+        parent_invocation: CapturedInvocationScopeV4 | None = None,
     ) -> str:
         """Atomically bind one stable nested session and retain concurrent users."""
 
@@ -2623,6 +2667,8 @@ def capture_production_dispatch(
             existing_caller = caller_session_bindings.get(session_id)
             if existing_caller not in {None, caller_principal_id}:
                 raise AuthorityDenied("nested Host Provider caller binding changed")
+            if parent_invocation is not None:
+                parent_invocation_scopes.retain(resolved_session_id, parent_invocation)
             retain_presentation_owner(resolved_session_id, presentation_owner)
             caller_session_bindings[session_id] = caller_principal_id
             nested_session_refcounts[session_id] = (
@@ -2635,6 +2681,7 @@ def capture_production_dispatch(
 
         with caller_session_bindings_lock:
             release_presentation_owner(resolved_session_id)
+            parent_invocation_scopes.release(resolved_session_id)
             remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
@@ -2659,6 +2706,7 @@ def capture_production_dispatch(
             self.activation_id = str(active.activation["activation_id"])
 
         def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+            capture_invocation_scope(self._envelope).assert_current()
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
             return dispatch_holder[0].provider_metadata(contract_id)
@@ -2673,26 +2721,32 @@ def capture_production_dispatch(
         ) -> Mapping[str, Any]:
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
-            nested_session_id = _nested_host_provider_session_id(self._envelope)
+            scope = capture_invocation_scope(self._envelope)
+            scope.assert_current()
+            nested_session_id = execution_session_id(self._envelope)
             nested_authority_session_id = bind_nested_session(
                 nested_session_id,
                 self._envelope.target_principal.value,
                 self._presentation_owner,
+                parent_invocation=scope,
             )
             try:
-                return dispatch_holder[0].invoke(
+                result = dispatch_holder[0].invoke(
                     contract_id,
                     operation_id,
                     {**dict(payload), "_session_id": nested_session_id},
                     version_range=version_range,
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
+                    execution_guard=scope.assert_current,
                     parent_cancellation_proof=nested_cancellation_proof_for(
                         self._envelope,
                         self._presentation_owner[0],
                         self._presentation_owner[1],
                     ),
                 )
+                scope.assert_current()
+                return result
             except Exception as error:
                 log_nested_dispatch_failure(contract_id, operation_id, error)
                 raise
@@ -2708,6 +2762,7 @@ def capture_production_dispatch(
                 self._presentation_owner_principal_id,
                 self._presentation_owner_session_id,
             ) = presentation_owner_for(envelope)
+            self._scope = capture_invocation_scope(envelope)
             self._client: GlobalContractClient | None = None
             self._client_binding: tuple[frozenset[str], str, bool] | None = None
 
@@ -2722,6 +2777,10 @@ def capture_production_dispatch(
         @property
         def presentation_owner_session_id(self) -> str:
             return self._presentation_owner_session_id
+
+        @property
+        def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
+            return self._scope.parent
 
         @property
         def cancellation(self) -> OwnedCancellationBinding:
@@ -2765,6 +2824,7 @@ def capture_production_dispatch(
                     current_security_epoch=lambda: authority_store.security_epoch,
                     credential_key_version=credential_store_binding.key_version,
                     consumer_pack_id=consumer_pack_id,
+                    parent_guard=self.assert_current,
                 )
                 if include_credentials and credential_store_binding is not None
                 else None
@@ -2802,7 +2862,8 @@ def capture_production_dispatch(
             return self._client
 
         def assert_current(self) -> None:
-            """Fence durable coordination with the original Host invocation."""
+            """Fence durable coordination with actual lease and preserved ancestry."""
+            self._scope.assert_current()
             if (
                 self._envelope.cancellation_requested.is_set()
                 or self._envelope.deadline_monotonic <= time.monotonic()
@@ -2826,6 +2887,7 @@ def capture_production_dispatch(
         workspace_mutation_port: HostWorkspaceMutationPort | None,
         interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
         declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
+        wake_port: LateBoundWakePortV4 | None = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2846,6 +2908,7 @@ def capture_production_dispatch(
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,
+            wake_port=wake_port,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -2933,7 +2996,15 @@ def capture_production_dispatch(
     from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
 
     host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
+    captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
+                                   ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
+        declaration = getattr(factory, "wake_declaration", None)
+        if declaration is not None and (
+            type(declaration) is not CapturedWakeDeclarationV4 or len(captured_bindings) != 1
+        ):
+            raise AuthorityDenied("captured wake declaration is invalid")
+        wake_port = LateBoundWakePortV4() if declaration is not None else None
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
@@ -2945,6 +3016,7 @@ def capture_production_dispatch(
                     and factory is interactive_effect_coordinator[2]
                     else None
                 ),
+                wake_port=wake_port,
             )
         )
         expected_keys = {
@@ -2962,6 +3034,8 @@ def capture_production_dispatch(
             captured_provider.contributions
         )
         close_callbacks.append(captured_provider.close)
+        if wake_port is not None and declaration is not None:
+            captured_wake_ports.append((wake_port, declaration, captured_bindings[0]))
     for backend_id, contributions in sorted(host_contributions_by_backend.items()):
         registered_backends += (
             ExactHostProviderBackendV4(
@@ -3274,6 +3348,7 @@ def capture_production_dispatch(
                 "implementation_digest": resolved_binding.function.implementation_digest,
                 "contract_id": binding["contract_id"],
                 "operation_id": binding["operation_id"],
+                "effect_class": resolved_binding.operation.effect_class.value,
                 "artifact_digest": binding["artifact_digest"],
                 **(
                     {
@@ -3429,6 +3504,12 @@ def capture_production_dispatch(
             raise AuthorityDenied("operation effect edge is ambiguous or outside the Profile")
         return candidates[0].ceilings.caller_effect.to_dict()
 
+    wake_drivers: list[CapturedWakeDriverV4] = []
+
+    def close_wake_drivers() -> None:
+        """Fence Host sources before any Broker shutdown or read restart."""
+        close_captured_wake_drivers_v4(wake_drivers)
+
     dispatch = runtime.dispatch_session(
         broker=broker,
         context_for=context_for,
@@ -3448,11 +3529,76 @@ def capture_production_dispatch(
             ),
         ),
         stop_callbacks=(
+            close_wake_drivers,
             cancellation_handles.close,
             *((control_session.cancel_pending_reads,) if control_session is not None else ()),
         ),
+        before_close_callbacks=(close_wake_drivers,),
     )
     dispatch_holder.append(dispatch)
+    for wake_port, declaration, owner_binding in captured_wake_ports:
+        owner_id = owner_binding.principal_ref.value
+        candidates = tuple(edge for edge in captured_edges
+            if edge.caller.principal_id == owner_id
+            and edge.resolved_binding.operation.contract_id == declaration.contract_id
+            and edge.resolved_binding.operation.operation_id == declaration.operation_id)
+        # A declaration creates neither a selected edge nor a Grant. Missing
+        # or ambiguous routes keep only the unbound/unavailable public port.
+        if len(candidates) != 1:
+            continue
+        edge = candidates[0]
+        target_id = edge.target.principal_id
+        identity = {"profile_id": profile_id, "profile_revision": plan["profile_revision"],
+            "activation_id": activation_id, "activation_digest": activation_digest,
+            "plan_digest": plan["plan_digest"], "security_epoch": active.activation["security_epoch"],
+            "owner_artifact": owner_binding.artifact.digest,
+            "owner_implementation": owner_binding.function.implementation_digest,
+            "target_artifact": edge.resolved_binding.artifact.digest,
+            "target_implementation": edge.resolved_binding.function.implementation_digest}
+        state_key = canonical_digest({"profile_id": profile_id,
+            "function_id": owner_binding.function.function_id}).removeprefix("sha256:")
+
+        @contextmanager
+        def wake_context_scope(occurrence: str, *, caller_id: str = owner_id,
+                               fixed_declaration: CapturedWakeDeclarationV4 = declaration,
+                               fixed_target: str = target_id,
+                               session_key: str = state_key) -> Iterator[RequestContext]:
+            """Register a dedicated Host clock session for one fresh request."""
+            session_id = "wake." + canonical_digest({"registration": session_key,
+                "occurrence": occurrence}).removeprefix("sha256:")
+            owner_session = authority_session_id(session_id, caller_id)
+            resolved_session = bind_nested_session(session_id, caller_id,
+                                                   (caller_id, owner_session))
+            try:
+                context = context_for(fixed_declaration.contract_id,
+                                      fixed_declaration.operation_id, session_id)
+                expected_domain = dynamic_domain_ids.get((fixed_declaration.contract_id,
+                    fixed_declaration.operation_id, fixed_target))
+                if (context.caller_principal.value != caller_id
+                        or expected_domain != context.target_domain_id):
+                    raise AuthorityDenied("captured wake session edge changed")
+                yield context
+            finally:
+                release_nested_session(session_id, resolved_session)
+
+        def wake_effect_scope(context: RequestContext, *,
+                              fixed: CapturedWakeDeclarationV4 = declaration) -> Mapping[str, Any]:
+            return effect_scope_for(fixed.contract_id, fixed.operation_id,
+                                    fixed.payload, context)
+
+        try:
+            wake_drivers.append(bind_production_wake_v4(
+                port=wake_port, declaration=declaration, owner_principal_id=owner_id,
+                target_principal_id=target_id,
+                state_path=host_provider_state_root / "wakes" / f"{state_key}.sqlite3",
+                identity=identity, broker=broker, authority=authority_control,
+                authority_store=authority_store, context_scope=wake_context_scope,
+                effect_scope=wake_effect_scope,
+                assert_current=assert_current_capture,
+            ))
+        except Exception:
+            dispatch.close()
+            raise
     if control_session is not None and http_contract_bindings:
         if capability_binding_selector is None:
             dispatch.close()

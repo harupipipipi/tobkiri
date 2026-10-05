@@ -27,17 +27,26 @@ from tobkiri_protocol.saved_context import (
     resolved_saved_prompt,
     saved_prompt_reference,
 )
+from tobkiri_protocol.conversation_context import resolve_request_context
+
+from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT, INBOX_CONTRACT
 
 RECEIPT_CONTRACT = "tobkiri.resource.conversation.v1"
 RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
 LIFECYCLE_CONTRACT = "tobkiri.action.turn.lifecycle.v1"
 LIFECYCLE_OPERATION = "rumi_turn_runtime_pack.turn-lifecycle"
+COMPLETION_CONTRACT = "tobkiri.action.conversation.completion.v1"
+COMPLETION_OPERATION = "rumi_conversation_store_pack.conversation-completion"
+RECONCILE_CONTRACTS = frozenset({RECEIPT_CONTRACT, COMPLETION_CONTRACT})
 SAVED_CONTRACTS = frozenset(
     {
         SAVED_CONVERSATION_CONTRACT,
         RECEIPT_CONTRACT,
         PROMPT_TARGET[0],
         LIFECYCLE_CONTRACT,
+        CONTEXT_CONTRACT,
+        INBOX_CONTRACT,
+        COMPLETION_CONTRACT,
     }
 )
 
@@ -49,7 +58,7 @@ def reconcile_saved_turn(
     client: GlobalContractClient,
     guard: Callable[[], None],
 ) -> dict[str, Any]:
-    """Reconcile existing state using an owner-reader-only captured client.
+    """Reconcile through receipt reads and narrow completion confirmation.
 
     No initial input, claim, AI call or message append is available here.
     An absent turn remains absent even when a client repeats this operation.
@@ -57,10 +66,10 @@ def reconcile_saved_turn(
     if (
         client.consumer_pack_id != "rumi_turn_runtime_pack"
         or client.session.profile_id != store.profile_id
-        or client.allowed_contract_ids != frozenset({RECEIPT_CONTRACT})
+        or client.allowed_contract_ids != RECONCILE_CONTRACTS
         or client.host_credential_transport is not None
     ):
-        raise PermissionError("saved reconciliation requires an owner-reader-only client")
+        raise PermissionError("saved reconciliation requires a receipt/confirmation client")
     guard()
     record = store.get(turn_id)
     if record is None:
@@ -115,6 +124,18 @@ def execute_saved_turn(
             or conversation.get("id") != initial["request"]["conversation_id"]
         ):
             raise ValueError("saved conversation owner response is invalid")
+        def read_parent(parent_id: str) -> Mapping[str, Any] | None:
+            response = client.invoke(
+                RECEIPT_CONTRACT, RECEIPT_OPERATION,
+                {"profile_id": store.profile_id, "operation": "get",
+                 "conversation_id": parent_id},
+            )
+            guard()
+            return response.get("conversation")
+
+        conversation = resolve_request_context(
+            conversation, initial["request"], store.profile_id, read_parent,
+        )
         validate_saved_conversation_context(conversation)
         prompt_id = saved_prompt_reference(conversation)
         if prompt_id is not None:
@@ -230,7 +251,9 @@ def execute_saved_turn(
         return {"status": "reconciliation_required", "turn": current}
     return _drain_guidance(
         store,
-        {"status": "completed", "turn": settled},
+        _confirm_completion(
+            store, {"status": "completed", "turn": settled}, client, guard,
+        ),
         client,
         guard,
         track_execution,
@@ -429,6 +452,13 @@ def _reconcile(
     client: GlobalContractClient,
     guard: Callable[[], None],
 ) -> dict[str, Any] | None:
+    if record["status"] == "completed":
+        result = _confirm_completion(
+            store, {"status": "completed", "turn": record}, client, guard,
+        )
+        if result["status"] == "completed":
+            result["status"] = "existing"
+        return result
     if record["status"] not in {"running", "waiting"}:
         return None
     guard()
@@ -523,7 +553,39 @@ def _reconcile(
         )
     except TurnConflict:
         return {"status": "reconciliation_required", "turn": store.get(record["id"])}
-    return {"status": "completed", "turn": result}
+    return _confirm_completion(
+        store, {"status": "completed", "turn": result}, client, guard,
+    )
+
+
+def _confirm_completion(
+    store: DurableTurnRuntime,
+    result: dict[str, Any],
+    client: GlobalContractClient,
+    guard: Callable[[], None],
+) -> dict[str, Any]:
+    """Confirm only immutable successful settlement; retry without execution."""
+    if result["status"] != "completed" or result["turn"]["status"] != "completed":
+        return result
+    try:
+        guard()
+        confirmed = client.invoke(
+            COMPLETION_CONTRACT, COMPLETION_OPERATION,
+            {"profile_id": store.profile_id, "operation": "confirm",
+             "turn_id": result["turn"]["id"]},
+        )
+        guard()
+        if (
+            not isinstance(confirmed, Mapping)
+            or type(confirmed.get("confirmed")) is not bool
+            or confirmed.get("conversation_id") != result["turn"]["conversation_id"]
+        ):
+            raise ValueError("completion confirmation response is invalid")
+    except Exception:
+        # The immutable turn is completed, but the append source remains a
+        # candidate. Reconciliation can retry this one action after restart.
+        return {"status": "reconciliation_required", "turn": result["turn"]}
+    return result
 
 
 def _settle(

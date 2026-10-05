@@ -26,8 +26,11 @@ _SOURCES = {
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
     "tobkiri_protocol/saved_context.py": "tobkiri_protocol/saved_context.py",
+    "tobkiri_protocol/saved_task_context.py": "tobkiri_protocol/saved_task_context.py",
+    "tobkiri_protocol/conversation_context.py": "tobkiri_protocol/conversation_context.py",
     "tobkiri_protocol/saved_conversation.py": "tobkiri_protocol/saved_conversation.py",
     "tobkiri_protocol/saved_tools.py": "tobkiri_protocol/saved_tools.py",
+    "tobkiri_protocol/turn_progress_v1.py": "tobkiri_protocol/turn_progress_v1.py",
 }
 _PACKAGES = ("tobkiri_host/__init__.py", "tobkiri_protocol/__init__.py")
 

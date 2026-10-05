@@ -91,12 +91,23 @@ class LocalModelTransport:
         self._lock = Lock()
         self._used = False
 
+    def stream_chat(
+        self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> dict[str, Any]:
+        """Deliver actual SSE frames from the exact owner-configured local model."""
+        return self.post_chat(
+            provider_instance_id=provider_instance_id, body=body, deadline=deadline,
+            _on_event=on_event,
+        )
+
     def post_chat(
         self,
         *,
         provider_instance_id: str,
         body: Mapping[str, Any],
         deadline: float,
+        _on_event: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Send bounded plain-text chat to the exact current owner binding."""
         with self._lock:
@@ -110,14 +121,21 @@ class LocalModelTransport:
             or binding.provider_instance_id != provider_instance_id
         ):
             raise PermissionError("local model binding does not match invocation")
-        payload = _chat_body(body, binding)
+        payload = _chat_body(body, binding, streaming=_on_event is not None)
         remaining = min(float(deadline) - time.time(), self._deadline - time.monotonic())
         if not math.isfinite(remaining) or remaining <= 0:
             raise TimeoutError("local model request deadline elapsed")
+        def authorized() -> bool:
+            try:
+                self._assert_current()
+                return True
+            except Exception:
+                return False
+
         lifetime = HttpRequestLifetime(
             timeout=remaining,
             deadline=self._deadline,
-            cancellation=self._cancellation,
+            cancellation=self._cancellation, authority_check=authorized,
         )
         connection = http.client.HTTPConnection(
             "127.0.0.1",
@@ -146,6 +164,14 @@ class LocalModelTransport:
             with connection.getresponse() as response:
                 if response.status != 200:
                     raise RuntimeError("local model returned an unsuccessful response")
+                if _on_event is not None:
+                    from core_runtime.credential_stream import received_sse
+                    for event in received_sse(
+                        response, guard=lambda: self._check(binding, lifetime),
+                    ):
+                        _on_event(event)
+                    self._check(binding, lifetime)
+                    return {"stream_complete": True}
                 data = response.read(_MAX_BYTES + 1)
             if len(data) > _MAX_BYTES:
                 raise ValueError("local model response exceeds limit")
@@ -159,8 +185,8 @@ class LocalModelTransport:
             connection.close()
 
     def _check(self, binding: LocalModelBinding, lifetime: HttpRequestLifetime) -> None:
-        lifetime.check()
         self._assert_current()
+        lifetime.check()
         if self._resolve_binding(binding.provider_instance_id) != binding:
             raise PermissionError("local model configuration changed")
         # Resolving the registry is a nested Broker call and may block. Fence
@@ -170,10 +196,12 @@ class LocalModelTransport:
         self._assert_current()
 
 
-def _chat_body(body: Mapping[str, Any], binding: LocalModelBinding) -> bytes:
+def _chat_body(
+    body: Mapping[str, Any], binding: LocalModelBinding, *, streaming: bool = False,
+) -> bytes:
     if set(body) - _ALLOWED_BODY or body.get("model") not in binding.model_ids:
         raise PermissionError("local model request is outside configured scope")
-    if body.get("stream", False) is not False:
+    if body.get("stream", False) is not streaming:
         raise ValueError("local model transport accepts complete responses only")
     messages = body.get("messages")
     if not isinstance(messages, list) or not messages or len(messages) > 1024:
@@ -218,7 +246,7 @@ def _chat_body(body: Mapping[str, Any], binding: LocalModelBinding) -> bytes:
     tokens = normalized.get("max_tokens", 512)
     if type(tokens) is not int or not 1 <= tokens <= 4096:
         raise ValueError("local model token limit is invalid")
-    normalized.update(max_tokens=tokens, stream=False)
+    normalized.update(max_tokens=tokens, stream=streaming)
     encoded = json.dumps(normalized, ensure_ascii=False, allow_nan=False).encode("utf-8")
     if len(encoded) > 1024 * 1024:
         raise ValueError("local model request exceeds limit")

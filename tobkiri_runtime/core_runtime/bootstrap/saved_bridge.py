@@ -25,11 +25,22 @@ from tobkiri_protocol.saved_conversation import (
 )
 
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS, saved_tool_messages, saved_tool_logs
+from tobkiri_protocol.turn_progress_v1 import (
+    AI_STREAM, ACTION, ACTION_OPERATION, RESOURCE, RESOURCE_OPERATION,
+    TTL_SECONDS, payload_digest,
+)
 from tobkiri_protocol.saved_context import (
     PROMPT_TARGET,
     resolved_saved_prompt,
     saved_prompt_digest,
     saved_prompt_reference,
+)
+from tobkiri_protocol.conversation_lifecycle import (
+    active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
+)
+from tobkiri_protocol.saved_task_context import saved_task_context_messages
+from tobkiri_protocol.conversation_context import (
+    context_link, resolve_request_context, resolved_thinking_level,
 )
 
 from ..authority.v4 import AuthorityDenied
@@ -43,6 +54,7 @@ def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
         "status": value.get("status"),
         "output": value.get("output"),
         "tool_intents": value.get("tool_intents", []),
+        "finish_reason": saved_terminal_finish_reason(value),
     }
 
 
@@ -70,6 +82,7 @@ ALLOWED_TARGETS = (
     STRATEGY_CATALOG,
     *TOOL_TARGETS,
     PROMPT_TARGET,
+    AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
 )
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
@@ -186,6 +199,9 @@ def _messages(
         if system_prompt is not None and system_prompt["body"]
         else []
     )
+    task_gap = active_task_gap_context(conversation)
+    if task_gap is not None:
+        prefix.append({"role": "system", "content": task_gap_prompt(task_gap)})
     messages = conversation.get("messages")
     if not isinstance(messages, list) or len(messages) > 200:
         raise AuthorityDenied("saved bridge owner history is invalid")
@@ -360,17 +376,57 @@ class SavedBridgeCallbacks:
         self,
         dispatch: Dispatch,
         require_targets: RequireTargets,
+        stream_available: Callable[[object, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
+        self._stream_available = stream_available
+
+    def _stream_ready(
+        self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> bool:
+        """Resolve an exact stream route before selecting its first signed intent."""
+        if self._stream_available is None:
+            return False
+        try:
+            if not self._stream_available(outer, request, conversation):
+                return False
+            prompt = self._system_prompt(outer, conversation)
+            requirements: dict[str, Any] = {}
+            if _contains_inline_images(request["content"]):
+                requirements["modalities"] = ["image", "text"]
+            outcome = self._dispatch(outer, READINESS, {
+                "model_profile_id": conversation["model_reference"],
+                "messages": [
+                    *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
+                    {"role": "user", "content": saved_user_text(request["content"])},
+                    *saved_task_context_messages(request),
+                ],
+                "requirements": requirements, "delivery_mode": "incremental",
+            })
+            value = outcome.get("value")
+            return outcome.get("status") == "ok" and isinstance(value, Mapping) and value.get("ready") is True
+        except (AuthorityDenied, ValueError, RuntimeError):
+            return False
 
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        conversation = self._read_conversation(outer, request["conversation_id"])
+        try:
+            return resolve_request_context(
+                conversation, request,
+                getattr(getattr(outer, "context", None), "profile_id", ""),
+                lambda parent_id: self._read_conversation(outer, parent_id),
+            )
+        except ValueError as error:
+            raise AuthorityDenied(str(error)) from error
+
+    def _read_conversation(self, outer: object, conversation_id: str) -> Mapping[str, Any]:
         outcome = self._dispatch(
             outer,
             TARGETS[0],
             {
                 "operation": "get",
-                "conversation_id": request["conversation_id"],
+                "conversation_id": conversation_id,
             },
         )
         value = outcome.get("value")
@@ -378,10 +434,23 @@ class SavedBridgeCallbacks:
         if (
             outcome.get("status") != "ok"
             or not isinstance(conversation, Mapping)
-            or conversation.get("id") != request["conversation_id"]
+            or conversation.get("id") != conversation_id
         ):
             raise AuthorityDenied("saved bridge conversation is unavailable")
         return conversation
+
+    def _recheck_linked_context(
+        self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> None:
+        """Fence dependency-read changes immediately before effect admission."""
+        if context_link(conversation) is None:
+            return
+        fresh = self._conversation(outer, request)
+        if any(
+            fresh.get(field) != conversation.get(field)
+            for field in ("conversation_revision", "current_node_id")
+        ):
+            raise AuthorityDenied("saved bridge linked conversation changed before effect")
 
     def _tools(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if request.get("tool_selection", {}).get("mode", "none") == "none":
@@ -491,6 +560,7 @@ class SavedBridgeCallbacks:
                 raise AuthorityDenied(
                     "saved bridge selected AI strategy is unavailable"
                 )
+            self._recheck_linked_context(outer, request, conversation)
             return
         owner_messages = _messages(conversation, system_prompt=prompt)
         requires_image_input = _contains_inline_images(
@@ -508,11 +578,13 @@ class SavedBridgeCallbacks:
             "messages": [
                 *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                 {"role": "user", "content": saved_user_text(request["content"])},
+                *saved_task_context_messages(request),
             ],
             **({"requirements": requirements} if requirements else {}),
         }
         if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
+        self._recheck_linked_context(outer, request, conversation)
         outcome = self._dispatch(outer, READINESS, payload)
         value = outcome.get("value")
         if (
@@ -541,9 +613,11 @@ class SavedBridgeCallbacks:
         trace: list[dict[str, Any]] = []
         owner_revision: int | None = None
         owner_current_node_id: str | None = None
+        ai_mode = "buffered"
         if isinstance(frame, SavedToolFrame):
             owner_revision = frame.expected_conversation_revision
             owner_current_node_id = frame.expected_current_node_id
+            ai_mode = frame.ai_mode
             stage = frame.stage
             if enabled:
                 if frame.initial_digest != canonical_digest({"request": request}):
@@ -578,7 +652,7 @@ class SavedBridgeCallbacks:
             "user": TARGETS[1],
             "ai": STRATEGY
             if request.get("strategy_reference") is not None
-            else TARGETS[2],
+            else AI_STREAM if ai_mode == "incremental" else TARGETS[2],
             "assistant": TARGETS[3],
             "tool": TOOL,
         }.get(stage)
@@ -601,6 +675,17 @@ class SavedBridgeCallbacks:
             value: dict[str, Any] = {
                 "conversation": _saved_read_projection(conversation)
             }
+            # The route selection is an authenticated Host outcome; it never
+            # comes from Guest input or redirects an already sealed AI intent.
+            if (
+                self._stream_available is not None
+                and request.get("strategy_reference") is None
+                and request.get("tool_selection", {}).get("mode", "none") == "none"
+                and self._stream_ready(outer, request, conversation)
+            ):
+                value["delivery_mode"] = "incremental"
+            elif self._stream_available is not None:
+                value["delivery_mode"] = "buffered"
             prompt = self._system_prompt(outer, conversation)
             if prompt is not None:
                 value["system_prompt_digest"] = saved_prompt_digest(prompt)
@@ -625,6 +710,11 @@ class SavedBridgeCallbacks:
                 payload = {
                     key: value for key, value in payload.items() if key != "system_prompt_digest"
                 }
+            else:
+                conversation = self._conversation(outer, request)
+                self._require_acknowledged_branch(
+                    conversation, owner_revision, owner_current_node_id,
+                )
         elif stage == "ai":
             conversation = self._conversation(outer, request)
             self._require_acknowledged_branch(
@@ -669,17 +759,19 @@ class SavedBridgeCallbacks:
             }
             arguments["messages"] = [
                 *_messages(conversation, system_prompt=prompt),
+                *saved_task_context_messages(request),
                 *trace,
             ]
             requirements = dict(provider_payload["requirements"])
             if _contains_inline_images(arguments["messages"]):
                 requirements["modalities"] = ["image", "text"]
             arguments["requirements"] = requirements
-            if "thinking_level" in request:
+            thinking_level = resolved_thinking_level(conversation, request)
+            if thinking_level is not None:
                 # The selected level comes from the validated initial request,
                 # never from the guest's AI intent or a resumed frame.
                 arguments["parameters"] = {
-                    "thinking_level": request["thinking_level"]
+                    "thinking_level": thinking_level
                 }
             if selected["tools"]:
                 if _requires_tool_calling(request):
@@ -732,6 +824,27 @@ class SavedBridgeCallbacks:
                 if strategy_reference is not None
                 else arguments
             )
+            self._recheck_linked_context(outer, request, conversation)
+            if target == AI_STREAM:
+                outer_context = getattr(outer, "context", None)
+                arguments["request_id"] = str(getattr(outer_context, "request_id", ""))
+                arguments["deadline"] = min(
+                    int(time.time()) + TTL_SECONDS,
+                    int(_strategy_deadline(outer) / 1000),
+                )
+                progress = self._dispatch(outer, (ACTION, ACTION_OPERATION), {
+                    "phase": "begin", "turn_id": request["turn_id"],
+                    "conversation_id": request["conversation_id"],
+                    "conversation_revision": owner_revision,
+                    "parent_id": owner_current_node_id,
+                    "input_digest": canonical_digest({"request": request}),
+                    "request_id": arguments["request_id"],
+                    "ai_input_digest": payload_digest(arguments),
+                })
+                value = progress.get("value")
+                if progress.get("status") != "ok" or not isinstance(value, Mapping) or not isinstance(value.get("progress_id"), str):
+                    raise AuthorityDenied("saved live progress reservation failed")
+                arguments["progress_id"] = value["progress_id"]
             outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (
@@ -759,6 +872,7 @@ class SavedBridgeCallbacks:
                 conversation, owner_revision, owner_current_node_id
             )
             self._require_targets(outer, TOOL_TARGETS)
+        self._recheck_linked_context(outer, request, conversation)
         return self._dispatch(outer, target, payload)
 
     @staticmethod
@@ -796,6 +910,8 @@ class SavedBridgeCallbacks:
         trace = trace or []
         metadata = {"turn_id": request["turn_id"]}
         fields = {"id", "role", "content", "parent_id", "metadata", "status"}
+        if role == "assistant":
+            fields.add("finish_reason")
         append_fields = {
             "operation",
             "conversation_id",
@@ -831,6 +947,10 @@ class SavedBridgeCallbacks:
             or canonical_json(message.get("tool_logs", []))
             != canonical_json(saved_tool_logs(trace))
             or message["status"] != "complete"
+            or (role == "assistant" and message.get("finish_reason") not in {
+                None, "stop", "waiting_user", "waiting_approval", "cancelled",
+                "error", "running",
+            })
             or (hop == 1 and message["content"] != request["content"])
             or (hop == 3 and message["parent_id"] != message_id("user"))
         ):

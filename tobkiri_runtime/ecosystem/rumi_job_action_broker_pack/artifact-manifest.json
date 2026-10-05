@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/broker.py",
-      "sha256": "741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+      "sha256": "51bcd27448a1c0e24a7108436d83c6a589c9c005639707959b89562c3ae19595",
       "role": "runtime"
     }
   ]

@@ -6,6 +6,11 @@
       "path": "executables.v4.json"
     },
     {
+      "digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
+      "kind": "executable",
+      "path": "runtime/completion_host.py"
+    },
+    {
       "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
       "kind": "executable",
       "path": "runtime/host.py"
@@ -32,6 +37,13 @@
     }
   ],
   "contracts": [
+    {
+      "contract_id": "tobkiri.action.conversation.completion.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "revision_digest": "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086"
+    },
     {
       "contract_id": "tobkiri.action.conversation.manage.v1",
       "operations": [
@@ -69,6 +81,16 @@
     }
   ],
   "functions": [
+    {
+      "contract_revision_digest": "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086",
+      "id": "rumi_conversation_store_pack.conversation-store.completion",
+      "implementation_digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "role": "host_capability_provider"
+    },
     {
       "contract_revision_digest": "sha256:8869274e7d77752a9d1e64e274bf82fab48f10b0a7dd5f316cb5cb528a4407aa",
       "id": "rumi_conversation_store_pack.conversation-store.manage",
@@ -140,6 +162,17 @@
     "sunset_at": "2027-12-31"
   },
   "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.conversation.completion.v1",
+      "effect_ceiling": [
+        "capability:conversation.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_conversation_store_pack.conversation-completion",
+      "owner": "rumi_conversation_store_pack",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+      "source_kind": "canonical_v4_contract"
+    },
     {
       "contract_reference": "tobkiri.action.conversation.manage.v1",
       "effect_ceiling": [
@@ -224,6 +257,14 @@
   },
   "provider_catalog": [
     {
+      "contract_reference": "tobkiri.action.conversation.completion.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "owner": "rumi_conversation_store_pack",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.completion"
+    },
+    {
       "contract_reference": "tobkiri.action.conversation.manage.v1",
       "operations": [
         "rumi_conversation_store_pack.conversation-manage"
@@ -273,7 +314,17 @@
       "message.manage",
       "message.read"
     ],
-    "contract_dependencies": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
     "execution_boundary": "host_brokered",
     "network": {
       "allowed_domains": [],

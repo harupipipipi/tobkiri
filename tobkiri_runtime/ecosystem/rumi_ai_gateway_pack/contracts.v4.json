@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+            "digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+        "source_digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -274,7 +274,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+            "digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -285,7 +285,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+        "source_digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -336,7 +336,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+            "digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -347,7 +347,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+        "source_digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -398,7 +398,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+            "digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -409,7 +409,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+        "source_digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -439,5 +439,5 @@
     }
   ],
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac"
+  "source_identity": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9"
 }

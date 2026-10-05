@@ -13,12 +13,12 @@
     {
       "path": "runtime/service.py",
       "role": "runtime",
-      "sha256": "sha256:cf5f52f64cdf4d62d49d6137c6fd6f09b7e87d124753a06e0ea99b81d49b1bf2"
+      "sha256": "sha256:8276438b203636f1f8d724cd97d4320b55e3a32f1368c7daf4325e25a17c6844"
     },
     {
       "path": "runtime/process.py",
       "role": "runtime",
-      "sha256": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+      "sha256": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

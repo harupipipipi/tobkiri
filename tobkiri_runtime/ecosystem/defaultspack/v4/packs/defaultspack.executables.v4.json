@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:4ded4949bde0096e611a7468090e98e8fd716c2c4a2f740f37310df38e464fb3",
+  "source_identity": "sha256:60cd851039332d4b2dfc41b71c4d05b65547b13038d8708d7f7e8f890984608a",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
+      "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
+          "revision_digest": "sha256:e6e5c3a88086f5d3edf4adca597c92d4d6aa55a4551de84668bedb4950f0fac3",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -281,6 +281,37 @@
                       }
                     ]
                   },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
+                  },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
                   },
@@ -298,6 +329,79 @@
                   "strategy_reference": {
                     "$ref": "#/$defs/identifier",
                     "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+                  },
+                  "task_context": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "input_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "items": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "body": {
+                              "maxLength": 32000,
+                              "minLength": 1,
+                              "pattern": "\\S",
+                              "type": "string"
+                            },
+                            "id": {
+                              "$ref": "#/$defs/identifier"
+                            },
+                            "kind": {
+                              "enum": [
+                                "goal",
+                                "todo",
+                                "instruction"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "body"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 100,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "recipient_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "source_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "source_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.saved-task-context.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "source_id",
+                      "conversation_id",
+                      "recipient_id",
+                      "input_id",
+                      "source_revision",
+                      "generation",
+                      "items"
+                    ],
+                    "type": "object"
                   },
                   "thinking_level": {
                     "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -485,6 +589,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:78b73d523312b991ee5c38b343c6f7e07bcf6f7c68ffdfd83bf6ce45a11e1e52",
-  "catalog_digest": "sha256:9d2a4ee23ba260c4debaca8f6c049f6e9f8ff7f77041705735156fe9b45c6f32"
+  "materialization_catalog_digest": "sha256:7403c9d79b50226bcaee68fbff4a31c6a335ad42920271141f2e00c5c7220326",
+  "catalog_digest": "sha256:d7ff25893313722aa922107e97f2c482a8cbdc966e5dda99e86e51f265e8d056"
 }

@@ -147,8 +147,12 @@
     "rumi_workspace_mount_pack",
     "rumi_workspace_pack",
     "search_home_pack",
+    "tobkiri_agent_control_pack",
+    "tobkiri_cloud_workspace_pack",
+    "tobkiri_conversation_lifecycle_pack",
     "tobkiri_host_pack_control",
     "tobkiri_mcp_connection_pack",
+    "tobkiri_side_chat_pack",
     "tobkiri_ui_settings_pack",
     "tobkiri_workflow_pack"
   ],
@@ -188,7 +192,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9"
+              "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055"
             }
           ],
           "owner": "defaultspack",
@@ -318,6 +322,79 @@
                     "strategy_reference": {
                       "$ref": "#/$defs/identifier",
                       "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+                    },
+                    "task_context": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "version",
+                        "source_id",
+                        "conversation_id",
+                        "recipient_id",
+                        "input_id",
+                        "source_revision",
+                        "generation",
+                        "items"
+                      ],
+                      "properties": {
+                        "version": {
+                          "const": "tobkiri.saved-task-context.v1"
+                        },
+                        "source_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "recipient_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "input_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_revision": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "generation": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 100,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "kind",
+                              "body"
+                            ],
+                            "properties": {
+                              "id": {
+                                "$ref": "#/$defs/identifier"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "goal",
+                                  "todo",
+                                  "instruction"
+                                ]
+                              },
+                              "body": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 32000,
+                                "pattern": "\\S"
+                              }
+                            }
+                          }
+                        }
+                      }
                     },
                     "thinking_level": {
                       "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -698,7 +775,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
+          "digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -2240,7 +2317,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd"
+              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2273,7 +2350,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd"
+              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2306,7 +2383,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd"
+              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2401,7 +2478,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
+          "digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
@@ -4342,8 +4419,12 @@
       "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
       "capabilities": [
+        "cloud.workspace.resource",
         "coding.sandbox.control",
         "coding.sandbox.observe",
+        "coding.sandbox.task.execute",
+        "coding.sandbox.task.prepare",
+        "coding.sandbox.task.read",
         "host.authority.consume",
         "workspace.metadata.read"
       ],
@@ -4351,8 +4432,8 @@
         "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
         "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
       },
-      "description": "Copy-on-write coding workspaces with no-downgrade Docker execution.",
-      "display_name": "Rumi Coding Sandbox Service",
+      "description": "Captured local COW container tasks with ordinary Host approval.",
+      "display_name": "Tobkiri Coding Sandbox Service",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -4437,6 +4518,330 @@
           },
           "security": "sensitive",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_coding_sandbox_service_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "capability:coding.sandbox.task.prepare",
+                "host:brokered-execution",
+                "capability:cloud.workspace.resource"
+              ],
+              "entrypoint_id": "task-prepare",
+              "id": "rumi_coding_sandbox_service_pack.task-prepare",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
+            },
+            {
+              "effect_ceiling": [
+                "capability:coding.sandbox.task.execute",
+                "host:brokered-execution",
+                "capability:cloud.workspace.resource"
+              ],
+              "entrypoint_id": "task-execute",
+              "id": "rumi_coding_sandbox_service_pack.task-execute",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
+            }
+          ],
+          "owner": "rumi_coding_sandbox_service_pack",
+          "provider_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "required_capabilities": [
+            "cloud.workspace.resource",
+            "coding.sandbox.task.execute",
+            "coding.sandbox.task.prepare"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "expected_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "expected_writer_epoch": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "profile_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "task_request_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "timeout_seconds": {
+                      "maximum": 120,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "workspace_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "argv",
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "profile_id",
+                    "task_request_id",
+                    "timeout_seconds",
+                    "workspace_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "task_plan": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "argv": {
+                          "items": {
+                            "maxLength": 8192,
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "checkpoint_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "expected_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "expected_writer_epoch": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "expires_at_ms": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "image_reference": {
+                          "maxLength": 272,
+                          "type": "string"
+                        },
+                        "plan_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "profile_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        },
+                        "recipe_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "request_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "security_epoch": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "task_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        },
+                        "task_request_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        },
+                        "timeout_seconds": {
+                          "maximum": 120,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": "tobkiri.workspace-task-plan.v1"
+                        },
+                        "workspace_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "argv",
+                        "checkpoint_digest",
+                        "expected_revision",
+                        "expected_writer_epoch",
+                        "expires_at_ms",
+                        "image_reference",
+                        "plan_digest",
+                        "profile_id",
+                        "recipe_digest",
+                        "request_digest",
+                        "security_epoch",
+                        "task_id",
+                        "task_request_id",
+                        "timeout_seconds",
+                        "version",
+                        "workspace_id"
+                      ],
+                      "type": "object"
+                    },
+                    "task_plan_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "task_plan",
+                    "task_plan_digest"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_coding_sandbox_service_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "capability:coding.sandbox.task.read"
+              ],
+              "entrypoint_id": "task-resource",
+              "id": "rumi_coding_sandbox_service_pack.task-resource",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
+            }
+          ],
+          "owner": "rumi_coding_sandbox_service_pack",
+          "provider_id": "rumi_coding_sandbox_service_pack.task-resource",
+          "required_capabilities": [
+            "coding.sandbox.task.read"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "oneOf": [
+                    {
+                      "not": {
+                        "required": [
+                          "task_id"
+                        ]
+                      },
+                      "properties": {
+                        "operation": {
+                          "const": "availability"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "enum": [
+                            "status",
+                            "export"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "task_id"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "availability",
+                        "status",
+                        "export"
+                      ]
+                    },
+                    "profile_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "task_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "profile_id",
+                    "operation"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -4451,13 +4856,57 @@
           "contract_id": "tobkiri.service.host.authorize.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.cloud.workspace.v1",
+          "operations": [
+            "tobkiri_cloud_workspace_pack.workspace-resource"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
+          "digest": "sha256:16c911e5cee58b57187d96ac70c1451da610d4f5da673ea4ab69d09cbd24746d",
+          "kind": "executable",
+          "path": "runtime/__init__.py"
+        },
+        {
           "digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
           "kind": "executable",
           "path": "runtime/sandbox.py"
+        },
+        {
+          "digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "kind": "executable",
+          "path": "runtime/host_v4.py"
+        },
+        {
+          "digest": "sha256:fcf7761d4b8622ead77cce04de27b6256c8b640d911e3135cd8c2d7dfb2c43d8",
+          "kind": "executable",
+          "path": "runtime/task_state.py"
+        },
+        {
+          "digest": "sha256:e0145d2bcb95ea2e5dc09c5dfe096ecf30f6b9d059a26347e00ec6cbedf3ccac",
+          "kind": "executable",
+          "path": "runtime/task_container.py"
+        },
+        {
+          "digest": "sha256:c75a76d032ff12c33607a97136eaebe0a3d2dd1280a07a8df752a392e147a6bc",
+          "kind": "executable",
+          "path": "runtime/task_execution.py"
+        },
+        {
+          "digest": "sha256:4a4e6e6d37ad94268870d0cbe986e60882cde3ab616705003ac6924e2162e1d8",
+          "kind": "sidecar",
+          "path": "pack-source.v1.json"
+        },
+        {
+          "digest": "sha256:7fc3fa56d16a6cdc23a1b821cb452fbc95a2be04424eb929be3f08d14e9a7945",
+          "kind": "sidecar",
+          "path": "compatibility-source.v1.json"
         }
       ],
       "secrets": [],
@@ -4480,7 +4929,54 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered"
+      "workspace_boundary": "host_brokered",
+      "artifact_metadata": {
+        "mode": "canonical-v4",
+        "owner": "rumi_coding_sandbox_service_pack",
+        "source_format": "pack.v4.json"
+      },
+      "functions": [
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control",
+          "contract_id": "tobkiri.action.coding.sandbox.v1",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-control"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
+          "contract_id": "tobkiri.resource.coding.sandbox.v1",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-observe"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-execute"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-prepare"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-resource",
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",
@@ -5169,7 +5665,7 @@
             {
               "entrypoint_id": "company-coordinator-control",
               "id": "rumi_company_coordinator_pack.company-coordinator-control",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -5203,7 +5699,7 @@
             {
               "entrypoint_id": "company-supervisor-job-adapter",
               "id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -5236,7 +5732,7 @@
             {
               "entrypoint_id": "company-runtime-resource",
               "id": "rumi_company_coordinator_pack.company-runtime-resource",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -5284,7 +5780,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+          "digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
           "kind": "executable",
           "path": "runtime/coordinator.py"
         }
@@ -5324,8 +5820,8 @@
       },
       "description": "Authoritative Company organization and operations state.",
       "display_name": "Rumi Company State Store",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.company.state.v1",
         "rumi.resource.company.v1",
@@ -5357,7 +5853,11 @@
             {
               "entrypoint_id": "company-state-action",
               "id": "rumi_company_state_store_pack.company-state-action",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
+              "effect_ceiling": [
+                "capability:company.state.manage",
+                "host:brokered-execution"
+              ]
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -5367,9 +5867,157 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "company.create",
+                    "company.update",
+                    "company.delete",
+                    "agent.upsert",
+                    "agent.delete",
+                    "role.upsert",
+                    "role.delete",
+                    "member.upsert",
+                    "member.delete",
+                    "channel.upsert",
+                    "channel.delete",
+                    "route.upsert",
+                    "route.delete",
+                    "task.upsert",
+                    "task.delete",
+                    "task.transition",
+                    "task.claim",
+                    "lease.renew",
+                    "inbound.append",
+                    "message.append",
+                    "migration.operations.import"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "company_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expected_entity_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "settings": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "metadata": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "conversation_group_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "updates": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "replace_settings": {
+                  "type": "boolean"
+                },
+                "role": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "member": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "record_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "record": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "agent_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "details": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "legacy_state": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "lease_duration_ms": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3600000
+                },
+                "member_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "fencing_token": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "operation",
+                "company_id",
+                "expected_revision"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -5390,7 +6038,10 @@
             {
               "entrypoint_id": "company-state-resource",
               "id": "rumi_company_state_store_pack.company-state-resource",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
+              "effect_ceiling": [
+                "capability:company.state.read"
+              ]
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -5400,9 +6051,56 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "timeline"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "company_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "cursor": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "after_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "operation"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -5410,19 +6108,17 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
+      "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+          "digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
           "kind": "executable",
           "path": "runtime/store.py"
+        },
+        {
+          "path": "runtime/team_store.py",
+          "kind": "executable",
+          "digest": "sha256:e53219332e652d5cb6b39b1896ebac04d10aea3be053384b69efddb0290842a0"
         }
       ],
       "secrets": [],
@@ -5445,7 +6141,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "none",
@@ -5630,7 +6326,7 @@
             {
               "entrypoint_id": "connector-company-route",
               "id": "rumi_connector_company_adapter_pack.connector-company-route",
-              "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d"
+              "implementation_digest": "sha256:57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2"
             }
           ],
           "owner": "rumi_connector_company_adapter_pack",
@@ -5678,7 +6374,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+          "digest": "sha256:57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2",
           "kind": "executable",
           "path": "runtime/adapter.py"
         }
@@ -6914,6 +7610,100 @@
       "pack_id": "rumi_conversation_store_pack",
       "provided_contracts": [
         {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "version": "1.0.0",
+          "owner": "rumi_conversation_store_pack",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+          "cardinality": "one",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "security": "restricted",
+          "required_capabilities": [
+            "conversation.manage"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "operation",
+                "turn_id"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "const": "confirm"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "confirmed",
+                "conversation_id",
+                "conversation_revision",
+                "store_revision"
+              ],
+              "properties": {
+                "confirmed": {
+                  "type": "boolean"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "conversation_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "store_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "lifecycle": {
+            "data_owner": "rumi_conversation_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0",
+            "migration_id": "saved-completion-v1",
+            "rollback_id": "saved-completion-v1"
+          },
+          "operations": [
+            {
+              "id": "rumi_conversation_store_pack.conversation-completion",
+              "entrypoint_id": "conversation-completion",
+              "implementation_digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
+              "effect_ceiling": [
+                "capability:conversation.manage",
+                "host:brokered-execution"
+              ]
+            }
+          ]
+        },
+        {
           "cardinality": "one",
           "contract_id": "tobkiri.action.conversation.manage.v1",
           "failure": "fail_closed",
@@ -7089,12 +7879,22 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.turn.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ]
+        }
+      ],
       "runtime_artifacts": [
         {
           "digest": "sha256:4317cdd7869f147d5bac6497eaeeb6b5f31567557f9fa0040bcd5f42b2c47de4",
           "kind": "executable",
-          "path": "runtime/store.py"
+          "digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01"
         },
         {
           "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
@@ -7115,6 +7915,11 @@
           "digest": "sha256:bc21ef07c019161d7160e1b407495312aec79e530e83da522df952b792fe8a41",
           "kind": "executable",
           "path": "runtime/saved_receipt.py"
+        },
+        {
+          "digest": "sha256:53c56b649b1d09537d84a2a85cbc565a4cd0edaa1b3684a071bc0ba8af522312",
+          "kind": "executable",
+          "path": "runtime/store.py"
         }
       ],
       "secrets": [],
@@ -7506,7 +8311,7 @@
             {
               "entrypoint_id": "rumi_deepthink_pack.deepthink.execute",
               "id": "rumi_deepthink_pack.deepthink.execute",
-              "implementation_digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61"
+              "implementation_digest": "sha256:d54caa69e2b482cc0612ba3b2321d844123c82af5013b00e39ae6ec275289485"
             }
           ],
           "owner": "rumi_deepthink_pack",
@@ -10073,7 +10878,8 @@
                     "git_restore",
                     "git_apply_patch",
                     "git_push",
-                    "mcp_connect"
+                    "mcp_connect",
+                    "workspace_task"
                   ]
                 },
                 "phase": {
@@ -10089,7 +10895,170 @@
                   "type": "object"
                 }
               },
-              "type": "object"
+              "type": "object",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect"
+                      ]
+                    },
+                    "request": {
+                      "type": "object"
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "effect_kind": {
+                      "const": "workspace_task"
+                    },
+                    "request": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "task_request_id",
+                        "profile_id",
+                        "workspace_id",
+                        "expected_revision",
+                        "expected_writer_epoch",
+                        "argv",
+                        "timeout_seconds"
+                      ],
+                      "properties": {
+                        "task_request_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "profile_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "workspace_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "expected_revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "expected_writer_epoch": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "argv": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 64,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 8192,
+                            "pattern": "^[^\\u0000]*$"
+                          }
+                        },
+                        "timeout_seconds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 120
+                        }
+                      }
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "correlation_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "lookup"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect",
+                        "workspace_task"
+                      ]
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "enum": [
+                        "status",
+                        "resume",
+                        "cancel"
+                      ]
+                    },
+                    "effect_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    }
+                  }
+                }
+              ]
             },
             "output": {
               "type": "object"
@@ -10724,7 +11693,7 @@
       "workspace_boundary": "workspace_brokered"
     },
     {
-      "approval_policy": "none",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
       "capabilities": [
         "job.adapter.invoke",
@@ -10733,8 +11702,8 @@
       "dependencies": {},
       "description": "Deterministic global job adapter routing and replay protection.",
       "display_name": "Rumi Job Action Broker",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.job.v1",
         "rumi:ecosystem/rumi_job_action_broker_pack",
@@ -10765,7 +11734,11 @@
             {
               "entrypoint_id": "job-action-broker",
               "id": "rumi_job_action_broker_pack.job-action-broker",
-              "implementation_digest": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac"
+              "implementation_digest": "sha256:51bcd27448a1c0e24a7108436d83c6a589c9c005639707959b89562c3ae19595",
+              "effect_ceiling": [
+                "capability:job.dispatch",
+                "host:brokered-execution"
+              ]
             }
           ],
           "owner": "rumi_job_action_broker_pack",
@@ -10775,9 +11748,55 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "dispatch",
+                    "cancel",
+                    "status"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "lease_id": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "operation",
+                "idempotency_key"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -10787,15 +11806,15 @@
       ],
       "required_contracts": [
         {
+          "contract_id": "tobkiri.action.job.adapter.v2",
+          "version_range": ">=2.0.0 <3.0.0",
           "cardinality": "many",
-          "contract_id": "tobkiri.action.job.adapter.v1",
-          "optional": true,
-          "version_range": ">=1.0.0 <2.0.0"
+          "optional": false
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+          "digest": "sha256:51bcd27448a1c0e24a7108436d83c6a589c9c005639707959b89562c3ae19595",
           "kind": "executable",
           "path": "runtime/broker.py"
         }
@@ -10820,7 +11839,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -13112,7 +14131,7 @@
             {
               "entrypoint_id": "model-profile-manage",
               "id": "rumi_model_registry_pack.model-profile-manage",
-              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -13147,7 +14166,7 @@
             {
               "entrypoint_id": "model-registry-migrate",
               "id": "rumi_model_registry_pack.model-registry-migrate",
-              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -13182,17 +14201,26 @@
             {
               "entrypoint_id": "model-profile-resource",
               "id": "rumi_model_registry_pack.model-profile-resource",
-              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+              "effect_ceiling": [
+                "capability:ai.model.profile.read"
+              ]
             },
             {
               "entrypoint_id": "model-profile-resource.generate",
               "id": "rumi_model_registry_pack.model-profile-resource.generate",
-              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+              "effect_ceiling": [
+                "capability:ai.model.profile.read"
+              ]
             },
             {
               "entrypoint_id": "model-profile-resource.stream",
               "id": "rumi_model_registry_pack.model-profile-resource.stream",
-              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+              "effect_ceiling": [
+                "capability:ai.model.profile.read"
+              ]
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -13202,9 +14230,157 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "resolve",
+                    "policy.resolve"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "snapshot"
+                      ]
+                    },
+                    "profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "snapshot_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "fallback_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "on_unavailable": {
+                      "enum": [
+                        "fail",
+                        "fallback"
+                      ]
+                    },
+                    "required_capabilities": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                      }
+                    }
+                  },
+                  "required": []
+                },
+                "thinking_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "model_default"
+                      ]
+                    },
+                    "level": {
+                      "enum": [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                "context": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversation_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "conversation_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    }
+                  },
+                  "required": []
+                },
+                "snapshot_receipt": {
+                  "type": "object",
+                  "maxProperties": 64
+                }
+              },
+              "required": [],
+              "anyOf": [
+                {
+                  "required": [
+                    "operation"
+                  ]
+                },
+                {
+                  "required": [
+                    "identifier"
+                  ]
+                }
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -13212,7 +14388,14 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false
+        }
+      ],
       "runtime_artifacts": [
         {
           "digest": "sha256:70a156cfce2e38caa85cd299302c8161d958fbc60947f80e1e6bfd8bf373029b",
@@ -13220,7 +14403,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+          "digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
           "kind": "executable",
           "path": "runtime/process.py"
         },
@@ -13230,7 +14413,7 @@
           "path": "runtime/registry.py"
         },
         {
-          "digest": "sha256:cf5f52f64cdf4d62d49d6137c6fd6f09b7e87d124753a06e0ea99b81d49b1bf2",
+          "digest": "sha256:8276438b203636f1f8d724cd97d4320b55e3a32f1368c7daf4325e25a17c6844",
           "kind": "executable",
           "path": "runtime/service.py"
         }
@@ -15055,8 +16238,8 @@
       },
       "description": "Authoritative schedule state and dispatch lifecycle.",
       "display_name": "Rumi Schedule Store",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.schedule.v1",
         "rumi.resource.schedule.v1",
@@ -15088,7 +16271,11 @@
             {
               "entrypoint_id": "schedule-action",
               "id": "rumi_schedule_store_pack.schedule-action",
-              "implementation_digest": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779"
+              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
+              "effect_ceiling": [
+                "capability:schedule.manage",
+                "host:brokered-execution"
+              ]
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -15098,9 +16285,124 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    "pause",
+                    "resume",
+                    "cancel",
+                    "claim",
+                    "complete",
+                    "fail"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "next_run_at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "interval_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_attempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20
+                },
+                "updates": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    "action_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "maxProperties": 64
+                    },
+                    "next_run_at_ms": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "interval_ms": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "max_attempts": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20
+                    }
+                  },
+                  "required": []
+                },
+                "lease_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "lease_expires_at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "error": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "operation",
+                "schedule_id",
+                "expected_revision"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -15121,7 +16423,10 @@
             {
               "entrypoint_id": "schedule-resource",
               "id": "rumi_schedule_store_pack.schedule-resource",
-              "implementation_digest": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779"
+              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
+              "effect_ceiling": [
+                "capability:schedule.read"
+              ]
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -15131,9 +16436,46 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "due"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "now_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "operation"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -15141,17 +16483,10 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
+      "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+          "digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
           "kind": "executable",
           "path": "runtime/store.py"
         }
@@ -15176,7 +16511,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -15186,6 +16521,7 @@
         "job.dispatch",
         "schedule.manage",
         "schedule.read",
+        "scheduler.clock.manage",
         "scheduler.control",
         "scheduler.observe"
       ],
@@ -15196,8 +16532,8 @@
       },
       "description": "Lease-aware clock and global job action dispatcher.",
       "display_name": "Rumi Scheduler Runtime",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.scheduler.v1",
         "rumi.resource.scheduler.v1",
@@ -15229,7 +16565,11 @@
             {
               "entrypoint_id": "scheduler-control",
               "id": "rumi_scheduler_runtime_pack.scheduler-control",
-              "implementation_digest": "sha256:986d9cc2de014ad4f54a37c767a1772d849e615a3fd2cfa77ef1caa57d98e4a9"
+              "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+              "effect_ceiling": [
+                "capability:scheduler.control",
+                "host:brokered-execution"
+              ]
             }
           ],
           "owner": "rumi_scheduler_runtime_pack",
@@ -15239,9 +16579,46 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "tick",
+                    "trigger",
+                    "stop"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "now_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                }
+              },
+              "required": [
+                "operation"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
@@ -15262,7 +16639,10 @@
             {
               "entrypoint_id": "scheduler-resource",
               "id": "rumi_scheduler_runtime_pack.scheduler-resource",
-              "implementation_digest": "sha256:986d9cc2de014ad4f54a37c767a1772d849e615a3fd2cfa77ef1caa57d98e4a9"
+              "implementation_digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+              "effect_ceiling": [
+                "capability:scheduler.observe"
+              ]
             }
           ],
           "owner": "rumi_scheduler_runtime_pack",
@@ -15272,45 +16652,130 @@
           ],
           "schemas": {
             "input": {
-              "type": "object"
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "status"
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                }
+              },
+              "required": [
+                "operation"
+              ]
             },
             "output": {
+              "type": "object"
+            },
+            "error": {
               "type": "object"
             }
           },
           "security": "internal",
           "version": "1.0.0"
+        },
+        {
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
+          "version": "1.0.0",
+          "owner": "rumi_scheduler_runtime_pack",
+          "provider_id": "rumi_scheduler_runtime_pack.scheduler.clock",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_scheduler_runtime_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "id": "rumi_scheduler_runtime_pack.scheduler-clock-control",
+              "entrypoint_id": "scheduler-clock-control",
+              "implementation_digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd",
+              "effect_ceiling": [
+                "capability:scheduler.clock.manage",
+                "host:brokered-execution"
+              ]
+            }
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "operation"
+              ],
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "status",
+                    "arm",
+                    "disarm"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "duration_ms": {
+                  "type": "integer",
+                  "minimum": 60000,
+                  "maximum": 86400000
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "required_capabilities": [
+            "scheduler.clock.manage"
+          ]
         }
       ],
       "required_contracts": [
         {
-          "cardinality": "one",
           "contract_id": "tobkiri.action.job.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false
         },
         {
-          "cardinality": "one",
           "contract_id": "tobkiri.action.schedule.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false
         },
         {
+          "contract_id": "tobkiri.action.scheduler.v1",
+          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
+          "optional": false
+        },
+        {
           "contract_id": "tobkiri.resource.schedule.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
+          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
+          "optional": false
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:986d9cc2de014ad4f54a37c767a1772d849e615a3fd2cfa77ef1caa57d98e4a9",
+          "path": "runtime/clock.py",
+          "kind": "executable",
+          "digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd"
+        },
+        {
+          "digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
           "kind": "executable",
           "path": "runtime/scheduler.py"
         }
@@ -15335,7 +16800,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "none",
@@ -15383,7 +16848,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:14c4747a79a9af491051c88dac2550298d074490f80e3370422884ecfcfe3449",
+          "digest": "sha256:7ce817541c5130121ac2994ff7da685e8e13dd446656184833f5a31ea3956777",
           "kind": "sidecar",
           "path": "frontend/contributions/scheduler.json"
         },
@@ -18883,6 +20348,79 @@
                       "$ref": "#/$defs/identifier",
                       "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                     },
+                    "task_context": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "version",
+                        "source_id",
+                        "conversation_id",
+                        "recipient_id",
+                        "input_id",
+                        "source_revision",
+                        "generation",
+                        "items"
+                      ],
+                      "properties": {
+                        "version": {
+                          "const": "tobkiri.saved-task-context.v1"
+                        },
+                        "source_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "recipient_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "input_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_revision": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "generation": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 100,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "kind",
+                              "body"
+                            ],
+                            "properties": {
+                              "id": {
+                                "$ref": "#/$defs/identifier"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "goal",
+                                  "todo",
+                                  "instruction"
+                                ]
+                              },
+                              "body": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 32000,
+                                "pattern": "\\S"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
                     "thinking_level": {
                       "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
                       "enum": [
@@ -19048,9 +20586,208 @@
           },
           "security": "restricted",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-stop",
+              "id": "rumi_turn_runtime_pack.turn-stop",
+              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "required_capabilities": [
+            "turn.stop"
+          ],
+          "schemas": {
+            "error": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  },
+                  "pattern": "^[A-Za-z0-9]",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "turn_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "properties": {
+                    "status": {
+                      "const": "cancellation_requested"
+                    },
+                    "stopped": {
+                      "const": false
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "stopped_confirmed"
+                    },
+                    "stopped": {
+                      "const": true
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "status": {
+                  "enum": [
+                    "cancellation_requested",
+                    "stopped_confirmed"
+                  ]
+                },
+                "stopped": {
+                  "type": "boolean"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "turn_id",
+                "stopped"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.event.turn.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-events",
+              "id": "rumi_turn_runtime_pack.turn-events",
+              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+          "required_capabilities": [
+            "turn.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.turn.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-resource",
+              "id": "rumi_turn_runtime_pack.turn-resource",
+              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "required_capabilities": [
+            "turn.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "conversation.saved-turn.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "contract_id": "tobkiri.action.agent.inbox.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true
+        },
+        {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-completion"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.context.projection.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true
+        },
         {
           "cardinality": "one",
           "contract_id": "tobkiri.resource.conversation.v1",
@@ -19060,12 +20797,6 @@
         {
           "cardinality": "one",
           "contract_id": "tobkiri.resource.message.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "conversation.saved-turn.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
         },
@@ -19486,6 +21217,2395 @@
       },
       "version": "0.1.0",
       "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "work_plan.resource",
+        "work_plan.action",
+        "work_plan.settings",
+        "work_plan.replace",
+        "work_plan.context",
+        "work_plan.inbox",
+        "work_plan.execute",
+        "work_plan.job",
+        "work_plan.review"
+      ],
+      "dependencies": {},
+      "description": "Optional persistent work plan with dependency Todo execution and independent review guidance.",
+      "display_name": "Tobkiri Agent Control",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "tobkiri_agent_control_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.work-plan.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-resource",
+              "id": "tobkiri_agent_control_pack.work-plan-resource",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+              "effect_ceiling": [
+                "capability:work_plan.resource"
+              ]
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.resource",
+          "required_capabilities": [
+            "work_plan.resource"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "get",
+                    "list",
+                    "get_for_conversation"
+                  ]
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-action",
+              "id": "tobkiri_agent_control_pack.work-plan-action",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.action",
+          "required_capabilities": [
+            "work_plan.action"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "agent_binding": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "at_ms": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "body": {
+                  "maxLength": 32000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "constraints": {
+                  "items": {
+                    "maxLength": 32000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 1000,
+                  "type": "array"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "criteria": {
+                  "items": {
+                    "maxLength": 32000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 1000,
+                  "type": "array"
+                },
+                "delay_seconds": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "dependencies": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "maxItems": 1000,
+                  "type": "array"
+                },
+                "event_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "expires_at_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "goal_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "interval_seconds": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "item_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "lifetime": {
+                  "enum": [
+                    "one_turn",
+                    "until_task_end"
+                  ]
+                },
+                "operation": {
+                  "enum": [
+                    "goal.set",
+                    "goal.refine",
+                    "goal.prepare_replace",
+                    "goal.cancel_replace",
+                    "todo.add",
+                    "todo.update",
+                    "todo.cancel",
+                    "remind.deliver",
+                    "remind.create",
+                    "remind.cancel"
+                  ]
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "order": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "preview_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "reminder_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "subgoal_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "timezone": {
+                  "maxLength": 32000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "updates": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "body": {
+                      "maxLength": 32000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "criteria": {
+                      "items": {
+                        "maxLength": 32000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "dependencies": {
+                      "items": {
+                        "maxLength": 32000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "order": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "expected_revision"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-settings",
+              "id": "tobkiri_agent_control_pack.work-plan-settings",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.settings",
+          "required_capabilities": [
+            "work_plan.settings"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "executor": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "interval_seconds": {
+                  "anyOf": [
+                    {
+                      "maximum": 86400,
+                      "minimum": 60,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^[0-9]{2,5}$",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "operation": {
+                  "enum": [
+                    "settings.configure",
+                    "plan.pause",
+                    "plan.resume",
+                    "plan.cancel"
+                  ]
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "reviewer": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "settings": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "executor": {
+                      "anyOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "interval_seconds": {
+                      "maximum": 86400,
+                      "minimum": 60,
+                      "type": "integer"
+                    },
+                    "model_policy": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "fallback_profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "mode": {
+                          "enum": [
+                            "inherit_conversation",
+                            "fixed",
+                            "snapshot"
+                          ]
+                        },
+                        "on_unavailable": {
+                          "enum": [
+                            "fail",
+                            "fallback"
+                          ]
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "required_capabilities": {
+                          "items": {
+                            "maxLength": 32000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "maxItems": 1000,
+                          "type": "array"
+                        },
+                        "snapshot_profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
+                    },
+                    "reviewer": {
+                      "anyOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "thinking_policy": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "level": {
+                          "maxLength": 32000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "mode": {
+                          "enum": [
+                            "inherit_conversation",
+                            "fixed",
+                            "model_default"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "expected_revision"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.context.replace.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "context-replace",
+              "id": "tobkiri_agent_control_pack.context-replace",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.replace",
+          "required_capabilities": [
+            "work_plan.replace"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "operation": {
+                  "const": "goal.commit_replace"
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "preview_digest": {
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "preview_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "expected_revision",
+                "preview_id",
+                "preview_digest"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.context.projection.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "context-project",
+              "id": "tobkiri_agent_control_pack.context-project",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.context",
+          "required_capabilities": [
+            "work_plan.context"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "agent_binding": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "boundary": {
+                  "enum": [
+                    "before_turn",
+                    "between_tools"
+                  ]
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "input_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "prepare_input",
+                    "prepare_input_for_conversation"
+                  ]
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "conversation_id",
+                "input_id",
+                "boundary"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.agent.inbox.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "inbox-action",
+              "id": "tobkiri_agent_control_pack.inbox-action",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.inbox",
+          "required_capabilities": [
+            "work_plan.inbox"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "accepted_input": {
+                  "additionalProperties": false,
+                  "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
+                  "properties": {
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "oneOf": [
+                            {
+                              "maxLength": 61440,
+                              "minLength": 1,
+                              "pattern": "\\S",
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "image_url": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "url": {
+                                        "maxLength": 1398127,
+                                        "minLength": 1,
+                                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "url"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": {
+                                    "const": "image_url"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "image_url"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 3,
+                              "minItems": 1,
+                              "prefixItems": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "text": {
+                                      "maxLength": 61440,
+                                      "minLength": 1,
+                                      "pattern": "\\S",
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "text"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                }
+                              ],
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        "conversation_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "strategy_maximum_cost_microusd": {
+                          "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                          "maximum": 1000000,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "strategy_reference": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        "task_context": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "input_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "items": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "body": {
+                                    "maxLength": 32000,
+                                    "minLength": 1,
+                                    "pattern": "\\S",
+                                    "type": "string"
+                                  },
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "goal",
+                                      "todo",
+                                      "instruction"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "kind",
+                                  "body"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 100,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "recipient_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "source_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "source_revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "version": {
+                              "const": "tobkiri.saved-task-context.v1"
+                            }
+                          },
+                          "required": [
+                            "version",
+                            "source_id",
+                            "conversation_id",
+                            "recipient_id",
+                            "input_id",
+                            "source_revision",
+                            "generation",
+                            "items"
+                          ],
+                          "type": "object"
+                        },
+                        "thinking_level": {
+                          "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                          "enum": [
+                            "none",
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh"
+                          ]
+                        },
+                        "tool_selection": {
+                          "additionalProperties": false,
+                          "allOf": [
+                            {
+                              "if": {
+                                "properties": {
+                                  "mode": {
+                                    "const": "none"
+                                  }
+                                }
+                              },
+                              "then": {
+                                "properties": {
+                                  "include": {
+                                    "maxItems": 0
+                                  },
+                                  "must_use": {
+                                    "const": false
+                                  }
+                                }
+                              }
+                            }
+                          ],
+                          "properties": {
+                            "exclude": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "id": {
+                                        "maxLength": 256,
+                                        "minLength": 1,
+                                        "not": {
+                                          "pattern": "[^A-Za-z0-9._:/-]"
+                                        },
+                                        "pattern": "^[A-Za-z0-9]",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": [
+                                          "tool",
+                                          "service"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "id"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 256,
+                              "type": "array"
+                            },
+                            "include": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "id": {
+                                        "maxLength": 256,
+                                        "minLength": 1,
+                                        "not": {
+                                          "pattern": "[^A-Za-z0-9._:/-]"
+                                        },
+                                        "pattern": "^[A-Za-z0-9]",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": [
+                                          "tool",
+                                          "service"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "id"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 256,
+                              "type": "array"
+                            },
+                            "mode": {
+                              "enum": [
+                                "auto",
+                                "manual",
+                                "none"
+                              ]
+                            },
+                            "must_use": {
+                              "type": "boolean"
+                            },
+                            "scope": {
+                              "enum": [
+                                "turn",
+                                "conversation"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ],
+                          "type": "object"
+                        },
+                        "turn_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "turn_id",
+                        "conversation_id",
+                        "conversation_revision",
+                        "content"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request"
+                  ],
+                  "title": "Saved conversation initial input",
+                  "type": "object"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "event_ids": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "maxItems": 10000,
+                  "type": "array"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "input_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "operation": {
+                  "const": "ack"
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "expected_revision",
+                "input_id",
+                "event_ids",
+                "accepted_input"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.work-plan.execute.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-execute",
+              "id": "tobkiri_agent_control_pack.work-plan-execute",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.execute",
+          "required_capabilities": [
+            "work_plan.execute"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "operation": {
+                  "const": "run_next"
+                },
+                "operation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "expected_revision"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.action.job.adapter.v2",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-job",
+              "id": "tobkiri_agent_control_pack.work-plan-job",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.job",
+          "required_capabilities": [
+            "work_plan.job"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "describe",
+                    "dispatch",
+                    "cancel",
+                    "status"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "lease_id": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.work-plan.review.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_agent_control_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "work-plan-review",
+              "id": "tobkiri_agent_control_pack.work-plan-review",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
+            }
+          ],
+          "owner": "tobkiri_agent_control_pack",
+          "provider_id": "tobkiri_agent_control_pack.work-plan.review",
+          "required_capabilities": [
+            "work_plan.review"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "generation": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "occurrence_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "operation": {
+                  "const": "inspect"
+                },
+                "plan_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "plan_id",
+                "generation",
+                "occurrence_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.schedule.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.workflow.v4",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:46c3e3e14d4dad45689f07f242b80a0ce42ae4161d9660831d218767e69c1c15",
+          "kind": "sidecar",
+          "path": "frontend/contributions/settings.json"
+        },
+        {
+          "digest": "sha256:11197d5a41a7164cd5790a686eb360569d01ea5e9d9c6c67ce6305247ab02dfb",
+          "kind": "sidecar",
+          "path": "frontend/contributions/work-plan.json"
+        },
+        {
+          "digest": "sha256:1f2fa83e656a144b3d0b6ee198dca5a9d8600acc21d6f0962095530217b58809",
+          "kind": "executable",
+          "path": "runtime/__init__.py"
+        },
+        {
+          "digest": "sha256:31da74634398bd06858001f39a7b11c248921d8bb44100a43f0fb9aec6db6c6f",
+          "kind": "executable",
+          "path": "runtime/goal.py"
+        },
+        {
+          "digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        },
+        {
+          "digest": "sha256:9b521eda829b2a63f686c812024db93c8dedd4ac95b24befa0a90d3f904d639f",
+          "kind": "executable",
+          "path": "runtime/inbox.py"
+        },
+        {
+          "digest": "sha256:793366f76a5a5b57bcf60bd4eee52c9b2ccb63597757560d334346a0b8f09607",
+          "kind": "executable",
+          "path": "runtime/ports.py"
+        },
+        {
+          "digest": "sha256:cfe3216ae85da1a52947eeb9f11f64838637a43a9910f0fac666fa6fef31aa92",
+          "kind": "executable",
+          "path": "runtime/review.py"
+        },
+        {
+          "digest": "sha256:43ffa17fe1ecf646c52031d2236d0adfdb937f7fe8d134c475ee20451428d40b",
+          "kind": "executable",
+          "path": "runtime/schedules.py"
+        },
+        {
+          "digest": "sha256:e3379e1478cef4e36d892a677c7c95602b2f51d1b1d3be57ad953bfe26af971c",
+          "kind": "executable",
+          "path": "runtime/service.py"
+        },
+        {
+          "digest": "sha256:97e7b3cb9c84b09b2ca8eb970d843d36b566b69b21cb6ac36d9a7cc460d41c1f",
+          "kind": "executable",
+          "path": "runtime/store.py"
+        },
+        {
+          "digest": "sha256:4b35dafdacd57c6ca926a050627fafe36d82a8afc2de446da58008ff3a06dc58",
+          "kind": "executable",
+          "path": "runtime/todo.py"
+        },
+        {
+          "digest": "sha256:f1b71aa2ceca78b78dfd6ba754a13509e3a2c16e4a68b75b5f10380cbb7447a3",
+          "kind": "executable",
+          "path": "runtime/workflow.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "tobkiri_agent_control_pack",
+        "source_format": "pack_v4_catalog.v1"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "none"
+    },
+    {
+      "pack_id": "tobkiri_cloud_workspace_pack",
+      "authority": "v4-authoritative",
+      "display_name": "Tobkiri Cloud Workspace",
+      "description": "Local portable work capsules and container preparation; cloud deployment is deferred.",
+      "version": "1.0.0",
+      "kind": "host_extension",
+      "dependencies": {},
+      "capabilities": [
+        "workspace.metadata.read",
+        "file.inspect",
+        "coding.sandbox.task.read",
+        "host.authority.consume",
+        "cloud.workspace.resource",
+        "cloud.workspace.manage"
+      ],
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "secrets": [],
+      "execution_boundary": "host_brokered",
+      "approval_policy": "capability_gated",
+      "workspace_boundary": "host_brokered",
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "interactive_effect.manage"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_file_inspect_pack.file-inspect"
+          ]
+        }
+      ],
+      "provided_contracts": [
+        {
+          "contract_id": "tobkiri.resource.cloud.workspace.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_cloud_workspace_pack",
+          "provider_id": "tobkiri_cloud_workspace_pack.resource",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "cloud.workspace.resource"
+          ],
+          "lifecycle": {
+            "introduced": "1.0.0",
+            "data_owner": "tobkiri_cloud_workspace_pack"
+          },
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                },
+                "operation": {
+                  "enum": [
+                    "get_for_conversation",
+                    "export",
+                    "verify",
+                    "task_source"
+                  ]
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                },
+                "workspace_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "expected_writer_epoch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "get_for_conversation"
+                    }
+                  },
+                  "required": [
+                    "conversation_id"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "export"
+                    }
+                  },
+                  "required": [
+                    "expected_revision",
+                    "workspace_id"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "verify"
+                    }
+                  },
+                  "required": [
+                    "expected_revision",
+                    "workspace_id"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_source"
+                    }
+                  },
+                  "required": [
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "workspace_id"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "operations": [
+            {
+              "id": "tobkiri_cloud_workspace_pack.workspace-resource",
+              "entrypoint_id": "workspace-resource",
+              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
+            }
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_cloud_workspace_pack",
+          "provider_id": "tobkiri_cloud_workspace_pack.manage",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "cloud.workspace.manage"
+          ],
+          "lifecycle": {
+            "introduced": "1.0.0",
+            "data_owner": "tobkiri_cloud_workspace_pack"
+          },
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                },
+                "operation": {
+                  "enum": [
+                    "initialize",
+                    "capture",
+                    "import",
+                    "restore",
+                    "prepare_handoff",
+                    "task_prepare",
+                    "task_resume",
+                    "task_status",
+                    "task_cancel",
+                    "task_apply"
+                  ]
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "expected_writer_epoch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "paths": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32768
+                },
+                "argv_json": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24000
+                },
+                "archive_base64": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 13981016
+                },
+                "expected_receiver_head": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(?:sha256:[0-9a-f]{64})?$"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "initialize"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "capture"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "paths"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "archive_base64",
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "restore"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "prepare_handoff"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_receiver_head",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_prepare"
+                    }
+                  },
+                  "required": [
+                    "argv_json",
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_resume"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_status"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_cancel"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_apply"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "operations": [
+            {
+              "id": "tobkiri_cloud_workspace_pack.workspace-manage",
+              "entrypoint_id": "workspace-manage",
+              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
+            }
+          ]
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "path": "runtime/__init__.py",
+          "digest": "sha256:0b0afddeded6cae8379e760270af0457f1b3e963809e1f2049c7c50fe4630787",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/host.py",
+          "digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/capsule.py",
+          "digest": "sha256:87db32b4880940d02f82b206bc7785972982796bd170b96cd82ff0dc2cd0ef7d",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/store.py",
+          "digest": "sha256:8916aeef71db86c83315d209b6b070b2050153147352749dd08b5e7f417cf366",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/service.py",
+          "digest": "sha256:8e88be48e6e007abe71df6278784cad1561c50d92bc9efa24b065e0f75f4ddbb",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/task.py",
+          "digest": "sha256:f47759f5195e3f6c75457973e2a615ff9eb9cf77672744213ca459dcad3fccfa",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/recipe.py",
+          "digest": "sha256:a6c16abec9e1d27b5a01e240d166763fad04cba486733c35789778bf46e2164e",
+          "kind": "executable"
+        },
+        {
+          "path": "container/Dockerfile",
+          "digest": "sha256:60fa57140cb083f7a83b83423bca9e738eebca7b6eef4eb2d4039fa0ba4df270",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/runtime.py",
+          "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/recipe.v1.json",
+          "digest": "sha256:e8e672fe5fe0d5f0a759df85e900a89ec56259e27454cba99c6e5c8ba9f4fa4d",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/task-recipe.v1.json",
+          "digest": "sha256:4120b09164a3789e2635f6541a615f11dbfbb6266cdfff62ac04c36a6c101dc2",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/workspace_capsule_v1.py",
+          "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/workspace_tree_v1.py",
+          "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/task_runner.py",
+          "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7",
+          "kind": "sidecar"
+        },
+        {
+          "path": "pack-source.v1.json",
+          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
+          "kind": "sidecar"
+        },
+        {
+          "path": "frontend/contributions/composer.json",
+          "digest": "sha256:6a7d975de095f827d22a6cf8541e52242dfa7983da0e1c25107afa4c18699ae5",
+          "kind": "sidecar"
+        },
+        {
+          "path": "frontend/contributions/workspace.json",
+          "digest": "sha256:1d7cd3f5ababd755aecbe4063081c8444bc60331cd979738db2bb99b5f55ba28",
+          "kind": "sidecar"
+        }
+      ],
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 0,
+        "sunset_at": "2027-12-31"
+      },
+      "source_evidence": [
+        {
+          "path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
+          "rule_id": "reviewed-cloud-workspace-source",
+          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb"
+        }
+      ],
+      "source_provenance": {
+        "mode": "canonical-v4",
+        "owner": "tobkiri_cloud_workspace_pack",
+        "source_format": "pack.v4.json"
+      }
+    },
+    {
+      "pack_id": "tobkiri_conversation_lifecycle_pack",
+      "authority": "v4-authoritative",
+      "display_name": "Tobkiri Conversation Lifecycle",
+      "description": "Optional completion-based archiving and shared elapsed-context source.",
+      "version": "1.0.0",
+      "kind": "host_extension",
+      "dependencies": {},
+      "capabilities": [
+        "conversation.read",
+        "conversation.manage",
+        "schedule.read",
+        "schedule.manage",
+        "conversation.lifecycle.read",
+        "conversation.lifecycle.manage",
+        "conversation.lifecycle.archive"
+      ],
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "secrets": [],
+      "execution_boundary": "host_brokered",
+      "approval_policy": "capability_gated",
+      "workspace_boundary": "none",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 0,
+        "sunset_at": "2027-12-31"
+      },
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_schedule_store_pack.schedule-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.schedule.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_schedule_store_pack.schedule-action"
+          ]
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        },
+        {
+          "digest": "sha256:b09cf3c3fcc5105f49d2a14c9622a42f92a6c566331cfd991d28fef916d26d18",
+          "kind": "sidecar",
+          "path": "runtime/lifecycle.py"
+        },
+        {
+          "digest": "sha256:d609cc58478a17072146aa4f9a2263237a483b13d29430052a10918724f61750",
+          "kind": "sidecar",
+          "path": "frontend/contributions/lifecycle.json"
+        },
+        {
+          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
+          "kind": "sidecar",
+          "path": "pack-source.v1.json"
+        }
+      ],
+      "source_evidence": [
+        {
+          "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
+          "rule_id": "reviewed-conversation-lifecycle-source",
+          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa"
+        }
+      ],
+      "source_provenance": {
+        "mode": "canonical-v4",
+        "owner": "tobkiri_conversation_lifecycle_pack",
+        "source_format": "pack-source.v1.json"
+      },
+      "provided_contracts": [
+        {
+          "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.lifecycle.read"
+          ],
+          "lifecycle": {
+            "data_owner": "tobkiri_conversation_lifecycle_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+              "entrypoint_id": "lifecycle-status",
+              "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+              "effect_ceiling": [
+                "capability:conversation.lifecycle.read"
+              ]
+            }
+          ],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "operation": {
+                  "const": "get"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation",
+                "conversation_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.lifecycle.manage"
+          ],
+          "lifecycle": {
+            "data_owner": "tobkiri_conversation_lifecycle_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+              "entrypoint_id": "lifecycle-manage",
+              "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
+            }
+          ],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "mode": {
+                  "enum": [
+                    "manual",
+                    "archive_after_completion"
+                  ]
+                },
+                "operation": {
+                  "const": "configure"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation",
+                "conversation_id",
+                "mode"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.job.adapter.v2",
+          "version": "2.0.0",
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+          "cardinality": "many",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.lifecycle.archive"
+          ],
+          "lifecycle": {
+            "data_owner": "tobkiri_conversation_lifecycle_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+              "entrypoint_id": "archive-job-adapter",
+              "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
+            }
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "describe",
+                    "dispatch",
+                    "cancel",
+                    "status"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "lease_id": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",
@@ -20475,6 +24595,445 @@
       },
       "version": "1.0.0",
       "workspace_boundary": "host_brokered"
+    },
+    {
+      "pack_id": "tobkiri_side_chat_pack",
+      "authority": "v4-authoritative",
+      "display_name": "Tobkiri Side Chat",
+      "description": "Optional independent child history with fresh parent context.",
+      "version": "1.0.0",
+      "kind": "host_extension",
+      "dependencies": {},
+      "capabilities": [
+        "conversation.read",
+        "conversation.manage",
+        "turn.read",
+        "turn.execute",
+        "turn.stop",
+        "turn.reconcile",
+        "conversation.side.read",
+        "conversation.side.manage",
+        "conversation.side.turn"
+      ],
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "secrets": [],
+      "execution_boundary": "host_brokered",
+      "approval_policy": "capability_gated",
+      "workspace_boundary": "host_brokered",
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.turn.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.event.turn.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-events"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-stop"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": false,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ]
+        }
+      ],
+      "provided_contracts": [
+        {
+          "contract_id": "tobkiri.resource.side-chat.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.resource",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.side.read"
+          ],
+          "lifecycle": {
+            "introduced": "1.0.0",
+            "data_owner": "tobkiri_side_chat_pack"
+          },
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                },
+                "parent_conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "get"
+                    }
+                  },
+                  "required": [
+                    "parent_conversation_id"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "events"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "turn_id"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "operations": [
+            {
+              "id": "tobkiri_side_chat_pack.side-chat-resource",
+              "entrypoint_id": "side-chat-resource",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.side-chat.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.manage",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.side.manage"
+          ],
+          "lifecycle": {
+            "introduced": "1.0.0",
+            "data_owner": "tobkiri_side_chat_pack"
+          },
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                },
+                "parent_conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "expected_parent_revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "ensure"
+                    }
+                  },
+                  "required": [
+                    "parent_conversation_id",
+                    "expected_parent_revision"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "operations": [
+            {
+              "id": "tobkiri_side_chat_pack.side-chat-manage",
+              "entrypoint_id": "side-chat-manage",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "version": "1.0.0",
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.turn",
+          "cardinality": "one",
+          "security": "restricted",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "required_capabilities": [
+            "conversation.side.turn"
+          ],
+          "lifecycle": {
+            "introduced": "1.0.0",
+            "data_owner": "tobkiri_side_chat_pack"
+          },
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "expected_parent_revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "expected_child_revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "content": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 61440
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "send"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "turn_id",
+                    "expected_parent_revision",
+                    "expected_child_revision",
+                    "content"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "stop"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "turn_id"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "reconcile"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "turn_id"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "operations": [
+            {
+              "id": "tobkiri_side_chat_pack.side-chat-turn",
+              "entrypoint_id": "side-chat-turn",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ]
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "path": "runtime/host.py",
+          "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+          "kind": "executable"
+        },
+        {
+          "path": "runtime/side_chat.py",
+          "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
+          "kind": "sidecar"
+        },
+        {
+          "path": "pack-source.v1.json",
+          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
+          "kind": "sidecar"
+        },
+        {
+          "path": "frontend/contributions/side-chat.json",
+          "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
+          "kind": "sidecar"
+        }
+      ],
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 0,
+        "sunset_at": "2027-12-31"
+      },
+      "source_evidence": [
+        {
+          "path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
+          "rule_id": "reviewed-side-chat-source",
+          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad"
+        }
+      ],
+      "source_provenance": {
+        "mode": "canonical-v4",
+        "owner": "tobkiri_side_chat_pack",
+        "source_format": "pack.v4.json"
+      }
     },
     {
       "approval_policy": "capability_gated",

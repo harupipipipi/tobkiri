@@ -554,7 +554,7 @@ def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) ->
 def test_reconcile_factory_cannot_create_or_execute_a_turn(tmp_path: Path) -> None:
     from core_runtime.global_contract_dispatch import GlobalContractClient
     from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
-    from ecosystem.rumi_turn_runtime_pack.runtime.saved import RECEIPT_CONTRACT
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import RECONCILE_CONTRACTS
     from tests.test_saved_turn_coordinator import _Session, _run
 
     session = _Session(tmp_path)
@@ -564,7 +564,7 @@ def test_reconcile_factory_cannot_create_or_execute_a_turn(tmp_path: Path) -> No
     def client(**kwargs: Any) -> GlobalContractClient:
         clients.append(dict(kwargs))
         assert kwargs.pop("include_credentials") is False
-        assert kwargs["allowed_contract_ids"] == frozenset({RECEIPT_CONTRACT})
+        assert kwargs["allowed_contract_ids"] == RECONCILE_CONTRACTS
         return GlobalContractClient(session=session, **kwargs)
 
     invocation = SimpleNamespace(contract_client=client, assert_current=lambda: None)
@@ -616,8 +616,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    # Receipt settlement is guarded after the captured model dispatch returns.
-    assert len(guards) == 9
+    assert len(guards) == 10  # Confirmation checks before and after its nested action.
     assert invoke(factory.operation_id, session.initial, invocation) == {
         "status": "existing", "turn": result["turn"],
     }

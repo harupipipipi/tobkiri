@@ -17,6 +17,11 @@
       "role": "canonical_manifest"
     },
     {
+      "digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
+      "path": "runtime/completion_host.py",
+      "role": "runtime"
+    },
+    {
       "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
       "path": "runtime/host.py",
       "role": "runtime"

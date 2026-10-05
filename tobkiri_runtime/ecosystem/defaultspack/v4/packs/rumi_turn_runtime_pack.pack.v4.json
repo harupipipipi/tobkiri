@@ -54,27 +54,6 @@
         "rumi_turn_runtime_pack.turn-resource"
       ],
       "revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7"
-    },
-    {
-      "contract_id": "tobkiri.action.turn.stop.v1",
-      "operations": [
-        "rumi_turn_runtime_pack.turn-stop"
-      ],
-      "revision_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f"
-    },
-    {
-      "contract_id": "tobkiri.action.turn.reconcile.v1",
-      "operations": [
-        "rumi_turn_runtime_pack.turn-reconcile"
-      ],
-      "revision_digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070"
-    },
-    {
-      "contract_id": "tobkiri.action.turn.saved.v1",
-      "operations": [
-        "rumi_turn_runtime_pack.turn-saved"
-      ],
-      "revision_digest": "sha256:0ba1b8a1e0bb00b658ff856dcf26c646ccd08a36f76dea14b20628c62acc3c94"
     }
   ],
   "functions": [
@@ -129,7 +108,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:0ba1b8a1e0bb00b658ff856dcf26c646ccd08a36f76dea14b20628c62acc3c94",
+      "contract_revision_digest": "sha256:38c3e3a8a6371fc51b33fa0c275010a233da2ce54982173bc1c7f86a39f9e226",
       "id": "rumi_turn_runtime_pack.turn-runtime.saved",
       "implementation_digest": "sha256:4d0335161ad4363d56e8bd5ab2bfa79b5548c11ef608799fbd2d33e09ac986db",
       "isolation": "dedicated_process",
@@ -329,6 +308,33 @@
     "contract_dependencies": [
       {
         "cardinality": "one",
+        "contract_id": "conversation.saved-turn.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.agent.inbox.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.conversation.completion.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-completion"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.context.projection.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
         "contract_id": "tobkiri.resource.conversation.v1",
         "optional": false,
         "version_range": ">=1.0.0 <2.0.0"
@@ -336,12 +342,6 @@
       {
         "cardinality": "one",
         "contract_id": "tobkiri.resource.message.v1",
-        "optional": false,
-        "version_range": ">=1.0.0 <2.0.0"
-      },
-      {
-        "cardinality": "one",
-        "contract_id": "conversation.saved-turn.v1",
         "optional": false,
         "version_range": ">=1.0.0 <2.0.0"
       },

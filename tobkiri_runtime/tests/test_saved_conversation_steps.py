@@ -228,8 +228,12 @@ def test_missing_context_fails_before_writing(
     assert store.get("conversation-1")["messages"] == []
 
 
-def test_saved_step_imports_and_runs_with_isolated_stdlib_only(tmp_path: Path) -> None:
+def test_saved_step_runs_with_isolated_stdlib_and_guest_closure(tmp_path: Path) -> None:
+    from scripts.build_packvm_guest_bundle import build_guest_bundle
+
     _, request = _setup(tmp_path)
+    bundle = tmp_path / "guest-support.zip"
+    bundle.write_bytes(build_guest_bundle(Path(__file__).resolve().parents[1]))
     completed = subprocess.run(
         [
             sys.executable,
@@ -237,7 +241,11 @@ def test_saved_step_imports_and_runs_with_isolated_stdlib_only(tmp_path: Path) -
             "-S",
             "-B",
             "-c",
-            "import json,runpy,sys; m=runpy.run_path(sys.argv[1]); print(json.dumps(m['tobkiri_packvm_invoke']('saved_complete', {'request':json.loads(sys.argv[2])})))",
+            "import json,runpy,sys; sys.path.insert(0,sys.argv[1]); "
+            "m=runpy.run_path(sys.argv[2]); print(json.dumps("
+            "m['tobkiri_packvm_invoke']('saved_complete', "
+            "{'request':json.loads(sys.argv[3])})))",
+            str(bundle),
             str(Path(saved.__file__).resolve()),
             json.dumps(request),
         ],

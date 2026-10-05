@@ -25,6 +25,9 @@ from core_runtime.http_request_lifetime import HttpRequestLifetime
 from ecosystem.rumi_provider_registry_pack.runtime.local_endpoint import (
     local_openai_endpoint,
 )
+from core_runtime.local_model_authority import LocalModelRequest
+from ecosystem.rumi_provider_adapters_pack.runtime.streaming import stream_request
+from tobkiri_protocol.turn_progress_v1 import ACTION as PROGRESS_CONTRACT
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
 REGISTRY_GENERATE_OPERATION = (
@@ -262,13 +265,18 @@ def _openai_compatible(
     body = {
         "model": _provider_model_id(request),
         "messages": list(request.get("messages") or []),
-        "stream": False,
         **dict(request.get("parameters") or {}),
+        "stream": streaming,
     }
     tools = request.get("tools")
     if isinstance(tools, list) and tools:
         body["tools"] = tools
     headers = dict(DEFAULT_JSON_HEADERS)
+    if streaming:
+        return stream_request(
+            client, request, connection, body=body, endpoint=endpoint, headers=headers,
+            credential_handle=credential_handle, credential_scope=credential_scope,
+        )
     value = _post(
         client,
         endpoint,
@@ -292,7 +300,7 @@ def _openai_compatible(
         "usage": dict(value.get("usage") or {}),
         "finish_reason": (first.get("finish_reason") if isinstance(first, Mapping) else None),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _local_openai_compatible(
@@ -341,7 +349,7 @@ def _local_openai_compatible(
             first.get("finish_reason") if isinstance(first, Mapping) else None
         ),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _local_post(
@@ -469,11 +477,18 @@ def _anthropic(
         "messages": list(request.get("messages") or []),
         "max_tokens": int(parameters.pop("max_tokens", 1024)),
         **parameters,
+        "stream": streaming,
     }
     headers = {
         **DEFAULT_JSON_HEADERS,
         "anthropic-version": "2023-06-01",
     }
+    if streaming:
+        return stream_request(
+            client, request, connection, body=body, endpoint=endpoint, headers=headers,
+            credential_handle=credential_handle, credential_scope=credential_scope,
+            scheme="anthropic", protocol="anthropic",
+        )
     value = _post(
         client,
         endpoint,
@@ -498,7 +513,7 @@ def _anthropic(
         "usage": dict(value.get("usage") or {}),
         "finish_reason": value.get("stop_reason"),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _openai_embedding(
@@ -574,28 +589,6 @@ def _provider_model_id(request: Mapping[str, Any]) -> str:
     if provider_id and model_id.startswith(prefix):
         return model_id[len(prefix) :]
     return model_id
-
-
-def _stream_result(result: Mapping[str, Any]) -> dict[str, Any]:
-    events: list[dict[str, Any]] = []
-    output = str(result.get("output") or "")
-    if output:
-        events.append({"type": "text_delta", "delta": output})
-    for intent in result.get("tool_intents") or []:
-        if isinstance(intent, Mapping):
-            events.append(
-                {
-                    "type": "tool_intent_delta",
-                    "tool_intent": dict(intent),
-                }
-            )
-    events.extend(
-        [
-            {"type": "usage", "usage": dict(result.get("usage") or {})},
-            {"type": "finish", "finish_reason": result.get("finish_reason")},
-        ]
-    )
-    return {"events": events}
 
 
 def _endpoint(connection: Mapping[str, Any], suffix: str) -> str:
@@ -683,7 +676,10 @@ class ProviderAdapterHostFactoryV4:
         ) -> Mapping[str, Any]:
             invocation.assert_current()
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({REGISTRY_CONTRACT}),
+                allowed_contract_ids=frozenset(
+                    {REGISTRY_CONTRACT, PROGRESS_CONTRACT}
+                    if operation_factory is create_stream_operation else {REGISTRY_CONTRACT}
+                ),
                 consumer_pack_id="rumi_provider_adapters_pack",
             )
             if operation_factory in {

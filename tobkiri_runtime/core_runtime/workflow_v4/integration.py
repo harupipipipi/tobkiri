@@ -16,12 +16,9 @@ from core_runtime.host_provider_backend_v4 import (
 from tobkiri_protocol.canonical import canonical_digest
 
 from .engine import WorkflowEngineV4
-from .models import (
-    AuthorityReservation,
-    DispatchAuthority,
-    InvocationOutcome,
-    WorkflowDenied,
-)
+from .models import WorkflowDenied
+from core_runtime.workflow_v4.attempt_adapter import CapturedWorkflowAttemptAdapterV4
+from core_runtime.workflow_v4.attempt_port import WorkflowAttemptDeclarationV4
 from .provider import WORKFLOW_FUNCTION_PRINCIPAL, WorkflowProviderV4
 from .store import WorkflowStoreV4
 
@@ -90,56 +87,11 @@ class _SchemaValidator:
         return ()
 
 
-class _UnavailableAttemptAuthority:
-    """Fail closed until an attempt-scoped Authority adapter is supplied."""
-
-    def reserve(self, request: Mapping[str, Any]) -> AuthorityReservation:
-        del request
-        raise WorkflowDenied("Workflow attempt Authority integration is unavailable")
-
-    def inspect(self, reservation_id: str) -> AuthorityReservation:
-        del reservation_id
-        raise WorkflowDenied("Workflow attempt Authority integration is unavailable")
-
-    def commit(
-        self,
-        reservation_id: str,
-        *,
-        request_digest: str,
-        security_epoch: int,
-    ) -> DispatchAuthority:
-        del reservation_id, request_digest, security_epoch
-        raise WorkflowDenied("Workflow attempt Authority integration is unavailable")
-
-    def finish(self, reservation_id: str, *, outcome_digest: str, state: str) -> None:
-        del reservation_id, outcome_digest, state
-        raise WorkflowDenied("Workflow attempt Authority integration is unavailable")
-
-    def revoke(self, reservation_id: str, *, reason: str) -> None:
-        del reservation_id, reason
-        raise WorkflowDenied("Workflow attempt Authority integration is unavailable")
-
-
-class _UnavailableContractInvoker:
-    """Never substitute a direct Provider callback for Broker dispatch."""
-
-    def invoke(
-        self,
-        request: Mapping[str, Any],
-        *,
-        authority: DispatchAuthority,
-    ) -> InvocationOutcome:
-        del request, authority
-        raise WorkflowDenied("Workflow Contract invocation integration is unavailable")
-
-    def cancel(self, request_id: str) -> None:
-        del request_id
-
-
 class WorkflowHostProviderFactoryV4:
     """Capture Workflow operations from exact resolved Function bindings."""
 
     function_id = WORKFLOW_FUNCTION_PRINCIPAL
+    workflow_attempt_declaration = WorkflowAttemptDeclarationV4()
 
     def capture(
         self,
@@ -152,18 +104,7 @@ class WorkflowHostProviderFactoryV4:
         ):
             raise WorkflowDenied("Workflow Provider bindings are incomplete")
         catalog = _ResolvedCatalog(context)
-        store = WorkflowStoreV4(
-            context.state_root / context.profile_id / "workflow-v4.sqlite3"
-        )
-        provider = WorkflowProviderV4(
-            WorkflowEngineV4(
-                store=store,
-                catalog=catalog,
-                authority=_UnavailableAttemptAuthority(),
-                invoker=_UnavailableContractInvoker(),
-                validator=_SchemaValidator(catalog.schemas),
-            )
-        )
+        store = WorkflowStoreV4(context.state_root / context.profile_id / "workflow-v4.sqlite3")
         contributions: list[HostProviderContributionV4] = []
 
         def invoke(
@@ -171,7 +112,23 @@ class WorkflowHostProviderFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation
+            invocation.assert_current()
+            # A fresh immutable adapter per request prevents parallel runs from
+            # replacing a mutable "current invocation" or reusing an old lease.
+            adapter = CapturedWorkflowAttemptAdapterV4(
+                store=store,
+                port=getattr(context, "workflow_attempt_port", None),
+                invocation=invocation,
+            )
+            provider = WorkflowProviderV4(
+                WorkflowEngineV4(
+                    store=store,
+                    catalog=catalog,
+                    authority=adapter,
+                    invoker=adapter,
+                    validator=_SchemaValidator(catalog.schemas),
+                )
+            )
             return provider.invoke(operation_id, payload)
 
         for binding in context.provider_bindings:

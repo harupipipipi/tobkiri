@@ -1,15 +1,257 @@
 {
-  "version":"rumi.ui.contribution.v1",
-  "id":"rumi.scheduler.route",
-  "kind":"route",
-  "mode":"isolated",
-  "label":"Scheduler",
-  "description":"Inspect profile schedules and scheduler runtime state.",
-  "priority":100,
-  "route":"/scheduler",
-  "view":{"type":"isolated_application","mutations":"approved_tool_or_action_only"},
-  "isolated":{"path":"/isolated/packs/rumi_scheduler_surface_pack/index.html","rpc_contracts":["rumi.resource.schedule.v1","rumi.resource.scheduler.v1"]},
-  "localization":{"en":"Scheduler","ja":"スケジューラー"},
-  "accessibility":{"name":"Scheduler","keyboard":true,"live":"polite"}
+  "version": "rumi.ui.contribution.v1",
+  "id": "rumi.scheduler.route",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Scheduled tasks",
+  "description": "Manage public Profile schedules and explicitly enable a finite automatic check window.",
+  "priority": 100,
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "workspace_tab",
+    "renderer": "record_editor",
+    "title": "Scheduled tasks",
+    "body": "Search and edit actual task records. Run now and Run due tasks use the selected actions and approval policy. Enable automatic checks for one hour to run tasks at their configured times while Tobkiri is open. Unavailable clock actions stay disabled. Job context and model policy are included in the editable payload.",
+    "data_source": {
+      "contribution_id": "pack.rumi_schedule_store_pack.rumi_schedule_store_pack.schedule-resource",
+      "contract_id": "tobkiri.resource.schedule.v1",
+      "operation_id": "rumi_schedule_store_pack.schedule-resource",
+      "input": {
+        "operation": "list"
+      }
+    },
+    "record_editor": {
+      "records_path": "schedules",
+      "id_path": "id",
+      "title_path": "name",
+      "search_paths": [
+        "name",
+        "action_id",
+        "payload.prompt",
+        "payload.message",
+        "payload.description",
+        "payload.context.conversation_id"
+      ],
+      "columns": [
+        {
+          "label": "Name",
+          "path": "name",
+          "kind": "text"
+        },
+        {
+          "label": "Action",
+          "path": "action_id",
+          "kind": "text"
+        },
+        {
+          "label": "State",
+          "path": "status",
+          "kind": "status"
+        },
+        {
+          "label": "Next run",
+          "path": "next_run_at_ms",
+          "kind": "datetime"
+        },
+        {
+          "label": "Last failure",
+          "path": "last_error",
+          "kind": "text"
+        }
+      ],
+      "fields": [
+        {
+          "id": "name",
+          "label": "Name",
+          "path": "name",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "id": "action",
+          "label": "Action ID",
+          "path": "action_id",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "id": "payload",
+          "label": "Job payload, context and model policy (JSON)",
+          "path": "payload",
+          "kind": "json",
+          "required": true
+        },
+        {
+          "id": "next-run",
+          "label": "Next run date and time",
+          "path": "next_run_at_ms",
+          "kind": "datetime",
+          "required": true
+        },
+        {
+          "id": "interval",
+          "label": "Repeat interval in milliseconds (0 for once)",
+          "path": "interval_ms",
+          "kind": "integer",
+          "min": 0,
+          "required": true
+        },
+        {
+          "id": "attempts",
+          "label": "Maximum attempts",
+          "path": "max_attempts",
+          "kind": "integer",
+          "min": 1,
+          "max": 20,
+          "required": true
+        }
+      ],
+      "save": {
+        "operation": {
+          "contribution_id": "pack.rumi_schedule_store_pack.rumi_schedule_store_pack.schedule-action",
+          "contract_id": "tobkiri.action.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.schedule-action"
+        },
+        "input": {
+          "operation": "update"
+        },
+        "source_bindings": {
+          "expected_revision": "revision"
+        },
+        "record_bindings": {
+          "schedule_id": "id"
+        },
+        "draft_key": "updates"
+      },
+      "actions": [
+        {
+          "id": "pause",
+          "label": "Pause",
+          "operation": {
+            "contribution_id": "pack.rumi_schedule_store_pack.rumi_schedule_store_pack.schedule-action",
+            "contract_id": "tobkiri.action.schedule.v1",
+            "operation_id": "rumi_schedule_store_pack.schedule-action"
+          },
+          "input": {
+            "operation": "pause"
+          },
+          "record_bindings": {
+            "schedule_id": "id"
+          },
+          "source_bindings": {
+            "expected_revision": "revision"
+          },
+          "available_when": {
+            "path": "enabled",
+            "equals": true
+          },
+          "disabled_when": {
+            "path": "status",
+            "equals": "running"
+          }
+        },
+        {
+          "id": "resume",
+          "label": "Resume",
+          "operation": {
+            "contribution_id": "pack.rumi_schedule_store_pack.rumi_schedule_store_pack.schedule-action",
+            "contract_id": "tobkiri.action.schedule.v1",
+            "operation_id": "rumi_schedule_store_pack.schedule-action"
+          },
+          "input": {
+            "operation": "resume"
+          },
+          "record_bindings": {
+            "schedule_id": "id"
+          },
+          "source_bindings": {
+            "expected_revision": "revision"
+          },
+          "available_when": {
+            "path": "enabled",
+            "equals": false
+          },
+          "disabled_when": {
+            "path": "status",
+            "equals": "running"
+          }
+        },
+        {
+          "id": "trigger",
+          "label": "Run now",
+          "operation": {
+            "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-control",
+            "contract_id": "tobkiri.action.scheduler.v1",
+            "operation_id": "rumi_scheduler_runtime_pack.scheduler-control"
+          },
+          "input": {
+            "operation": "trigger"
+          },
+          "record_bindings": {
+            "schedule_id": "id"
+          },
+          "available_when": {
+            "path": "enabled",
+            "equals": true
+          },
+          "disabled_when": {
+            "path": "status",
+            "equals": "running"
+          }
+        }
+      ]
+    },
+    "controls": [
+      {
+        "id": "run-due",
+        "label": "Run due tasks",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-control",
+          "contract_id": "tobkiri.action.scheduler.v1",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-control"
+        },
+        "input": {
+          "operation": "tick",
+          "limit": 20
+        }
+      },
+      {
+        "id": "arm-clock",
+        "label": "Enable automatic checks for 1 hour",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-clock-control",
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control"
+        },
+        "input": {
+          "operation": "arm",
+          "duration_ms": 3600000
+        }
+      },
+      {
+        "id": "disarm-clock",
+        "label": "Disable automatic checks",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-clock-control",
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control"
+        },
+        "input": {
+          "operation": "disarm"
+        }
+      }
+    ]
+  },
+  "localization": {
+    "en": "Scheduled tasks",
+    "ja": "スケジュールタスク"
+  },
+  "accessibility": {
+    "name": "Scheduled tasks",
+    "keyboard": true,
+    "live": "polite"
+  }
 }
-

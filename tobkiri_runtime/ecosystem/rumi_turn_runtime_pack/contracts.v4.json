@@ -569,7 +569,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
+          "input_schema_digest": "sha256:40ee223157099ef5d92b1dd9e3638c736a8810d145df2a3f93f116d4cb871f1a",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -609,9 +609,9 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:0ba1b8a1e0bb00b658ff856dcf26c646ccd08a36f76dea14b20628c62acc3c94",
+      "revision_digest": "sha256:38c3e3a8a6371fc51b33fa0c275010a233da2ce54982173bc1c7f86a39f9e226",
       "schema_catalog": {
-        "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07": {
+        "sha256:40ee223157099ef5d92b1dd9e3638c736a8810d145df2a3f93f116d4cb871f1a": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -701,6 +701,37 @@
                     }
                   ]
                 },
+                "context_binding": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "context_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "parent_conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "parent_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "profile_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "version": {
+                      "const": "tobkiri.conversation-context-binding.v1"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "profile_id",
+                    "parent_conversation_id",
+                    "parent_revision",
+                    "context_digest"
+                  ],
+                  "type": "object"
+                },
                 "conversation_id": {
                   "$ref": "#/$defs/identifier"
                 },
@@ -718,6 +749,79 @@
                 "strategy_reference": {
                   "$ref": "#/$defs/identifier",
                   "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+                },
+                "task_context": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "input_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "body": {
+                            "maxLength": 32000,
+                            "minLength": 1,
+                            "pattern": "\\S",
+                            "type": "string"
+                          },
+                          "id": {
+                            "$ref": "#/$defs/identifier"
+                          },
+                          "kind": {
+                            "enum": [
+                              "goal",
+                              "todo",
+                              "instruction"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "body"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "recipient_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "source_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "source_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "version": {
+                      "const": "tobkiri.saved-task-context.v1"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "source_id",
+                    "conversation_id",
+                    "recipient_id",
+                    "input_id",
+                    "source_revision",
+                    "generation",
+                    "items"
+                  ],
+                  "type": "object"
                 },
                 "thinking_level": {
                   "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -895,6 +999,268 @@
             "code",
             "message"
           ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.stop.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.stop",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9",
+          "operation_id": "rumi_turn_runtime_pack.turn-stop",
+          "output_schema_digest": "sha256:e9f1ea9ca439e506a8a29d0adad78270a12332fe94db2339bffe516ce79f7bca",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "required_capabilities": [
+          "turn.stop"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
+      "schema_catalog": {
+        "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9": {
+          "additionalProperties": false,
+          "properties": {
+            "turn_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              },
+              "pattern": "^[A-Za-z0-9]",
+              "type": "string"
+            }
+          },
+          "required": [
+            "turn_id"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "sha256:e9f1ea9ca439e506a8a29d0adad78270a12332fe94db2339bffe516ce79f7bca": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "status": {
+                  "const": "cancellation_requested"
+                },
+                "stopped": {
+                  "const": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "stopped_confirmed"
+                },
+                "stopped": {
+                  "const": true
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "cancellation_requested",
+                "stopped_confirmed"
+              ]
+            },
+            "stopped": {
+              "type": "boolean"
+            },
+            "turn_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "turn_id",
+            "stopped"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.event.turn.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_turn_runtime_pack.turn-events",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "required_capabilities": [
+          "turn.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:c65360507f2da991fbea5d83a09e510e9d148287f975b8c8d765c2f1dc1485e6",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.turn.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "required_capabilities": [
+          "turn.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
       },

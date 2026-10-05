@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:d68d8c7bdb045f12256477b5b456669e53c20f644ec46e735abad03dd530d4e2",
+      "digest": "sha256:529778b403934625b7962bb814947681c03c1b381db7c653fd67dd992fd7f00e",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+      "digest": "sha256:57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2",
       "kind": "executable",
       "path": "runtime/adapter.py"
     }
@@ -24,7 +24,7 @@
     {
       "contract_revision_digest": "sha256:ba5b6299d1bcf1847d0a5f2a3ff10dc1c19182414afd0555df74295f4306a9ec",
       "id": "rumi_connector_company_adapter_pack.connector-route.company",
-      "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+      "implementation_digest": "sha256:57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_connector_company_adapter_pack.connector-company-route"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:d6c25840c0af5391b052d3c334675222d3ae41b52f868873404a88ab3988b200",
-    "contract_catalog_digest": "sha256:2ad6c9d2bd401021c31a94421cc5ca70d499b9b6fb44551ecb773c0afb7b69b8",
-    "source_identity": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208"
+    "artifact_set_digest": "sha256:720597e0b1bd1617b3c71d7d6b3f3bfa67daf17d40ac3c9d4fa09f680bde2195",
+    "contract_catalog_digest": "sha256:805364f5aeb902f4d45a366ec240cef07f46bec504e0d049cf956a58ab6fb455",
+    "source_identity": "sha256:5037828d32c4c19f465bf433b7fdfc9ee2d3dafa27d2bc42d07126d0bc35b0d6"
   },
   "migration": {
     "compatibility": "read_only",
@@ -60,7 +60,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:d6c25840c0af5391b052d3c334675222d3ae41b52f868873404a88ab3988b200",
+    "artifact_digest": "sha256:720597e0b1bd1617b3c71d7d6b3f3bfa67daf17d40ac3c9d4fa09f680bde2195",
     "display_name": "Rumi Connector Company Adapter",
     "id": "rumi_connector_company_adapter_pack",
     "kind": "normal_sandbox",
@@ -70,7 +70,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208",
+        "digest": "sha256:5037828d32c4c19f465bf433b7fdfc9ee2d3dafa27d2bc42d07126d0bc35b0d6",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -81,7 +81,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208",
+    "source_digest": "sha256:5037828d32c4c19f465bf433b7fdfc9ee2d3dafa27d2bc42d07126d0bc35b0d6",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_company_adapter_pack"
   },

@@ -13,8 +13,14 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from core_runtime.paths import USER_DATA_DIR
+from tobkiri_protocol.conversation_lifecycle import (
+    LIFECYCLE_VERSION, message_task_state,
+)
+from tobkiri_protocol.conversation_context import context_link
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.conversation_context import resolve_request_context
 from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
 
 STORE_VERSION = "rumi.conversation-store.v1"
@@ -70,6 +76,100 @@ class ConversationStore:
         value = self._read().get("saved_receipts", {}).get(_identifier(turn_id))
         return _copy(value) if isinstance(value, Mapping) else None
 
+    def confirm_saved_completion(self, turn: Mapping[str, Any]) -> dict[str, Any]:
+        """Promote an append candidate using a Host-read durable terminal record.
+
+        The captured completion Host authenticates its caller and reads this
+        record through the public turn resource. External callers cannot supply
+        a record or a completion flag to that contract.
+        """
+        turn_id = _identifier(turn.get("id"))
+        conversation_id = _identifier(turn.get("conversation_id"))
+        request_id = "saved-turn." + canonical_digest(
+            {"profile_id": self.profile_id, "turn_id": turn_id}
+        ).removeprefix("sha256:")
+        if (
+            turn.get("profile_id") != self.profile_id
+            or turn.get("status") != "completed"
+            or turn.get("request_id") != request_id
+            or type(turn.get("revision")) is not int
+            or turn["revision"] < 3
+        ):
+            raise PermissionError("saved completion requires a durable terminal")
+        with NamedLock(self.lock_root, "conversations"):
+            state = self._read()
+            receipt = state.get("saved_receipts", {}).get(turn_id)
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("conversation_id") != conversation_id
+                or receipt.get("input_digest") != turn.get("input_digest")
+                or receipt.get("initial_revision") != turn.get("conversation_revision")
+                or not isinstance(receipt.get("result_reference"), Mapping)
+                or receipt["result_reference"] != turn.get("result_reference")
+            ):
+                raise PermissionError("saved completion receipt does not match")
+            current = state["conversations"].get(conversation_id)
+            if not isinstance(current, Mapping):
+                return _completion_result(
+                    {"id": conversation_id,
+                     "conversation_revision": receipt["result_reference"]["conversation_revision"]},
+                    state["revision"], False,
+                )
+            current = dict(current)
+            source = dict(current.get("lifecycle") or _empty_lifecycle())
+            confirmed = {
+                "turn_id": turn_id,
+                "input_digest": receipt["input_digest"],
+                "result_reference": receipt["result_reference"],
+            }
+            if (
+                source.get("state") == "completed"
+                and source.get("confirmed_completion") == confirmed
+                and source.get("completion_message_id") == receipt["assistant_message_id"]
+            ):
+                return _completion_result(current, state["revision"], True)
+            candidate = source.get("completion_candidate")
+            if (
+                not isinstance(candidate, Mapping)
+                or candidate.get("receipt") != receipt
+                or source.get("state") != "running"
+                or source.get("active_user_message_id") != receipt["user_message_id"]
+                or current.get("current_node_id") != receipt["assistant_message_id"]
+                or type(candidate.get("completed_at_ms")) is not int
+            ):
+                # A new user, branch change, edit or reset retires the candidate.
+                return _completion_result(current, state["revision"], False)
+            assistant = next(
+                (message for message in current.get("messages") or []
+                 if message.get("id") == receipt["assistant_message_id"]),
+                None,
+            )
+            outcome = {
+                "status": "ok", "turn_id": turn_id,
+                "conversation_id": conversation_id,
+                "conversation_revision": receipt["result_reference"]["conversation_revision"],
+                "user_message_id": receipt["user_message_id"], "message": assistant,
+            }
+            if (
+                not isinstance(assistant, Mapping)
+                or message_task_state(assistant) != "completed"
+                or canonical_digest(outcome) != receipt["result_reference"]["outcome_digest"]
+            ):
+                return _completion_result(current, state["revision"], False)
+            source.update({
+                "state": "completed",
+                "completed_at_ms": candidate["completed_at_ms"],
+                "completion_message_id": receipt["assistant_message_id"],
+                "confirmed_completion": confirmed,
+                "completion_candidate": None,
+            })
+            current["lifecycle"] = source
+            current["conversation_revision"] += 1
+            state["conversations"][conversation_id] = current
+            state["revision"] += 1
+            self._write(state)
+            return _completion_result(current, state["revision"], True)
+
     def create(
         self,
         record: Mapping[str, Any],
@@ -93,6 +193,20 @@ class ConversationStore:
                 if not isinstance(parent, Mapping):
                     raise KeyError("parent conversation is unknown")
                 parent = dict(parent)
+                link = context_link(normalized)
+                if link is not None:
+                    _assert_conversation_revision(
+                        parent, link["created_from_parent_revision"]
+                    )
+                    if context_link(parent) is not None:
+                        raise ValueError("nested context links are unavailable")
+                    for sibling in state["conversations"].values():
+                        other = context_link(sibling)
+                        if other is not None and (
+                            other["parent_conversation_id"] == parent_id
+                            and other["slot"] == link["slot"]
+                        ):
+                            raise ConversationConflict("parent context slot exists")
                 child_ids = list(parent.get("child_conversation_ids") or [])
                 if conversation_id not in child_ids:
                     child_ids.append(conversation_id)
@@ -135,7 +249,15 @@ class ConversationStore:
                 raise KeyError("conversation is unknown")
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
+            prior_node_id = current.get("current_node_id")
             prior_parent_id = current.get("parent_conversation_id")
+            link = context_link(current)
+            if "context_link" in patch and patch["context_link"] != current.get("context_link"):
+                raise ValueError("conversation context link is immutable")
+            if link is not None and "parent_conversation_id" in patch and (
+                patch["parent_conversation_id"] != prior_parent_id
+            ):
+                raise ValueError("conversation context parent is immutable")
             requested_parent_id = (
                 patch.get("parent_conversation_id")
                 if "parent_conversation_id" in patch
@@ -171,6 +293,8 @@ class ConversationStore:
                         else _safe(patch[key])
                     )
             now = _now_ms()
+            if current.get("current_node_id") != prior_node_id:
+                _retain_lifecycle(current, list(current.get("messages") or []), reset=True)
             if requested_parent_id != prior_parent_id:
                 _relink_conversation_parent(
                     state["conversations"],
@@ -224,6 +348,9 @@ class ConversationStore:
                 if child_value.get("parent_conversation_id") != conversation_id:
                     continue
                 child = dict(child_value)
+                if context_link(child) is not None:
+                    # Preserve lineage/history; a deleted parent stays unavailable.
+                    continue
                 child["parent_conversation_id"] = None
                 _touch_conversation(child, now)
                 state["conversations"][child_id] = child
@@ -256,6 +383,14 @@ class ConversationStore:
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
             messages = list(current.get("messages") or [])
+            if saved_input is not None:
+                # Parent lineage is checked in the same owner lock as the
+                # append, so a parent edit after bridge reads cannot commit a
+                # user or assistant against the old saved context binding.
+                resolve_request_context(
+                    current, saved_input["request"], self.profile_id,
+                    lambda parent_id: state["conversations"].get(parent_id),
+                )
             if any(item.get("id") == normalized["id"] for item in messages):
                 raise ConversationConflict("message already exists")
             normalized["children_ids"] = []
@@ -283,6 +418,9 @@ class ConversationStore:
                 ]
             normalized["sequence"] = len(messages)
             normalized["sequence_number"] = len(messages) + 1
+            # Completion time comes from this transaction, never caller timestamps.
+            now = _now_ms()
+            terminal_verified = False
             if saved_input is not None:
                 receipts = dict(state.get("saved_receipts", {}))
                 turn_id = saved_input.get("request", {}).get("turn_id")
@@ -294,6 +432,12 @@ class ConversationStore:
                 )
                 receipts[receipt["turn_id"]] = receipt
                 state["saved_receipts"] = receipts
+                terminal_verified = "result_reference" in receipt
+            _record_lifecycle(
+                current, normalized, messages, now,
+                terminal_verified=terminal_verified,
+                saved_receipt=receipt if terminal_verified else None,
+            )
             messages.append(normalized)
             current["messages"] = messages
             current["current_node_id"] = normalized["id"]
@@ -420,12 +564,17 @@ class ConversationStore:
                 ):
                     if patch is not None and key in patch:
                         messages[index][key] = _safe(patch[key])
-                messages[index]["updated_at"] = _now_ms()
+                now = _now_ms()
+                messages[index]["updated_at"] = now
+                if current.get("current_node_id") == message_id:
+                    _record_lifecycle(current, messages[index], messages, now)
                 action = "message_updated"
             _normalize_message_order(messages)
             if not delete:
                 result_message = _copy(messages[index])
             current["messages"] = messages
+            if delete:
+                _retain_lifecycle(current, messages)
             if delete and current.get("current_node_id") == message_id:
                 current["current_node_id"] = parent_id
             current["updated_at"] = _now_ms()
@@ -464,6 +613,8 @@ class ConversationStore:
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
             current["messages"] = normalized
+            # Replacement/reset is not evidence of a newly completed task.
+            _retain_lifecycle(current, normalized, reset=True)
             current["current_node_id"] = (
                 normalized[-1]["id"] if normalized else None
             )
@@ -743,7 +894,9 @@ def _conversation(value: Mapping[str, Any], *, allow_messages: bool) -> dict[str
         "child_conversation_ids": _safe(value.get("child_conversation_ids") or []),
         "conversation_kind": str(value.get("conversation_kind") or "chat"),
         "group_id": value.get("group_id"),
+        "context_link": context_link(value),
         "metadata": _conversation_metadata(value.get("metadata") or {}),
+        "lifecycle": _empty_lifecycle(),
         "messages": normalized_messages,
     }
 
@@ -777,6 +930,117 @@ def _normalize_message_order(messages: list[dict[str, Any]]) -> None:
     for sequence, item in enumerate(messages):
         item["sequence"] = sequence
         item["sequence_number"] = sequence + 1
+
+def _empty_lifecycle() -> dict[str, Any]:
+    return {
+        "version": LIFECYCLE_VERSION,
+        "state": "unknown",
+        "completed_at_ms": None,
+        "completion_message_id": None,
+        "active_user_message_id": None,
+        "active_user_received_at_ms": None,
+        "resumed_completed_at_ms": None,
+        "completion_candidate": None,
+        "confirmed_completion": None,
+    }
+
+
+def _record_lifecycle(
+    conversation: dict[str, Any],
+    message: Mapping[str, Any],
+    messages: list[dict[str, Any]],
+    now_ms: int,
+    *,
+    terminal_verified: bool = False,
+    saved_receipt: Mapping[str, Any] | None = None,
+) -> None:
+    """Record append evidence; durable settlement separately confirms success."""
+    source = dict(conversation.get("lifecycle") or _empty_lifecycle())
+    if source.get("version") != LIFECYCLE_VERSION:
+        source = _empty_lifecycle()
+    role = message.get("role")
+    if role == "user":
+        source["completion_candidate"] = None
+        source["resumed_completed_at_ms"] = (
+            source.get("completed_at_ms") if source.get("state") == "completed"
+            else None
+        )
+        source["state"] = "running"
+        source["active_user_message_id"] = message["id"]
+        source["active_user_received_at_ms"] = now_ms
+    elif role == "assistant":
+        by_id = {item["id"]: item for item in messages}
+        ancestor = message
+        visited: set[str] = set()
+        while ancestor.get("parent_id") in by_id:
+            parent_id = ancestor["parent_id"]
+            if parent_id in visited:
+                return
+            visited.add(parent_id)
+            ancestor = by_id[parent_id]
+            if ancestor.get("role") == "user":
+                break
+        active_user = source.get("active_user_message_id")
+        if active_user and (
+            ancestor.get("role") != "user" or ancestor.get("id") != active_user
+        ):
+            # A delayed final response for an older user turn cannot end a new one.
+            return
+        state = message_task_state(message)
+        if state == "completed" and terminal_verified:
+            source["completion_candidate"] = {
+                "completed_at_ms": now_ms, "receipt": _copy(saved_receipt),
+            }
+            state = "running"
+        else:
+            source["completion_candidate"] = None
+        if state == "completed" and not terminal_verified:
+            # Public transcript writes are not evidence of a completed task.
+            # Edits may preserve an existing receipt but cannot establish one.
+            state = (
+                "completed" if source.get("state") == "completed"
+                and source.get("completion_message_id") == message["id"]
+                else "unknown"
+            )
+        if state == "completed" and (
+            source.get("completion_message_id") != message["id"]
+            or source.get("state") != "completed"
+        ):
+            source["completed_at_ms"] = now_ms
+            source["completion_message_id"] = message["id"]
+        source["state"] = state
+    else:
+        return
+    conversation["lifecycle"] = source
+
+
+def _retain_lifecycle(
+    conversation: dict[str, Any], messages: list[dict[str, Any]], *,
+    reset: bool = False,
+) -> None:
+    source = dict(conversation.get("lifecycle") or _empty_lifecycle())
+    remaining = {item["id"] for item in messages}
+    # Delete/replace/head reset transactions are not authenticated saved append
+    # evidence, even if a caller reconstructs the same visible message IDs.
+    source["completion_candidate"] = None
+    if source.get("completion_message_id") not in remaining:
+        source = _empty_lifecycle()
+    if reset or source.get("active_user_message_id") not in remaining:
+        source["state"] = "unknown"
+        source["active_user_message_id"] = None
+        source["completion_candidate"] = None
+    conversation["lifecycle"] = source
+
+
+def _completion_result(
+    conversation: Mapping[str, Any], store_revision: int, confirmed: bool,
+) -> dict[str, Any]:
+    return {
+        "confirmed": confirmed,
+        "conversation_id": conversation["id"],
+        "conversation_revision": conversation["conversation_revision"],
+        "store_revision": store_revision,
+    }
 
 
 def _normalize_message_links(messages: list[dict[str, Any]]) -> None:

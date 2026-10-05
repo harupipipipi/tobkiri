@@ -1,0 +1,47 @@
+{
+  "artifact_set_digest": "sha256:12f9e46baf1bd2d2309a0c1ef4c8ba7f9fcdaca37e1bd4b4d04c926a0178370e",
+  "artifacts": [
+    {
+      "digest": "sha256:c0b4bbc9c21ef9276af3bfe444d8519c812e9fd012fa9b642cbaf098fa40c275",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:8abe39ab7de58c002b83892c391b42a4c857f47d926c61473996ce2413b427eb",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
+      "path": "frontend/contributions/side-chat.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
+      "path": "pack-source.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0b1011c4fb4d3c5d82b2bb4bc4f8262d114a7af6bafe2c9f8c25094ad099bf80",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "path": "runtime/host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
+      "path": "runtime/side_chat.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:426d81f2d6840e50c90b298082f75a2a6772f4076beb3df7695a1b317eae5ba2"
+  },
+  "pack_id": "tobkiri_side_chat_pack",
+  "source_identity": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd"
+}

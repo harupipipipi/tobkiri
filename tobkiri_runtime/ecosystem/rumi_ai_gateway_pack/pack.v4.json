@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:26c040cae324d9c27714d7746c17d3b7ac7d68178f6ff58fd9b489952fa2c0e5",
+      "digest": "sha256:9ea332346e115ef1eb52ae183e92cf83839e22a1880bd639302295d24821c7ef",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
+      "digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
       "kind": "executable",
       "path": "runtime/gateway.py"
     },
@@ -55,7 +55,7 @@
     {
       "contract_revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
       "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
+      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.generate"
@@ -75,7 +75,7 @@
     {
       "contract_revision_digest": "sha256:b41c3f794afcdf4913c27f3245d162472e43f7dc712ccdf5e1dc0486c599eb46",
       "id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
+      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics"
@@ -85,7 +85,7 @@
     {
       "contract_revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
       "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:9546e4d0f77d3ca9f80dd211309c0224be7fe83a20268ed6c6f7a245b1165abd",
+      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.stream"
@@ -94,9 +94,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f8728d7b527b96f88d7261e4ff30485540c7965c042b199825fb035449360f94",
-    "contract_catalog_digest": "sha256:ecf1c9e36713a064b32540d5a891aade914f516183f48bd4860817af64d0e4e2",
-    "source_identity": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac"
+    "artifact_set_digest": "sha256:13dd1d7a615e41e3ff08357d96506a8935295c2e4acf8958ecccdb7c26ea7da4",
+    "contract_catalog_digest": "sha256:d74e6059fee528dbfc3fbd48086e1a225c88e37717890f7d9e84a2f520858090",
+    "source_identity": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9"
   },
   "migration": {
     "compatibility": "read_only",
@@ -157,7 +157,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f8728d7b527b96f88d7261e4ff30485540c7965c042b199825fb035449360f94",
+    "artifact_digest": "sha256:13dd1d7a615e41e3ff08357d96506a8935295c2e4acf8958ecccdb7c26ea7da4",
     "display_name": "Rumi AI Gateway",
     "id": "rumi_ai_gateway_pack",
     "kind": "host_extension",
@@ -167,7 +167,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+        "digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -178,7 +178,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:cc8912e7717eb96c520014d22ed9575b952c78f156c6fee6a1c4dfc9ed9af7ac",
+    "source_digest": "sha256:d673416115f308e8ab547520a804b184cb7c492168a4571233c953e68d40bba9",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
   },

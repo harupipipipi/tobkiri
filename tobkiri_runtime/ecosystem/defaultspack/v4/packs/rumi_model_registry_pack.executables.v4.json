@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_model_registry_pack",
-  "source_identity": "sha256:d2127a64cdbbe47ddc63b63ed2ce3a5fb6842a0409b49bd3277b9d995fcc5857",
+  "source_identity": "sha256:895080696c9d35a6b716cf5f7995d5fc37fa22622440d30b3a75dedab81959e5",
   "variants": [
     {
       "variant_id": "rumi_model_registry_pack.model-registry.manage.python",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_model_registry_pack.model-registry.migrate.python",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_model_registry_pack.model-registry.profile.python",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
+      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -87,9 +87,154 @@
         {
           "contract_id": "tobkiri.resource.ai.model.profile.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+          "revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
           "operation_id": "rumi_model_registry_pack.model-profile-resource",
           "input_schema": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "required": [
+                  "identifier"
+                ]
+              }
+            ],
+            "properties": {
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "conversation_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "model_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "fallback_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "snapshot"
+                    ]
+                  },
+                  "on_unavailable": {
+                    "enum": [
+                      "fail",
+                      "fallback"
+                    ]
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "required_capabilities": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "snapshot_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "resolve",
+                  "policy.resolve"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "snapshot_receipt": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "thinking_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "level": {
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ]
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "model_default"
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "output_schema": {
@@ -98,7 +243,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "privileged",
+          "effect_class": "read",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -106,9 +251,154 @@
         {
           "contract_id": "tobkiri.resource.ai.model.profile.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+          "revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
           "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
           "input_schema": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "required": [
+                  "identifier"
+                ]
+              }
+            ],
+            "properties": {
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "conversation_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "model_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "fallback_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "snapshot"
+                    ]
+                  },
+                  "on_unavailable": {
+                    "enum": [
+                      "fail",
+                      "fallback"
+                    ]
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "required_capabilities": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "snapshot_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "resolve",
+                  "policy.resolve"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "snapshot_receipt": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "thinking_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "level": {
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ]
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "model_default"
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "output_schema": {
@@ -117,7 +407,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "privileged",
+          "effect_class": "read",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -125,9 +415,154 @@
         {
           "contract_id": "tobkiri.resource.ai.model.profile.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+          "revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
           "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
           "input_schema": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "required": [
+                  "identifier"
+                ]
+              }
+            ],
+            "properties": {
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "conversation_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "global_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_model_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "turn_thinking_level": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "model_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "fallback_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "snapshot"
+                    ]
+                  },
+                  "on_unavailable": {
+                    "enum": [
+                      "fail",
+                      "fallback"
+                    ]
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "required_capabilities": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "snapshot_profile_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "resolve",
+                  "policy.resolve"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "snapshot_receipt": {
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "thinking_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "level": {
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ]
+                  },
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "model_default"
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "output_schema": {
@@ -136,7 +571,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "privileged",
+          "effect_class": "read",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -144,6 +579,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:36e8a5af603a19bb7f22e9317047220dcec00e8d50c5267d04d78d5d562fac4e",
-  "catalog_digest": "sha256:5f7adc78723450a4783a9e59cc31a77a35fdc034d0815a8ff1298ee9d9940077"
+  "materialization_catalog_digest": "sha256:a2ce18f4b8c8bdd352b6c50e2c706cb75d378125d712782feec630b2b03049e7",
+  "catalog_digest": "sha256:996c7cb6761758fe3258519d9627bb742e5696fe447468249d74bed4e9d84bef"
 }

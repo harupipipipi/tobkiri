@@ -29,15 +29,11 @@ _PROFILE_GENERATE_OPERATION = f"{_PROFILE_OPERATION}.generate"
 _PROFILE_STREAM_OPERATION = f"{_PROFILE_OPERATION}.stream"
 _MANAGE_OPERATION = "rumi_model_registry_pack.model-profile-manage"
 _PROVIDER_REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
-_PROVIDER_REGISTRY_OPERATION = (
-    "rumi_provider_registry_pack.provider-registry-resource"
-)
+_PROVIDER_REGISTRY_OPERATION = "rumi_provider_registry_pack.provider-registry-resource"
 _MIGRATE_OPERATION = "rumi_model_registry_pack.model-registry-migrate"
 _MANAGE_SERVICE_OPERATIONS = frozenset({"save", "delete", "alias.set"})
-_MIGRATE_SERVICE_OPERATIONS = frozenset(
-    {"migration.apply", "migration.rollback"}
-)
-_PROFILE_SERVICE_OPERATIONS = frozenset({"list", "get", "resolve"})
+_MIGRATE_SERVICE_OPERATIONS = frozenset({"migration.apply", "migration.rollback"})
+_PROFILE_SERVICE_OPERATIONS = frozenset({"list", "get", "resolve", "policy.resolve"})
 
 
 class ModelRegistryHostFactoryV4:
@@ -86,8 +82,15 @@ class ModelRegistryHostFactoryV4:
                 raise PermissionError("model registry Profile is unavailable")
             operation = _service_operation(operation_id, payload)
             fields = {
-                "list": set(), "get": {"model_profile_id"},
+                "list": set(),
+                "get": {"model_profile_id"},
                 "resolve": {"identifier"},
+                "policy.resolve": {
+                    "model_policy",
+                    "thinking_policy",
+                    "context",
+                    "snapshot_receipt",
+                },
                 _PROFILE_GENERATE_OPERATION: {"identifier"},
                 _PROFILE_STREAM_OPERATION: {"identifier"},
                 "save": {
@@ -106,6 +109,7 @@ class ModelRegistryHostFactoryV4:
                 revision = payload.get("expected_revision")
                 if type(revision) is not int or revision < 0:
                     raise PermissionError("model registry revision is invalid")
+            invocation.assert_current()
             if operation == "save":
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
@@ -115,10 +119,26 @@ class ModelRegistryHostFactoryV4:
                 invocation.assert_current()
                 _validate_provider_connection(client, payload)
                 invocation.assert_current()
-            return service.invoke(
+            provider_snapshot = None
+            if operation == "policy.resolve":
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
+                    consumer_pack_id=_PACK_ID,
+                    include_credentials=False,
+                )
+                provider_snapshot = client.invoke(
+                    _PROVIDER_REGISTRY_CONTRACT,
+                    _PROVIDER_REGISTRY_OPERATION,
+                    {"operation": "list"},
+                )
+                invocation.assert_current()
+            result = service.invoke(
                 operation,
                 {**payload, "profile_id": context.profile_id},
+                provider_snapshot=provider_snapshot,
             )
+            invocation.assert_current()
+            return result
 
         return CapturedHostProviderV4(
             tuple(_contributions(context, invoke)),
@@ -141,9 +161,7 @@ def _validate_provider_connection(
         raise PermissionError("model route provider binding is invalid")
     metadata = record.get("metadata")
     provider_instance_id = (
-        metadata.get("provider_connection_id")
-        if isinstance(metadata, Mapping)
-        else None
+        metadata.get("provider_connection_id") if isinstance(metadata, Mapping) else None
     )
     if not isinstance(provider_instance_id, str) or not provider_instance_id:
         raise PermissionError("model route provider connection is invalid")
@@ -152,10 +170,7 @@ def _validate_provider_connection(
         _PROVIDER_REGISTRY_OPERATION,
         {},
     )
-    if (
-        not isinstance(snapshot, Mapping)
-        or snapshot.get("revision") != expected_revision
-    ):
+    if not isinstance(snapshot, Mapping) or snapshot.get("revision") != expected_revision:
         raise PermissionError("model route provider connection changed")
     providers = snapshot.get("providers")
     if not isinstance(providers, list):
@@ -201,9 +216,7 @@ def _payload_operation(
 
 def _contributions(
     context: HostProviderCaptureContextV4,
-    invoke: Callable[
-        [str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]
-    ],
+    invoke: Callable[[str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]],
 ) -> list[HostProviderContributionV4]:
     """Project only verified registry bindings into exact contributions."""
 
@@ -233,8 +246,7 @@ def _contributions(
 
 
 HOST_PROVIDER_FACTORY = {
-    function_id: ModelRegistryHostFactoryV4(function_id)
-    for function_id in _FUNCTION_IDS
+    function_id: ModelRegistryHostFactoryV4(function_id) for function_id in _FUNCTION_IDS
 }
 
 
@@ -254,13 +266,25 @@ def main() -> int:
         response = {"status": "ok", "value": value}
         code = 0
     except PermissionError:
-        response = {"status": "denied", "error_code": "denied", "diagnostics": ["model registry request denied"]}
+        response = {
+            "status": "denied",
+            "error_code": "denied",
+            "diagnostics": ["model registry request denied"],
+        }
         code = 3
     except KeyError:
-        response = {"status": "unavailable", "error_code": "unknown", "diagnostics": ["model registry item is unknown"]}
+        response = {
+            "status": "unavailable",
+            "error_code": "unknown",
+            "diagnostics": ["model registry item is unknown"],
+        }
         code = 2
     except Exception as exc:
-        response = {"status": "unavailable", "error_code": type(exc).__name__, "diagnostics": [type(exc).__name__]}
+        response = {
+            "status": "unavailable",
+            "error_code": type(exc).__name__,
+            "diagnostics": [type(exc).__name__],
+        }
         code = 2
     sys.stdout.write(json.dumps(response, ensure_ascii=False))
     return code

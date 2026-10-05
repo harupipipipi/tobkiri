@@ -11,12 +11,16 @@ hashed independently so an operation cannot be admitted from a stale digest.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Any, Mapping
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 
 ROOT = Path(__file__).resolve().parents[1]
 ECOSYSTEM = ROOT / "ecosystem"
@@ -581,6 +585,13 @@ def _merge_records(
             raise ExecutableSourceRegistryError(f"explicit Function implementation conflict: {function_id}")
         if target["contract_id"] != explicit_record["contract_id"]:
             raise ExecutableSourceRegistryError(f"explicit Function Contract conflict: {function_id}")
+        if target["contract_version"] != explicit_record["contract_version"] or any(
+            target[field] != explicit_record[field]
+            for field in ("input_schema", "output_schema", "error_schema")
+        ):
+            raise ExecutableSourceRegistryError(
+                f"explicit Function wire schema conflict: {function_id}"
+            )
         target["operations"].extend(explicit_record["operations"])
         target["source"].extend(explicit_record["source"])
         operation_ids = [str(item["operation_id"]) for item in target["operations"]]
@@ -634,6 +645,9 @@ def build_registry(
                 ),
                 repository_root=repository_root,
             )
+    _apply_schema_overrides(
+        records, Path(fixture_path).resolve(), repository_root
+    )
     _merge_records(records, explicit, repository_root=repository_root)
     for (pack_id, entrypoint_id), operation_id in operation_overrides.items():
         if not any(
@@ -702,6 +716,104 @@ def build_registry(
         },
         "packs": {key: records[key] for key in sorted(records)},
     }
+
+
+def _apply_schema_overrides(
+    records: dict[str, dict[str, Any]],
+    fixture_path: Path,
+    repository_root: Path,
+) -> None:
+    """Apply reviewed wire schemas only to an exact legacy owner inventory.
+
+    Schema evolution cannot add Functions, Operations, effects or authority.
+    The fixture and the existing executable bytes remain provenance inputs.
+    """
+    overrides = _load_json(fixture_path).get("schema_overrides", [])
+    if not isinstance(overrides, list):
+        raise ExecutableSourceRegistryError("schema_overrides must be a list")
+    seen: set[tuple[str, str]] = set()
+    for override in overrides:
+        if not isinstance(override, Mapping) or set(override) != {
+            "pack_id", "contract_id", "contract_version",
+            "legacy_functions", "schemas",
+        }:
+            raise ExecutableSourceRegistryError("schema override fields are invalid")
+        pack_id = override["pack_id"]
+        contract_id = override["contract_id"]
+        version = override["contract_version"]
+        if not all(isinstance(item, str) and item for item in (
+            pack_id, contract_id, version
+        )) or _contract_id(contract_id) != contract_id:
+            raise ExecutableSourceRegistryError("schema override identity is invalid")
+        identity = (pack_id, contract_id)
+        if identity in seen:
+            raise ExecutableSourceRegistryError("duplicate schema override")
+        seen.add(identity)
+        targets = sorted(
+            (record for record in records.values()
+             if record["pack_id"] == pack_id
+             and record["contract_id"] == contract_id),
+            key=lambda record: record["function_id"],
+        )
+        expected = [
+            {
+                "function_id": record["function_id"],
+                "implementation_path": record["implementation_path"],
+                "implementation_digest": record["implementation_digest"],
+                "operation_ids": sorted(
+                    operation["operation_id"] for operation in record["operations"]
+                ),
+            }
+            for record in targets
+        ]
+        if not targets or override["legacy_functions"] != expected or any(
+            record["owner"] != pack_id or record["contract_version"] != version
+            for record in targets
+        ):
+            raise ExecutableSourceRegistryError(
+                "schema override legacy identity mismatch"
+            )
+        schemas = override["schemas"]
+        if not isinstance(schemas, Mapping) or set(schemas) != {
+            "input", "output", "error"
+        }:
+            raise ExecutableSourceRegistryError("schema override schemas are invalid")
+        try:
+            encoded = json.dumps(schemas, allow_nan=False).encode("utf-8")
+            if len(encoded) > 65536 or _external_schema_reference(schemas):
+                raise ValueError("schema override is unbounded or external")
+            for schema in schemas.values():
+                Draft202012Validator.check_schema(schema)
+        except (SchemaError, TypeError, ValueError) as error:
+            raise ExecutableSourceRegistryError(
+                "schema override JSON schema is invalid"
+            ) from error
+        fields = {f"{name}_schema": copy.deepcopy(value)
+                  for name, value in schemas.items()}
+        for record in targets:
+            record.update(copy.deepcopy(fields))
+            for operation in record["operations"]:
+                operation.update(copy.deepcopy(fields))
+            record["source"].append({
+                "kind": "explicit-schema-override",
+                "path": _label(fixture_path, repository_root),
+                "contract_id": contract_id,
+            })
+
+
+def _external_schema_reference(value: Any) -> bool:
+    """Permit only local schema references in a reviewed replacement wire."""
+    if isinstance(value, Mapping):
+        for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
+            if keyword in value and (
+                not isinstance(value[keyword], str)
+                or not (value[keyword] == "#" or value[keyword].startswith("#/"))
+            ):
+                return True
+        return any(_external_schema_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_external_schema_reference(item) for item in value)
+    return False
 
 
 def _apply_implementation_adapters(

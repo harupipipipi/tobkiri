@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -16,6 +17,8 @@ from core_runtime.external_pack_catalog_v4 import (
 from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.canonical import strict_loads
 from tobkiri_protocol.validation import validate_file
+from tobkiri_protocol.surface_templates_v1 import validate_surface_renderer
+from .v4_view_contract import validate_catalog_view
 
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[3] / "schemas" / "frontend_contribution.schema.json"
@@ -130,9 +133,9 @@ def _load_pack_routes(
         payload = strict_loads(raw)
         if not isinstance(payload, Mapping) or not _SCHEMA.is_valid(payload):
             raise FrontendPackDenied("frontend descriptor schema is invalid")
-        if payload["kind"] != "route":
+        if payload["kind"] not in {"route", "view", "renderer"}:
             continue
-        if manifest["pack"]["kind"] != "normal_sandbox":
+        if payload["kind"] == "route" and manifest["pack"]["kind"] != "normal_sandbox":
             raise FrontendPackDenied("only Normal Packs can contribute routes")
         if (
             payload["mode"] != "declarative"
@@ -141,11 +144,49 @@ def _load_pack_routes(
                 field in payload
                 for field in (
                     "action_contract", "data_source_contract", "isolated", "module",
-                    "region", "renderer", "schema",
+                    "region", "schema",
                 )
             )
+            or (payload["kind"] != "renderer" and "renderer" in payload)
         ):
             raise FrontendPackDenied("only inert declarative routes are admitted")
+        if payload["kind"] in {"view", "renderer"}:
+            if set(payload) - {
+                "version", "id", "kind", "mode", "label", "description",
+                "priority", "accessibility", "localization", "view",
+            } - ({"renderer"} if payload["kind"] == "renderer" else set()):
+                raise FrontendPackDenied("catalog view has undeclared fields")
+            renderer = payload["kind"] == "renderer"
+            if renderer:
+                if payload.get("renderer") != "tobkiri.ui.surface-renderer.v1":
+                    raise FrontendPackDenied("renderer API is unavailable")
+                validate_surface_renderer(payload["view"])
+            else:
+                validate_catalog_view(payload["view"])
+            projected.append({
+                "contribution_id": str(payload["id"]),
+                "kind": str(payload["kind"]),
+                "mode": "declarative",
+                "label": str(payload["label"]),
+                "priority": int(payload["priority"]),
+                "owner_pack_id": pack_id,
+                "owner_pack_hash": expected_digest,
+                "build_identity": str(manifest["integrity"]["source_identity"]),
+                "resolved_profile_id": profile_id,
+                "resolved_profile_revision": profile_revision,
+                "resolved_activation_id": activation_id,
+                "resolved_plan_hash": plan_digest,
+                "descriptor_hash": digest,
+                "view": dict(payload["view"]),
+                "localization": dict(payload.get("localization") or {}),
+                "accessibility": dict(payload["accessibility"]),
+                **({
+                    "renderer": "tobkiri.ui.surface-renderer.v1",
+                    "resolved_expires_at_ms": int(time.time() * 1000)
+                    + int(payload["view"]["ttl_ms"]),
+                } if renderer else {}),
+            })
+            continue
         route = str(payload["route"])
         if _ROUTE.fullmatch(route) is None:
             raise FrontendPackDenied("frontend route is invalid")
@@ -265,20 +306,23 @@ def project_selected_declarative_routes(
     for item in proposed:
         owner = str(item["owner_pack_id"])
         identity = str(item["contribution_id"])
-        route = str(item["route"])
+        route = str(item.get("route") or "")
         if (
             identity in occupied_ids
-            or any(
+            or (route and any(
                 route == str(candidate.get("route") or "")
                 or (
                     candidate.get("route_match") == "subpath"
                     and route.startswith(str(candidate.get("route") or "").rstrip("/") + "/")
                 )
                 for candidate in occupied_routes
-            )
-            or len(identities[identity]) != 1 or len(routes[route]) != 1
+            ))
+            or len(identities[identity]) != 1
+            or (route and len(routes[route]) != 1)
             or sum(candidate["contribution_id"] == identity for candidate in proposed) != 1
-            or sum(candidate["route"] == route for candidate in proposed) != 1
+            or (
+                route and sum(candidate.get("route") == route for candidate in proposed) != 1
+            )
         ):
             quarantined.add(owner)
     for pack_id in sorted(quarantined):
@@ -290,7 +334,7 @@ def project_selected_declarative_routes(
                 "message": "Selected Pack frontend route or identity collides",
             })
     accepted = [item for item in proposed if item["owner_pack_id"] not in quarantined]
-    accepted.sort(key=lambda item: (str(item["route"]), str(item["contribution_id"])))
+    accepted.sort(key=lambda item: (str(item.get("route") or ""), str(item["contribution_id"])))
     return accepted, diagnostics, sorted(quarantined)
 
 

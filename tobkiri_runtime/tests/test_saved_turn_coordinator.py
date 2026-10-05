@@ -17,10 +17,13 @@ from ecosystem.rumi_prompt_studio_pack.runtime.service import PromptStudioServic
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    COMPLETION_CONTRACT,
+    COMPLETION_OPERATION,
     LIFECYCLE_CONTRACT,
     LIFECYCLE_OPERATION,
     RECEIPT_CONTRACT,
     RECEIPT_OPERATION,
+    RECONCILE_CONTRACTS,
     SAVED_CONTRACTS,
     execute_saved_turn,
 )
@@ -56,6 +59,11 @@ class _Session:
         return ()
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+        if (contract_id, operation) == (COMPLETION_CONTRACT, COMPLETION_OPERATION):
+            assert payload == {
+                "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
+            }
+            return self.conversations.confirm_saved_completion(self.turns.get("turn-1"))
         if (contract_id, operation) == (LIFECYCLE_CONTRACT, LIFECYCLE_OPERATION):
             action = payload["operation"]
             assert action in {"begin_saved", "claim_saved"}
@@ -614,6 +622,27 @@ def test_reader_reconciliation_rejects_a_stale_turn_capture(tmp_path: Path) -> N
     current = store.get("turn-1")
     assert current["status"] == "running"
     assert current["revision"] == claimed["revision"] + 1
+def test_cancellation_after_final_append_cannot_confirm_completion(tmp_path: Path) -> None:
+    """Actual durable cancellation wins before terminal CAS; transcript survives."""
+    session = _Session(tmp_path)
+    session.ai_outcome["value"]["finish_reason"] = "stop"
+
+    def cancel(value: dict) -> dict:
+        session.turns.request_saved_cancellation("turn-1")
+        session.turns.confirm_saved_cancellation("turn-1")
+        return value
+
+    session.transform = cancel
+    result = _run(session.turns, session)
+    source = session.conversations.get("conversation-1")["lifecycle"]
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "cancelled"
+    assert result["turn"]["result_reference"] is None
+    assert source["state"] == "running"
+    assert source["completed_at_ms"] is None
+    assert source["completion_candidate"] is not None
+    with pytest.raises(PermissionError, match="durable terminal"):
+        session.conversations.confirm_saved_completion(result["turn"])
 
 
 @pytest.mark.parametrize("change", ["profile", "consumer", "contracts", "credential"])
@@ -757,6 +786,8 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
             return ()
 
         def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+            if (contract_id, operation) == (COMPLETION_CONTRACT, COMPLETION_OPERATION):
+                return conversations.confirm_saved_completion(store.get("turn-1"))
             assert (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION)
             assert payload == {
                 "profile_id": "defaults",
@@ -767,7 +798,7 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
 
     client = GlobalContractClient(
         session=Reader(),
-        allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
+        allowed_contract_ids=RECONCILE_CONTRACTS,
         consumer_pack_id="rumi_turn_runtime_pack",
     )
     for _ in range(2):

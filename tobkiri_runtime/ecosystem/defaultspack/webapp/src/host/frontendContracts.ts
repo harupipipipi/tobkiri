@@ -29,6 +29,8 @@ export type VerifiedFrontendContribution = {
   resolved_profile_revision: string;
   resolved_activation_id: string;
   resolved_plan_hash: string;
+  // Host-issued renderer capture expiry; descriptors cannot supply this field.
+  resolved_expires_at_ms?: number;
   descriptor_hash: string;
   route?: string | null;
   route_match?: "exact" | "subpath";

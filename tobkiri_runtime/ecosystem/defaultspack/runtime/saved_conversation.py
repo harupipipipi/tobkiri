@@ -7,11 +7,15 @@ Intents are not authority; registration and the captured Broker remain required.
 
 from __future__ import annotations
 
+from tobkiri_protocol.turn_progress_v1 import AI_STREAM
+
 import base64
 import hashlib
 import json
 import re
 from typing import Any
+
+from tobkiri_protocol.saved_task_context import validate_saved_task_context
 
 TARGETS = (
     ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"),
@@ -48,6 +52,7 @@ _STATE_FIELDS = {
     "revision",
     "parent_id",
     "assistant",
+    "assistant_finish_reason",
     "stage",
     "pending_tools",
     "tool_messages",
@@ -55,7 +60,7 @@ _STATE_FIELDS = {
     "seen_tools",
     "system_prompt_digest",
     "user_content",
-    "user_content_digest",
+    "user_content_digest", "ai_mode",
 }
 
 
@@ -159,13 +164,32 @@ def _saved_user_content(value: Any) -> bool:
     )
 
 
+def _context_binding(value: Any) -> None:
+    if (
+        type(value) is not dict
+        or set(value) != {"version", "profile_id", "parent_conversation_id",
+                          "parent_revision", "context_digest"}
+        or value["version"] != "tobkiri.conversation-context-binding.v1"
+        or not isinstance(value["context_digest"], str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", value["context_digest"]) is None
+    ):
+        raise ValueError("saved conversation context binding is invalid")
+    _identifier(value["profile_id"])
+    _identifier(value["parent_conversation_id"])
+    _revision(value["parent_revision"])
+
+
 def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {
         "tool_selection",
         "strategy_reference",
         "thinking_level",
+        "task_context",
+        "context_binding",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
+    if "context_binding" in value:
+        _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
     if "thinking_level" in value and (
@@ -178,6 +202,12 @@ def _request(value: Any) -> dict[str, Any]:
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
+    if "task_context" in value:
+        validate_saved_task_context(
+            value["task_context"],
+            conversation_id=value["conversation_id"],
+            turn_id=value["turn_id"],
+        )
     if not _saved_user_content(value["content"]):
         raise ValueError("saved conversation user content is invalid")
     selection = value.get("tool_selection", {})
@@ -215,19 +245,22 @@ def _request(value: Any) -> dict[str, Any]:
 def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
-    optional = {"tool_selection", "strategy_reference", "thinking_level"}
+    optional = {"tool_selection", "strategy_reference", "thinking_level",
+                "task_context", "context_binding"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
+    if "context_binding" in value:
+        _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
     if "thinking_level" in value and value["thinking_level"] not in {
         "none", "low", "medium", "high", "xhigh"
     }:
         raise ValueError("saved conversation thinking level is invalid")
-    if "tool_selection" in value:
+    if "tool_selection" in value or "task_context" in value:
         _request({**value, "content": "saved content"})
     return value
 
@@ -273,6 +306,8 @@ def _message(
         "metadata": {"turn_id": request["turn_id"]},
         "status": "complete",
     }
+    if role == "assistant":
+        message["finish_reason"] = state["assistant_finish_reason"]
     if role == "assistant" and state["tool_messages"]:
         message["metadata"]["saved_tool_messages"] = state["tool_messages"]
         message["tool_logs"] = _tool_logs(state["tool_messages"])
@@ -309,7 +344,7 @@ def _intent(
         strategy_reference = request.get("strategy_reference")
         if strategy_reference is None:
             payload = request_payload
-            target = _STAGE_TARGETS[stage]
+            target = AI_STREAM if state["ai_mode"] == "incremental" else _STAGE_TARGETS[stage]
         else:
             payload = {
                 "strategy_reference": strategy_reference,
@@ -417,6 +452,7 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "revision": request["conversation_revision"],
             "parent_id": None,
             "assistant": None,
+            "assistant_finish_reason": None,
             "stage": "read",
             "pending_tools": [],
             "tool_messages": [],
@@ -425,6 +461,7 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "system_prompt_digest": None,
             "user_content": user_content,
             "user_content_digest": None,
+            "ai_mode": "buffered",
         }
     )
 
@@ -432,6 +469,8 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
 def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     """Advance from one acknowledged result, without replaying an uncertain effect."""
     _json(state)
+    state = dict(state)
+    state.setdefault("ai_mode", "buffered")
     if type(state) is not dict or set(state) != _STATE_FIELDS:
         raise ValueError("saved continuation fields are invalid")
     state = json.loads(_json(state))
@@ -492,6 +531,9 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             elif "system_prompt_digest" in value:
                 raise ValueError("unexpected saved system prompt")
             state["model_reference"] = model
+            state["ai_mode"] = value.get("delivery_mode", "buffered")
+            if state["ai_mode"] not in {"buffered", "incremental"}:
+                raise ValueError("saved AI delivery mode is invalid")
             user_content = state["user_content"]
             if (
                 not _saved_user_content(user_content)
@@ -622,6 +664,13 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(output, (str, list)) or not output:
                     raise ValueError("AI output is invalid")
                 state["assistant"] = output
+                finish = value.get("finish_reason")
+                if finish not in {
+                    None, "stop", "waiting_user", "waiting_approval",
+                    "cancelled", "error", "running",
+                }:
+                    raise ValueError("AI terminal state is invalid")
+                state["assistant_finish_reason"] = finish
                 state["stage"] = "assistant"
         return _intent({**state, "hop": hop + 1})
     except (KeyError, TypeError, ValueError, UnicodeError):

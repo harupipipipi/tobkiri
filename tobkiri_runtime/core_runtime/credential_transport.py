@@ -207,6 +207,7 @@ class HostBoundCredentialTransport:
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
+        parent_guard: Callable[[], None] | None = None,
     ) -> None:
         self._envelope = envelope
         self._store = store
@@ -224,6 +225,7 @@ class HostBoundCredentialTransport:
             else None
         )
         self._consumed = False
+        self._parent_guard = parent_guard
         self._lock = RLock()
 
     @classmethod
@@ -246,6 +248,7 @@ class HostBoundCredentialTransport:
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
+        parent_guard: Callable[[], None] | None = None,
     ) -> "HostBoundCredentialTransport":
         """Capture a transport lease from the Broker-authenticated envelope."""
         bound_origin = _credential_origin(endpoint_origin)
@@ -299,6 +302,7 @@ class HostBoundCredentialTransport:
             authority_store=authority_store,
             invocation_token=invocation_token,
             binding=binding,
+            parent_guard=parent_guard,
             current_security_epoch=current_security_epoch,
             audit_sink=audit_sink,
             clock=clock,
@@ -343,6 +347,28 @@ class HostBoundCredentialTransport:
             denial_code = "provider_failure"
         raise CredentialTransportDenied(denial_code)
 
+    def stream_json(
+        self, *, endpoint: str, headers: Mapping[str, str], body: Mapping[str, Any],
+        credential_handle: str, provider_instance_id: str, credential_scope: str,
+        credential_scheme: str, deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> dict[str, Any]:
+        """Deliver sanitized received frames before closing the one owned request."""
+        code = "provider_failure"
+        try:
+            return self._post_json(
+                endpoint=endpoint, headers=headers, body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope, credential_scheme=credential_scheme,
+                deadline=deadline, on_event=on_event,
+            )
+        except CredentialTransportDenied as error:
+            code = error.code
+        except Exception:
+            pass
+        raise CredentialTransportDenied(code)
+
     def _post_json(
         self,
         *,
@@ -354,6 +380,7 @@ class HostBoundCredentialTransport:
         credential_scope: str,
         credential_scheme: str,
         deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Consume the sealed lease and perform one credentialed HTTP request."""
         now = self._clock()
@@ -443,6 +470,21 @@ class HostBoundCredentialTransport:
                 clock=self._monotonic_clock,
                 authority_check=self._authority_still_active,
             ) as response:
+                if on_event is not None:
+                    from core_runtime.credential_stream import received_sse
+
+                    def guard() -> None:
+                        if not self._authority_still_active():
+                            raise CredentialTransportDenied("binding_invalid")
+
+                    for event in received_sse(
+                        response, secret=secret_text,
+                        sanitize=_sanitize_json_response, guard=guard,
+                    ):
+                        on_event(event)
+                    guard()
+                    audit_status = "completed"
+                    return {"stream_complete": True}
                 response_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
                 if len(response_bytes) > _MAX_RESPONSE_BYTES:
                     raise CredentialTransportDenied("response_invalid")
@@ -610,6 +652,10 @@ class HostBoundCredentialTransport:
 
     def _authority_still_active(self) -> bool:
         try:
+            if self._parent_guard is not None:
+                self._parent_guard()
+            if self._current_security_epoch() != self._binding.security_epoch:
+                return False
             if self._envelope.cancellation_requested.is_set():
                 return False
             remaining = (
@@ -704,6 +750,7 @@ class AuthorizedEnvelopeCredentialTransport:
         audit_sink: Callable[[Mapping[str, Any]], None] | None = None,
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        parent_guard: Callable[[], None] | None = None,
     ) -> None:
         self._envelope = envelope
         self._provider_principal = provider_principal
@@ -715,6 +762,7 @@ class AuthorizedEnvelopeCredentialTransport:
         self._audit_sink = audit_sink
         self._clock = clock
         self._monotonic_clock = monotonic_clock
+        self._parent_guard = parent_guard
         self._used = False
         self._selection_used = False
         self._git_selection: dict[str, Any] | None = None
@@ -799,6 +847,21 @@ class AuthorizedEnvelopeCredentialTransport:
             }
         return {**identity, "selection_receipt": receipt}
 
+    def stream_json(
+        self, *, endpoint: str, headers: Mapping[str, str], body: Mapping[str, Any],
+        credential_handle: str, provider_instance_id: str, credential_scope: str,
+        credential_scheme: str, deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> dict[str, Any]:
+        """Deliver sanitized received frames before closing the one owned request."""
+        return self.post_json(
+            endpoint=endpoint, headers=headers, body=body,
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope, credential_scheme=credential_scheme,
+            deadline=deadline, _on_event=on_event,
+        )
+
     def post_json(
         self,
         *,
@@ -810,6 +873,7 @@ class AuthorizedEnvelopeCredentialTransport:
         credential_scope: str,
         credential_scheme: str,
         deadline: float,
+        _on_event: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Construct and consume exactly one envelope-bound transport."""
         with self._lock:
@@ -832,8 +896,11 @@ class AuthorizedEnvelopeCredentialTransport:
             audit_sink=self._audit_sink,
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
+            parent_guard=self._parent_guard,
         )
-        return transport.post_json(
+        method = transport.stream_json if _on_event is not None else transport.post_json
+        extra = {"on_event": _on_event} if _on_event is not None else {}
+        return method(
             endpoint=endpoint,
             headers=headers,
             body=body,
@@ -842,6 +909,7 @@ class AuthorizedEnvelopeCredentialTransport:
             credential_scope=credential_scope,
             credential_scheme=credential_scheme,
             deadline=deadline,
+            **extra,
         )
 
     def push_git_https(
@@ -921,6 +989,7 @@ class AuthorizedEnvelopeCredentialTransport:
             audit_sink=self._audit_sink,
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
+            parent_guard=self._parent_guard,
         )
         return transport.push_git_https(
             git_executable=git_executable,
@@ -1068,6 +1137,13 @@ class _PinnedResponse:
         self._lifetime.check()
         return value
 
+    def read1(self, amount: int) -> bytes:
+        """Release available network bytes without waiting for the entire body."""
+        self._lifetime.check()
+        value = self._response.read1(amount)
+        self._lifetime.check()
+        return value
+
 
 def _open_pinned_request(
     request: urllib.request.Request,
@@ -1081,6 +1157,7 @@ def _open_pinned_request(
     """Open one non-redirecting request to an egress-vetted, DNS-pinned peer."""
     lifetime = HttpRequestLifetime(
         timeout=timeout, deadline=deadline, cancellation=cancellation, clock=clock,
+        authority_check=authority_check,
     )
     try:
         return _open_pinned_response(

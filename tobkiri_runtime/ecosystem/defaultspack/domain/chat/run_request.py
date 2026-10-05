@@ -17,6 +17,7 @@ from typing import Any
 
 from blocks._common import gen_id
 from core_runtime.authority.principal import build_principal_id
+from core_runtime.di_container import get_container
 from domain.ai_client.capabilities.registry import get_model_provider_capabilities
 from blocks.chat._context_helpers import enrich_messages, extract_user_text
 from domain.capabilities.runtime_snapshot import build_runtime_capability_snapshot
@@ -38,6 +39,9 @@ from domain.chat.modality_detector import detect_modalities
 from domain.chat.progress_tool import assistant_progress_system_instruction, with_assistant_progress_tool
 from domain.chat.public_metadata import compact_tool_filter_entries
 from domain.chat.store import ChatStore
+from domain.chat.instruction_context import (
+    append_instruction_context, prepare_instruction_context,
+)
 from domain.chat.tool_selection_schema import (
     TOOL_SELECTION_MODES,
     TOOL_SELECTION_SCOPES,
@@ -70,7 +74,11 @@ from domain.coding.frontend_precision import (
     precision_metadata,
 )
 from domain.prompt.manager import get_manager
-from domain.temporal_context import add_temporal_context_message, current_datetime_context
+from domain.temporal_context import (
+    add_task_gap_context_message, add_temporal_context_message,
+    current_datetime_context,
+)
+from tobkiri_protocol.conversation_lifecycle import task_gap_context
 from domain.tool.loading import split_tools_by_loading
 from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.tool.eligibility import filter_tool_definitions_by_eligibility
@@ -298,6 +306,7 @@ def prepare_chat_run(
     input_data: dict[str, Any], context: dict[str, Any] | None = None, *,
     settings_owner: SettingsOwnerPort | None = None,
 ) -> PreparedChatRun:
+    received_at_ms = int(time.time() * 1000)
     validation_error = validate_chat_run_input(input_data if isinstance(input_data, dict) else {})
     if validation_error:
         raise ValueError(validation_error)
@@ -337,6 +346,10 @@ def prepare_chat_run(
     if user_message is None:
         raise RuntimeError("Failed to add user message")
     current_user_message_hidden = _message_hidden_from_model(user_message)
+    task_gap = (
+        None if authority_resume_followup or message.get("role", "user") != "user"
+        else task_gap_context(conversation, received_at_ms)
+    )
 
     user_message_for_ir = dict(user_message)
     if runtime_content is not None:
@@ -612,7 +625,21 @@ def prepare_chat_run(
         request_context,
         temporal_context=temporal_context,
     )
+    if task_gap is not None:
+        request_context["task_gap_context"] = task_gap
+        request_context["last_task_completed_at"] = task_gap[
+            "previous_task_completed_at"
+        ]
+    add_task_gap_context_message(standard_messages, task_gap)
     _append_system_context_message(standard_messages, chat_reference_prompt)
+
+    context_session = get_container().get_or_none("v4_dispatch_session")
+    if context_session is not None:
+        projection = prepare_instruction_context(
+            context_session, conversation_id, request_id,
+        )
+        append_instruction_context(standard_messages, projection)
+        request_context["instruction_context"] = projection
 
     _apply_authority_context(
         request_context,

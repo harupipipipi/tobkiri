@@ -3272,6 +3272,7 @@ class ChatRunEngine:
                         "tools": prepared.provider_tools,
                         "params": prepared.params,
                         "authority_context": prepared.request_context.get("authority", {}),
+                    "instruction_context": prepared.request_context.get("instruction_context"),
                     }
                 )
                 self._record_provider_request_for_trace(
@@ -3792,6 +3793,7 @@ class ChatRunEngine:
                     "tools": prepared.provider_tools,
                     "params": prepared.params,
                     "authority_context": prepared.request_context.get("authority", {}),
+                    "instruction_context": prepared.request_context.get("instruction_context"),
                 }
             )
         planned = PlannedProviderRequest(
@@ -5212,6 +5214,7 @@ class ChatRunEngine:
                         "tools": tools,
                         "params": _provider_visible_params(self._empty_response_retry_params(prepared)),
                         "authority_context": prepared.request_context.get("authority", {}),
+                    "instruction_context": prepared.request_context.get("instruction_context"),
                     }
                 )
             except AuthorityApprovalRequired:
