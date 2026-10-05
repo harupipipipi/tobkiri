@@ -4972,6 +4972,21 @@ export function ChatApp() {
         if (!pollUiIsCurrent()) return;
         if (pendingRequest?.savedTurn) {
           if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
+          if (pendingRequest.ownerTurnObserved !== true) {
+            // The local operation ID precedes the owner's durable registration.
+            // A successful empty list is still pending, including after a lost
+            // start reply. Only the exact registered root can unlock event reads.
+            const turns = await api.listSavedTurns(activeConversationId);
+            if (!pollUiIsCurrent()) return;
+            const roots = turns.filter((item) => item.id === pendingRequest.operationId);
+            if (roots.length === 0) return;
+            if (roots.length !== 1 || roots[0].conversation_id !== activeConversationId
+              || roots[0].guidance_parent_turn_id !== undefined
+              || roots[0].guidance_source_turn_id !== undefined
+              || roots[0].guidance_id !== undefined) {
+              throw new Error("登録された送信IDが保留中の会話と一致しません。");
+            }
+          }
           let turn = (
             await api.getSavedTurnEvents(
               pendingRequest.operationId,

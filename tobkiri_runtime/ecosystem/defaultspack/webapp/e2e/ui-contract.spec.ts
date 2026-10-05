@@ -58,6 +58,9 @@ test("actual ChatApp tab loads keep selected identity and Stop scoped through de
         turn: turn(), events: [], terminal: null,
       }) });
     }
+    if (target === "/api/chat/turns") {
+      return route.fulfill({ json: ok({ turns: operationId ? [turn()] : [] }) });
+    }
     if (target === "/api/chat/turn/reconcile") {
       return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
     }
@@ -101,6 +104,176 @@ test("actual ChatApp tab loads keep selected identity and Stop scoped through de
     releaseStart();
   }
 });
+
+test("actual ChatApp waits for canonical registration and recovers a lost start reply without resending", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const conversation = {
+    ...smokeConversation(), id: "c-delayed-registration", title: "Delayed registration",
+    conversation_revision: 1, conversation_kind: null, tags: [], metadata: {}, messages: [],
+  };
+  let releaseStart!: () => void;
+  const pendingStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+  let releaseRegistrationRead!: () => void;
+  const registrationRead = new Promise<void>((resolve) => { releaseRegistrationRead = resolve; });
+  let registered = false;
+  let delayRegistrationRead = true;
+  let operationId: string | null = null;
+  let starts = 0;
+  let emptyListReads = 0;
+  let registeredListReads = 0;
+  let eventReads = 0;
+  const controls: string[] = [];
+  const turn = () => ({
+    id: operationId, conversation_id: conversation.id, status: "running", revision: 2,
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/conversations" && request.method() === "GET") {
+      return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversations" && request.method() === "POST") {
+      return route.fulfill({ json: ok(conversation) });
+    }
+    if (target === "/api/chat/conversation") {
+      return route.fulfill({ json: ok(conversation) });
+    }
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+      await pendingStart;
+      return route.abort("failed");
+    }
+    if (target === "/api/chat/turns") {
+      if (!registered) emptyListReads += 1;
+      if (registered) {
+        registeredListReads += 1;
+        if (delayRegistrationRead) await registrationRead;
+      }
+      return route.fulfill({ json: ok({ turns: registered ? [turn()] : [] }) });
+    }
+    if (target === "/api/chat/turn/events") {
+      eventReads += 1;
+      return route.fulfill({ json: ok({
+        turn_id: operationId, operation_id: operationId, conversation_id: conversation.id,
+        request_id: "saved-turn.registration-regression", turn_revision: 2, status: "running",
+        turn: turn(), events: [], terminal: null,
+      }) });
+    }
+    if (target === "/api/chat/turn/reconcile") {
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+      controls.push(target);
+      return route.fulfill({ json: ok({ turn_id: operationId, status: "cancellation_requested", stopped: false }) });
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat");
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Wait for the owner to register this exact root");
+    await composer.press("Enter");
+    await expect.poll(() => emptyListReads).toBeGreaterThanOrEqual(2);
+    expect(starts).toBe(1);
+    expect(eventReads).toBe(0);
+    expect(controls).toEqual([]);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
+    releaseStart();
+    await expect(page.getByText("Failed to fetch", { exact: true })).toBeVisible();
+    registered = true;
+    await expect.poll(() => registeredListReads).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    const lateRegistration = page.waitForResponse((response) => requestTarget(new URL(response.url())) === "/api/chat/turns");
+    delayRegistrationRead = false;
+    releaseRegistrationRead();
+    await lateRegistration;
+    await expect(composer).toBeEnabled();
+    expect(eventReads).toBe(0);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Delayed registration", exact: true }).click();
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toBeEnabled();
+    expect(eventReads).toBeGreaterThan(0);
+    expect(starts).toBe(1);
+    await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "生成を停止", exact: true }).click();
+    await expect.poll(() => controls).toEqual(["/api/chat/turn/stop"]);
+  } finally {
+    releaseStart();
+    releaseRegistrationRead();
+  }
+});
+
+for (const failure of ["transport", "auth", "foreign conversation", "duplicate root", "guidance descendant"] as const) {
+  test(`actual ChatApp preserves registration failures for ${failure} without authorizing controls`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    const conversation = {
+      ...smokeConversation(), id: "c-rejected-registration", title: "Rejected registration",
+      conversation_revision: 1, conversation_kind: null, tags: [], metadata: {}, messages: [],
+    };
+    let releaseStart!: () => void;
+    const pendingStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+    let operationId: string | null = null;
+    let starts = 0;
+    let eventReads = 0;
+    const controls: string[] = [];
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const request = route.request();
+      const target = requestTarget(new URL(request.url()));
+      if (target === "/api/chat/conversations" && request.method() === "GET") {
+        return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
+      }
+      if (target === "/api/chat/conversations" && request.method() === "POST") {
+        return route.fulfill({ json: ok(conversation) });
+      }
+      if (target === "/api/chat/turn" && request.method() === "POST") {
+        starts += 1;
+        operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+        await pendingStart;
+        return route.abort("failed");
+      }
+      if (target === "/api/chat/turns") {
+        if (failure === "transport") return route.abort("failed");
+        if (failure === "auth") return route.fulfill({ status: 403, json: { success: false, error: "Unauthorized" } });
+        const root = {
+          id: operationId, conversation_id: conversation.id, status: "running", revision: 2,
+        };
+        const turns = failure === "foreign conversation"
+          ? [{ ...root, conversation_id: "foreign-conversation" }]
+          : failure === "duplicate root"
+            ? [root, root]
+            : [{ ...root, guidance_parent_turn_id: "different-root", guidance_source_turn_id: "different-root", guidance_id: "guidance-1" }];
+        return route.fulfill({ json: ok({ turns }) });
+      }
+      if (target === "/api/chat/turn/events") {
+        eventReads += 1;
+        return route.abort("failed");
+      }
+      if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+        controls.push(target);
+        return route.abort("failed");
+      }
+      return route.fallback();
+    });
+    try {
+      await page.goto("/p/defaults/chat");
+      await page.getByRole("button", { name: "New Chat", exact: true }).click();
+      const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+      await composer.fill("Keep this root pending until the exact owner is verified");
+      await composer.press("Enter");
+      await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toBeVisible();
+      expect(starts).toBe(1);
+      expect(eventReads).toBe(0);
+      expect(controls).toEqual([]);
+      await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+      await expect(page.getByText("Keep this root pending until the exact owner is verified", { exact: true })).toBeVisible();
+    } finally {
+      releaseStart();
+    }
+  });
+}
 
 test("actual ChatApp preserves an uncached selected root and draft while its record loads", async ({ page }) => {
   await installDefaultspackApiMocks(page, { applicationChat: true });
