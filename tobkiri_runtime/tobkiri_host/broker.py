@@ -1042,6 +1042,16 @@ class RequestBroker:
                 except TimeoutError:
                     if future.done() or monotonic_clock() >= deadline:
                         raise
+                except Exception as exc:
+                    # A provider can observe the shared Stop signal and fail
+                    # while Future.result is waiting. It still needs the same
+                    # authenticated cancellation and exact resource drain as
+                    # a child whose result poll has not finished yet.
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        ) from exc
+                    raise
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
             # Future.result(timeout=0) still returns an already-completed
