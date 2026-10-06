@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 CATALOG_REVISION = "sha256:b077149ea0f3e60fa3bbcc6bc6bb82c91afe8b35fa1fe1462ea2dc6131cf409b"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
+from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
+    CAPABILITY_REVISION, discovery_url,
+)
+
 _OPENROUTER_PROVIDER_ID = "openrouter"
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all"
 _OPENROUTER_INVENTORY_TTL_SECONDS = 3600
@@ -49,7 +53,7 @@ def create_model_catalog_operation(client: Any):
             "rumi_model_catalog_pack.bundled-model-catalog.stream",
         }:
             raise ValueError(f"unknown model catalog operation: {name}")
-        if set(payload) - {"provider_id", "model_id", "catalog_source"}:
+        if set(payload) - {"provider_id", "model_id", "catalog_source", "discovery_filters"}:
             raise ValueError("model catalog input fields are invalid")
         catalog_source = str(payload.get("catalog_source") or "").strip()
         if catalog_source not in {"", _BUNDLED_APPROVED_SOURCE}:
@@ -58,7 +62,21 @@ def create_model_catalog_operation(client: Any):
         provider_id = str(payload.get("provider_id") or "").strip()
         model_id = str(payload.get("model_id") or "").strip()
         inventory: dict[str, Any] = {}
-        if catalog_source == _BUNDLED_APPROVED_SOURCE:
+        discovery = payload.get("discovery_filters")
+        if discovery is not None:
+            if provider_id != _OPENROUTER_PROVIDER_ID or catalog_source:
+                raise ValueError("native discovery requires the OpenRouter public catalog")
+            url = discovery_url({"revision": CAPABILITY_REVISION,
+                                 "discovery": discovery, "routing": {}})
+            # Filtered pages never mutate the complete inventory or last-good cache.
+            # Failure is explicit; no cached full inventory is presented as filtered.
+            models = _fetch_openrouter_inventory(url=url, strict=True)
+            inventory[provider_id] = {"source": "openrouter_models_api_filtered",
+                                      "stale": False, "model_count": len(models)}
+
+        if discovery is not None:
+            pass
+        elif catalog_source == _BUNDLED_APPROVED_SOURCE:
             if not provider_id or not model_id:
                 raise ValueError(
                     "bundled model catalog lookup requires exact provider and model IDs"
@@ -401,10 +419,12 @@ def _is_catalog_model(value: Any) -> bool:
     )
 
 
-def _fetch_openrouter_inventory() -> list[dict[str, Any]]:
+def _fetch_openrouter_inventory(
+    *, url: str = _OPENROUTER_MODELS_URL, strict: bool = False,
+) -> list[dict[str, Any]]:
     """Fetch and normalize the public OpenRouter `/models` response once."""
     request = urllib.request.Request(
-        _OPENROUTER_MODELS_URL,
+        url,
         headers={
             "Accept": "application/json",
             "User-Agent": "Tobkiri-Model-Catalog/1",
@@ -418,29 +438,43 @@ def _fetch_openrouter_inventory() -> list[dict[str, Any]]:
         ) as response:
             status = getattr(response, "status", 200)
             if isinstance(status, int) and not 200 <= status < 300:
+                if strict:
+                    raise ValueError("native model discovery response is invalid")
                 return []
             headers = getattr(response, "headers", None)
             content_length = _integer(
                 headers.get("Content-Length") if isinstance(headers, Mapping) else None
             )
             if content_length > _OPENROUTER_MAX_RESPONSE_BYTES:
+                if strict:
+                    raise ValueError("native model discovery response is invalid")
                 return []
             raw_bytes = response.read(_OPENROUTER_MAX_RESPONSE_BYTES + 1)
-    except (OSError, TimeoutError, urllib.error.HTTPError):
+    except (OSError, TimeoutError, urllib.error.HTTPError) as exc:
+        if strict:
+            raise ValueError("native model discovery is unavailable") from exc
         return []
     if len(raw_bytes) > _OPENROUTER_MAX_RESPONSE_BYTES:
+        if strict:
+            raise ValueError("native model discovery response exceeds limit")
         return []
     try:
         payload = json.loads(raw_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        if strict:
+            raise ValueError("native model discovery schema is invalid") from exc
         return []
     raw_models = payload.get("data") if isinstance(payload, Mapping) else None
     if not isinstance(raw_models, list):
+        if strict:
+            raise ValueError("native model discovery schema is invalid")
         return []
     models: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in raw_models[:_OPENROUTER_MAX_MODELS]:
         model = _normalize_openrouter_model(raw)
+        if strict and model is None:
+            raise ValueError("native model discovery entry schema is invalid")
         provider_model_id = str(model.get("provider_model_id") or "") if model else ""
         if model is not None and provider_model_id not in seen:
             seen.add(provider_model_id)

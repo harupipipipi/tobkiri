@@ -17,6 +17,7 @@ from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 
 from .local_endpoint import local_openai_endpoint
+from .model_access import effective_model_access, normalize_model_access
 
 STORE_VERSION = "rumi.provider-registry.store.v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
@@ -74,6 +75,12 @@ class ProviderRegistry:
             self._assert_revision(state, expected_revision)
             key = normalized["provider_instance_id"]
             current = state["providers"].get(key, {})
+            if "model_access" not in normalized:
+                existing = effective_model_access(current)
+                if existing is not None:
+                    normalized["model_access"] = normalize_model_access(
+                        existing, connection=normalized,
+                    )
             now = _now()
             normalized["created_at"] = str(current.get("created_at") or now)
             normalized["updated_at"] = now
@@ -88,6 +95,31 @@ class ProviderRegistry:
                 "provider": dict(normalized),
                 "store_revision": state["revision"],
             }
+
+    def set_model_access(
+        self,
+        provider_instance_id: str,
+        policy: Mapping[str, Any],
+        *,
+        expected_revision: int,
+    ) -> dict[str, Any]:
+        """Update policy at an exact revision without reading or replacing a key."""
+        key = _identifier(provider_instance_id)
+        with NamedLock(self.lock_root, "provider-registry"):
+            state = self._read()
+            self._assert_revision(state, expected_revision)
+            current = state["providers"].get(key)
+            if not isinstance(current, Mapping):
+                raise KeyError("provider instance is unknown")
+            normalized = normalize_model_access(policy, connection=current)
+            updated = {**current, "model_access": normalized,
+                       "updated_at": _now(),
+                       "record_revision": int(current.get("record_revision") or 0) + 1}
+            state["providers"][key] = updated
+            state["revision"] += 1
+            self._write(state)
+            return {"provider_instance_id": key, "profile_id": self.profile_id,
+                    "model_access": normalized, "store_revision": state["revision"]}
 
     def delete(
         self,
@@ -207,6 +239,7 @@ class ProviderRegistry:
         for record in value["providers"].values():
             if not isinstance(record, Mapping):
                 raise ValueError("provider registry record is invalid")
+            effective_model_access(record)
             _provider_endpoint(
                 record.get("endpoint"),
                 record.get("credential_handle"),
@@ -241,7 +274,7 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
 
     health = value.get("health_evidence")
     health = health if isinstance(health, Mapping) else {}
-    return {
+    normalized = {
         "provider_instance_id": provider_instance_id,
         "adapter_id": adapter_id,
         "display_name": str(value.get("display_name") or provider_instance_id)[:200],
@@ -256,6 +289,10 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
         },
         "metadata": _safe_metadata(value.get("metadata")),
     }
+    policy = effective_model_access(value)
+    if policy is not None:
+        normalized["model_access"] = normalize_model_access(policy, connection=normalized)
+    return normalized
 
 
 def _provider_endpoint(

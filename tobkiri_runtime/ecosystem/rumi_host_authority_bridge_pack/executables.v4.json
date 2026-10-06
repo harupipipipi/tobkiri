@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:e3f4d59a77f62d434c2029dab667f25742ca2948f25330c0696b5dd2dac8d6f5",
+  "catalog_digest": "sha256:bcc869473c0f4324165ff33e1371c5203c5d4664a0e71ecef23598620e9ef924",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+  "source_identity": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
   "variants": [
     {
       "architecture": "any",
@@ -541,7 +541,8 @@
                       "mcp_connect",
                       "workspace_task",
                       "file_create",
-                      "workspace_mount"
+                      "workspace_mount",
+                      "provider_model_access"
                     ]
                   },
                   "phase": {
@@ -576,6 +577,57 @@
                   "effect_id"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "effect_kind": {
+                    "const": "provider_model_access"
+                  },
+                  "phase": {
+                    "const": "prepare"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expected_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "model_access": {
+                        "type": "object"
+                      },
+                      "profile_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "provider_instance_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "profile_id",
+                      "provider_instance_id",
+                      "expected_revision",
+                      "model_access"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_kind",
+                  "request"
+                ],
+                "type": "object"
               }
             ],
             "properties": {
@@ -599,7 +651,8 @@
                   "mcp_connect",
                   "workspace_task",
                   "file_create",
-                  "workspace_mount"
+                  "workspace_mount",
+                  "provider_model_access"
                 ]
               },
               "phase": {
@@ -621,7 +674,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:8dbd9c3fa0bb9957b43ee8d600e4cad6805bea4d0122b9e4aa1a0c361172e7aa",
+          "revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

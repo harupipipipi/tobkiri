@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1ed761bf0b0dda4e9369234461567acc8415a9e1e45abaea6c4a2eb8de350c06",
+      "digest": "sha256:2e2c193499637ea8f8f21fbf18d9aa1ed82850099334bb41cbe3809eda6f19b0",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -34,7 +34,7 @@
       "operations": [
         "interactive_effect.manage"
       ],
-      "revision_digest": "sha256:8dbd9c3fa0bb9957b43ee8d600e4cad6805bea4d0122b9e4aa1a0c361172e7aa"
+      "revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566"
     },
     {
       "contract_id": "tobkiri.action.chat.approval-continuation.v1",
@@ -98,7 +98,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:8dbd9c3fa0bb9957b43ee8d600e4cad6805bea4d0122b9e4aa1a0c361172e7aa",
+      "contract_revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
       "id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
       "isolation": "dedicated_process",
@@ -109,9 +109,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:428d932193d4b58119ba204473470519b92429e93cfa44889e68adcb4b1243cb",
-    "artifact_set_digest": "sha256:1f04fc9c87a513957b8febbca5ff7ddd30b8e73787703480d941447de46986fd",
-    "contract_catalog_digest": "sha256:6ace9979622a9e510952bc2c2d4cec517bf98e2525f6d4301d6a824a4a014838"
+    "source_identity": "sha256:e7085fa3536ff6fd8e87bda4f0815c66ae400515cd57f15be4927a5673feeb98",
+    "artifact_set_digest": "sha256:85105a6adadcf67e16decc4d6e9c03b70b4a85cd7c9c313c4e348f1ae5b7b407",
+    "contract_catalog_digest": "sha256:c2027af1d1114d29f6a78ca0037d15b569ec2cfb67cc204779f57d2f05bd6b34"
   },
   "migration": {
     "compatibility": "read_only",
@@ -198,7 +198,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:30bf1babcf9d548d11fe8f320282f56133c61c25d964cc6f970a6d9d71e72048",
+    "artifact_digest": "sha256:c3c206a10d7151e0b54a5d2881c7d2beb00e5a2f6b7d4e20860c246d797bf4ff",
     "display_name": "Rumi Host Authority Bridge",
     "id": "rumi_host_authority_bridge_pack",
     "kind": "host_extension",
@@ -209,15 +209,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
-    "source_digest": "sha256:428d932193d4b58119ba204473470519b92429e93cfa44889e68adcb4b1243cb",
+    "source_digest": "sha256:e7085fa3536ff6fd8e87bda4f0815c66ae400515cd57f15be4927a5673feeb98",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:9b61862c61b6342c8a63efa13b398ea739f5ff8487e412d5be1c774be9b4ded8",
+    "content_root_digest": "sha256:5e6d36205411ea9274dd22aa97b0144bb5ac0801fc5c0e5859c21ad4f244399a",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:cd94f716bdc1eee5659f4c293aef743c4782dfe3639818837ddc8a868220927f",
+    "input_inventory_digest": "sha256:fc5bb7aa459a604c9ea283b681eff1bf6686825d2d0906cee5cd958a84e5143e",
     "normative": true,
     "evidence": [
       {
@@ -228,7 +228,7 @@
       {
         "path": "ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:428d932193d4b58119ba204473470519b92429e93cfa44889e68adcb4b1243cb"
+        "digest": "sha256:e7085fa3536ff6fd8e87bda4f0815c66ae400515cd57f15be4927a5673feeb98"
       }
     ]
   },

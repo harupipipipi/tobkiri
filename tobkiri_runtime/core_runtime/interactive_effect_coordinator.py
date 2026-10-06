@@ -86,6 +86,13 @@ INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
         prepare_operation_id="workspace.mount.prepare", execute_contract_id="tobkiri.service.workspace.project.v1",
         execute_operation_id="workspace.mount.execute",
     ),
+    "provider_model_access": InteractiveEffectSpec(
+        kind="provider_model_access",
+        prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        prepare_operation_id="rumi_provider_registry_pack.model-access-prepare",
+        execute_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        execute_operation_id="rumi_provider_registry_pack.model-access-save",
+    ),
     "provider_configure": InteractiveEffectSpec(
         kind="provider_configure",
         prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
@@ -523,6 +530,23 @@ def _execute_payload(
         ):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
         return {"request": dict(request), "plan": mcp_plan}
+    if spec.kind == "provider_model_access":
+        from core_runtime.provider_model_access_effect import (
+            model_access_execute_payload,
+        )
+
+        try:
+            return model_access_execute_payload(
+                request,
+                _json_mapping(
+                    prepared_result,
+                    HostInteractiveEffectService._MAX_REQUEST_BYTES,
+                ),
+            )
+        except (ValueError, TypeError) as exc:
+            raise InteractiveEffectUnavailable(
+                "interactive effect is unavailable"
+            ) from exc
     if spec.kind == "provider_configure":
         configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
@@ -748,6 +772,41 @@ def _presentation_metadata(
                 f"Workspace: {_display_text(_required_text(workspace.get('id')))}\n"
                 "Tools: " + ", ".join(_display_text(_required_text(tool)) for tool in tools)
                 + f"\nArguments and environment: {_REDACTED}"
+            ),
+        )
+    if spec.kind == "provider_model_access":
+        plan = payload.get("plan")
+        request = payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        policy = plan["model_access"]
+        if policy.get("mode") == "all":
+            models = "すべてのモデル"
+        elif policy.get("mode") == "explicit" and isinstance(
+            policy.get("model_ids"), list
+        ):
+            ids = policy["model_ids"]
+            models = (
+                ", ".join(_display_text(_required_text(value)) for value in ids)
+                if ids
+                else "モデルを許可しない"
+            )
+        else:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return _presentation(
+            action="モデル許可設定を保存",
+            summary="選択したAPI接続で使用できるモデルを変更します。",
+            detail=f"接続: {_display_text(_required_text(plan['provider_instance_id']))}\nモデル: {models}"
+            + (
+                "\nProvider公式の条件: "
+                + _display_text(
+                    json.dumps(
+                        policy["native_filters"], ensure_ascii=False, sort_keys=True
+                    )
+                )
+                if policy.get("native_filters")
+                else ""
             ),
         )
     if spec.kind == "provider_configure":

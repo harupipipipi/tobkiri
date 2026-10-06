@@ -140,9 +140,16 @@ class ProviderRegistryHostFactoryV4:
                 if set(record) - {
                     "provider_instance_id", "adapter_id", "display_name",
                     "credential_handle", "endpoint", "enabled", "data_residency",
-                    "metadata",
+                    "metadata", "model_access",
                 }:
                     raise PermissionError("provider registry record fields are invalid")
+            elif action == "model_access.save":
+                fields = {
+                    "operation", "profile_id", "provider_instance_id",
+                    "expected_revision", "model_access",
+                }
+                if not isinstance(payload.get("model_access"), Mapping):
+                    raise ValueError("model access policy is required")
             elif action == "delete":
                 fields = {
                     "operation", "profile_id", "provider_instance_id", "expected_revision",

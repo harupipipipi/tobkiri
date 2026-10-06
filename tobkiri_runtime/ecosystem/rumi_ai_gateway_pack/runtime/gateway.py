@@ -570,6 +570,10 @@ def _invoke(
                 "error_code": failure.code,
             }
         )
+        if failure.code in {"denied", "invalid_request"}:
+            # Authorization and invalid saved-route constraints are terminal.
+            # Neither another model nor another paid provider can repair them.
+            raise failure
         if streaming:
             # A lost streaming outcome must never start a second billable request.
             raise failure

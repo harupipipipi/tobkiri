@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+            "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+        "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -148,7 +148,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+            "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -159,7 +159,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+        "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -216,7 +216,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:e567b2fed1f983457f8226891da7be878db190d4287251b5db0937ea43436620",
+          "input_schema_digest": "sha256:94bd44d035ca2d23aee75bdac31898c81162ff2a274bed806c989e54dfdc9eee",
           "operation_id": "interactive_effect.manage",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -226,7 +226,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+            "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -237,7 +237,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+        "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -255,12 +255,9 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:8dbd9c3fa0bb9957b43ee8d600e4cad6805bea4d0122b9e4aa1a0c361172e7aa",
+      "revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
       "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        },
-        "sha256:e567b2fed1f983457f8226891da7be878db190d4287251b5db0937ea43436620": {
+        "sha256:94bd44d035ca2d23aee75bdac31898c81162ff2a274bed806c989e54dfdc9eee": {
           "additionalProperties": false,
           "oneOf": [
             {
@@ -428,7 +425,8 @@
                     "mcp_connect",
                     "workspace_task",
                     "file_create",
-                    "workspace_mount"
+                    "workspace_mount",
+                    "provider_model_access"
                   ]
                 },
                 "phase": {
@@ -463,6 +461,57 @@
                 "effect_id"
               ],
               "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "correlation_id": {
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "effect_kind": {
+                  "const": "provider_model_access"
+                },
+                "phase": {
+                  "const": "prepare"
+                },
+                "request": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expected_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "model_access": {
+                      "type": "object"
+                    },
+                    "profile_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "provider_instance_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "profile_id",
+                    "provider_instance_id",
+                    "expected_revision",
+                    "model_access"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "phase",
+                "effect_kind",
+                "request"
+              ],
+              "type": "object"
             }
           ],
           "properties": {
@@ -486,7 +535,8 @@
                 "mcp_connect",
                 "workspace_task",
                 "file_create",
-                "workspace_mount"
+                "workspace_mount",
+                "provider_model_access"
               ]
             },
             "phase": {
@@ -502,6 +552,9 @@
               "type": "object"
             }
           },
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
       },
@@ -545,7 +598,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+            "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -556,7 +609,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+        "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -636,7 +689,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+            "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -647,7 +700,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f",
+        "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -690,5 +743,5 @@
     }
   ],
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:937bfa8036ef5fc269a71ed70b021ac062fe62b03a8047dc647fca1696ac264f"
+  "source_identity": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e"
 }

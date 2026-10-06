@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d",
+      "digest": "sha256:a54d62bc15a7c5654bef65ec0eacc65d5c85782ea4f56c138394be9fe0f7f0ce",
       "kind": "asset",
       "path": "defaultspack/frontend_contract_map.v4.json"
     },
     {
-      "digest": "sha256:8ad54215c56c0503a6636bfe2895d56d8e348bdbc891bcf3dcf1c366a3d52687",
+      "digest": "sha256:6b44ca55922704c6e879242273efe667011d0fa9687ba07e10ed6e4dd25e4d2e",
       "kind": "executable",
       "path": "defaultspack/http_surface_presentation.py"
     },
@@ -21,6 +21,11 @@
       "path": "defaultspack/managed_desktop_presentation.py"
     },
     {
+      "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
+      "kind": "executable",
+      "path": "defaultspack/model_access_presentation.py"
+    },
+    {
       "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
       "kind": "executable",
       "path": "defaultspack/provider_status_presentation.py"
@@ -31,7 +36,7 @@
       "path": "defaultspack/turn_progress_presentation.py"
     },
     {
-      "digest": "sha256:596dcfd479488453d89bfc8b8b9ececc8c12731f2b33486958a005eced991454",
+      "digest": "sha256:4cf6e9040b698dc62e0934eb098f1ca4443107add4fce88d84c275f4ca3fa6c3",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -712,9 +717,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f1bab57a0356f379d5fccd208f972f4a7005228647f6dd394e896e5d7cea9f7f",
-    "contract_catalog_digest": "sha256:b9d94fda656771d13f4e794b9cdf82e9f739b7d35ca64093823c425244c4b567",
-    "source_identity": "sha256:6a12173d720ff803773ad2df74c804f8cd29584db9b2c5b6301bc75b217aa9f8"
+    "artifact_set_digest": "sha256:28501d285543b0433b0b324ede001c7d0b31c82a73eb22dbefa15d8f91de4192",
+    "contract_catalog_digest": "sha256:939cfacd9c10f26b9725a0b80a49aeff57fc3a908ce2a940870aaca0c3a4efd8",
+    "source_identity": "sha256:5347c01bc4842c1659b50a86847a326567691ee2264abaabca6aea51c1236c2b"
   },
   "migration": {
     "compatibility": "none",
@@ -749,7 +754,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f1bab57a0356f379d5fccd208f972f4a7005228647f6dd394e896e5d7cea9f7f",
+    "artifact_digest": "sha256:28501d285543b0433b0b324ede001c7d0b31c82a73eb22dbefa15d8f91de4192",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -759,7 +764,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:6a12173d720ff803773ad2df74c804f8cd29584db9b2c5b6301bc75b217aa9f8",
+        "digest": "sha256:5347c01bc4842c1659b50a86847a326567691ee2264abaabca6aea51c1236c2b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -770,7 +775,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:6a12173d720ff803773ad2df74c804f8cd29584db9b2c5b6301bc75b217aa9f8",
+    "source_digest": "sha256:5347c01bc4842c1659b50a86847a326567691ee2264abaabca6aea51c1236c2b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },

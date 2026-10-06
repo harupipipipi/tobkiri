@@ -22,6 +22,9 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from core_runtime.http_request_lifetime import HttpRequestLifetime
+from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
+    compile_connection_parameters,
+)
 from ecosystem.rumi_provider_registry_pack.runtime.local_endpoint import (
     local_openai_endpoint,
 )
@@ -80,6 +83,7 @@ def _operation(
             raise ValueError(f"unknown provider adapter operation: {name}")
         request = dict(payload)
         connection = _connection(client, request, streaming=streaming)
+        request = _apply_model_access(request, connection)
         adapter_id = str(connection.get("adapter_id") or "")
         credential_handle = _credential_handle(
             request,
@@ -116,6 +120,11 @@ def _modality_operation(client: GlobalContractClient, *, kind: str):
             raise ValueError(f"unknown provider modality operation: {name}")
         request = dict(payload)
         connection = _connection(client, request)
+        request = _apply_model_access(request, connection)
+        if "provider" in request["parameters"]:
+            raise GlobalContractInvocationError(
+                "incompatible", "native routing is verified for chat completions only",
+            )
         credential_handle = _credential_handle(
             request,
             connection,
@@ -131,6 +140,21 @@ def _modality_operation(client: GlobalContractClient, *, kind: str):
         return _openai_image(client, request, connection, credential_handle, "ai.image")
 
     return operation
+
+
+def _apply_model_access(
+    request: Mapping[str, Any], connection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compile the current Host-bound policy before credentials or transport."""
+    try:
+        parameters = compile_connection_parameters(
+            connection, _provider_model_id(request), request.get("parameters"),
+        )
+    except PermissionError as exc:
+        raise GlobalContractInvocationError("denied", str(exc)) from exc
+    except ValueError as exc:
+        raise GlobalContractInvocationError("invalid_request", str(exc)) from exc
+    return {**request, "parameters": parameters}
 
 
 def _connection(

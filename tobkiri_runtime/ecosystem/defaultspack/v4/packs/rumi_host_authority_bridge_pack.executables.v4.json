@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:428d932193d4b58119ba204473470519b92429e93cfa44889e68adcb4b1243cb",
+  "source_identity": "sha256:e7085fa3536ff6fd8e87bda4f0815c66ae400515cd57f15be4927a5673feeb98",
   "variants": [
     {
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-window.python",
@@ -370,7 +370,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8dbd9c3fa0bb9957b43ee8d600e4cad6805bea4d0122b9e4aa1a0c361172e7aa",
+          "revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
           "operation_id": "interactive_effect.manage",
           "input_schema": {
             "additionalProperties": false,
@@ -540,7 +540,8 @@
                       "mcp_connect",
                       "workspace_task",
                       "file_create",
-                      "workspace_mount"
+                      "workspace_mount",
+                      "provider_model_access"
                     ]
                   },
                   "phase": {
@@ -575,6 +576,57 @@
                   "effect_id"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "effect_kind": {
+                    "const": "provider_model_access"
+                  },
+                  "phase": {
+                    "const": "prepare"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expected_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "model_access": {
+                        "type": "object"
+                      },
+                      "profile_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "provider_instance_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "profile_id",
+                      "provider_instance_id",
+                      "expected_revision",
+                      "model_access"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_kind",
+                  "request"
+                ],
+                "type": "object"
               }
             ],
             "properties": {
@@ -598,7 +650,8 @@
                   "mcp_connect",
                   "workspace_task",
                   "file_create",
-                  "workspace_mount"
+                  "workspace_mount",
+                  "provider_model_access"
                 ]
               },
               "phase": {
@@ -630,6 +683,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:e3f4d59a77f62d434c2029dab667f25742ca2948f25330c0696b5dd2dac8d6f5",
-  "catalog_digest": "sha256:b0f991c96dfa98caf6244bc0343d8e89ebfd53a25220b56c99db8d6ff013dad6"
+  "materialization_catalog_digest": "sha256:bcc869473c0f4324165ff33e1371c5203c5d4664a0e71ecef23598620e9ef924",
+  "catalog_digest": "sha256:16603265832c64a460567b221398fb35e78e7fedc87093d809157719e446b109"
 }

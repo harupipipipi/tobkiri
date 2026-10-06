@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:52eb9543359b0a004a560048f3157aa45c5d3718e6aaa2e501c5e5e0d7fdc6bc",
+  "source_identity": "sha256:ac5c4df8db26688df65deae0cb867a52e44d2e0307585a130d725fc44516b76b",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
+      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -263,7 +263,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
+      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -297,7 +297,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
+      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -328,6 +328,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2121b9066e9df99d7931056d3dd31ca6f6599859dfa7be290b6a1ca6841a58cf",
-  "catalog_digest": "sha256:9f9e3c74c27b8c43459a6f060a708ab43992177e8171e37fe9eea39797610a01"
+  "materialization_catalog_digest": "sha256:b1285e6a84955bc5939da75a0552c9684dd1735f5571152e8faf0c4f63205808",
+  "catalog_digest": "sha256:c01be2fcf4a17c2b0c047aa1e3c351ac21e0fd851b0cb34420b044256453b993"
 }

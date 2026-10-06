@@ -1,3 +1,6 @@
+import { saveModelAccessEffect, type ModelAccessSaveRequest } from "./modelAccessEffect";
+import type { ModelAccessScope, ModelAccessCatalog } from "../features/apiKeys/resources/providerModelAccessResources";
+import type { NativeDiscovery } from "../features/apiKeys/modelAccessPolicy";
 import { mountProjectDirectories, type ProjectDirectorySelection, type ProjectDirectorySelectionSet, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { toolSidebarReadiness } from "./toolCatalogReadiness";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
@@ -4569,6 +4572,38 @@ export const api = {
     return request<{ profiles: ModelProfile[]; count: number; registry_revision?: number }>(defaultspackContractRoute("api/ai/profiles"), {
       cache: "no-store",
     }, isModelProfilesResponse);
+  },
+
+  getModelAccess(scope: ModelAccessScope) {
+    return request<unknown>(defaultspackContractRoute("api/ai/provider-model-access/read"), {
+      method: "POST", body: JSON.stringify(scope),
+    });
+  },
+
+  async setModelAccess(input: ModelAccessSaveRequest) {
+    const post = (body: object) => request<ProviderConfigurationStatus>(
+      defaultspackContractRoute("api/ai/provider-model-access/save"), {
+        method: "POST", body: JSON.stringify(body),
+      },
+    );
+    await saveModelAccessEffect(input, {
+      storage: window.sessionStorage,
+      prepare: (setting, correlation_id) => post({ phase: "prepare", effect_kind: "provider_model_access", request: setting, correlation_id }),
+      lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "provider_model_access", correlation_id }),
+      status: (effect_id) => post({ phase: "status", effect_id }),
+      resume: (effect_id) => post({ phase: "resume", effect_id }),
+      cancel: (effect_id) => post({ phase: "cancel", effect_id }),
+      approval: (id) => api.getInteractiveApproval(id),
+      openApproval: openAuthorityApprovalWindow,
+      pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
+    });
+    return api.getModelAccess({ profile_id: input.profile_id, provider_instance_id: input.provider_instance_id });
+  },
+
+  getModelAccessCatalog(input: ModelAccessScope & { discovery_filters?: NativeDiscovery }) {
+    return request<ModelAccessCatalog>(defaultspackContractRoute("api/ai/provider-model-access/catalog"), {
+      method: "POST", body: JSON.stringify(input),
+    });
   },
 
   async listProviderConnections(): Promise<ProviderConnectionSnapshot> {

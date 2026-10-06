@@ -30,15 +30,15 @@
     },
     {
       "path": "runtime/registry.py",
-      "sha256": "sha256:32d04184443fc0e77c3b88bb67cb420d7cb56d2965be950a6524c0e07bb948a5"
+      "sha256": "sha256:43c349395f89f21d25de50bdd27283897cd4d515bf23e7ef28b25d5acedcbcaf"
     },
     {
       "path": "runtime/service.py",
-      "sha256": "sha256:06da1bcfbd044b2d5404ac5590dbfaeb406f64298f656a17561a820be46f73bf"
+      "sha256": "sha256:479f9917e3ba5a7db821878a7644698e94d07272253bdc096c96694a0765d041"
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
+      "sha256": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231"
     },
     {
       "path": "runtime/health_process.py",

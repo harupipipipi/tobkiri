@@ -1,3 +1,5 @@
+import { useVerifiedFrontendHost } from "../../host/VerifiedFrontendHostContext";
+import { nativeProviderModelAccessResources } from "../apiKeys/resources/nativeProviderModelAccessResources";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ErrorNotice } from "../../components/ErrorNotice";
@@ -10,6 +12,9 @@ import {
   type ProviderCatalogModel,
 } from "../../lib/providerCatalog";
 import type { ModelPropertiesRequest } from "../search/modelPropertiesNavigation";
+import { ProviderModelAccessSettings } from "../apiKeys/ProviderModelAccessSettings";
+import { modelAllowed, MODEL_ACCESS_VERSION, type ModelAccessPolicy } from "../apiKeys/modelAccessPolicy";
+import type { ModelAccessSnapshot, ProviderModelAccessResources } from "../apiKeys/resources/providerModelAccessResources";
 import { ModelSearchPicker } from "./ModelSearchPicker";
 import { modelSearchItemToModelSelectOption, type ModelSelectOption } from "./modelSelect";
 import { modelRouteConnectionLabel } from "./modelRoutePresentation";
@@ -83,18 +88,19 @@ export function ProviderReadiness({
 }
 
 /** Catalog choices never attest account access or runtime capabilities. */
-export function CatalogModelPicker({ models, value, query, providerId = "", connectionId, selectedOption, onChange, onQueryChange, onSelectedOptionChange }: {
+export function CatalogModelPicker({ models, value, query, providerId = "", connectionId, selectedOption, modelAccessPolicy = null, onChange, onQueryChange, onSelectedOptionChange }: {
   models: readonly ProviderCatalogModel[];
   value: string;
   query: string;
   providerId?: string;
   connectionId?: string;
   selectedOption?: ModelSelectOption | null;
+  modelAccessPolicy?: ModelAccessPolicy | null;
   onChange: (value: string) => void;
   onQueryChange: (query: string) => void;
   onSelectedOptionChange?: (option: ModelSelectOption | null) => void;
 }) {
-  const options: ModelSelectOption[] = models.map((model) => ({
+  const options: ModelSelectOption[] = models.filter((model) => modelAllowed(modelAccessPolicy, model.model_id)).map((model) => ({
     value: model.model_id, label: model.display_name, model_id: model.model_id,
     provider_id: providerId || undefined,
   }));
@@ -105,6 +111,7 @@ export function CatalogModelPicker({ models, value, query, providerId = "", conn
       showTrigger={false} open preset={{ kinds: ["model"], ...(providerId ? { providerIds: [providerId] } : {}), connectionId }}
       catalogOptionAdapter={(item) => {
         if (!providerId || item.provider_id !== providerId || !item.model_id
+          || !modelAllowed(modelAccessPolicy, item.model_id)
           || (connectionId && item.connection_id !== connectionId)) return null;
         return { ...modelSearchItemToModelSelectOption(item), value: item.model_id };
       }} />
@@ -141,13 +148,19 @@ export function CustomModelControls({ displayMode, manual, manualModel, hasCatal
 }
 
 /** Choose a catalog model for the exact saved connection without typing IDs. */
-export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged }: {
+export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged, modelAccessBinding }: {
+  modelAccessBinding?: { profile_id: string; resources: ProviderModelAccessResources };
   preferredConnectionId?: string;
   displayMode?: "standard" | "advanced";
   requestedModel?: ModelPropertiesRequest | null;
   onModelPropertiesAcknowledged?: (request: ModelPropertiesRequest) => void;
 }) {
+  const verifiedHost = useVerifiedFrontendHost();
+  const capturedProfile = verifiedHost?.catalog.profile_id;
+  const effectiveAccessBinding = modelAccessBinding ?? (capturedProfile
+    ? { profile_id: capturedProfile, resources: nativeProviderModelAccessResources } : undefined);
   const connectionSelectId = useId();
+  const [accessSnapshot, setAccessSnapshot] = useState<ModelAccessSnapshot | null>(null);
   const [catalogModel, setCatalogModel] = useState("");
   const [selectedCatalogOption, setSelectedCatalogOption] = useState<ModelSelectOption | null>(null);
   const [customModel, setCustomModel] = useState("");
@@ -246,7 +259,13 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
     onModelPropertiesAcknowledged?.(requestedModel);
   }, [requestedModel, selectedConnection, providerRegistryRevision, manualModel,
     catalogProviderId, model, selectedCatalogOption, onModelPropertiesAcknowledged]);
-  const validModel = Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
+  const accessKnown = Boolean(effectiveAccessBinding && accessSnapshot?.profile_id === effectiveAccessBinding.profile_id
+    && accessSnapshot?.provider_instance_id === selectedConnection?.provider_instance_id);
+  const activePolicy = effectiveAccessBinding
+    ? (accessKnown ? accessSnapshot?.model_access ?? null
+      : { version: MODEL_ACCESS_VERSION, mode: "explicit" as const, model_ids: [] })
+    : null;
+  const validModel = accessKnown && modelAllowed(activePolicy, model.trim()) && Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
     || selectedCatalogOption?.value === model);
   const save = async () => {
     if (!selectedConnection || providerRegistryRevision === null || !validModel) return;
@@ -287,9 +306,15 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
     </label>
     {selectedConnection && <>
       <ProviderReadiness connection={selectedConnection} />
+      {!effectiveAccessBinding && <p role="status" className="text-xs text-zinc-400">このProfileのモデル許可を確認できません。再読み込みしてから保存してください。</p>}
+      {effectiveAccessBinding && <ProviderModelAccessSettings
+        key={`${effectiveAccessBinding.profile_id}:${selectedConnection.provider_instance_id}`}
+        scope={{ profile_id: effectiveAccessBinding.profile_id, provider_instance_id: selectedConnection.provider_instance_id }}
+        resources={effectiveAccessBinding.resources} onSnapshot={setAccessSnapshot} />}
+      {effectiveAccessBinding && accessKnown && model && !modelAllowed(activePolicy, model) && <p role="status" className="text-xs text-zinc-400">このモデルは、このAPI接続の許可対象外です。</p>}
       {!manualModel && <CatalogModelPicker models={catalogModels} value={model} query={query}
         providerId={catalogProviderId} connectionId={selectedConnection.provider_instance_id}
-        selectedOption={selectedCatalogOption} onSelectedOptionChange={setSelectedCatalogOption}
+        modelAccessPolicy={activePolicy} selectedOption={selectedCatalogOption} onSelectedOptionChange={setSelectedCatalogOption}
         onChange={(next) => { setCatalogModel(next); setMessage(""); }} onQueryChange={setQuery} />}
       <CustomModelControls
         displayMode={displayMode}

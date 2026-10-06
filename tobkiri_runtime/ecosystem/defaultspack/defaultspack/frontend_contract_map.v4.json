@@ -1662,6 +1662,64 @@
           ]
         }
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/read",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.read",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "operation_id": "rumi_provider_registry_pack.model-access-read",
+          "provider_id": "rumi_provider_registry_pack.model-access.read",
+          "function_id": "rumi_provider_registry_pack.model-access.read",
+          "allowed_payload_keys": [
+            "profile_id",
+            "provider_instance_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.catalog",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+          "provider_id": "rumi_provider_registry_pack.model-access.catalog",
+          "function_id": "rumi_provider_registry_pack.model-access.catalog",
+          "allowed_payload_keys": [
+            "profile_id",
+            "provider_instance_id",
+            "discovery_filters"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/save",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.save",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "allowed_payload_keys": [
+            "phase",
+            "effect_kind",
+            "request",
+            "effect_id",
+            "correlation_id"
+          ]
+        }
+      ]
     }
   ]
 }

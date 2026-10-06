@@ -38,6 +38,12 @@ class ProviderRegistryService:
                 record if isinstance(record, Mapping) else data,
                 expected_revision=int(data.get("expected_revision") or 0),
             )
+        if operation == "model_access.save":
+            return registry.set_model_access(
+                str(data.get("provider_instance_id") or ""),
+                data.get("model_access"),
+                expected_revision=data["expected_revision"],
+            )
         if operation == "delete":
             return registry.delete(
                 str(data.get("provider_instance_id") or ""),

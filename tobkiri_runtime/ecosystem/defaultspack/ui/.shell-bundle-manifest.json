@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "c4162a5cb6cd253a03c27e08673b97df027d916ee3e6903b2c540de93387245c",
+    "digest": "848d6a16ddaaaa274cd68e47bbe8de6968b978e18c1bb3c70d2f14524febcc4f",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9149,
-        "sha256": "a54df24817a561345716d41d2d0d527ae9ed21c8239d1575ec2f1e6052cfb263"
+        "size": 9231,
+        "sha256": "2bf8e23e2e3ece3886726b3899e0505439ab7190fe2c6f7211c7ac3d6127dfc2"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -884,6 +884,11 @@
         "sha256": "08fd4ccdde53ef32d62d57494210cad82a08067135a278a4dd688ce28d0e7a9d"
       },
       {
+        "path": "src/features/apiKeys/ProviderModelAccessSettings.tsx",
+        "size": 13127,
+        "sha256": "76d3d90c6fbc9a6b45cb61cd3c6d53acc074846bd95ee8e864584991a63ba3d1"
+      },
+      {
         "path": "src/features/apiKeys/apiKeySetup.test.ts",
         "size": 7621,
         "sha256": "3eb212d27403a4d16c84bb37cb4185c02f2ab72a83f9bd1db0353d4ccc0b97f1"
@@ -899,9 +904,29 @@
         "sha256": "06bd463ba6b133f37802011886c3ffe2746e08589e4430d9b81c35332b89e3a9"
       },
       {
+        "path": "src/features/apiKeys/modelAccessPolicy.test.tsx",
+        "size": 7799,
+        "sha256": "169a0caa49747290dc159b5b7fcd53c4449ca8705d360e037b5aa26565df6644"
+      },
+      {
+        "path": "src/features/apiKeys/modelAccessPolicy.ts",
+        "size": 6551,
+        "sha256": "de265e358e5920e76380e861e12a0870534971c09f3e2397dc2f41f889bf2234"
+      },
+      {
+        "path": "src/features/apiKeys/resources/nativeProviderModelAccessResources.ts",
+        "size": 465,
+        "sha256": "4e8f6878fcf0bf64c429ace44b39cff1f3f324e3771f9da2ed881adf6c8a9075"
+      },
+      {
         "path": "src/features/apiKeys/resources/providerApiKeyResources.ts",
         "size": 752,
         "sha256": "87e34a3da2ace99e07c5deb35bf709ec7e4243781c807f7fb77ba168cd8f07fc"
+      },
+      {
+        "path": "src/features/apiKeys/resources/providerModelAccessResources.ts",
+        "size": 4625,
+        "sha256": "6ae14eca3f133d626d977417bcf8bc4a14c742301cdad5519d468f0ab1a5c340"
       },
       {
         "path": "src/features/chat/resources/authorityApprovalResources.ts",
@@ -1020,8 +1045,8 @@
       },
       {
         "path": "src/features/models/ModelRouteSetup.tsx",
-        "size": 15626,
-        "sha256": "d3d83dce9ba3805192253d6de0eda6cd99f1e56b9f80971d4c35e99e560acf18"
+        "size": 18114,
+        "sha256": "9c180b09ea82043196bb7d60adf41f5066ef5ee811a3998bd589e3ee59f97c80"
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
@@ -1620,8 +1645,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 235188,
-        "sha256": "f2c628716b00403bcc0c0cf8271b1cdaca200464c6e4119952fca3f70cbec358"
+        "size": 237066,
+        "sha256": "83754b53c1e070aa678813003d303d96f45369014ee104b0f32e21b596cbda67"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -2182,6 +2207,16 @@
         "path": "src/lib/mobilePairingUrls.ts",
         "size": 1261,
         "sha256": "d7a399528f6aef59de155184e71a48af589eb97d6480ac95807b6242694fe478"
+      },
+      {
+        "path": "src/lib/modelAccessEffect.test.ts",
+        "size": 7604,
+        "sha256": "132039bed092a29372a7d0bd3008e811a684f2458f63b586b591062e7a689d7e"
+      },
+      {
+        "path": "src/lib/modelAccessEffect.ts",
+        "size": 7384,
+        "sha256": "39a847377060f87f081fdeeebefb0ec6bc66a917a1bab9fb7aa7ba52750269cf"
       },
       {
         "path": "src/lib/modelApiRoutes.test.ts",
@@ -2911,7 +2946,7 @@
     ]
   },
   "bundle": {
-    "digest": "873fec21be0f6f518aeb0e480d2c5e8cce57d5846aaae35f933551369834e0c0",
+    "digest": "b46c45f2a952cd6e9d03f1167a33b888f9b487a80b03fb1cfc9ff11fba9704c8",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2925,8 +2960,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2723883,
-        "sha256": "00cc3140d861535a4922edfade7499d9985c938e318fdf28661b04ec6d66407c"
+        "size": 2745270,
+        "sha256": "aac0c306b39cc018c409a00f3630a20de7cdb8b179b33f9291de1127011d21da"
       },
       {
         "path": "shell-icons.js",

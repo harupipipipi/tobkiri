@@ -329,6 +329,79 @@ class DefaultspackHTTPPresentation:
                 raise ValueError("model search request is invalid")
             return {**dict(payload), "profile_id": profile_id}
 
+        if identity in {
+            (
+                "defaults.provider-model-access.read",
+                "tobkiri.resource.ai.provider.registry.v1",
+                "rumi_provider_registry_pack.model-access-read",
+                "rumi_provider_registry_pack.model-access.read",
+                "rumi_provider_registry_pack.model-access.read",
+            ),
+            (
+                "defaults.provider-model-access.catalog",
+                "tobkiri.resource.ai.provider.registry.v1",
+                "rumi_provider_registry_pack.model-access-catalog",
+                "rumi_provider_registry_pack.model-access.catalog",
+                "rumi_provider_registry_pack.model-access.catalog",
+            ),
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            required = {"profile_id", "provider_instance_id"}
+            allowed = required | (
+                {"discovery_filters"} if identity[0].endswith(".catalog") else set()
+            )
+            if (
+                not profile_id
+                or payload.get("profile_id") != profile_id
+                or not required <= set(payload)
+                or set(payload) - allowed
+            ):
+                raise ValueError("model access scope is invalid")
+            return dict(payload)
+
+        if identity == (
+            "defaults.provider-model-access.save",
+            "tobkiri.service.interactive-effect.v1",
+            "interactive_effect.manage",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        ):
+            session.assert_current()
+            phase = payload.get("phase")
+            if phase == "prepare":
+                request = payload.get("request")
+                if (
+                    set(payload)
+                    not in (
+                        {"phase", "effect_kind", "request"},
+                        {"phase", "effect_kind", "request", "correlation_id"},
+                    )
+                    or payload.get("effect_kind") != "provider_model_access"
+                    or not isinstance(request, Mapping)
+                    or set(request)
+                    != {
+                        "profile_id",
+                        "provider_instance_id",
+                        "expected_revision",
+                        "model_access",
+                    }
+                    or not getattr(session, "profile_id", "")
+                    or request.get("profile_id") != session.profile_id
+                ):
+                    raise ValueError("model access save request is invalid")
+            elif phase == "lookup":
+                if (
+                    set(payload) != {"phase", "effect_kind", "correlation_id"}
+                    or payload.get("effect_kind") != "provider_model_access"
+                ):
+                    raise ValueError("model access lookup is invalid")
+            elif phase not in {"status", "resume", "cancel"} or set(payload) != {
+                "phase",
+                "effect_id",
+            }:
+                raise ValueError("model access save phase is invalid")
+            return dict(payload)
         if target.contribution_id == "defaults.providers.configure":
             phase = payload.get("phase")
             if phase == "prepare":
