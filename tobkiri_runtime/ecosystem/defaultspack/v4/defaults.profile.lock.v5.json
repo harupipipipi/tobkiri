@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:d1abad8e93e5097b1239a80624f45f0e8907aa7ad37b4cb9d8bdc4a64cd16b47",
-  "profile_definition_digest": "sha256:1f10e2bb9a56a6e0bac50a031889a8ab657e99df291fcb0f39bcf57b9770a8dd",
+  "profile_revision": "sha256:53566af09a9ed1dd5dfd40ac2981fabd7dd1013597765a90e5fbdc20b9f7fd6f",
+  "profile_definition_digest": "sha256:076d10b2fa71b5265237f7ea3cf27ed8fe15b62d7b0886c96b36e9c4adc32852",
   "catalog_revision": "sha256:f71401b9efbcdee6e59b8b9f65ea95762c4e625d3aa806b57d8f1650d62a19e6",
-  "bundle_digest": "sha256:cd52830ab4e2b8124457f3ecc5810099169979d18c3fa1ee3b20893b80d93dd1",
+  "bundle_digest": "sha256:7f1c556ca119d10ff53967c541b23a1651c7d1186f7ed2adf5a9dbcde67ccec3",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -1604,9 +1604,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:e5bb87d467d87e0a141bdae50650e7576f6fe3939fd5be99598ddc02bbca4d32",
+  "requested_edges_digest": "sha256:08a2cc7568899356317a695eb9324893dd8fd6131aef7fab120f0cb43f6aef69",
   "constraints_digest": "sha256:4599cab378c83a3550dc1037503109db68d837e8eb6becf848d0e816718f4d75",
   "closure_digest": "sha256:b647143326b4e4f072b0b57edd522ab519c0a1c3e46a001f7729d3ba8e7b82fa",
-  "provenance_digest": "sha256:c2f9355bfbc3c577f04ecc5b8265b9dcf6e6bbf5e2bb4cdde1ecc45bf5bedacb",
-  "lock_digest": "sha256:c26886f39f810842ac7af5a664ea988fadd95eecaab6846177df5d75e5c18881"
+  "provenance_digest": "sha256:d9ea602fee234c6cee3b0473ea8c494decce1850a44607fbc8a62b00894d81be",
+  "lock_digest": "sha256:1d1eb54b3d5bff00ad31e8081cdae28ba2bb899d18807d060aa7f03f9a0e9133"
 }

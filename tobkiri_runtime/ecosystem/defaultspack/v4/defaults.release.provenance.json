@@ -1,8 +1,8 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:d1abad8e93e5097b1239a80624f45f0e8907aa7ad37b4cb9d8bdc4a64cd16b47",
-  "profile_definition_digest": "sha256:1f10e2bb9a56a6e0bac50a031889a8ab657e99df291fcb0f39bcf57b9770a8dd",
+  "profile_revision": "sha256:53566af09a9ed1dd5dfd40ac2981fabd7dd1013597765a90e5fbdc20b9f7fd6f",
+  "profile_definition_digest": "sha256:076d10b2fa71b5265237f7ea3cf27ed8fe15b62d7b0886c96b36e9c4adc32852",
   "source_inputs": [
     {
       "path": "core_runtime/profile_content_projection.py",
@@ -14,7 +14,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
-      "digest": "sha256:236b4b0981b95332f9315bed39bb19943f7d8eda2d28454b0fef2c05be80e612"
+      "digest": "sha256:1800452a9e7afee85f7f9c112bb058fcb235cb40864587f011ed6f74aa323187"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
@@ -1413,19 +1413,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:cd52830ab4e2b8124457f3ecc5810099169979d18c3fa1ee3b20893b80d93dd1",
+    "bundle_digest": "sha256:7f1c556ca119d10ff53967c541b23a1651c7d1186f7ed2adf5a9dbcde67ccec3",
     "catalog_revision": "sha256:f71401b9efbcdee6e59b8b9f65ea95762c4e625d3aa806b57d8f1650d62a19e6",
     "closure_digest": "sha256:b647143326b4e4f072b0b57edd522ab519c0a1c3e46a001f7729d3ba8e7b82fa"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-      "digest": "sha256:ec768f8d7e5d6476d82da3f54409610a49024da02a1ca4ff2fb6191ffe9dc8aa"
+      "digest": "sha256:75151db7935f243e0590643df85ebde331ee9f963e8575a8005fd3d72d4a4eed"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:dff3c8223aaa8b6abc14a96a82e0e15718ffda4b2d6108920ecc71b675d5ec8e"
+      "digest": "sha256:525417a1fd70af3af0dd1fe896e58aca6aaa6bb1031fe70280ce57e11c4e5303"
     }
   ],
-  "release_digest": "sha256:678c7b09bbfb1ce24bcec377168afaba68095ada295021204039dd86f2adbc83"
+  "release_digest": "sha256:7ce2cb5ab93b2e8e6b1b918f4b115b53a232037e5ca0e21bcf2179d3dd7c47cc"
 }
