@@ -3914,3 +3914,107 @@ test("actual ChatApp hung unregistered start becomes explicit recovery without r
     expect(starts).toBe(1);
   } finally { release(); }
 });
+
+
+test("actual ChatApp sends the selected finite tool and displays authenticated live start/result before canonical saved logs", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true,
+    initialSelectedToolIds: ["calculator"], initialSettingsValues: { tools: { default_mode: "manual" } } });
+  const base = { ...smokeConversation(), conversation_revision: 1, messages: [], tags: [], metadata: {} };
+  const userId = `message:${"a".repeat(64)}`;
+  const assistantId = `message:${"b".repeat(64)}`;
+  const stageTool = "c".repeat(64);
+  const stageAi = "d".repeat(64);
+  const inputDigest = `sha256:${"a".repeat(64)}`;
+  const requestId = "saved-turn.live-tool-fixture";
+  let operationId = "";
+  let starts = 0;
+  let progressReads = 0;
+  let toolComplete = false;
+  let aiStage = false;
+  let saved = false;
+  let submitted: SavedTurnRequest | null = null;
+  let release!: () => void;
+  const startGate = new Promise<void>((resolve) => { release = resolve; });
+  const result = JSON.stringify({ status: "success", result: 3, error: null });
+  const reference = () => ({ conversation_id: base.id, conversation_revision: 3, user_message_id: userId,
+    assistant_message_id: assistantId, outcome_digest: `sha256:${"e".repeat(64)}` });
+  const turn = () => ({ id: operationId, conversation_id: base.id, request_id: requestId, input_digest: inputDigest,
+    conversation_revision: 1, status: saved ? "completed" : "running", revision: saved ? 3 : 2,
+    ...(saved ? { result_reference: reference() } : {}) });
+  const user = () => ({ id: userId, conversation_id: base.id, role: "user", created_at: Date.now(),
+    content: [{ type: "text", text: "Calculate 1+2 using calculator" }], metadata: { turn_id: operationId } });
+  const conversation = () => operationId ? { ...base, conversation_revision: saved ? 3 : 2,
+    current_node_id: saved ? assistantId : userId, messages: [user(), ...(saved ? [{
+      id: assistantId, conversation_id: base.id, role: "assistant", created_at: Date.now(), finish_reason: "stop",
+      content: [{ type: "text", text: "Canonical calculator answer 3" }], metadata: { turn_id: operationId },
+      tool_logs: [{ tool_name: "calculator", tool_call_id: "call-calculator", arguments: { expression: "1+2" }, result }],
+    }] : [])] } : base;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request(); const url = new URL(request.url()); const target = requestTarget(url);
+    if (target === "/api/tools/catalog") return route.fulfill({ json: ok({ services: [], count: 1, tools: [{
+      tool_id: "calculator", service_id: "local", service_label: "Local", name: "Calculator",
+      action_class: "read", connection_status: "connected",
+    }] }) });
+    if (target === "/api/chat/conversation" && request.method() === "GET") return route.fulfill({ json: ok(conversation()) });
+    if (target === "/api/chat/conversations" && request.method() === "GET") return route.fulfill({ json: ok({ conversations: [{ ...base, messages: [] }], total: 1, store_revision: 1 }) });
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1; submitted = request.postDataJSON().request; operationId = submitted!.turn_id;
+      await startGate;
+      return route.fulfill({ json: ok({ status: "completed", turn: turn() }) });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: operationId ? [turn()] : [] }) });
+    if (target === "/api/chat/turn/reconcile") return route.fulfill({ json: ok({ status: saved ? "completed" : "reconciliation_required", turn: turn() }) });
+    if (target === "/api/chat/turn/events") return route.fulfill({ json: ok({
+      turn_id: operationId, operation_id: operationId, conversation_id: base.id, request_id: requestId,
+      turn_revision: turn().revision, status: turn().status, turn: turn(), events: [],
+      terminal: saved ? { turn_id: operationId, operation_id: operationId, conversation_id: base.id,
+        request_id: requestId, turn_revision: 3, status: "completed", result_reference: reference() } : null,
+    }) });
+    if (target === "/api/chat/turn/progress") {
+      progressReads += 1;
+      const operation = decodeURIComponent(url.pathname.split("/api/contracts/defaultspack/")[1] ?? url.pathname);
+      const query = new URL(operation.slice(operation.indexOf(" ") + 1), url.origin).searchParams;
+      const cursor = Number(query.get("cursor") ?? 0);
+      const stage = aiStage ? stageAi : stageTool;
+      const matchingStage = query.get("progress_id") === stage;
+      const after = matchingStage ? cursor : 0;
+      const events = aiStage ? [{ cursor: 1, event: { type: "text_delta", delta: "Provisional calculator answer" } }] : [
+        { cursor: 1, event: { type: "tool_started", tool_id: "calculator", tool_call_id: "call-calculator", arguments: { expression: "1+2" } } },
+        ...(toolComplete ? [{ cursor: 2, event: { type: "tool_completed", tool_id: "calculator", tool_call_id: "call-calculator", status: "success", content: result } }] : []),
+      ];
+      const fresh = events.filter((item) => item.cursor > after);
+      return route.fulfill({ json: ok({ version: "tobkiri.turn-progress.v1", progress_id: stage, provisional: true,
+        binding: { turn_id: operationId, conversation_id: base.id, parent_id: userId, request_id: requestId,
+          conversation_revision: 2, input_digest: inputDigest, ai_input_digest: `sha256:${stage}` },
+        events: fresh, cursor: fresh.at(-1)?.cursor ?? after, provider_complete: !aiStage && toolComplete,
+        expires_at_ms: expiry, canonical_turn_status: "running",
+      }) });
+    }
+    return route.fallback();
+  });
+  const expiry = Date.now() + 110_000;
+  try {
+    await page.goto(`/p/defaults/chat?chat=${base.id}`);
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Calculate 1+2 using calculator");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    expect(submitted?.tool_selection).toMatchObject({ mode: "manual", include: [{ kind: "tool", id: "calculator" }] });
+    await expect.poll(() => progressReads).toBeGreaterThan(0);
+    const history = page.getByRole("region", { name: "ツール履歴", exact: true });
+    await expect(history).toBeVisible();
+    await expect(history).toContainText("作業中");
+    toolComplete = true;
+    await expect(history).not.toContainText("作業中");
+    aiStage = true;
+    await expect(page.getByText("Provisional calculator answer", { exact: true })).toBeVisible();
+    await expect(history).toHaveCount(1);
+    saved = true; release();
+    await expect(page.getByText("Canonical calculator answer 3", { exact: true })).toBeVisible();
+    await expect(page.getByText("Provisional calculator answer", { exact: true })).toHaveCount(0);
+    await expect(history).toHaveCount(1);
+    await history.getByRole("button", { name: /作業状況を開く/ }).click();
+    await expect(history).toContainText("3");
+    expect(starts).toBe(1);
+  } finally { release(); }
+});

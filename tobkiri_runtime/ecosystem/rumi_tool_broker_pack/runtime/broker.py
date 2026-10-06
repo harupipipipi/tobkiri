@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 import threading
 from typing import Any, Mapping
@@ -14,6 +16,10 @@ from core_runtime.host_provider_function_v4 import (
     HostFunction,
     SingleOperationHostFactoryV4,
 )
+
+from tobkiri_protocol.turn_progress_v1 import ACTION, ACTION_OPERATION
+
+_LOGGER = logging.getLogger(__name__)
 
 PACK_ID = "rumi_tool_broker_pack"
 CONTRACT = "tobkiri.service.tool.invoke.v1"
@@ -40,7 +46,8 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
         payload: Mapping[str, Any], invocation: HostProviderInvocationContextV4,
     ) -> Mapping[str, Any]:
         if (
-            set(payload) - {"expected_definition_hash"} != {"tool_id", "tool_call_id", "arguments"}
+            set(payload) - {"expected_definition_hash", "progress_id"}
+            != {"tool_id", "tool_call_id", "arguments"}
             or any(
                 not isinstance(payload[key], str)
                 or not _IDENTIFIER.fullmatch(payload[key])
@@ -57,10 +64,34 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
             raise PermissionError("tool broker is busy")
         try:
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({DEFINITION, VALIDATE, EXECUTE, NORMALIZE}),
+                allowed_contract_ids=frozenset({DEFINITION, VALIDATE, EXECUTE, NORMALIZE, ACTION}),
                 consumer_pack_id=PACK_ID,
                 include_credentials=False,
             )
+            progress_id = payload.get("progress_id")
+            progress_bound = False
+
+            def progress(phase: str, **fields: Any) -> bool:
+                if progress_id is None:
+                    return False
+                try:
+                    client.invoke(
+                        ACTION,
+                        ACTION_OPERATION,
+                        {
+                            "phase": phase,
+                            "progress_id": progress_id,
+                            **fields,
+                        },
+                    )
+                    return True
+                except Exception:
+                    # Display failures never replay or suppress an actual effect.
+                    _LOGGER.warning("Tool display progress unavailable")
+                    return False
+
+            if progress_id is not None and not isinstance(progress_id, str):
+                raise ValueError("tool progress identity is invalid")
             resolved = client.invoke(
                 DEFINITION, "rumi_tool_registry_pack.tool-definition-resource",
                 {"operation": "resolve", "tool_id": payload["tool_id"]},
@@ -113,11 +144,26 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
             # No grant, approval flag, identity or legacy token is forwarded.
             # Denials and pending effects propagate; they are never retried here.
             invocation.assert_current()
+            if progress_id is not None:
+                progress_bound = progress("tool_bind")
+                if progress_bound:
+                    progress_bound = progress(
+                        "tool_publish",
+                        cursor=1,
+                        event={
+                            "type": "tool_started",
+                            **{
+                                key: payload[key]
+                                for key in ("tool_id", "tool_call_id", "arguments")
+                            },
+                        },
+                    )
+            invocation.assert_current()
             raw = client.invoke(
                 EXECUTE, operation_id, request,
                 provider_instance_id=selected["provider_instance_id"],
             )
-            return client.invoke(
+            normalized = client.invoke(
                 NORMALIZE, "rumi_tool_result_pack.tool-result-normalize",
                 {
                     "tool_call_id": payload["tool_call_id"],
@@ -127,6 +173,29 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
                     "value": raw,
                 },
             )
+            if progress_bound:
+                try:
+                    content = json.dumps(
+                        {key: normalized.get(key) for key in ("status", "result", "error")},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    )
+                    progress(
+                        "tool_publish",
+                        cursor=2,
+                        event={
+                            "type": "tool_completed",
+                            "tool_id": payload["tool_id"],
+                            "tool_call_id": payload["tool_call_id"],
+                            "status": normalized["status"],
+                            "content": content,
+                        },
+                    )
+                except (TypeError, ValueError, KeyError):
+                    _LOGGER.warning("Tool display result unavailable")
+            return normalized
         finally:
             single_flight.release()
 

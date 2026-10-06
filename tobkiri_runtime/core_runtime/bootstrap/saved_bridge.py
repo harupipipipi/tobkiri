@@ -680,7 +680,6 @@ class SavedBridgeCallbacks:
             if (
                 self._stream_available is not None
                 and request.get("strategy_reference") is None
-                and request.get("tool_selection", {}).get("mode", "none") == "none"
                 and self._stream_ready(outer, request, conversation)
             ):
                 value["delivery_mode"] = "incremental"
@@ -876,6 +875,32 @@ class SavedBridgeCallbacks:
                 conversation, owner_revision, owner_current_node_id
             )
             self._require_targets(outer, TOOL_TARGETS)
+            if ai_mode == "incremental":
+                try:
+                    progress = self._dispatch(
+                        outer,
+                        (ACTION, ACTION_OPERATION),
+                        {
+                            "phase": "begin",
+                            "turn_id": request["turn_id"],
+                            "conversation_id": request["conversation_id"],
+                            "conversation_revision": owner_revision,
+                            "parent_id": owner_current_node_id,
+                            "input_digest": canonical_digest({"request": request}),
+                            "request_id": str(
+                                getattr(getattr(outer, "context", None), "request_id", "")
+                            ),
+                            "ai_input_digest": payload_digest(payload),
+                        },
+                    )
+                    value = progress.get("value")
+                    if progress.get("status") == "ok" and isinstance(value, Mapping):
+                        identity = value.get("progress_id")
+                        if isinstance(identity, str):
+                            payload = {**payload, "progress_id": identity}
+                except Exception:
+                    # Provisional display failure cannot prevent or retry the effect.
+                    pass
         self._recheck_linked_context(outer, request, conversation)
         return self._dispatch(outer, target, payload)
 

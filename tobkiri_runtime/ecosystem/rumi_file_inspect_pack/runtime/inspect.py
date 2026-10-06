@@ -24,6 +24,7 @@ from tobkiri_protocol.canonical import canonical_digest
 
 PACK_ID = "rumi_file_inspect_pack"
 FUNCTION_ID = "rumi_file_inspect_pack.file-inspect.service"
+MEDIA_FUNCTION_ID = "rumi_file_inspect_pack.file-inspect.media"
 CONTRACT_ID = "tobkiri.service.file.inspect.v1"
 CONTRACT_VERSION = "1.0.0"
 WORKSPACE = "tobkiri.resource.workspace.v1"
@@ -37,31 +38,35 @@ OPERATIONS = frozenset(
 _MAX_READ_BYTES = 4 * 1024 * 1024
 _MAX_RESULTS = 10_000
 _PROTECTED_PARTS = frozenset({".git", ".rumi_snapshots"})
-_SECRET_PARTS = frozenset({
-    ".aws",
-    ".azure",
-    ".docker",
-    ".gnupg",
-    ".kube",
-    ".ssh",
-    "secrets",
-})
-_SECRET_NAMES = frozenset({
-    ".dockercfg",
-    ".git-credentials",
-    ".npmrc",
-    ".pypirc",
-    ".netrc",
-    "credentials",
-    "credentials.json",
-    "id_dsa",
-    "id_ecdsa",
-    "id_ed25519",
-    "id_rsa",
-    "kubeconfig",
-    "token",
-    "tokens.json",
-})
+_SECRET_PARTS = frozenset(
+    {
+        ".aws",
+        ".azure",
+        ".docker",
+        ".gnupg",
+        ".kube",
+        ".ssh",
+        "secrets",
+    }
+)
+_SECRET_NAMES = frozenset(
+    {
+        ".dockercfg",
+        ".git-credentials",
+        ".npmrc",
+        ".pypirc",
+        ".netrc",
+        "credentials",
+        "credentials.json",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "id_rsa",
+        "kubeconfig",
+        "token",
+        "tokens.json",
+    }
+)
 _SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx", ".crt")
 _SAFE_ENV_SUFFIXES = (".example", ".sample", ".template")
 
@@ -117,9 +122,7 @@ class FileInspectService:
             raise ValueError("workspace_id is required")
         if payload.get("require_selected"):
             if self._selected_workspace_id(payload) != workspace_id:
-                raise PermissionError(
-                    "workspace is not the selected Host binding"
-                )
+                raise PermissionError("workspace is not the selected Host binding")
         self._guard()
         mount = self.client.invoke(
             WORKSPACE,
@@ -152,9 +155,7 @@ class FileInspectService:
             and self._selected_workspace_id(payload) != workspace_id
         ):
             os.close(root_fd)
-            raise PermissionError(
-                "workspace selection changed during Host binding"
-            )
+            raise PermissionError("workspace selection changed during Host binding")
         return root, root_fd, binding
 
     @staticmethod
@@ -193,9 +194,7 @@ class FileInspectService:
         ).hexdigest()
         for key, value in actual.items():
             if binding.get(key) != value:
-                raise PermissionError(
-                    f"workspace mount binding changed: {key}"
-                )
+                raise PermissionError(f"workspace mount binding changed: {key}")
         if str(binding.get("root_identity") or "") != actual_identity:
             raise PermissionError("workspace root identity changed")
 
@@ -438,15 +437,24 @@ def create_file_inspect_operation(
 class FileInspectHostFactoryV4:
     """Bind file inspection to exact verified Host dispatch edges."""
 
-    function_id = FUNCTION_ID
+    def __init__(self, function_id: str, operation_id: str) -> None:
+        """Pin one exact Function and public inspection operation."""
+        identities = {
+            FUNCTION_ID: "rumi_file_inspect_pack.file-inspect",
+            MEDIA_FUNCTION_ID: "rumi_file_inspect_pack.file-inspect.for-media",
+        }
+        if identities.get(function_id) != operation_id:
+            raise ValueError("file inspect factory identity is invalid")
+        self.function_id = function_id
+        self.operation_id = operation_id
 
     def capture(
         self,
         context: HostProviderCaptureContextV4,
     ) -> CapturedHostProviderV4:
-        """Capture the selected subset of the Function's two operations."""
+        """Capture the Function's exact singleton operation."""
         bindings = context.provider_bindings
-        if not bindings:
+        if len(bindings) != 1:
             raise PermissionError("file inspect bindings are unavailable")
         contribution_fields: list[dict[str, Any]] = []
         captured: dict[str, tuple[str, str]] = {}
@@ -461,7 +469,7 @@ class FileInspectHostFactoryV4:
                 binding.function.function_id != self.function_id
                 or binding.operation.contract_id != CONTRACT_ID
                 or binding.operation.contract_version != CONTRACT_VERSION
-                or operation_id not in OPERATIONS
+                or operation_id != self.operation_id
                 or operation_id in captured
                 or key not in context.domain_ids
             ):
@@ -477,9 +485,7 @@ class FileInspectHostFactoryV4:
                     "operation_id": operation_id,
                     "principal_id": binding.principal_ref.value,
                     "artifact_digest": binding.artifact.digest,
-                    "implementation_digest": (
-                        binding.function.implementation_digest
-                    ),
+                    "implementation_digest": (binding.function.implementation_digest),
                     "domain_id": context.domain_ids[key],
                 }
             )
@@ -539,7 +545,16 @@ class FileInspectHostFactoryV4:
         return CapturedHostProviderV4(contributions, closed.set)
 
 
-HOST_PROVIDER_FACTORY = FileInspectHostFactoryV4()
+HOST_PROVIDER_FACTORY = {
+    FUNCTION_ID: FileInspectHostFactoryV4(
+        FUNCTION_ID,
+        "rumi_file_inspect_pack.file-inspect",
+    ),
+    MEDIA_FUNCTION_ID: FileInspectHostFactoryV4(
+        MEDIA_FUNCTION_ID,
+        "rumi_file_inspect_pack.file-inspect.for-media",
+    ),
+}
 
 
 def _jailed(root: Path, value: Any, *, must_exist: bool) -> Path:
@@ -588,11 +603,7 @@ def _deny_unsafe_windows_path(value: str) -> None:
 
 
 def _deny_restricted_path(path: Path) -> None:
-    parts = tuple(
-        part.casefold()
-        for part in path.parts
-        if part not in {"", "."}
-    )
+    parts = tuple(part.casefold() for part in path.parts if part not in {"", "."})
     if any(part in _PROTECTED_PARTS for part in parts):
         raise PermissionError("protected workspace paths are not readable")
     if any(part in _SECRET_PARTS for part in parts):
@@ -601,14 +612,9 @@ def _deny_restricted_path(path: Path) -> None:
         return
     name = parts[-1]
     is_env = name == ".env" or (
-        name.startswith(".env.")
-        and not name.endswith(_SAFE_ENV_SUFFIXES)
+        name.startswith(".env.") and not name.endswith(_SAFE_ENV_SUFFIXES)
     )
-    if (
-        is_env
-        or name in _SECRET_NAMES
-        or name.endswith(_SECRET_SUFFIXES)
-    ):
+    if is_env or name in _SECRET_NAMES or name.endswith(_SECRET_SUFFIXES):
         raise PermissionError("secret workspace files are not readable")
 
 
@@ -622,9 +628,7 @@ def _within(root: Path, candidate: Path) -> bool:
 
 def _is_reparse_point(metadata: os.stat_result) -> bool:
     attributes = getattr(metadata, "st_file_attributes", 0)
-    return bool(
-        attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    )
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
 def _metadata_identity(metadata: os.stat_result) -> tuple[int, int, int]:
@@ -657,9 +661,7 @@ def _open_workspace_root(root: Path) -> int:
         return _open_windows_root(root)
     return os.open(
         root,
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0),
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
     )
 
 
@@ -861,8 +863,7 @@ def _windows_handle_is_reparse(descriptor: int) -> bool:
     ):
         raise getattr(ctypes, "WinError")(getattr(ctypes, "get_last_error")())
     return bool(
-        info.FileAttributes
-        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x00000400)
+        info.FileAttributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x00000400)
     )
 
 
@@ -881,13 +882,14 @@ def _open_windows_relative(root_fd: int, relative: Path) -> int:
             )
             try:
                 opened = os.fstat(next_fd)
-                expected = ntpath.normcase(ntpath.normpath(ntpath.join(parent_path, part)))
+                expected = ntpath.normcase(
+                    ntpath.normpath(ntpath.join(parent_path, part))
+                )
                 if (
                     _is_reparse_point(opened)
                     or _windows_handle_is_reparse(next_fd)
                     or not (
-                        stat.S_ISREG(opened.st_mode)
-                        or stat.S_ISDIR(opened.st_mode)
+                        stat.S_ISREG(opened.st_mode) or stat.S_ISDIR(opened.st_mode)
                     )
                     or _windows_final_path(next_fd) != expected
                 ):
@@ -1020,9 +1022,9 @@ def _windows_directory_names(descriptor: int) -> list[str]:
                 or (next_offset and next_offset % 8)
             ):
                 raise PermissionError("Windows directory record is invalid")
-            name = buffer.raw[
-                offset + 64 : offset + 64 + name_bytes
-            ].decode("utf-16-le", errors="strict")
+            name = buffer.raw[offset + 64 : offset + 64 + name_bytes].decode(
+                "utf-16-le", errors="strict"
+            )
             if name not in {".", ".."}:
                 if not name or "\x00" in name or "/" in name or "\\" in name:
                     raise PermissionError("Windows directory entry is invalid")

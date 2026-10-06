@@ -3547,7 +3547,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -3561,7 +3561,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+          "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4027,7 +4027,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4041,7 +4041,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+          "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4080,7 +4080,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4094,7 +4094,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+          "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -9927,6 +9927,59 @@
       ],
       "variant_id": "rumi_default_tools_pack.calculator.python"
     },
+    "rumi_default_tools_pack.files-read": {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_default_tools_pack.files-read",
+      "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+      "implementation_path": "runtime/files.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_default_tools_pack.files-read-operation",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "files-read-operation",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+          "implementation_path": "runtime/files.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_default_tools_pack.runtime.files",
+          "operation_id": "rumi_default_tools_pack.files-read-operation",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json",
+          "symbol": "HOST_PROVIDER_FACTORY"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_default_tools_pack",
+      "pack_id": "rumi_default_tools_pack",
+      "source": [
+        {
+          "entrypoint_id": "files-read-operation",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_default_tools_pack.runtime.files",
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json",
+          "symbol": "HOST_PROVIDER_FACTORY"
+        }
+      ],
+      "variant_id": "rumi_default_tools_pack.files-read.python"
+    },
     "rumi_desktop_host_service_pack.desktop-host.control": {
       "contract_id": "tobkiri.action.desktop.host.v1",
       "contract_version": "1.0.0",
@@ -10139,41 +10192,21 @@
       ],
       "variant_id": "rumi_email_connector_pack.connector.email.python"
     },
-    "rumi_file_inspect_pack.file-inspect.service": {
+    "rumi_file_inspect_pack.file-inspect.media": {
       "contract_id": "tobkiri.service.file.inspect.v1",
       "contract_version": "1.0.0",
       "error_schema": {
         "type": "object"
       },
       "execution_kind": "source-verified",
-      "function_id": "rumi_file_inspect_pack.file-inspect.service",
-      "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+      "function_id": "rumi_file_inspect_pack.file-inspect.media",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
       "implementation_path": "runtime/inspect.py",
       "input_schema": {
         "type": "object"
       },
+      "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
       "operations": [
-        {
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "file-inspect",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
-          "implementation_path": "runtime/inspect.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
-          "operation_id": "rumi_file_inspect_pack.file-inspect",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
-          "symbol": "create_file_inspect_operation"
-        },
         {
           "contract_id": "tobkiri.service.file.inspect.v1",
           "contract_version": "1.0.0",
@@ -10181,7 +10214,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
           "implementation_path": "runtime/inspect.py",
           "input_schema": {
             "type": "object"
@@ -10202,17 +10235,63 @@
       "pack_id": "rumi_file_inspect_pack",
       "source": [
         {
+          "entrypoint_id": "rumi_file_inspect_pack.file-inspect.for-media",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_file_inspect_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_file_inspect_pack.file-inspect.media.python"
+    },
+    "rumi_file_inspect_pack.file-inspect.service": {
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_file_inspect_pack.file-inspect.service",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_path": "runtime/inspect.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "file-inspect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+          "implementation_path": "runtime/inspect.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
+          "operation_id": "rumi_file_inspect_pack.file-inspect",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
+          "symbol": "create_file_inspect_operation"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_file_inspect_pack",
+      "pack_id": "rumi_file_inspect_pack",
+      "source": [
+        {
           "entrypoint_id": "file-inspect",
           "kind": "legacy-v3-entrypoint",
           "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
           "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
           "symbol": "create_file_inspect_operation"
-        },
-        {
-          "entrypoint_id": "rumi_file_inspect_pack.file-inspect.for-media",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "rumi_file_inspect_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_file_inspect_pack.file-inspect.service.python"
@@ -17009,7 +17088,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
-      "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
+      "implementation_digest": "sha256:fe00643ac8627c592a06c98e07f348860a2739cd7c81515e4e0717d4b76ff41b",
       "implementation_path": "runtime/broker.py",
       "input_schema": {
         "type": "object"
@@ -17023,7 +17102,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
+          "implementation_digest": "sha256:fe00643ac8627c592a06c98e07f348860a2739cd7c81515e4e0717d4b76ff41b",
           "implementation_path": "runtime/broker.py",
           "input_schema": {
             "type": "object"
@@ -18081,7 +18160,6 @@
       "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
       "implementation_path": "runtime/host.py",
       "input_schema": {
-        "additionalProperties": false,
         "oneOf": [
           {
             "additionalProperties": false,
@@ -18264,119 +18342,113 @@
               "event"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "phase": {
+                "const": "tool_bind"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "phase",
+              "progress_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "maximum": 2,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "event": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "arguments": {
+                        "type": "object"
+                      },
+                      "tool_call_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "tool_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "tool_started"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "tool_id",
+                      "tool_call_id",
+                      "arguments"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "maxLength": 16384,
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "success",
+                          "error"
+                        ]
+                      },
+                      "tool_call_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "tool_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "tool_completed"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "tool_id",
+                      "tool_call_id",
+                      "status",
+                      "content"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "phase": {
+                "const": "tool_publish"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "phase",
+              "progress_id",
+              "cursor",
+              "event"
+            ],
+            "type": "object"
           }
         ],
-        "properties": {
-          "ai_input_digest": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "conversation_id": {
-            "maxLength": 256,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-            "type": "string"
-          },
-          "conversation_revision": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "cursor": {
-            "maximum": 4096,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "event": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "delta": {
-                    "maxLength": 16384,
-                    "type": "string"
-                  },
-                  "type": {
-                    "enum": [
-                      "text_delta",
-                      "thinking_delta"
-                    ]
-                  }
-                },
-                "required": [
-                  "type",
-                  "delta"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "finish_reason": {
-                    "enum": [
-                      "stop",
-                      "length",
-                      "tool_calls",
-                      "end_turn",
-                      "max_tokens",
-                      "tool_use"
-                    ]
-                  },
-                  "type": {
-                    "const": "finish"
-                  }
-                },
-                "required": [
-                  "type",
-                  "finish_reason"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          "input_digest": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "parent_id": {
-            "maxLength": 256,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-            "type": "string"
-          },
-          "phase": {
-            "enum": [
-              "ready",
-              "begin",
-              "bind",
-              "claim",
-              "publish"
-            ]
-          },
-          "producer": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "producer_input_digest": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "progress_id": {
-            "pattern": "^[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "request_id": {
-            "maxLength": 256,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-            "type": "string"
-          },
-          "turn_id": {
-            "maxLength": 256,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-            "type": "string"
-          }
-        },
         "type": "object"
       },
       "operation_id": "rumi_turn_runtime_pack.turn-progress",
@@ -18391,7 +18463,6 @@
           "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
           "implementation_path": "runtime/host.py",
           "input_schema": {
-            "additionalProperties": false,
             "oneOf": [
               {
                 "additionalProperties": false,
@@ -18574,119 +18645,113 @@
                   "event"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "phase": {
+                    "const": "tool_bind"
+                  },
+                  "progress_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "progress_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "maximum": 2,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "event": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "arguments": {
+                            "type": "object"
+                          },
+                          "tool_call_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "tool_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "tool_started"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "tool_id",
+                          "tool_call_id",
+                          "arguments"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "success",
+                              "error"
+                            ]
+                          },
+                          "tool_call_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "tool_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "tool_completed"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "tool_id",
+                          "tool_call_id",
+                          "status",
+                          "content"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "phase": {
+                    "const": "tool_publish"
+                  },
+                  "progress_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "progress_id",
+                  "cursor",
+                  "event"
+                ],
+                "type": "object"
               }
             ],
-            "properties": {
-              "ai_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "conversation_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "conversation_revision": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "cursor": {
-                "maximum": 4096,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "event": {
-                "oneOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "delta": {
-                        "maxLength": 16384,
-                        "type": "string"
-                      },
-                      "type": {
-                        "enum": [
-                          "text_delta",
-                          "thinking_delta"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "delta"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "finish_reason": {
-                        "enum": [
-                          "stop",
-                          "length",
-                          "tool_calls",
-                          "end_turn",
-                          "max_tokens",
-                          "tool_use"
-                        ]
-                      },
-                      "type": {
-                        "const": "finish"
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "finish_reason"
-                    ],
-                    "type": "object"
-                  }
-                ]
-              },
-              "input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "parent_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "phase": {
-                "enum": [
-                  "ready",
-                  "begin",
-                  "bind",
-                  "claim",
-                  "publish"
-                ]
-              },
-              "producer": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "producer_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "progress_id": {
-                "pattern": "^[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "request_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "turn_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              }
-            },
             "type": "object"
           },
           "kind": "legacy-explicit-entrypoint",
@@ -18843,6 +18908,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "progress_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
           "turn_id": {
             "maxLength": 256,
             "minLength": 1,
@@ -18881,6 +18950,10 @@
                 "maximum": 4096,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
               },
               "turn_id": {
                 "maxLength": 256,
@@ -19021,6 +19094,66 @@
                             "finish_reason"
                           ],
                           "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "arguments": {
+                              "type": "object"
+                            },
+                            "tool_call_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "tool_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "tool_started"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "tool_id",
+                            "tool_call_id",
+                            "arguments"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "status": {
+                              "enum": [
+                                "success",
+                                "error"
+                              ]
+                            },
+                            "tool_call_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "tool_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "tool_completed"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "tool_id",
+                            "tool_call_id",
+                            "status",
+                            "content"
+                          ],
+                          "type": "object"
                         }
                       ]
                     }
@@ -19037,6 +19170,10 @@
               "expires_at_ms": {
                 "minimum": 1,
                 "type": "integer"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
               },
               "provider_complete": {
                 "type": "boolean"
@@ -19056,7 +19193,8 @@
               "cursor",
               "provider_complete",
               "expires_at_ms",
-              "canonical_turn_status"
+              "canonical_turn_status",
+              "progress_id"
             ],
             "type": "object"
           },
@@ -19187,6 +19325,66 @@
                         "finish_reason"
                       ],
                       "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "arguments": {
+                          "type": "object"
+                        },
+                        "tool_call_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "tool_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "tool_started"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "tool_id",
+                        "tool_call_id",
+                        "arguments"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "success",
+                            "error"
+                          ]
+                        },
+                        "tool_call_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "tool_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "tool_completed"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "tool_id",
+                        "tool_call_id",
+                        "status",
+                        "content"
+                      ],
+                      "type": "object"
                     }
                   ]
                 }
@@ -19203,6 +19401,10 @@
           "expires_at_ms": {
             "minimum": 1,
             "type": "integer"
+          },
+          "progress_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
           },
           "provider_complete": {
             "type": "boolean"
@@ -19222,7 +19424,8 @@
           "cursor",
           "provider_complete",
           "expires_at_ms",
-          "canonical_turn_status"
+          "canonical_turn_status",
+          "progress_id"
         ],
         "type": "object"
       },

@@ -23,7 +23,11 @@ def _binding(operation_id: str) -> SimpleNamespace:
         principal_ref=SimpleNamespace(value=principal),
         artifact=SimpleNamespace(digest="sha256:" + "a" * 64),
         function=SimpleNamespace(
-            function_id=inspect.FUNCTION_ID,
+            function_id=(
+                inspect.MEDIA_FUNCTION_ID
+                if operation_id.endswith(".for-media")
+                else inspect.FUNCTION_ID
+            ),
             implementation_digest="sha256:" + "b" * 64,
         ),
     )
@@ -139,7 +143,7 @@ class _Invocation:
 
 def test_factory_captures_selected_operation_subset(tmp_path: Path) -> None:
     binding = _binding("rumi_file_inspect_pack.file-inspect")
-    captured = inspect.HOST_PROVIDER_FACTORY.capture(
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
         _context(tmp_path, (binding,))
     )
 
@@ -156,7 +160,9 @@ def test_factory_dispatches_through_canonical_workspace_contract(
     (tmp_path / "proof.txt").write_bytes(b"verified\n")
     binding = _binding("rumi_file_inspect_pack.file-inspect.for-media")
     context = _context(tmp_path, (binding,))
-    captured = inspect.HOST_PROVIDER_FACTORY.capture(context)
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
+        context
+    )
     client = _WorkspaceClient(tmp_path)
     payload: dict[str, object] = {
         "name": "read",
@@ -193,11 +199,13 @@ def test_factory_rejects_changed_capture_or_invocation_before_workspace_access(
     bad_binding = _binding("rumi_file_inspect_pack.file-inspect")
     bad_binding.function.function_id = "attacker.file-inspect"
     with pytest.raises(PermissionError, match="incomplete"):
-        inspect.HOST_PROVIDER_FACTORY.capture(
+        inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
             _context(tmp_path, (bad_binding,))
         )
 
-    captured = inspect.HOST_PROVIDER_FACTORY.capture(context)
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
+        context
+    )
     client = _WorkspaceClient(tmp_path)
     payload: dict[str, object] = {
         "name": "list",
@@ -632,3 +640,22 @@ def test_windows_tracked_only_reauthorizes_every_git_candidate(
 
     assert result == [Path("proof.txt")]
     assert checked == [Path("proof.txt"), Path("replacement-only.txt")]
+
+
+@pytest.mark.parametrize(
+    "function_id", [inspect.FUNCTION_ID, inspect.MEDIA_FUNCTION_ID]
+)
+def test_each_factory_rejects_other_public_operation(tmp_path, function_id):
+    """Each canonical Function accepts its own operation and denies the other."""
+    factory = inspect.HOST_PROVIDER_FACTORY[function_id]
+    own = _binding(factory.operation_id)
+    factory.capture(_context(tmp_path, (own,))).close()
+    other_operation = next(
+        operation
+        for operation in inspect.OPERATIONS
+        if operation != factory.operation_id
+    )
+    other = _binding(other_operation)
+    other.function.function_id = function_id
+    with pytest.raises(PermissionError, match="incomplete"):
+        factory.capture(_context(tmp_path, (other,)))

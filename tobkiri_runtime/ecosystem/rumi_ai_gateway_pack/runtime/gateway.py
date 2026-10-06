@@ -527,7 +527,10 @@ def _invoke(
                 _attach_stream_tool_intents(client, events, request_id)
                 return _maybe_packvm_safe_response({
                     "status": "ok", "output": value.get("output", ""),
-                    "tool_intents": value.get("tool_intents", []),
+                    "tool_intents": _tool_intents(
+                        client, value.get("tool_intents", []), request_id,
+                        streaming=True,
+                    ),
                     "finish_reason": value.get("finish_reason"),
                     "delivery_mode": value.get("delivery_mode", "buffered"),
                     "request_id": request_id,

@@ -410,3 +410,36 @@ def test_live_provider_model_routes_before_static_catalog_refresh() -> None:
     assert provider_call[2] == "adapter-a"
     assert provider_call[3]["provider_id"] == "opencode-zen"
     assert provider_call[3]["model_id"] == "deepseek-v4-flash-free"
+
+
+def test_stream_completion_and_event_tool_intents_share_canonical_normalization() -> None:
+    """Saved-turn execution consumes normalized top-level intents, too."""
+    raw = {"id": "call-1", "type": "function", "function": {
+        "name": "file.read", "arguments": '{"path":"sample.txt"}',
+    }}
+
+    class ToolStreamClient(FakeContractClient):
+        def invoke(self, contract_id, operation, payload, **kwargs):
+            if contract_id == STREAM_PROVIDER_CONTRACT:
+                self.calls.append((contract_id, operation,
+                                   kwargs.get("provider_instance_id"), dict(payload)))
+                return {"output": "", "tool_intents": [raw],
+                        "finish_reason": "tool_calls", "delivery_mode": "incremental",
+                        "events": [
+                            {"type": "tool_intent_delta", "tool_intent": raw},
+                            {"type": "finish", "finish_reason": "tool_calls"},
+                        ]}
+            return super().invoke(contract_id, operation, payload, **kwargs)
+
+    client = ToolStreamClient()
+    result = create_stream_operation(client)("stream", {
+        "request_id": "saved-turn", "messages": [],
+        "requirements": {"tool_calling": True},
+    })
+    expected = {"intent_id": "call-1", "request_id": "saved-turn", "operation": "file.read",
+                "arguments": {"path": "sample.txt"}, "authority_granted": False,
+                "approved": False, "approval_status": "unrequested", "executes": False}
+    assert result["tool_intents"] == [expected]
+    assert result["events"][0]["tool_intent"] == expected
+    assert len([call for call in client.calls if call[0] == STREAM_PROVIDER_CONTRACT]) == 1
+    assert result["delivery_mode"] == "incremental"

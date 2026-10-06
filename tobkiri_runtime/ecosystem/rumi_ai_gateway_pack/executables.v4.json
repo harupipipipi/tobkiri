@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:aee8c4ea75fc8f6c23e4e1fb3697752efff90add5adc9771f0d3c0a49dd74b69",
+  "catalog_digest": "sha256:2121b9066e9df99d7931056d3dd31ca6f6599859dfa7be290b6a1ca6841a58cf",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:89a5e937483819217a37932aa55426c690d8bdcadd5171b44dccd95d56bb2ac4",
+  "source_identity": "sha256:dbcf1b3054fbb6533b92ffa31303efd99e2c2e12d03c35af47b489d92c3eb4d5",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -266,7 +266,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -300,7 +300,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+      "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [

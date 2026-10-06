@@ -110,7 +110,7 @@ class TurnProgressJournal:
             )
             connection.execute(
                 "UPDATE progress SET cursor=?, terminal=? WHERE id=?",
-                (cursor, int(event["type"] == "finish"), identity),
+                (cursor, int(event["type"] in {"finish", "tool_completed"}), identity),
             )
 
     def claim(
@@ -159,6 +159,7 @@ class TurnProgressJournal:
                     events.append({"cursor": sequence, "event": json.loads(body)})
                 return {
                     "version": VERSION,
+                    "progress_id": identity,
                     "provisional": True,
                     "binding": json.loads(row[3]),
                     "events": events,

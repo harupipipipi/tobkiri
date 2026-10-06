@@ -388,6 +388,19 @@
     },
     {
       "method": "GET",
+      "path": "/api/chat/turn/progress",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.progress",
+        "contract_id": "tobkiri.resource.turn.progress.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+        "allowed_payload_keys": ["turn_id", "conversation_id", "cursor", "progress_id"]
+      }]
+    },
+    {
+      "method": "GET",
       "path": "/api/ui/full-catalog",
       "presentation": "broker_result",
       "targets": [

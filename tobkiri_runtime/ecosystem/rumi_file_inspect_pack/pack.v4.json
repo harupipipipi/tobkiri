@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:54ee5cd7a116f90c21b8943be30840f5b2493169b1333bcc48ac7ec9612f8ea9",
+      "digest": "sha256:51b1d42dd1ccfcc4590ad96597497b667e7f35908997559093c9c5bf4956de19",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+      "digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
       "kind": "executable",
       "path": "runtime/inspect.py"
     }
@@ -24,20 +24,29 @@
   "functions": [
     {
       "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
-      "id": "rumi_file_inspect_pack.file-inspect.service",
-      "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+      "id": "rumi_file_inspect_pack.file-inspect.media",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
       "isolation": "dedicated_process",
       "operations": [
-        "rumi_file_inspect_pack.file-inspect",
         "rumi_file_inspect_pack.file-inspect.for-media"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+      "id": "rumi_file_inspect_pack.file-inspect.service",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect"
       ],
       "role": "host_capability_provider"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:9cbcde39c077633de616677b60752497c22c75ec56ab821246c60fd75a48ad85",
-    "contract_catalog_digest": "sha256:1aaaeaada867ef3e82cd204dacfd8f95ab4656882eb20a0096eaa5baf4e68b34",
-    "source_identity": "sha256:be3765d4f6191c2246c1a06191762197101870680018bbc2d392541228430d56"
+    "artifact_set_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8",
+    "contract_catalog_digest": "sha256:624f8034fd0763e69b39f2dd3657fe2170ba9d16a791078a4c626ed2601271bb",
+    "source_identity": "sha256:289a8b1bfdd0971076045a691106d338c563979095966c535e4fffa15c7afddf"
   },
   "migration": {
     "compatibility": "read_only",
@@ -69,12 +78,12 @@
       ],
       "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
       "owner": "rumi_file_inspect_pack",
-      "provider_id": "rumi_file_inspect_pack.file-inspect.service",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.media",
       "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:9cbcde39c077633de616677b60752497c22c75ec56ab821246c60fd75a48ad85",
+    "artifact_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8",
     "display_name": "Rumi File Inspect",
     "id": "rumi_file_inspect_pack",
     "kind": "host_extension",
@@ -84,7 +93,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:be3765d4f6191c2246c1a06191762197101870680018bbc2d392541228430d56",
+        "digest": "sha256:289a8b1bfdd0971076045a691106d338c563979095966c535e4fffa15c7afddf",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -95,7 +104,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:be3765d4f6191c2246c1a06191762197101870680018bbc2d392541228430d56",
+    "source_digest": "sha256:289a8b1bfdd0971076045a691106d338c563979095966c535e4fffa15c7afddf",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_file_inspect_pack"
   },
@@ -103,8 +112,15 @@
     {
       "contract_reference": "tobkiri.service.file.inspect.v1",
       "operations": [
-        "rumi_file_inspect_pack.file-inspect",
         "rumi_file_inspect_pack.file-inspect.for-media"
+      ],
+      "owner": "rumi_file_inspect_pack",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.media"
+    },
+    {
+      "contract_reference": "tobkiri.service.file.inspect.v1",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect"
       ],
       "owner": "rumi_file_inspect_pack",
       "provider_id": "rumi_file_inspect_pack.file-inspect.service"

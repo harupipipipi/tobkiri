@@ -1,3 +1,5 @@
+import { toolSidebarReadiness } from "./toolCatalogReadiness";
+import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
 import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
@@ -235,6 +237,9 @@ export type SavedTurn = {
   conversation_id: string;
   status: string;
   revision: number;
+  request_id?: string;
+  input_digest?: string;
+  conversation_revision?: number;
   guidance?: SavedTurnGuidance[];
   guidance_parent_turn_id?: string;
   guidance_id?: string;
@@ -2956,7 +2961,9 @@ function isStrategyCatalogResponse(value: unknown): value is StrategyCatalogResp
 }
 
 export function uiCatalogWithSelectedTools(catalog: UICatalog, tools: ToolCatalogResponse): UICatalog {
-  const existingIds = new Set(catalog.sidebar.items.map((item) => item.id));
+  const selectedById = new Map(tools.tools.map((tool) => [tool.tool_id, tool]));
+  const admittedItems = catalog.sidebar.items.map((item) => toolSidebarReadiness(item, selectedById.get(item.id)));
+  const existingIds = new Set(admittedItems.map((item) => item.id));
   const toolItems: SidebarItem[] = [];
   for (const tool of tools.tools) {
     if (existingIds.has(tool.tool_id)) continue;
@@ -2988,7 +2995,7 @@ export function uiCatalogWithSelectedTools(catalog: UICatalog, tools: ToolCatalo
     ...catalog,
     sidebar: {
       ...catalog.sidebar,
-      items: [...catalog.sidebar.items, ...toolItems],
+      items: [...admittedItems, ...toolItems],
     },
   };
 }
@@ -4298,6 +4305,22 @@ export const api = {
       throw new Error("Saved turn guidance receipt does not match the pending turn.");
     }
     return turn;
+  },
+
+  async getSavedTurnProgress(turnId: string, conversationId: string, cursor = 0, progressId?: string): Promise<ThreadProgressPage> {
+    if (!SAVED_TURN_IDENTIFIER.test(turnId) || !SAVED_TURN_IDENTIFIER.test(conversationId)
+      || !Number.isSafeInteger(cursor) || cursor < 0 || cursor > 4096
+      || (progressId !== undefined && !/^[a-f0-9]{64}$/.test(progressId))) {
+      throw new Error("Saved turn progress read identity is invalid.");
+    }
+    const raw = await request<unknown>(withQuery(defaultspackContractRoute("api/chat/turn/progress"), {
+      turn_id: turnId, conversation_id: conversationId, cursor, progress_id: progressId,
+    }), { cache: "no-store" });
+    const page = parseThreadProgressPage(raw);
+    if (!page || page.binding.turn_id !== turnId || page.binding.conversation_id !== conversationId) {
+      throw new Error("Saved turn progress does not match the selected turn.");
+    }
+    return page;
   },
 
   async getSavedTurnEvents(turnId: string, conversationId: string): Promise<SavedTurnEventSnapshot> {

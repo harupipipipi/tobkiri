@@ -61,6 +61,10 @@ from .turn_event_presentation import (
     normalize_turn_event_read,
     present_turn_events,
 )
+from .turn_progress_presentation import (
+    TURN_PROGRESS_TARGET,
+    normalize_turn_progress_read,
+)
 from .chat_continuation_presentation import (
     CHAT_CONTINUATION_TARGETS,
     normalize_chat_continuation,
@@ -373,6 +377,10 @@ class DefaultspackHTTPPresentation:
             return normalize_turn_event_read(
                 payload, profile_id=str(getattr(session, "profile_id", "")),
             )
+
+        if identity == TURN_PROGRESS_TARGET:
+            session.assert_current()
+            return normalize_turn_progress_read(payload)
 
         if (
             target.contribution_id, target.contract_id, target.operation_id,

@@ -8,7 +8,7 @@ export type ThreadProgressWitness = {
   turnId: string; conversationId: string; parentId: string; conversationRevision: number; inputDigest: string;
 };
 export type ThreadProgressState = {
-  binding: ThreadProgressBinding; expiresAtMs: number; cursor: number; text: string;
+  binding: ThreadProgressBinding; progressId?: string; expiresAtMs: number; cursor: number; text: string;
   bytes: number; eventCount: number; providerComplete: boolean; finishSeen: boolean;
 };
 
@@ -48,15 +48,20 @@ export function mergeThreadProgress(
   previous: ThreadProgressState | null, value: unknown, witness: ThreadProgressWitness, now = Date.now(),
 ): ThreadProgressState | null {
   const page = parseThreadProgressPage(value, now);
+  const changedStage = Boolean(previous?.progressId && page?.progress_id && previous.progressId !== page.progress_id);
+  const sameOwnerBinding = previous && page && (["turn_id", "conversation_id", "parent_id", "request_id", "conversation_revision", "input_digest"] as const)
+    .every((key) => previous.binding[key] === page.binding[key]);
+  if (changedStage && !sameOwnerBinding) return null;
   if (!page || page.binding.turn_id !== witness.turnId || page.binding.conversation_id !== witness.conversationId
     || page.binding.parent_id !== witness.parentId || page.binding.conversation_revision !== witness.conversationRevision
-    || page.binding.input_digest !== witness.inputDigest || (previous && (previous.expiresAtMs <= now
+    || page.binding.input_digest !== witness.inputDigest || (previous && !changedStage && (previous.expiresAtMs <= now
       || previous.expiresAtMs !== page.expires_at_ms || !equalBinding(previous.binding, page.binding)
       || previous.providerComplete && !page.provider_complete))) return null;
-  let cursor = previous?.cursor ?? 0;
+  const stage = changedStage ? null : previous;
+  let cursor = stage?.cursor ?? 0;
   let bytes = previous?.bytes ?? 0;
-  let text = previous?.text ?? "";
-  let finishSeen = previous?.finishSeen ?? false;
+  let text = stage?.text ?? "";
+  let finishSeen = stage?.finishSeen ?? false;
   for (const item of page.events) {
     if (finishSeen || item.cursor !== cursor + 1) return null;
     cursor = item.cursor; bytes += progressBytes(item.event);
@@ -67,7 +72,7 @@ export function mergeThreadProgress(
   }
   const eventCount = (previous?.eventCount ?? 0) + page.events.length;
   if (page.cursor !== cursor || eventCount > THREAD_PROGRESS_LIMITS.events || finishSeen && !page.provider_complete) return null;
-  return { binding: { ...page.binding }, expiresAtMs: page.expires_at_ms, cursor, text, bytes,
+  return { binding: { ...page.binding }, progressId: page.progress_id, expiresAtMs: page.expires_at_ms, cursor, text, bytes,
     eventCount, finishSeen, providerComplete: page.provider_complete };
 }
 
