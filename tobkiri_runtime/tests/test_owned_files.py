@@ -130,3 +130,13 @@ def test_unowned_tools_never_reach_owner(owner, tool):
     with pytest.raises(ValueError):
         invoke(payload(tool, path="hello.txt"), invocation)
     assert calls == []
+
+
+def test_owned_resource_mount_uses_id_and_inspect_uses_workspace_id(owner):
+    """The resource mount identity differs from the file result identity."""
+    invoke, invocation, _, _, _, store = owner
+    mount = store.get("first")
+    assert mount["id"] == "first"
+    assert "workspace_id" not in mount
+    result = json.loads(invoke(payload(path="hello.txt"), invocation)["result"])
+    assert result["workspace_id"] == "first"

@@ -126,7 +126,7 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
                 not isinstance(selected, Mapping)
                 or selected.get("selected_workspace_id") != workspace_id
                 or not isinstance(mount, Mapping)
-                or mount.get("workspace_id") != workspace_id
+                or mount.get("id") != workspace_id
                 or mount.get("root_path") != binding.get("canonical_root")
                 or mount.get("mount_revision") != binding.get("mount_revision")
             ):

@@ -27215,7 +27215,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tools_pack.files-read",
-      "implementation_digest": "sha256:49704c83ce1dc309970c3d034ceef4d0c76d3530dd90af64cea1a6ed13f6c8c8",
+      "implementation_digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965",
       "implementation_path": "runtime/files.py",
       "input_schema": {
         "type": "object"
@@ -27229,7 +27229,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:49704c83ce1dc309970c3d034ceef4d0c76d3530dd90af64cea1a6ed13f6c8c8",
+          "implementation_digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965",
           "implementation_path": "runtime/files.py",
           "input_schema": {
             "type": "object"

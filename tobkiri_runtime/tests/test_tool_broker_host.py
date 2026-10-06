@@ -51,7 +51,11 @@ def tool_host(tmp_path):
 
         def contract_client(**kwargs):
             assert kwargs == {
-                        broker.ACTION,
+                "allowed_contract_ids": frozenset({
+                    broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE,
+                    broker.ACTION,
+                }),
+                "consumer_pack_id": broker.PACK_ID, "include_credentials": False,
             }
             return client
 
@@ -69,6 +73,14 @@ class _Client:
         self.failure = None
         self.execute_callback = None
         self.progress_failure = None
+        self.definition = _definition({
+            "tool_id": "sample", "authority": "file.read",
+            "input_schema": {
+                "type": "object", "properties": {"value": {"type": "integer"}},
+                "required": ["value"], "additionalProperties": False,
+            },
+            "execution": {"kind": "local", "contract_id": "tobkiri.service.tool.local.operation.v1"},
+        })
 
     def providers(self, contract):
         assert contract == broker.EXECUTE
