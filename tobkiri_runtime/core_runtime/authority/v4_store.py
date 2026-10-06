@@ -3471,6 +3471,56 @@ class AuthorityStore:
         return lease, state
 
     @_process_owned
+    def inspect_dispatch_authority(
+        self, token: str,
+    ) -> tuple[InvocationLease, LeaseState, int, bool]:
+        """Read fresh authenticated execution authority under one lifecycle guard.
+
+        The durable lease determines every revocation target. This Host-only
+        inspection grants no authority and retains no state between calls.
+        """
+        lease_id, expected_digest = self._decode_lease_token(token)
+        try:
+            with self._lock, self._connection() as connection:
+                row = connection.execute(
+                    "SELECT encrypted_payload, lease_digest, state"
+                    " FROM invocation_leases WHERE lease_id=?", (lease_id,),
+                ).fetchone()
+                if row is None:
+                    raise AuthorityDenied("InvocationLease is unknown")
+                lease = InvocationLease.from_dict(
+                    self._decrypt(row["encrypted_payload"])
+                )
+                if not hmac.compare_digest(lease.digest, str(row["lease_digest"])):
+                    raise AuthorityStoreError("InvocationLease digest mismatch")
+                if not hmac.compare_digest(lease.digest, expected_digest):
+                    raise AuthorityDenied("InvocationLease digest does not match")
+                state = LeaseState(str(row["state"]))
+                epoch_row = connection.execute(
+                    "SELECT value FROM authority_meta WHERE key='security_epoch'"
+                ).fetchone()
+                if epoch_row is None or int(epoch_row["value"]) < 1:
+                    raise AuthorityStoreError("security epoch is unavailable")
+                epoch = int(epoch_row["value"])
+                revoked = any(
+                    self._is_revoked(connection, kind, identity)
+                    for kind, identity in (
+                        ("function_principal", lease.caller.principal_id),
+                        ("function_principal", lease.target.principal_id),
+                        ("execution_domain", lease.caller_domain_id),
+                        ("execution_domain", lease.target_domain_id),
+                        ("profile", lease.profile_id),
+                        ("activation", lease.activation_id),
+                        ("grant", lease.grant_id),
+                        ("provider_authority", lease.provider_authority_id),
+                    )
+                )
+                self._assert_crypto_material()
+                return lease, state, epoch, revoked
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("dispatch authority inspection failed") from exc
+
+    @_process_owned
     def fence_request(self, request_id: str) -> list[str]:
         """Revoke every unused lease for one exact Host request."""
 

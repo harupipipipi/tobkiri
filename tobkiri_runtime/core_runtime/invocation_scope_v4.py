@@ -99,12 +99,17 @@ def assert_dispatched_invocation(
     if (
         envelope.cancellation_requested.is_set()
         or envelope.deadline_monotonic <= time.monotonic()
-        or authority_store.security_epoch != context.security_epoch
     ):
         raise PermissionError("captured invocation is no longer active")
-    durable, state = authority_store.inspect_lease_token(
+    durable, state, epoch, revoked = authority_store.inspect_dispatch_authority(
         envelope.lease.token.decode("ascii")
     )
+    if (
+        envelope.cancellation_requested.is_set()
+        or envelope.deadline_monotonic <= time.monotonic()
+        or epoch != context.security_epoch
+    ):
+        raise PermissionError("captured invocation is no longer active")
     if state is not LeaseState.DISPATCHED or (
         durable.caller.principal_id != context.caller_principal.value
         or durable.target.principal_id != envelope.target_principal.value
@@ -124,17 +129,5 @@ def assert_dispatched_invocation(
         or durable.request_digest != envelope.request_digest
     ):
         raise PermissionError("captured invocation lease does not match")
-    if any(
-        authority_store.is_revoked(kind, identity)
-        for kind, identity in (
-            ("function_principal", durable.caller.principal_id),
-            ("function_principal", durable.target.principal_id),
-            ("execution_domain", durable.caller_domain_id),
-            ("execution_domain", durable.target_domain_id),
-            ("profile", durable.profile_id),
-            ("activation", durable.activation_id),
-            ("grant", durable.grant_id),
-            ("provider_authority", durable.provider_authority_id),
-        )
-    ):
+    if revoked:
         raise PermissionError("captured invocation authority was revoked")
