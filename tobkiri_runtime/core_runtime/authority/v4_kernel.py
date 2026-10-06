@@ -507,6 +507,21 @@ class AuthorityKernel:
             or decision.security_epoch != request.security_epoch
         ):
             raise AuthorityDenied("interactive approval authority is unavailable")
+        approval = self.store.get_approval(decision.approval_id)
+        if (
+            approval is None
+            or approval.snapshot_digest != request.digest
+            or approval.actor_id != decision.actor_id
+            or approval.decision != "approved"
+            or approval.decided_at != decision.decided_at
+            or approval.caller != request.caller
+            or approval.target != request.target
+            or approval.profile_id != request.profile_id
+            or approval.effect_bundle_digest != request.base_scope.digest
+            or approval.security_epoch != request.security_epoch
+            or self.store.is_revoked("grant", decision.grant_id)
+        ):
+            raise AuthorityDenied("interactive approval authority is unavailable")
         grant = self.store.get_grant(decision.grant_id)
         if (
             grant is None
