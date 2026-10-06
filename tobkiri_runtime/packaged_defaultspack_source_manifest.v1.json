@@ -1156,7 +1156,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 60086,
-      "sha256": "07e731679453a0cfe327a10694a475645af86db3e94ec83940deadb79242beee",
+      "sha256": "b66a02a53633066ea6d1814dbde7c6965853c790c0aa77a7c151c41a36bc5a24",
       "executable": false
     },
     {
@@ -1177,7 +1177,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 54628,
-      "sha256": "57e6686419480284f27e44d2b190c6d9f382cfc3408838397c0285f3437a6b60",
+      "sha256": "a26b6810467a13fd4d672164de9be317d676b542604109f07b40c4956503ac7a",
       "executable": false
     },
     {
@@ -1191,7 +1191,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 68703,
-      "sha256": "f390ac4a975c8e66b969bf36419938d71c11d4d1eb2bc674e22734538c2aae3e",
+      "sha256": "a3ed1d42cc6877d6a31b8150fcf13720031bff852ef8390629798efd89b9379f",
       "executable": false
     },
     {
@@ -3081,14 +3081,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
       "type": "regular-file",
       "size": 46773,
-      "sha256": "1db4804290398fde6fa4660b7692d54ca47d27a2146be42dd5b2b6268f268c68",
+      "sha256": "918fe5827921f8a3d1db339cc5704b01c2352cd4d0e8a44a03c6b775d3f73978",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 16878,
-      "sha256": "b26324878e4eef1f853634173b87fa2b7bc7c659e383138c68cfde9ac555d57a",
+      "sha256": "343787c57edede89f138ff6ba933ece6e090c2410fb69b5e4ad64e79229a7a7e",
       "executable": false
     },
     {
