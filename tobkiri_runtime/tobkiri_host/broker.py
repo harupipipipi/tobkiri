@@ -802,6 +802,17 @@ class RequestBroker:
             allow_lossy_adapters=allow_lossy_adapters,
         )
 
+    def validate_prepared_snapshot(
+        self, snapshot: PreparedInvocationSnapshot, context: RequestContext
+    ) -> PreparedInvocation:
+        """Authenticate a retained snapshot without invoking or authorizing it."""
+        if not isinstance(snapshot, PreparedInvocationSnapshot):
+            raise TypeError("prepared invocation snapshot is required")
+        with self._lifecycle_lock:
+            if self._closed:
+                raise RuntimeError("request broker is closed")
+            return self._prepared_from_snapshot(snapshot, context)
+
     def _prepared_from_snapshot(
         self,
         snapshot: PreparedInvocationSnapshot,

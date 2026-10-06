@@ -7,6 +7,7 @@ import { confirmedComposerSkillIds } from "./lib/confirmedComposerReferences";
 import { prepareComposerFollowupInput } from "./lib/composerFollowupInput";
 import { modelProfileConnectionId } from "./features/models/modelSelectionIdentity";
 import { CalendarAgentPromptEditor } from "./features/composer/CalendarAgentPromptEditor";
+import { calendarApprovalPolicyTarget, captureCalendarApprovalTaskContext } from "./features/composer/calendarApprovalTaskContext";
 import type { ProjectDirectorySelectionSet } from "./lib/projectWorkspaceMount";
 import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
@@ -86,7 +87,8 @@ import { fileEditTimelineFromMessages } from "./lib/toolPreviews";
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, SavedTurnNotStartedError, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
-import { captureSupportedApprovalMode, readApprovalPreferences } from "./features/tools/approvalPreferences";
+import { useApprovalPolicyCapabilities } from "./features/tools/useApprovalPolicyCapabilities";
+import { approvalModeAvailable, captureSupportedApprovalMode, readApprovalPreferences } from "./features/tools/approvalPreferences";
 import {
   PROJECTS_CHANGED_EVENT,
   bootstrapProjects,
@@ -809,6 +811,12 @@ function CalendarComposerPanel({
   tools,
   showApprovalControl,
   showToolControl,
+  actionApprovalMode,
+  activationId,
+  workspaceId,
+  onActionApprovalModeChange,
+  captureActionApprovalMode,
+  scopeKey,
 }: {
   conversationId: string | null;
   modelId: string;
@@ -819,7 +827,20 @@ function CalendarComposerPanel({
   tools: ComposerExtensionItem[];
   showApprovalControl: boolean;
   showToolControl: boolean;
+  actionApprovalMode: ActionApprovalMode;
+  activationId: string | null;
+  workspaceId: string | null;
+  onActionApprovalModeChange: (mode: ActionApprovalMode) => void;
+  captureActionApprovalMode: (supportedModes: readonly ActionApprovalMode[]) => ActionApprovalMode;
+  scopeKey: string;
 }) {
+  const approvalTarget = calendarApprovalPolicyTarget({ profileId, activationId, workspaceId,
+    conversationId, useCurrentChat: settings.agentCurrentChat });
+  const calendarApprovalSupport = useApprovalPolicyCapabilities(approvalTarget);
+  const handleCalendarApprovalModeChange = (nextMode: ActionApprovalMode) => {
+    const support = calendarApprovalSupport.captureCurrentSupport();
+    if (approvalModeAvailable(nextMode, support?.available_modes ?? [])) onActionApprovalModeChange(nextMode);
+  };
   const today = new Date();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const year = visibleMonth.getFullYear();
@@ -855,12 +876,19 @@ function CalendarComposerPanel({
   const [lastAgentResult, setLastAgentResult] = useState<string | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
   const suppressNextCellOpenRef = useRef(false);
+  const calendarMountedRef = useRef(true);
+  useEffect(() => {
+    calendarMountedRef.current = true;
+    return () => { calendarMountedRef.current = false; };
+  }, []);
   const draftStateRef = useRef({ activeEditor, draftTitle, draftKind, draftTime, draftAgentEnabled,
     draftAgentPrompt, draftAgentWidgets, draftAgentModel, draftToolMode, profileId, conversationId,
-    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending });
+    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending, scopeKey, actionApprovalMode,
+    activationId, workspaceId, targetConversationId: settings.agentCurrentChat ? conversationId : null, approvalModesKey: JSON.stringify(calendarApprovalSupport.availableModes) });
   draftStateRef.current = { activeEditor, draftTitle, draftKind, draftTime, draftAgentEnabled,
     draftAgentPrompt, draftAgentWidgets, draftAgentModel, draftToolMode, profileId, conversationId,
-    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending };
+    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending, scopeKey, actionApprovalMode,
+    activationId, workspaceId, targetConversationId: settings.agentCurrentChat ? conversationId : null, approvalModesKey: JSON.stringify(calendarApprovalSupport.availableModes) };
 
   useEffect(() => {
     setDraftKind(settings.defaultItemType);
@@ -999,7 +1027,7 @@ function CalendarComposerPanel({
   };
 
   const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string,
-    followupInput: Awaited<ReturnType<typeof prepareComposerFollowupInput>>) => ({
+    followupInput: Awaited<ReturnType<typeof prepareComposerFollowupInput>>, submittedApprovalContext: ReturnType<typeof captureCalendarApprovalTaskContext>) => ({
     name: `Calendar: ${title}`,
     description: `Created from Tobkiri calendar for ${calendarRangeLabel(startKey, endKey)}.`,
     schedule_type: "once",
@@ -1008,6 +1036,8 @@ function CalendarComposerPanel({
       message: agentPrompt || title,
       model: draftAgentModel,
       profile_id: profileId,
+      action_approval_mode: submittedApprovalContext.mode,
+      ...(submittedApprovalContext.workspaceId ? { workspace_id: submittedApprovalContext.workspaceId } : {}),
       ...followupInput,
       conversation_id: settings.agentCurrentChat ? conversationId || null : null,
       metadata: {
@@ -1034,8 +1064,9 @@ function CalendarComposerPanel({
     time: string,
     agentPrompt: string,
     followupInput: Awaited<ReturnType<typeof prepareComposerFollowupInput>>,
+    submittedApprovalContext: ReturnType<typeof captureCalendarApprovalTaskContext>,
   ): Promise<{ scheduleId?: string; scheduleStatus?: string }> => {
-    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt, followupInput);
+    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt, followupInput, submittedApprovalContext);
     if (existing?.scheduleId) {
       const updated = extractScheduleRecord(await api.updateSchedule(existing.scheduleId, payload));
       return {
@@ -1058,8 +1089,19 @@ function CalendarComposerPanel({
     const captured = draftStateRef.current;
     const isCurrent = () => {
       const current = draftStateRef.current;
-      return !referencePendingRef.current && Object.keys(captured).every((key) => captured[key as keyof typeof captured] === current[key as keyof typeof current]);
+      return calendarMountedRef.current && !referencePendingRef.current && Object.keys(captured).every((key) => captured[key as keyof typeof captured] === current[key as keyof typeof current]);
     };
+    let submittedApprovalContext: ReturnType<typeof captureCalendarApprovalTaskContext> = { mode: "ask", workspaceId: null };
+    if (draftKind === "task" && draftAgentEnabled) {
+      try {
+        submittedApprovalContext = captureCalendarApprovalTaskContext(
+          approvalTarget, calendarApprovalSupport.captureCurrentSupport(), captureActionApprovalMode,
+        );
+      } catch (error) {
+        setDraftError(error instanceof Error ? error.message : "承認方式を確認できませんでした。下書きは保持されています。");
+        return;
+      }
+    }
     setIsSavingDraft(true);
     setDraftError(null);
     setLastAgentResult(null);
@@ -1083,7 +1125,7 @@ function CalendarComposerPanel({
           isCurrent,
         });
         if (!isCurrent()) return;
-        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt, followupInput);
+        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt, followupInput, submittedApprovalContext);
         scheduleId = schedule.scheduleId;
         scheduleStatus = schedule.scheduleStatus;
       } else if (existing?.scheduleId) {
@@ -1440,6 +1482,8 @@ function CalendarComposerPanel({
                   Composer={Composer} input={draftAgentPrompt} widgets={draftAgentWidgets}
                   profileId={profileId} modelId={draftAgentModel} models={modelProfiles} tools={tools}
                   busy={isSavingDraft} mode={draftToolMode} showApprovalControl={showApprovalControl} showToolControl={showToolControl}
+                  actionApprovalMode={actionApprovalMode} actionApprovalModes={calendarApprovalSupport.availableModes}
+                  onActionApprovalModeChange={handleCalendarApprovalModeChange}
                   onInputChange={setDraftAgentPrompt} onWidgetsChange={setDraftAgentWidgets}
                   onModelChange={setDraftAgentModel} onModeChange={setDraftToolMode}
                   onPendingChange={updateReferencePending} onSubmit={(event) => void submitDraft(event)}
@@ -6133,7 +6177,24 @@ export function ChatApp() {
   }, []);
 
   const approvalPreferences = readApprovalPreferences(settingsValues.tools);
-  const actionApprovalMode: ActionApprovalMode = "ask";
+  const approvalWorkspaceId = pendingNewTaskContext?.workspaceId
+    ?? activeConversationWorkspaceContext.workspaceId
+    ?? (mode === "coding" ? selectedCodingWorkspaceId : null);
+  const approvalPolicySupport = useApprovalPolicyCapabilities(
+    verifiedHost && approvalWorkspaceId ? {
+      profile_id: runtimeProfileId,
+      activation_id: verifiedHost.catalog.activation_id,
+      conversation_id: activeConversationId,
+      workspace_id: approvalWorkspaceId,
+    } : null,
+  );
+  const actionApprovalMode = approvalPreferences.controlVisible
+    ? approvalPreferences.selectedMode : approvalPreferences.fixedMode;
+  const handleActionApprovalModeChange = (nextMode: ActionApprovalMode) => {
+    if (approvalModeAvailable(nextMode, approvalPolicySupport.captureAvailableModes())) {
+      handleSettingChange("tools", "action_approval_mode", nextMode);
+    }
+  };
 
   const setFullAccessEnabled = useCallback((enabled: boolean) => {
     const nextState = resolveUltraYoloModeState(
@@ -7970,10 +8031,12 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (!override && handleLocalComposerCommand(input)) return;
+    let submittedApprovalMode: ActionApprovalMode;
     try {
-      // This captured preference is data, not execution authority. Only the
-      // currently supported human path can reach the existing saved-turn API.
-      captureSupportedApprovalMode(settingsValuesRef.current.tools);
+      // Capture before draft changes or awaits; the Host authorizes every effect.
+      submittedApprovalMode = captureSupportedApprovalMode(
+        settingsValuesRef.current.tools, approvalPolicySupport.captureAvailableModes(),
+      );
     } catch (approvalError) {
       setError(approvalError instanceof Error ? approvalError.message : "承認方式を確認してください。");
       return;
@@ -8247,6 +8310,7 @@ export function ChatApp() {
       const requestFingerprintInput = JSON.stringify({
         content: savedTurnContent,
         tool_selection: savedToolSelection,
+        action_approval_mode: submittedApprovalMode,
         ...(submittedChatReferences.length ? { chat_references: submittedChatReferences } : {}),
         strategy_reference: strategyReference,
         thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : undefined,
@@ -8400,6 +8464,7 @@ export function ChatApp() {
         conversation_revision: conversation.conversation_revision!,
         content: savedTurnContent,
         tool_selection: savedToolSelection,
+        action_approval_mode: submittedApprovalMode,
         ...(submittedChatReferences.length ? { chat_references: submittedChatReferences } : {}),
         strategy_reference: strategyReference,
         thinking_level: activeProfile?.supports_thinking
@@ -8866,6 +8931,8 @@ export function ChatApp() {
       onHistoryReferenceDrop={composerEntityCatalog.confirmHistoryDrop}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
+      actionApprovalModes={approvalPolicySupport.availableModes}
+      onActionApprovalModeChange={handleActionApprovalModeChange}
       showToolSelectionControl={settingsValues.tools?.show_tool_selection_control === true}
       showActionApprovalControl={approvalPreferences.controlVisible}
       toolSelectionMode={toolSelectionController.state.effectiveMode}
@@ -8914,7 +8981,6 @@ export function ChatApp() {
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
-      onActionApprovalModeChange={undefined}
       onToolSelectionModeChange={toolSelectionController.setTurnMode}
       onToolSelectionReviewApprove={handleToolReviewApprove}
       onToolSelectionReviewEdit={handleToolReviewEdit}
@@ -9128,6 +9194,12 @@ export function ChatApp() {
                   tools={composerExtensions}
                   showApprovalControl={approvalPreferences.controlVisible}
                   showToolControl={settingsValues.tools?.show_tool_selection_control === true}
+                  actionApprovalMode={actionApprovalMode}
+                  activationId={verifiedHost?.catalog.activation_id ?? null}
+                  workspaceId={approvalWorkspaceId}
+                  onActionApprovalModeChange={(nextMode) => handleSettingChange("tools", "action_approval_mode", nextMode)}
+                  captureActionApprovalMode={(supportedModes) => captureSupportedApprovalMode(settingsValuesRef.current.tools, supportedModes)}
+                  scopeKey={JSON.stringify([runtimeProfileId, activeWorkspaceTabId, effectiveWorkspaceId, activeConversationId])}
                 />
               </div>
             ) : isCodingWorkspace ? (
@@ -9433,6 +9505,7 @@ export function ChatApp() {
           desktopSystemInfo={desktopSystemInfo}
           modelProfiles={settingsModelProfiles}
           runtimeProfileId={runtimeProfileId}
+          actionApprovalModes={approvalPolicySupport.availableModes}
           activeModelProfileId={activeProfile?.profile_id ?? activeModelId}
           backendConnectionState={backendConnectionState}
           backendConnectionNote={backendConnectionNote}

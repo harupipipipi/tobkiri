@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_agent_control_pack",
-  "source_identity": "sha256:2ca3047cc5d820825a5bcde4d63b8791fb2138d2c58d19bdf20e04ceb2fe62ff",
+  "source_identity": "sha256:db7ee0d5aaf7978f089ae21dace73e1a289729792563a2d1415fbc21f5e68300",
   "variants": [
     {
       "variant_id": "tobkiri_agent_control_pack.work-plan.action.python",
@@ -423,7 +423,7 @@
         {
           "contract_id": "tobkiri.action.agent.inbox.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d",
+          "revision_digest": "sha256:1aea71463a93333ca25ffd85266effe5be82eb33decb433b711a04abf651e700",
           "operation_id": "tobkiri_agent_control_pack.inbox-action",
           "input_schema": {
             "additionalProperties": false,
@@ -435,6 +435,15 @@
                   "request": {
                     "additionalProperties": false,
                     "properties": {
+                      "action_approval_mode": {
+                        "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                        "enum": [
+                          "ask",
+                          "agent",
+                          "full"
+                        ],
+                        "type": "string"
+                      },
                       "content": {
                         "oneOf": [
                           {
@@ -1392,6 +1401,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:28128e746d9b3f77bb712793750fa3be1381c3732ccb4bdd7034998b3ef4cff7",
-  "catalog_digest": "sha256:eb2db7d5c7be71385a4bdda0a0c821361831f73c95987b31b4f8ba282d0c352f"
+  "materialization_catalog_digest": "sha256:5ef4ced8592f0c02480c0134117b0b9633d97b492c9b56ac2717d3801b31a9d7",
+  "catalog_digest": "sha256:43fe563df8c8a3c53b8a8cc6a86ced5a98930c4b5ae71f47e351b7dd9634b035"
 }

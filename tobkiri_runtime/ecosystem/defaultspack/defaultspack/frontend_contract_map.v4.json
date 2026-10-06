@@ -1720,6 +1720,24 @@
           ]
         }
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/host/action-approval-policy/capabilities",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.host.action-approval-policy.capabilities",
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "operation_id": "host.action_approval_policy.capabilities",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "allowed_payload_keys": [
+            "conversation_id",
+            "workspace_id"
+          ]
+        }
+      ]
     }
   ]
 }

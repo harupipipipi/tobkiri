@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:a825ffa78733db5d311775f45b14d34986ad3ae527fbf27f57cd51048c83f732",
+  "source_identity": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -950,7 +950,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:d1c5f9d966d2b0da8afd3db7cbccdb54f4ec37298cf9787576d49f1bf1a06d06",
+          "revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -1019,6 +1019,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -1423,6 +1432,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:9267feddbd51341c26fa6947d6f1de68a8069e2d545356264df4ee1a845f203d",
-  "catalog_digest": "sha256:b19ffec28bc082c457b7a1738b1b19286e8e95c3fc14eb621206f957233a9e95"
+  "materialization_catalog_digest": "sha256:b796cf2eecd6d854304c0d2d3c3a206a241fae822428b0914e14bb99b2f145f9",
+  "catalog_digest": "sha256:14a05602ee28b2e2e79accb505940c8d5dd74f7cf4d33573f0822b20079cda89"
 }

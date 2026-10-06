@@ -9,6 +9,10 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderCaptureContextV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.saved_tool_stop_v4 import saved_tool_policy_stop_result
+from core_runtime.authority.v4 import AuthorityDenied
+from tobkiri_host.errors import HostCoreError
+
 from core_runtime.host_provider_function_v4 import (
     HostFunction,
     SingleOperationHostFactoryV4,
@@ -38,6 +42,12 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
             or not isinstance(payload["definition"], Mapping)
         ):
             raise ValueError("local tool invocation payload is invalid")
+        try:
+            if _context.saved_tool_mode_admission is None:
+                raise PermissionError("saved tool mode admission is unavailable")
+            requested_mode = _context.saved_tool_mode_admission(invocation)
+        except (PermissionError, AuthorityDenied, HostCoreError) as error:
+            return saved_tool_policy_stop_result(error)
         client = invocation.contract_client(
             allowed_contract_ids=frozenset({DEFINITION, LOCAL_OPERATION}),
             consumer_pack_id=PACK_ID,
@@ -86,6 +96,26 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         # The nested Host route supplies the caller, Profile, original deadline,
         # cancellation and authority. Neither the tool's labels nor this adapter
         # can authorize the target or replay it through a legacy executor.
+        nested_payload = {
+            key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")
+        }
+        # File create already uses its exact native effect coordinator. All
+        # other saved local operations require finite Host consent admission.
+        native_create = (
+            execution["operation"] == "rumi_default_tools_pack.file-create-operation"
+            and candidates[0].get("function_id")
+            == "rumi_default_tools_pack.file-create-tool"
+            and candidates[0].get("backend_id") == "tobkiri.python-host-v4"
+        )
+        if not native_create or requested_mode != "ask":
+            try:
+                if _context.saved_tool_consent_port is None:
+                    raise PermissionError("saved tool consent route is unavailable")
+                return _context.saved_tool_consent_port(
+                    invocation, execution, nested_payload,
+                )
+            except (PermissionError, AuthorityDenied, HostCoreError) as error:
+                return saved_tool_policy_stop_result(error)
         return client.invoke(
             LOCAL_OPERATION, execution["operation"],
             {key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")},

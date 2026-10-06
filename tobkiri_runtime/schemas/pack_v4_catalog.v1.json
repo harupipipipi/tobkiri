@@ -192,7 +192,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c"
+              "implementation_digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240"
             }
           ],
           "owner": "defaultspack",
@@ -282,6 +282,15 @@
                 "request": {
                   "additionalProperties": false,
                   "properties": {
+                    "action_approval_mode": {
+                      "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                      "enum": [
+                        "ask",
+                        "agent",
+                        "full"
+                      ],
+                      "type": "string"
+                    },
                     "content": {
                       "oneOf": [
                         {
@@ -793,7 +802,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
+          "digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -1549,15 +1558,15 @@
           "path": "defaultspack/managed_desktop_presentation.py"
         },
         {
-          "digest": "sha256:a54d62bc15a7c5654bef65ec0eacc65d5c85782ea4f56c138394be9fe0f7f0ce",
+          "digest": "sha256:1bc2aa6c388985949d43a50fee6d1866e0ab79e42d5bb106b750c112e5db76a5",
           "index_role": "asset",
           "kind": "asset",
           "path": "defaultspack/frontend_contract_map.v4.json"
         },
         {
-          "path": "defaultspack/model_access_presentation.py",
+          "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
           "kind": "executable",
-          "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852"
+          "path": "defaultspack/model_access_presentation.py"
         }
       ],
       "secrets": [],
@@ -7987,7 +7996,7 @@
           "path": "runtime/message_host.py"
         },
         {
-          "digest": "sha256:bc21ef07c019161d7160e1b407495312aec79e530e83da522df952b792fe8a41",
+          "digest": "sha256:1ee0e4ff74d82b7d7f1012a6fca7ee9114ebc492ecd467d6b71b1075bae06060",
           "kind": "executable",
           "path": "runtime/saved_receipt.py"
         },
@@ -8846,7 +8855,7 @@
         {
           "contract_id": "tobkiri.service.tool.local.operation.v1",
           "function_id": "rumi_default_tools_pack.file-create-tool",
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "operation_ids": [
             "rumi_default_tools_pack.file-create-operation"
           ]
@@ -8854,7 +8863,7 @@
         {
           "contract_id": "tobkiri.service.file.create.v1",
           "function_id": "rumi_default_tools_pack.file-create-prepare.service",
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "operation_ids": [
             "rumi_default_tools_pack.file-create-prepare"
           ]
@@ -8862,7 +8871,7 @@
         {
           "contract_id": "tobkiri.service.file.create.v1",
           "function_id": "rumi_default_tools_pack.file-create.service",
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "operation_ids": [
             "rumi_default_tools_pack.file-create"
           ]
@@ -8908,7 +8917,7 @@
             {
               "entrypoint_id": "file-create-operation",
               "id": "rumi_default_tools_pack.file-create-operation",
-              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
+              "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -8949,12 +8958,12 @@
             {
               "entrypoint_id": "file-create-prepare",
               "id": "rumi_default_tools_pack.file-create-prepare",
-              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
+              "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0"
             },
             {
               "entrypoint_id": "file-create",
               "id": "rumi_default_tools_pack.file-create",
-              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
+              "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0"
             }
           ],
           "owner": "rumi_default_tools_pack",
@@ -9168,7 +9177,7 @@
           "path": "runtime/files.py"
         },
         {
-          "digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "kind": "executable",
           "path": "runtime/file_create.py"
         }
@@ -10853,7 +10862,7 @@
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "operation_ids": [
             "rumi_host_authority_bridge_pack.host-authority"
           ]
@@ -10861,7 +10870,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "operation_ids": [
             "interactive_approval.get",
             "interactive_approval.list",
@@ -10872,7 +10881,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "operation_ids": [
             "interactive_effect.manage"
           ]
@@ -10880,7 +10889,7 @@
         {
           "contract_id": "tobkiri.action.chat.approval-continuation.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "operation_ids": [
             "chat_approval.approve",
             "chat_approval.resume"
@@ -10889,9 +10898,33 @@
         {
           "contract_id": "tobkiri.action.authority.approval-window.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "operation_ids": [
             "authority_approval.open"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.host.consent.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
+          "implementation_digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+          "operation_ids": [
+            "host_consent.admit"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.host.approval-policy.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+          "implementation_digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+          "operation_ids": [
+            "host.action_approval_policy.select"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "implementation_digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+          "operation_ids": [
+            "host.action_approval_policy.capabilities"
           ]
         }
       ],
@@ -10929,7 +10962,7 @@
               ],
               "entrypoint_id": "host-authority",
               "id": "rumi_host_authority_bridge_pack.host-authority",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -10986,7 +11019,7 @@
               ],
               "entrypoint_id": "get",
               "id": "interactive_approval.get",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             },
             {
               "effect_ceiling": [
@@ -10995,7 +11028,7 @@
               ],
               "entrypoint_id": "list",
               "id": "interactive_approval.list",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             },
             {
               "effect_ceiling": [
@@ -11004,7 +11037,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "interactive_approval.approve",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             },
             {
               "effect_ceiling": [
@@ -11013,7 +11046,7 @@
               ],
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -11066,7 +11099,7 @@
               ],
               "entrypoint_id": "manage",
               "id": "interactive_effect.manage",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -11297,34 +11330,34 @@
                       "const": "prepare"
                     },
                     "request": {
-                      "type": "object",
                       "additionalProperties": false,
+                      "properties": {
+                        "expected_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "model_access": {
+                          "type": "object"
+                        },
+                        "profile_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_instance_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
                       "required": [
                         "profile_id",
                         "provider_instance_id",
                         "expected_revision",
                         "model_access"
                       ],
-                      "properties": {
-                        "profile_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "provider_instance_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 256
-                        },
-                        "expected_revision": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "model_access": {
-                          "type": "object"
-                        }
-                      }
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -11399,7 +11432,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "chat_approval.approve",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             },
             {
               "effect_ceiling": [
@@ -11408,7 +11441,7 @@
               ],
               "entrypoint_id": "resume",
               "id": "chat_approval.resume",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -11474,7 +11507,7 @@
               ],
               "entrypoint_id": "open",
               "id": "authority_approval.open",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -11501,6 +11534,279 @@
               "type": "object"
             },
             "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.host.consent.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "host_consent.admit",
+              "id": "host_consent.admit",
+              "implementation_digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20"
+            }
+          ],
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "capture_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "operation_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "retained_operation_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "tool_call_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "retained_operation_digest",
+                "operation_digest",
+                "capture_digest",
+                "turn_id",
+                "tool_call_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "admitted_operation_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "admitted_operation_digest"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.host.approval-policy.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "host.action_approval_policy.select",
+              "id": "host.action_approval_policy.select",
+              "implementation_digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203"
+            }
+          ],
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "selection_id": {
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "selection_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "selected"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "host.action_approval_policy.capabilities",
+              "id": "host.action_approval_policy.capabilities",
+              "implementation_digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b"
+            }
+          ],
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "required_capabilities": [],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "anyOf": [
+                    {
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspace_id": {
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "workspace_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "activation_id": {
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "active_mode": {
+                  "enum": [
+                    "ask",
+                    "agent",
+                    "full"
+                  ]
+                },
+                "available_modes": {
+                  "items": {
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "capture_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "anyOf": [
+                    {
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "expires_at": {
+                  "type": "number"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "workspace_id": {
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "activation_id",
+                "workspace_id",
+                "conversation_id",
+                "available_modes",
+                "active_mode",
+                "reason",
+                "capture_digest",
+                "expires_at"
+              ],
               "type": "object"
             }
           },
@@ -11542,9 +11848,24 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "kind": "executable",
           "path": "runtime/bridge.py"
+        },
+        {
+          "digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+          "kind": "executable",
+          "path": "runtime/consent.py"
+        },
+        {
+          "digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+          "kind": "executable",
+          "path": "runtime/native_policy_bridge.py"
+        },
+        {
+          "digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+          "kind": "executable",
+          "path": "runtime/approval_policy_capabilities.py"
         }
       ],
       "secrets": [],
@@ -14114,17 +14435,17 @@
             {
               "entrypoint_id": "bundled-model-catalog",
               "id": "rumi_model_catalog_pack.bundled-model-catalog",
-              "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a"
+              "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b"
             },
             {
               "entrypoint_id": "bundled-model-catalog.generate",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
-              "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a"
+              "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b"
             },
             {
               "entrypoint_id": "bundled-model-catalog.stream",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
-              "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a"
+              "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b"
             }
           ],
           "owner": "rumi_model_catalog_pack",
@@ -14347,7 +14668,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+          "digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
           "kind": "executable",
           "path": "runtime/catalog.py"
         }
@@ -16192,34 +16513,34 @@
           "path": "runtime/local_endpoint.py"
         },
         {
-          "path": "domain/ai_client/provider_compiler/native_filters.py",
+          "digest": "sha256:fd32bed6784ed05a9216aedf753c882d015ddc1641912a0b3a03ffaa7a741561",
           "kind": "executable",
-          "digest": "sha256:fd32bed6784ed05a9216aedf753c882d015ddc1641912a0b3a03ffaa7a741561"
+          "path": "domain/ai_client/provider_compiler/native_filters.py"
         },
         {
-          "path": "runtime/model_access.py",
+          "digest": "sha256:299bab29e63964b5e68d5ceeff9ea4e16ef9f44311e70fe38ff41c4dc19485f3",
           "kind": "executable",
-          "digest": "sha256:299bab29e63964b5e68d5ceeff9ea4e16ef9f44311e70fe38ff41c4dc19485f3"
+          "path": "runtime/model_access.py"
         },
         {
-          "path": "runtime/model_access_configuration.py",
+          "digest": "sha256:366f58707accf13a1d0add4d3a115a5e24f9e49e97880a926a3b742e98d4a573",
           "kind": "executable",
-          "digest": "sha256:366f58707accf13a1d0add4d3a115a5e24f9e49e97880a926a3b742e98d4a573"
+          "path": "runtime/model_access_configuration.py"
         },
         {
-          "path": "runtime/model_access_mutation.py",
+          "digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9",
           "kind": "executable",
-          "digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9"
+          "path": "runtime/model_access_mutation.py"
         },
         {
-          "path": "runtime/model_access_resource.py",
+          "digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
           "kind": "executable",
-          "digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805"
+          "path": "runtime/model_access_resource.py"
         },
         {
-          "path": "runtime/provider_filters.py",
+          "digest": "sha256:4bbf2b8f5fc8e569a4ae36127f5ee209394b8cf198afd54c45e079012a8eddde",
           "kind": "executable",
-          "digest": "sha256:4bbf2b8f5fc8e569a4ae36127f5ee209394b8cf198afd54c45e079012a8eddde"
+          "path": "runtime/provider_filters.py"
         }
       ],
       "secrets": [],
@@ -19614,7 +19935,7 @@
             {
               "entrypoint_id": "tool-local-execute",
               "id": "rumi_tool_local_executor_pack.tool-local-execute",
-              "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1"
+              "implementation_digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -19653,7 +19974,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+          "digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
           "kind": "executable",
           "path": "runtime/executor.py"
         }
@@ -21013,6 +21334,15 @@
                 "request": {
                   "additionalProperties": false,
                   "properties": {
+                    "action_approval_mode": {
+                      "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                      "enum": [
+                        "ask",
+                        "agent",
+                        "full"
+                      ],
+                      "type": "string"
+                    },
                     "content": {
                       "oneOf": [
                         {
@@ -22022,7 +22352,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:35551f0e0c0afe3c665609e03bf80c03b5ac5ac6ee48dcf8103017761aaeffcb",
+          "digest": "sha256:466bae491319b0b5b075ffb80a2b8bf8bc21541bf50a9cda78693a42e766fe8a",
           "kind": "executable",
           "path": "runtime/saved.py"
         },
@@ -22177,7 +22507,7 @@
         {
           "contract_id": "tobkiri.action.workspace.mount.v1",
           "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "operation_ids": [
             "rumi_workspace_mount_pack.workspace-mount"
           ]
@@ -22185,7 +22515,7 @@
         {
           "contract_id": "tobkiri.resource.workspace.v1",
           "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "operation_ids": [
             "rumi_workspace_mount_pack.workspace-resource"
           ]
@@ -22193,7 +22523,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-directory.service",
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "operation_ids": [
             "workspace.directory.acquire"
           ]
@@ -22201,7 +22531,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "operation_ids": [
             "workspace.mount.prepare"
           ]
@@ -22209,7 +22539,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "operation_ids": [
             "workspace.mount.execute"
           ]
@@ -22247,7 +22577,7 @@
             {
               "entrypoint_id": "workspace-mount",
               "id": "rumi_workspace_mount_pack.workspace-mount",
-              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
+              "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22280,7 +22610,7 @@
             {
               "entrypoint_id": "workspace-resource",
               "id": "rumi_workspace_mount_pack.workspace-resource",
-              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
+              "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22317,7 +22647,7 @@
               ],
               "entrypoint_id": "project-directory",
               "id": "workspace.directory.acquire",
-              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
+              "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6"
             },
             {
               "effect_ceiling": [
@@ -22326,7 +22656,7 @@
               ],
               "entrypoint_id": "project-workspace-prepare",
               "id": "workspace.mount.prepare",
-              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
+              "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6"
             },
             {
               "effect_ceiling": [
@@ -22335,7 +22665,7 @@
               ],
               "entrypoint_id": "project-workspace-execute",
               "id": "workspace.mount.execute",
-              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
+              "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22595,7 +22925,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "kind": "executable",
           "path": "runtime/mounts.py"
         }
@@ -23535,6 +23865,15 @@
                     "request": {
                       "additionalProperties": false,
                       "properties": {
+                        "action_approval_mode": {
+                          "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                          "enum": [
+                            "ask",
+                            "agent",
+                            "full"
+                          ],
+                          "type": "string"
+                        },
                         "content": {
                           "oneOf": [
                             {
@@ -26596,7 +26935,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.settings.read",
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "operation_ids": [
             "tobkiri_ui_settings_pack.settings-read"
           ]
@@ -26604,7 +26943,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.catalog.read",
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "operation_ids": [
             "tobkiri_ui_settings_pack.catalog-read"
           ]
@@ -26612,7 +26951,7 @@
         {
           "contract_id": "tobkiri.action.ui.preferences.v1",
           "function_id": "tobkiri.ui.preferences.write",
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "operation_ids": [
             "tobkiri_ui_settings_pack.preferences-write"
           ]
@@ -26701,12 +27040,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e"
+              "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce"
             },
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
               "id": "tobkiri_ui_settings_pack.catalog-read",
-              "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e"
+              "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -26738,7 +27077,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.preferences-write",
               "id": "tobkiri_ui_settings_pack.preferences-write",
-              "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e"
+              "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -27483,7 +27822,7 @@
           "path": "runtime/projects.py"
         },
         {
-          "digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "kind": "executable",
           "path": "runtime/settings.py"
         },
@@ -27498,7 +27837,7 @@
           "path": "runtime/store.py"
         },
         {
-          "digest": "sha256:fe99080d5e5a57604a4a6d20632cb96147844be9e1fb1ac408f731dc663fca62",
+          "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
           "kind": "asset",
           "path": "runtime/public-settings-fields.v1.json"
         }

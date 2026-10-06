@@ -327,7 +327,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
+      "implementation_digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240",
       "implementation_path": "runtime/saved_conversation.py",
       "input_schema": {
         "$defs": {
@@ -396,6 +396,15 @@
           "request": {
             "additionalProperties": false,
             "properties": {
+              "action_approval_mode": {
+                "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                "enum": [
+                  "ask",
+                  "agent",
+                  "full"
+                ],
+                "type": "string"
+              },
               "content": {
                 "oneOf": [
                   {
@@ -722,7 +731,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
+          "implementation_digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240",
           "implementation_path": "runtime/saved_conversation.py",
           "input_schema": {
             "$defs": {
@@ -791,6 +800,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -9935,7 +9953,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tools_pack.file-create-prepare.service",
-      "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
       "implementation_path": "runtime/file_create.py",
       "input_schema": {
         "additionalProperties": false,
@@ -9982,7 +10000,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "implementation_path": "runtime/file_create.py",
           "input_schema": {
             "additionalProperties": false,
@@ -10052,7 +10070,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tools_pack.file-create-tool",
-      "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
       "implementation_path": "runtime/file_create.py",
       "input_schema": {
         "additionalProperties": false,
@@ -10101,7 +10119,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "implementation_path": "runtime/file_create.py",
           "input_schema": {
             "additionalProperties": false,
@@ -10173,7 +10191,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tools_pack.file-create.service",
-      "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
       "implementation_path": "runtime/file_create.py",
       "input_schema": {
         "additionalProperties": false,
@@ -10233,7 +10251,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
+          "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
           "implementation_path": "runtime/file_create.py",
           "input_schema": {
             "additionalProperties": false,
@@ -11299,6 +11317,342 @@
       ],
       "variant_id": "rumi_git_write_pack.git-restore.service.python"
     },
+    "rumi_host_authority_bridge_pack.host-authority.approval-policy": {
+      "contract_id": "tobkiri.action.host.approval-policy.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+      "implementation_digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+      "implementation_path": "runtime/native_policy_bridge.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "selection_id": {
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9_-]{1,160}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selection_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "host.action_approval_policy.select",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.host.approval-policy.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "host.action_approval_policy.select",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+          "implementation_path": "runtime/native_policy_bridge.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "selection_id": {
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "selection_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "host.action_approval_policy.select",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "const": "selected"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "selected"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_host_authority_bridge_pack",
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "source": [
+        {
+          "entrypoint_id": "host.action_approval_policy.select",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy.python"
+    },
+    "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities": {
+      "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+      "implementation_digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+      "implementation_path": "runtime/approval_policy_capabilities.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspace_id": {
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "workspace_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "host.action_approval_policy.capabilities",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "host.action_approval_policy.capabilities",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+          "implementation_path": "runtime/approval_policy_capabilities.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "workspace_id": {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "workspace_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "host.action_approval_policy.capabilities",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "activation_id": {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "active_mode": {
+                "enum": [
+                  "ask",
+                  "agent",
+                  "full"
+                ]
+              },
+              "available_modes": {
+                "items": {
+                  "enum": [
+                    "ask",
+                    "agent",
+                    "full"
+                  ]
+                },
+                "maxItems": 3,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "capture_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "conversation_id": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "expires_at": {
+                "type": "number"
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "reason": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "workspace_id": {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "activation_id",
+              "workspace_id",
+              "conversation_id",
+              "available_modes",
+              "active_mode",
+              "reason",
+              "capture_digest",
+              "expires_at"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "activation_id": {
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "type": "string"
+          },
+          "active_mode": {
+            "enum": [
+              "ask",
+              "agent",
+              "full"
+            ]
+          },
+          "available_modes": {
+            "items": {
+              "enum": [
+                "ask",
+                "agent",
+                "full"
+              ]
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "capture_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "type": "number"
+          },
+          "profile_id": {
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "workspace_id": {
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "activation_id",
+          "workspace_id",
+          "conversation_id",
+          "available_modes",
+          "active_mode",
+          "reason",
+          "capture_digest",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_host_authority_bridge_pack",
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "source": [
+        {
+          "entrypoint_id": "host.action_approval_policy.capabilities",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities.python"
+    },
     "rumi_host_authority_bridge_pack.host-authority.approval-window": {
       "contract_id": "tobkiri.action.authority.approval-window.v1",
       "contract_version": "1.0.0",
@@ -11307,7 +11661,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "additionalProperties": false,
@@ -11332,7 +11686,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "additionalProperties": false,
@@ -11380,7 +11734,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -11394,7 +11748,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -11433,7 +11787,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "additionalProperties": false,
@@ -11468,7 +11822,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "additionalProperties": false,
@@ -11510,7 +11864,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "additionalProperties": false,
@@ -11567,6 +11921,141 @@
       ],
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python"
     },
+    "rumi_host_authority_bridge_pack.host-authority.host-consent": {
+      "contract_id": "tobkiri.action.host.consent.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
+      "implementation_digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+      "implementation_path": "runtime/consent.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "operation_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "retained_operation_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "turn_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "retained_operation_digest",
+          "operation_digest",
+          "capture_digest",
+          "turn_id",
+          "tool_call_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "host_consent.admit",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.host.consent.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "host_consent.admit",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+          "implementation_path": "runtime/consent.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "capture_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "operation_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "retained_operation_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "turn_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "retained_operation_digest",
+              "operation_digest",
+              "capture_digest",
+              "turn_id",
+              "tool_call_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "host_consent.admit",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "admitted_operation_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "admitted_operation_digest"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "admitted_operation_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "admitted_operation_digest"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_host_authority_bridge_pack",
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "source": [
+        {
+          "entrypoint_id": "host_consent.admit",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.host-consent.python"
+    },
     "rumi_host_authority_bridge_pack.host-authority.interactive-approval": {
       "contract_id": "tobkiri.service.interactive-approval.v1",
       "contract_version": "1.0.0",
@@ -11575,7 +12064,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -11588,7 +12077,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -11608,7 +12097,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -11628,7 +12117,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -11648,7 +12137,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -11703,7 +12192,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "additionalProperties": false,
@@ -11958,7 +12447,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "additionalProperties": false,
@@ -13815,7 +14304,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
-      "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+      "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
       "implementation_path": "runtime/catalog.py",
       "input_schema": {
         "type": "object"
@@ -13828,7 +14317,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+          "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -13849,7 +14338,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+          "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -13869,7 +14358,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+          "implementation_digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -18183,7 +18672,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+      "implementation_digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -18197,7 +18686,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+          "implementation_digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -20456,6 +20945,15 @@
           "request": {
             "additionalProperties": false,
             "properties": {
+              "action_approval_mode": {
+                "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                "enum": [
+                  "ask",
+                  "agent",
+                  "full"
+                ],
+                "type": "string"
+              },
               "content": {
                 "oneOf": [
                   {
@@ -20851,6 +21349,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -21328,7 +21835,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_workspace_mount_pack.project-directory.service",
-      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+      "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
       "implementation_path": "runtime/mounts.py",
       "input_schema": {
         "additionalProperties": false,
@@ -21344,7 +21851,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "implementation_path": "runtime/mounts.py",
           "input_schema": {
             "additionalProperties": false,
@@ -21383,7 +21890,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
-      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+      "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
       "implementation_path": "runtime/mounts.py",
       "input_schema": {
         "additionalProperties": false,
@@ -21493,7 +22000,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "implementation_path": "runtime/mounts.py",
           "input_schema": {
             "additionalProperties": false,
@@ -21626,7 +22133,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
-      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+      "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
       "implementation_path": "runtime/mounts.py",
       "input_schema": {
         "additionalProperties": false,
@@ -21652,7 +22159,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "implementation_path": "runtime/mounts.py",
           "input_schema": {
             "additionalProperties": false,
@@ -21701,7 +22208,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
-      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+      "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
       "implementation_path": "runtime/mounts.py",
       "input_schema": {
         "type": "object"
@@ -21715,7 +22222,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "implementation_path": "runtime/mounts.py",
           "input_schema": {
             "type": "object"
@@ -21754,7 +22261,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+      "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
       "implementation_path": "runtime/mounts.py",
       "input_schema": {
         "type": "object"
@@ -21768,7 +22275,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
+          "implementation_digest": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
           "implementation_path": "runtime/mounts.py",
           "input_schema": {
             "type": "object"
@@ -22839,7 +23346,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -22853,7 +23360,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -23299,7 +23806,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "additionalProperties": false,
@@ -23381,7 +23888,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "additionalProperties": false,
@@ -23990,7 +24497,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -24004,7 +24511,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -25354,6 +25861,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -25798,6 +26314,15 @@
                   "request": {
                     "additionalProperties": false,
                     "properties": {
+                      "action_approval_mode": {
+                        "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                        "enum": [
+                          "ask",
+                          "agent",
+                          "full"
+                        ],
+                        "type": "string"
+                      },
                       "content": {
                         "oneOf": [
                           {
@@ -28756,7 +29281,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:b24c250039bef3ca20783685c11169b803aa5c9cf48190cd83344de58f935305",
+    "input_digest": "sha256:68f0ee810166c3abcfb93629fb22fa7eb8215fdabf6795497641b2246005f3fc",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -29237,7 +29762,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:dd1157d518fa94a98477cd4eeb18a812500420c07b1e03043d5da3a1837e55a9",
+        "digest": "sha256:01e8fca72c00f575290fb798fab7b904551ffece54fe2e6cc0375b5144a8d1c1",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
       },
@@ -29322,7 +29847,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:23f1547b919175702254926ce95f7d75c5724209b1fd286e905b449d1e4b86a4",
+        "digest": "sha256:13d27aab586716948fc91cda1a6932b29f4ecbbf0f5a5e7938434702eaf74629",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json"
       },
@@ -29457,7 +29982,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:91d9d9ca262e015108ab10156593ac4ebf9e9604184260a5a6c51be74062e2b2",
+        "digest": "sha256:61adeb0c7b6b568900d8b9fe348d31647ebf3c4954f6e1208fb64f9aaa27f04f",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
       },
@@ -29502,12 +30027,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:62fad2aa2fdca09e4154351f37bbfbd6c2e674dd396e8c2202b3c1f863515dad",
+        "digest": "sha256:07fc4c50ece415501d5ec5a8089e7b3230b19fa022f767ff9d0305d13fc7704d",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:51c3754d4717646000a0f9c599e9da21ee8c4a01e8abcef3f0edd3956cddacdc",
+        "digest": "sha256:0e9df38c901cc7454a833df8a33b7971916b6ab1042af29060868c34d9998854",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -29647,7 +30172,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:18b7e549ad4c853161efcbd50107f60f6e324d59f4086b244bc8ab5abc489e19",
+        "digest": "sha256:4d467cd36218fba9d8ad119d0067e9d1e9c8c1335e3e78ba0a424dbc132b1f40",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json"
       },
@@ -29672,7 +30197,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:345d181d8fa7a086b3641ba76457b41b91c738557a14af2a547cb3ae14975ea8",
+        "digest": "sha256:9ea9b2ad25d07c87c1b8382f1414619589cb2492d2874d4ecc74d6d69ca325a4",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json"
       },
@@ -29727,7 +30252,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:c95d754b45b9c016e5bb42613a6b15b7395a50f9b1ee98396353a947bf03cc5a",
+        "digest": "sha256:2ed495e8f462e4e81e0d90d8a6895adeef342ac7b2714de40b04136e1397737b",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },
@@ -29812,7 +30337,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:bd1a667a9d516cc5518f43638087c0285174de60f1aa246242cd1c63362ec92a",
+        "digest": "sha256:c436e841861ee70533f6009d31307ed5edbdbc0ababcfa8fae46e22df8f5840c",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json"
       },
@@ -29947,7 +30472,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:92ba4802fe1d447d8f300264ce14eb6e096d2fbd80736a7afa58738843c55c0f",
+        "digest": "sha256:042b4693a682973a20e3c6e9b543ad8475abced85c70ca1724ebceb9318648f0",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
       },
@@ -29987,12 +30512,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:ee99c208901ed5a0fa490eb186f36e2eb8a773943cfa94012f6ede2dd7a2064d",
+        "digest": "sha256:3870167e939cb8d49797c9f2a7c6df056600bd9fbc0ee3f44f4ebbfe1c1db392",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:934dc5e40913d91530c931ed76fb29f65c38048e04934d8f25f8fed5a729e040",
+        "digest": "sha256:27dafd9a3ff96e77aefae10204f567f909c6f5a140bfa4dade0b3312c5148fcd",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/rumi.pack.v3.json"
       }

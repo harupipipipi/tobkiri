@@ -1,14 +1,29 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:d83a917d8b065f525a4b76f3bbf880ba9667f2e6504c22c8d4f74870389e10ee",
+      "digest": "sha256:b06b256cfc9138e7ef274b893d394ec78f6c0a7c857f54a63b1672df24659748",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+      "kind": "executable",
+      "path": "runtime/approval_policy_capabilities.py"
+    },
+    {
+      "digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "kind": "executable",
       "path": "runtime/bridge.py"
+    },
+    {
+      "digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+      "kind": "executable",
+      "path": "runtime/consent.py"
+    },
+    {
+      "digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+      "kind": "executable",
+      "path": "runtime/native_policy_bridge.py"
     }
   ],
   "contracts": [
@@ -50,13 +65,54 @@
         "authority_approval.open"
       ],
       "revision_digest": "sha256:4ab51c6dedc45d6c2915bcd416d416b312db643c536504af820afd4f8c485873"
+    },
+    {
+      "contract_id": "tobkiri.action.host.consent.v1",
+      "operations": [
+        "host_consent.admit"
+      ],
+      "revision_digest": "sha256:2719533df892a9c2d7132d9bd8cf0fd91e30b37d414c51c16388ef22a53523d3"
+    },
+    {
+      "contract_id": "tobkiri.action.host.approval-policy.v1",
+      "operations": [
+        "host.action_approval_policy.select"
+      ],
+      "revision_digest": "sha256:928fd247a8d2c3c6c1db982b10ea93f9fb571b4ac57709e653869db701d04b50"
+    },
+    {
+      "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+      "operations": [
+        "host.action_approval_policy.capabilities"
+      ],
+      "revision_digest": "sha256:424e4fb00eaa1220c7eabf950c8d26c6f06b7a9b7ec693c02844d775f2f85292"
     }
   ],
   "functions": [
     {
+      "contract_revision_digest": "sha256:928fd247a8d2c3c6c1db982b10ea93f9fb571b4ac57709e653869db701d04b50",
+      "id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+      "implementation_digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+      "isolation": "dedicated_process",
+      "operations": [
+        "host.action_approval_policy.select"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:424e4fb00eaa1220c7eabf950c8d26c6f06b7a9b7ec693c02844d775f2f85292",
+      "id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+      "implementation_digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+      "isolation": "dedicated_process",
+      "operations": [
+        "host.action_approval_policy.capabilities"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:4ab51c6dedc45d6c2915bcd416d416b312db643c536504af820afd4f8c485873",
       "id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "isolation": "dedicated_process",
       "operations": [
         "authority_approval.open"
@@ -66,7 +122,7 @@
     {
       "contract_revision_digest": "sha256:36943db633d4f0681bde085b2264c4a8611487a7c86ce9dcd9120fa0a7883329",
       "id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_host_authority_bridge_pack.host-authority"
@@ -76,7 +132,7 @@
     {
       "contract_revision_digest": "sha256:0513e5818e85697411c31221c7bef782cea89eca0aa8878aeb71402b1d6904d9",
       "id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "isolation": "dedicated_process",
       "operations": [
         "chat_approval.approve",
@@ -85,9 +141,19 @@
       "role": "host_capability_provider"
     },
     {
+      "contract_revision_digest": "sha256:2719533df892a9c2d7132d9bd8cf0fd91e30b37d414c51c16388ef22a53523d3",
+      "id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
+      "implementation_digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+      "isolation": "dedicated_process",
+      "operations": [
+        "host_consent.admit"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
       "id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "isolation": "dedicated_process",
       "operations": [
         "interactive_approval.get",
@@ -100,7 +166,7 @@
     {
       "contract_revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
       "id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "isolation": "dedicated_process",
       "operations": [
         "interactive_effect.manage"
@@ -109,9 +175,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:c3c206a10d7151e0b54a5d2881c7d2beb00e5a2f6b7d4e20860c246d797bf4ff",
-    "contract_catalog_digest": "sha256:4ee8a29d6f936a76914cdf886346ff0c9490e6b571885c4f9bd917cfe5b8e970",
-    "source_identity": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e"
+    "artifact_set_digest": "sha256:7f8e2842063ddcdc9a2ffd538ac85163e259094cdea85e3e9f0ccb2839948aac",
+    "contract_catalog_digest": "sha256:a6c31e1e812264cf7bd60617cc36f6c7838ea786bc1588876c69bba7d4cfeef6",
+    "source_identity": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522"
   },
   "migration": {
     "compatibility": "read_only",
@@ -155,6 +221,38 @@
       "operation_id": "chat_approval.resume",
       "owner": "rumi_host_authority_bridge_pack",
       "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.host.approval-policy-capabilities.v1",
+      "effect_ceiling": [
+        "host:brokered-execution"
+      ],
+      "operation_id": "host.action_approval_policy.capabilities",
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.host.approval-policy.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:host.authority.consume"
+      ],
+      "operation_id": "host.action_approval_policy.select",
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.host.consent.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:host.authority.consume"
+      ],
+      "operation_id": "host_consent.admit",
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -225,7 +323,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c3c206a10d7151e0b54a5d2881c7d2beb00e5a2f6b7d4e20860c246d797bf4ff",
+    "artifact_digest": "sha256:7f8e2842063ddcdc9a2ffd538ac85163e259094cdea85e3e9f0ccb2839948aac",
     "display_name": "Rumi Host Authority Bridge",
     "id": "rumi_host_authority_bridge_pack",
     "kind": "host_extension",
@@ -235,7 +333,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
+        "digest": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -246,11 +344,27 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e",
+    "source_digest": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
   },
   "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.host.approval-policy.v1",
+      "operations": [
+        "host.action_approval_policy.select"
+      ],
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy"
+    },
+    {
+      "contract_reference": "tobkiri.resource.host.approval-policy-capabilities.v1",
+      "operations": [
+        "host.action_approval_policy.capabilities"
+      ],
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities"
+    },
     {
       "contract_reference": "tobkiri.action.authority.approval-window.v1",
       "operations": [
@@ -275,6 +389,14 @@
       ],
       "owner": "rumi_host_authority_bridge_pack",
       "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation"
+    },
+    {
+      "contract_reference": "tobkiri.action.host.consent.v1",
+      "operations": [
+        "host_consent.admit"
+      ],
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.host-consent"
     },
     {
       "contract_reference": "tobkiri.service.interactive-approval.v1",

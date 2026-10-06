@@ -707,16 +707,16 @@ class ProjectWorkspaceHostFactoryV4:
                 or not isinstance(payload["plan"], Mapping)
             ):
                 raise PermissionError("project workspace plan is required")
-            plan = payload["plan"]
-            validate_project_plan(payload["request"], plan)
+            execute_plan = payload["plan"]
+            validate_project_plan(payload["request"], execute_plan)
             if (
-                plan["profile_id"] != scope.profile_id
-                or plan["activation_id"] != scope.activation_id
-                or plan["plan_digest"] != scope.plan_digest
-                or plan["security_epoch"] != scope.security_epoch
+                execute_plan["profile_id"] != scope.profile_id
+                or execute_plan["activation_id"] != scope.activation_id
+                or execute_plan["plan_digest"] != scope.plan_digest
+                or execute_plan["security_epoch"] != scope.security_epoch
             ):
                 raise PermissionError("project workspace capture changed")
-            return store.mount_project(plan, assert_current=invocation.assert_current)
+            return store.mount_project(execute_plan, assert_current=invocation.assert_current)
 
         return CapturedHostProviderV4(
             tuple(_contributions(context, invoke)), lambda: None

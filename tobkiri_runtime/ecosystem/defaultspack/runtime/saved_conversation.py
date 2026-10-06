@@ -184,6 +184,7 @@ def _request(value: Any) -> dict[str, Any]:
         "tool_selection",
         "strategy_reference",
         "thinking_level",
+        "action_approval_mode",
         "task_context",
         "context_binding",
     } != _REQUEST_FIELDS:
@@ -192,6 +193,11 @@ def _request(value: Any) -> dict[str, Any]:
         _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
+    if "action_approval_mode" in value and (
+        type(value["action_approval_mode"]) is not str
+        or value["action_approval_mode"] not in {"ask", "agent", "full"}
+    ):
+        raise ValueError("saved conversation action approval mode is invalid")
     if "thinking_level" in value and (
         not isinstance(value["thinking_level"], str)
         or value["thinking_level"] not in {
@@ -246,7 +252,7 @@ def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
     optional = {"tool_selection", "strategy_reference", "thinking_level",
-                "task_context", "context_binding"}
+                "task_context", "context_binding", "action_approval_mode"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
@@ -256,6 +262,11 @@ def _state_request(value: Any) -> dict[str, Any]:
         _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
+    if "action_approval_mode" in value and (
+        type(value["action_approval_mode"]) is not str
+        or value["action_approval_mode"] not in {"ask", "agent", "full"}
+    ):
+        raise ValueError("saved conversation action approval mode is invalid")
     if "thinking_level" in value and value["thinking_level"] not in {
         "none", "low", "medium", "high", "xhigh"
     }:
@@ -303,7 +314,11 @@ def _message(
         "role": role,
         "content": content,
         "parent_id": state["parent_id"] if role == "user" else _message_id(request, "user"),
-        "metadata": {"turn_id": request["turn_id"]},
+        "metadata": {
+            "turn_id": request["turn_id"],
+            **({"action_approval_mode": request["action_approval_mode"]}
+               if "action_approval_mode" in request else {}),
+        },
         "status": "complete",
     }
     if role == "assistant":
@@ -558,7 +573,11 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                         message.get("id") != _message_id(request, "user")
                         or message.get("role") != "user"
                         or message.get("parent_id") != state["parent_id"]
-                        or message.get("metadata") != {"turn_id": request["turn_id"]}
+                        or message.get("metadata") != {
+                            "turn_id": request["turn_id"],
+                            **({"action_approval_mode": request["action_approval_mode"]}
+                               if "action_approval_mode" in request else {}),
+                        }
                         or message.get("status") != "complete"
                         or not _saved_user_content(message.get("content"))
                         or "sha256:" + hashlib.sha256(

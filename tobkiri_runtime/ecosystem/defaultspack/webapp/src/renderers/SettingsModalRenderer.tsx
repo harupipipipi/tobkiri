@@ -87,6 +87,7 @@ const TOOL_EXPERIENCE_OWNED_FIELD_IDS = new Set([
   "show_action_approval_control",
   "action_approval_mode",
   "fixed_action_approval_mode",
+  "approval_reviewer_model",
   "default_mode",
   "show_selection_summary",
   "show_selected_tools_in_answer",
@@ -3205,6 +3206,7 @@ export function ModelApiRoutesSettingsFieldRenderer(props: SettingsFieldRenderer
 }
 
 export function SettingsModalRenderer({
+  actionApprovalModes,
   extensionSettings,
   isOpen,
   activeSectionId: requestedSectionId,
@@ -4927,6 +4929,8 @@ export function SettingsModalRenderer({
                     </div>
                     {activeSection.id === "tools_mcp" && (
                       <ToolExperienceSettingsPanel
+                        actionApprovalModes={actionApprovalModes}
+                        approvalReviewerModels={modelProfiles}
                         tools={(catalog?.sidebar.items ?? []).filter((item) => item.category === "tool")}
                         settingsValues={settingsValues}
                         onSettingChange={onSettingChange}

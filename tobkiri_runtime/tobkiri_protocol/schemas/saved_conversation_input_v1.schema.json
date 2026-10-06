@@ -352,6 +352,15 @@
         },
         "turn_id": {
           "$ref": "#/$defs/identifier"
+        },
+        "action_approval_mode": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "agent",
+            "full"
+          ],
+          "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask."
         }
       },
       "required": [

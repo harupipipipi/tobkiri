@@ -1,5 +1,6 @@
 import type { ComponentType, FormEvent } from "react";
 import type { ModelProfile } from "../../lib/api";
+import type { ActionApprovalMode } from "../tools/ActionApprovalControl";
 import { composerMentionToolIdsFromWidgets } from "../../lib/composerWidgets";
 import { resolveComposerToolMentions } from "../../lib/composerToolMentions";
 import type { ComposerExtensionItem, ComposerRendererProps, DroppedWidget } from "../../renderers/types";
@@ -9,7 +10,8 @@ import { useComposerEntityCatalog } from "./useComposerEntityCatalog";
 /** Reuse Composer confirmation, IME and history-drop handling inside a task form. */
 export function CalendarAgentPromptEditor({
   Composer, input, widgets, profileId, modelId, models, tools, busy,
-  mode, showApprovalControl, showToolControl, onInputChange, onWidgetsChange, onModelChange, onModeChange, onPendingChange, onSubmit,
+  mode, showApprovalControl, showToolControl, actionApprovalMode, actionApprovalModes, onActionApprovalModeChange,
+  onInputChange, onWidgetsChange, onModelChange, onModeChange, onPendingChange, onSubmit,
 }: {
   Composer: ComponentType<ComposerRendererProps>;
   input: string;
@@ -22,6 +24,9 @@ export function CalendarAgentPromptEditor({
   mode: ToolSelectionMode;
   showApprovalControl: boolean;
   showToolControl: boolean;
+  actionApprovalMode?: ActionApprovalMode;
+  actionApprovalModes?: readonly ActionApprovalMode[];
+  onActionApprovalModeChange?: (mode: ActionApprovalMode) => void;
   onInputChange: (value: string) => void;
   onWidgetsChange: (widgets: DroppedWidget[]) => void;
   onModelChange: (id: string) => void;
@@ -52,6 +57,9 @@ export function CalendarAgentPromptEditor({
       composerInput={{ id: "calendar-agent-prompt", feature_flags: { file_attachments: false, attachments: false, voice_input: false, slash_commands: false } }}
       toolSelectionMode={mode}
       showActionApprovalControl={showApprovalControl}
+      actionApprovalMode={actionApprovalMode}
+      actionApprovalModes={actionApprovalModes}
+      onActionApprovalModeChange={onActionApprovalModeChange}
       showToolSelectionControl={showToolControl}
       onToolSelectionModeChange={onModeChange}
       onModelProfileSelect={onModelChange}

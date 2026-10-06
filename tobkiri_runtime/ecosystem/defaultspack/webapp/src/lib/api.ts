@@ -1,6 +1,7 @@
 import { saveModelAccessEffect, type ModelAccessSaveRequest } from "./modelAccessEffect";
 import type { ModelAccessScope, ModelAccessCatalog } from "../features/apiKeys/resources/providerModelAccessResources";
 import type { NativeDiscovery } from "../features/apiKeys/modelAccessPolicy";
+import { loadApprovalPolicyCapabilities, type ApprovalPolicyApplicability } from "../features/tools/approvalPolicyCapabilities";
 import { mountProjectDirectories, type ProjectDirectorySelection, type ProjectDirectorySelectionSet, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { toolSidebarReadiness } from "./toolCatalogReadiness";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
@@ -194,6 +195,8 @@ export type SavedTurnRequest = {
   chat_references?: Array<{ kind: "chat" | "group"; profile_id: string; id: string }>;
   /** Exact reference selected from the Host-admitted strategy catalog. */
   strategy_reference?: string;
+  /** Preference data; elevated modes require independently authenticated Host policy. */
+  action_approval_mode?: "ask" | "agent" | "full";
   thinking_level?: "none" | "low" | "medium" | "high" | "xhigh";
 };
 
@@ -4470,7 +4473,7 @@ export const api = {
   },
 
   async startSavedTurn(value: SavedTurnRequest, options?: { requestId: string }): Promise<SavedTurnResult> {
-    const input = { ...value };
+    const input = structuredClone(value);
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
     if (Object.keys(input).some((key) => ![
       ...fields,
@@ -4478,6 +4481,7 @@ export const api = {
       "chat_references",
       "strategy_reference",
       "thinking_level",
+      "action_approval_mode",
     ].includes(key)) || fields.some((key) => !(key in input))
       || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
@@ -4489,6 +4493,8 @@ export const api = {
         || !input.strategy_reference.trim()
         || input.strategy_reference.length > 256
       ))
+      || (input.action_approval_mode !== undefined
+        && !["ask", "agent", "full"].includes(input.action_approval_mode))
       || (input.thinking_level !== undefined
         && !["none", "low", "medium", "high", "xhigh"].includes(input.thinking_level))
       || !validSavedTurnContent(input.content)
@@ -4861,6 +4867,22 @@ export const api = {
       defaultspackContractRoute("api/command-protocol/v1/datasources/query"),
       { method: "POST", body: JSON.stringify(payload), signal: options.signal },
     );
+  },
+
+  /** Read captured Host presentation support; this endpoint grants no authority. */
+  actionApprovalPolicyCapabilities(
+    target: ApprovalPolicyApplicability,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    return loadApprovalPolicyCapabilities(target, (captured, signal) => request<unknown>(
+      defaultspackContractRoute("api/host/action-approval-policy/capabilities"),
+      {
+        method: "POST",
+        cache: "no-store",
+        signal,
+        body: JSON.stringify({ conversation_id: captured.conversation_id, workspace_id: captured.workspace_id }),
+      },
+    ), () => {}, options.signal);
   },
 
   toolCatalog() {

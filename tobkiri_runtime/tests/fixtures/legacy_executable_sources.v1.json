@@ -401,6 +401,15 @@
                 "request": {
                   "additionalProperties": false,
                   "properties": {
+                    "action_approval_mode": {
+                      "type": "string",
+                      "enum": [
+                        "ask",
+                        "agent",
+                        "full"
+                      ],
+                      "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask."
+                    },
                     "content": {
                       "oneOf": [
                         {
@@ -2468,6 +2477,225 @@
               "type": "object"
             }
           }
+        },
+        {
+          "contract_id": "tobkiri.action.host.consent.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.host-consent",
+          "implementation_path": "runtime/consent.py",
+          "operation_ids": [
+            "host_consent.admit"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "retained_operation_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "operation_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "capture_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "tool_call_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "retained_operation_digest",
+                "operation_digest",
+                "capture_digest",
+                "turn_id",
+                "tool_call_id"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "admitted_operation_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "admitted_operation_digest"
+              ]
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.host.approval-policy.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+          "implementation_path": "runtime/native_policy_bridge.py",
+          "operation_ids": [
+            "host.action_approval_policy.select"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "selection_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                  "maxLength": 160
+                }
+              },
+              "required": [
+                "selection_id"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "selected"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "implementation_path": "runtime/approval_policy_capabilities.py",
+          "operation_ids": [
+            "host.action_approval_policy.capabilities"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspace_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "conversation_id",
+                "workspace_id"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "maxLength": 256
+                },
+                "activation_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "maxLength": 256
+                },
+                "workspace_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "maxLength": 256
+                },
+                "conversation_id": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "available_modes": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "items": {
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ]
+                  }
+                },
+                "active_mode": {
+                  "enum": [
+                    "ask",
+                    "agent",
+                    "full"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "capture_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "expires_at": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "profile_id",
+                "activation_id",
+                "workspace_id",
+                "conversation_id",
+                "available_modes",
+                "active_mode",
+                "reason",
+                "capture_digest",
+                "expires_at"
+              ]
+            },
+            "error": {
+              "type": "object"
+            }
+          }
         }
       ]
     },
@@ -3181,6 +3409,15 @@
                 "request": {
                   "additionalProperties": false,
                   "properties": {
+                    "action_approval_mode": {
+                      "type": "string",
+                      "enum": [
+                        "ask",
+                        "agent",
+                        "full"
+                      ],
+                      "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask."
+                    },
                     "content": {
                       "oneOf": [
                         {
@@ -4721,6 +4958,15 @@
                     "request": {
                       "additionalProperties": false,
                       "properties": {
+                        "action_approval_mode": {
+                          "type": "string",
+                          "enum": [
+                            "ask",
+                            "agent",
+                            "full"
+                          ],
+                          "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask."
+                        },
                         "content": {
                           "oneOf": [
                             {

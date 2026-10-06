@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:da4d272756169d5cd60302945afe2a9d84f544127c691a12ede6f01bdc152113",
+  "catalog_digest": "sha256:936a20cfda67fa06ce37d4130a00ad9937a9dc5e9120613b48d91ad93ebc21c4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:5347c01bc4842c1659b50a86847a326567691ee2264abaabca6aea51c1236c2b",
+  "source_identity": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
+      "implementation_digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -272,6 +272,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -549,7 +558,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:2db17ce69a03f84b664aced320cc15df2bbbeacd4e294f9a9f1e4b0c80a70e7b",
+          "revision_digest": "sha256:050bd5c61e3d539f8dc6562cd0c1052877f0d230b138e8eb7ddbcc8bfb37aef7",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

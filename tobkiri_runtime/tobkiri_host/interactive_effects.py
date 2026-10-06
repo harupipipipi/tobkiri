@@ -127,8 +127,23 @@ class _PendingEffect:
     updated_at: float
     outcome_digest: str | None = None
     correlation_id: str | None = None
+    authorization_kind: str = "interactive_native_v1"
+    policy_plan: Mapping[str, Any] | None = None
+    policy_derived_grant_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.authorization_kind not in {"interactive_native_v1", "native_selected_policy_exact_v1"}:
+            raise PendingEffectError("pending effect is unavailable")
+        if (self.authorization_kind == "native_selected_policy_exact_v1") != (self.policy_plan is not None):
+            raise PendingEffectError("pending effect is unavailable")
+        if self.policy_plan is not None:
+            from tobkiri_host.policy_effect_authorization import PolicyDerivedEffectPlan
+            plan = PolicyDerivedEffectPlan(**dict(self.policy_plan))
+            if plan.root_native_request_id != self.approval_request_id or plan.prepared_request_digest != self.prepared.request_digest:
+                raise PendingEffectError("pending effect is unavailable")
+            object.__setattr__(self, "policy_plan", _frozen_json(self.policy_plan))
+        elif self.policy_derived_grant_id is not None:
+            raise PendingEffectError("pending effect is unavailable")
         if self.correlation_id is not None:
             _validate_correlation_id(self.correlation_id)
         if (
@@ -195,6 +210,9 @@ class _PendingEffect:
             "updated_at": self.updated_at,
             "outcome_digest": self.outcome_digest,
             "correlation_id": self.correlation_id,
+            "authorization_kind": self.authorization_kind,
+            "policy_plan": _thaw_json(self.policy_plan) if self.policy_plan is not None else None,
+            "policy_derived_grant_id": self.policy_derived_grant_id,
         }
 
     @classmethod
@@ -233,6 +251,9 @@ class _PendingEffect:
                     else None
                 ),
                 correlation_id=value.get("correlation_id"),
+                authorization_kind=value.get("authorization_kind", "interactive_native_v1"),
+                policy_plan=value.get("policy_plan"),
+                policy_derived_grant_id=value.get("policy_derived_grant_id"),
             )
         except (KeyError, TypeError, ValueError, PendingEffectError) as exc:
             raise PendingEffectError("pending effect is unavailable") from exc
@@ -321,6 +342,7 @@ class PendingEffectController:
     def __init__(
         self,
         *,
+        policy_authorizations: Any | None = None,
         persistence: PendingEffectPersistencePort,
         approvals: InteractiveApprovalPort,
         coordinator_principal: OpaqueAuthorityRef,
@@ -331,6 +353,7 @@ class PendingEffectController:
         clock: Callable[[], float] = time.time,
         dispatch_grace_seconds: float = _RESUME_DISPATCH_GRACE_SECONDS,
     ) -> None:
+        self._policy_authorizations = policy_authorizations
         self._persistence = persistence
         self._approvals = approvals
         self._coordinator_principal = coordinator_principal
@@ -360,6 +383,7 @@ class PendingEffectController:
         expires_at: float,
         typed_confirmation_phrase: str | None = None,
         correlation_id: str | None = None,
+        policy_plan: Any | None = None,
     ) -> PendingEffectStatus:
         """Persist and open one Host-bound interactive approval request.
 
@@ -391,6 +415,11 @@ class PendingEffectController:
         ):
             raise PendingEffectError("pending effect is unavailable")
         effect_id, approval_request_id = _new_effect_identifiers()
+        if policy_plan is not None:
+            from tobkiri_host.policy_effect_authorization import PolicyDerivedEffectPlan
+            if not isinstance(policy_plan, PolicyDerivedEffectPlan) or self._policy_authorizations is None:
+                raise PendingEffectError("pending effect is unavailable")
+            approval_request_id = policy_plan.root_native_request_id
         record = _PendingEffect(
             effect_id=effect_id,
             approval_request_id=approval_request_id,
@@ -406,6 +435,8 @@ class PendingEffectController:
             created_at=now,
             updated_at=now,
             correlation_id=correlation_id,
+            authorization_kind="native_selected_policy_exact_v1" if policy_plan is not None else "interactive_native_v1",
+            policy_plan=policy_plan.to_dict() if policy_plan is not None else None,
         )
         try:
             revision = self._persistence.create_host_pending_effect(
@@ -414,6 +445,13 @@ class PendingEffectController:
             )
         except Exception as exc:
             raise PendingEffectError("pending effect is unavailable") from exc
+        if policy_plan is not None:
+            try:
+                self._assert_policy(record)
+            except Exception as exc:
+                self._best_effort_transition(effect_id, revision, record, PendingEffectState.STALE)
+                raise PendingEffectError("pending effect is unavailable") from exc
+            return self._transition(effect_id, revision, record, PendingEffectState.APPROVED)
         approval_context = replace(context, request_id=approval_request_id)
         try:
             status = self._approvals.request_interactive_approval(
@@ -538,6 +576,7 @@ class PendingEffectController:
         presentation_owner_principal_id: str,
         presentation_owner_session_id: str,
         broker: RequestBroker,
+        policy_inheritance: Any | None = None,
         execution_guard: Callable[[], None] | None = None,
         dispatch_grace_seconds: float | None = None,
         wall_clock: Callable[[], float] = time.time,
@@ -547,6 +586,7 @@ class PendingEffectController:
         return self.resume(
             effect_id,
             broker,
+            policy_inheritance=policy_inheritance,
             dispatch_grace_seconds=dispatch_grace_seconds,
             wall_clock=wall_clock,
             monotonic_clock=monotonic_clock,
@@ -573,10 +613,25 @@ class PendingEffectController:
         )
         return self.cancel(effect_id)
 
+    def _assert_policy(self, record: _PendingEffect) -> None:
+        """Authenticate the dedicated encrypted policy effect authorization."""
+        from tobkiri_host.policy_effect_authorization import policy_effect_attestation
+        if self._policy_authorizations is None:
+            raise PendingEffectError("pending effect is unavailable")
+        self._policy_authorizations.assert_effect_policy(policy_effect_attestation(record))
+
     def observe_approval(self, effect_id: str) -> PendingEffectStatus:
         """Synchronize a durable effect with its Host-owned approval record."""
 
         revision, record = self._load(effect_id)
+        if record.authorization_kind == "native_selected_policy_exact_v1" and record.state not in _TERMINAL_STATES:
+            try:
+                self._assert_policy(record)
+            except Exception:
+                return self._transition(effect_id, revision, record, PendingEffectState.STALE)
+            if record.state is PendingEffectState.PREPARED:
+                return self._transition(effect_id, revision, record, PendingEffectState.APPROVED)
+            return _status(record, revision)
         if (
             record.state in _TERMINAL_STATES
             or record.state is PendingEffectState.APPROVED
@@ -615,7 +670,7 @@ class PendingEffectController:
             effect_id, revision, record, PendingEffectState.CANCELLED
         )
 
-    def claim(self, effect_id: str) -> PendingEffectStatus:
+    def claim(self, effect_id: str, *, policy_inheritance: Any | None = None, execution_guard: Callable[[], None] | None = None) -> PendingEffectStatus:
         """CAS-claim an approved effect for a future Host execution resumer."""
 
         observed = self.observe_approval(effect_id)
@@ -624,6 +679,23 @@ class PendingEffectController:
         revision, record = self._load(effect_id)
         if record.state is not PendingEffectState.APPROVED:
             raise PendingEffectError("pending effect is unavailable")
+        if record.authorization_kind == "native_selected_policy_exact_v1":
+            from tobkiri_host.policy_effect_authorization import policy_effect_attestation
+            try:
+                policy_authorizations = self._policy_authorizations
+                if policy_authorizations is None:
+                    raise PendingEffectError("pending effect is unavailable")
+                settlement = policy_authorizations.settle_effect_policy(
+                    policy_effect_attestation(record), policy_inheritance,
+                    execution_guard or (lambda: None),
+                )
+                settlement.assert_current()
+            except Exception:
+                self._best_effort_transition(effect_id, revision, record, PendingEffectState.STALE)
+                raise
+            record = replace(record, effect_scope=settlement.scope,
+                             policy_derived_grant_id=settlement.grant_id)
+            return self._transition(effect_id, revision, record, PendingEffectState.CLAIMED)
         try:
             self._approvals.assert_interactive_approval_grant(
                 _grant_attestation(
@@ -646,6 +718,7 @@ class PendingEffectController:
         effect_id: str,
         broker: RequestBroker,
         *,
+        policy_inheritance: Any | None = None,
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         dispatch_grace_seconds: float | None = None,
@@ -711,7 +784,7 @@ class PendingEffectController:
                             return
                     if execution_guard is not None:
                         execution_guard()
-                    claimed = self.claim(effect_id)
+                    claimed = self.claim(effect_id, policy_inheritance=policy_inheritance, execution_guard=execution_guard)
                     claimed_by_worker = True
                     latest[:] = [claimed]
                     revision, record = self._load(effect_id)
@@ -770,9 +843,16 @@ class PendingEffectController:
                         if self._presentation_owner_scope is not None
                         else nullcontext()
                     )
+                    selected_execution_guard = execution_guard
+                    if record.authorization_kind == "native_selected_policy_exact_v1":
+                        def policy_execution_guard() -> None:
+                            if execution_guard is not None:
+                                execution_guard()
+                            self._assert_policy(record)
+                        selected_execution_guard = policy_execution_guard
                     guard_kwargs: _PreparedExecutionGuardKwargs = {}
-                    if execution_guard is not None:
-                        guard_kwargs["execution_guard"] = execution_guard
+                    if selected_execution_guard is not None:
+                        guard_kwargs["execution_guard"] = selected_execution_guard
                     with owner_scope:
                         outcome = broker.invoke_prepared(
                             record.prepared,
@@ -785,7 +865,7 @@ class PendingEffectController:
                             pending_effect_link=link,
                             **guard_kwargs,
                         )
-                except Exception:
+                except Exception as execution_error:
                     settled = (
                         self._settle_dispatch_failure(effect_id)
                         if claimed_by_worker
@@ -800,7 +880,11 @@ class PendingEffectController:
                             latest[:] = [self.status(effect_id)]
                         except PendingEffectError:
                             pass
-                    failure.append(PendingEffectError("pending effect is unavailable"))
+                    # Retain the private exception chain without exposing its text.
+                    # A native-authenticated review denial may be wrapped by Broker.
+                    unavailable = PendingEffectError("pending effect is unavailable")
+                    unavailable.__cause__ = execution_error
+                    failure.append(unavailable)
                     return
                 if not isinstance(outcome, Mapping):
                     settled = self._settle_dispatch_failure(effect_id)
@@ -832,6 +916,36 @@ class PendingEffectController:
                         pass
             finally:
                 done.set()
+
+        if policy_inheritance is not None:
+            # The native-selected policy settles against this authenticated
+            # coordinator invocation. Keep its parent lease alive until the
+            # exact effect finishes; never hand authority to a detached worker
+            # after the coordinator returns. Broker's absolute effect deadline
+            # and repeated owner/cancellation guards bound the operation.
+            execute()
+            if failure:
+                from tobkiri_host.policy_review_errors import (
+                    AuthenticatedPolicyReviewDenied,
+                )
+                cause: BaseException | None = failure[0]
+                seen: set[int] = set()
+                for _ in range(8):
+                    if cause is None or id(cause) in seen:
+                        break
+                    seen.add(id(cause))
+                    if isinstance(cause, AuthenticatedPolicyReviewDenied):
+                        raise PendingEffectError(
+                            "pending effect is unavailable"
+                        ) from cause
+                    cause = cause.__cause__
+                    if cause is None:
+                        break
+            if latest:
+                return latest[0]
+            if failure:
+                raise PendingEffectError("pending effect is unavailable") from failure[0]
+            raise PendingEffectError("pending effect is unavailable")
 
         worker = threading.Thread(
             target=execute,
@@ -944,6 +1058,12 @@ class PendingEffectController:
     ) -> PendingEffectStatus:
         """Resolve the crash window between durable snapshot and approval open."""
 
+        if record.authorization_kind == "native_selected_policy_exact_v1":
+            try:
+                self._assert_policy(record)
+            except Exception:
+                return self._transition(effect_id, revision, record, PendingEffectState.STALE)
+            return self._transition(effect_id, revision, record, PendingEffectState.APPROVED)
         try:
             approval = self._approvals.interactive_approval_status(
                 record.approval_request_id
@@ -1016,7 +1136,12 @@ class PendingEffectController:
     ) -> PendingEffectStatus:
         """CAS one valid lifecycle step and return only its redacted projection."""
 
-        if not _permits_transition(record.state, state):
+        policy_admission = (
+            record.authorization_kind == "native_selected_policy_exact_v1"
+            and record.state is PendingEffectState.PREPARED
+            and state is PendingEffectState.APPROVED
+        )
+        if not policy_admission and not _permits_transition(record.state, state):
             raise PendingEffectError("pending effect is unavailable")
         updated = record.with_state(
             state,

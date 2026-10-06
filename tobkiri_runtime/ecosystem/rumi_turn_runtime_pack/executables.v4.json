@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:9267feddbd51341c26fa6947d6f1de68a8069e2d545356264df4ee1a845f203d",
+  "catalog_digest": "sha256:b796cf2eecd6d854304c0d2d3c3a206a241fae822428b0914e14bb99b2f145f9",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:70ea3d5203ac4ba9c54ead199227889919aa94bfd0e29df14b07dc7f137fdaca",
+  "source_identity": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
   "variants": [
     {
       "architecture": "any",
@@ -1033,6 +1033,15 @@
               "request": {
                 "additionalProperties": false,
                 "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -1310,7 +1319,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:d1c5f9d966d2b0da8afd3db7cbccdb54f4ec37298cf9787576d49f1bf1a06d06",
+          "revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

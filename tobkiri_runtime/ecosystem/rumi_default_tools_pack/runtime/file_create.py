@@ -231,7 +231,11 @@ def _bind_tool(context: Any) -> HostFunction:
             consumer_pack_id=PACK,
             include_credentials=False,
         )
-        request = register_file_tool_request(request, invocation)
+        policy_capture = getattr(context, "selected_tool_policy_port", None)
+        inheritance = policy_capture(invocation) if policy_capture is not None else None
+        request = register_file_tool_request(
+            request, invocation, policy_inheritance=inheritance,
+        )
         try:
             effect = client.invoke(
                 EFFECT,
@@ -247,12 +251,17 @@ def _bind_tool(context: Any) -> HostFunction:
             if not isinstance(effect_id, str):
                 raise PermissionError("file tool approval is unavailable")
             try:
-                open_file_tool_approval(
-                    invocation,
-                    effect_status=effect,
-                    approval_port=context.interactive_approval_port,
-                    window_port=context.authority_approval_window_port,
-                )
+                if inheritance is None:
+                    open_file_tool_approval(
+                        invocation,
+                        effect_status=effect,
+                        approval_port=context.interactive_approval_port,
+                        window_port=context.authority_approval_window_port,
+                    )
+                else:
+                    # The exact inner write uses the controller's typed policy
+                    # authorization; no future native approval is fabricated.
+                    inheritance.assert_current()
                 end = time.monotonic() + 90
                 resumed = False
                 while time.monotonic() < end:

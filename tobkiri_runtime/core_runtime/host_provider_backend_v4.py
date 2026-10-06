@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tobkiri_host.native_policy_ports import NativePolicySelectionPort
+
 from core_runtime.project_directory_port import ProjectDirectoryPort
 from core_runtime.workspace_mount_effect import ProjectMountPersistenceUncertain
 
@@ -136,10 +138,19 @@ class HostProviderCaptureContextV4:
     workspace_mutation_port: WorkspaceMutationPort | None = None
     # Activation-owned native selections, supplied only to exact verified hooks.
     directory_selection_port: ProjectDirectoryPort | None = None
+    # Supplied only to the exact signed native policy-selection Function.
+    action_approval_policy_port: NativePolicySelectionPort | None = None
     declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
     # Supplied only to a verified factory declaring one fixed wake target.
     # It cannot reuse an invocation, choose a caller/target or mint a Grant.
     wake_port: CapturedWakePortV4 | None = None
+    # Only the exact verified local executor receives this Host-private callable.
+    saved_tool_consent_port: Callable[..., Mapping[str, Any]] | None = None
+    saved_tool_mode_admission: Callable[[Any], str] | None = None
+    # Presentation only, supplied to the verified capabilities resource.
+    action_approval_policy_capabilities_port: Callable[..., Mapping[str, Any]] | None = None
+    # Host-private inheritance; no selected mode or authority is parsed from Pack payloads.
+    selected_tool_policy_port: Callable[[Any], Any] | None = None
 
 
 @dataclass(frozen=True)

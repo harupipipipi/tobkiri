@@ -5051,3 +5051,37 @@ test("saved turn transports only lean bounded history references", async (contex
   await assert.rejects(api.startSavedTurn({ ...input, chat_references: [valid], approved: true } as never), /invalid|unsupported/);
   assert.equal(calls, 3);
 });
+
+test("saved turn binds exact approval preference and nested request before caller mutation", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input: SavedTurnRequest = {
+    turn_id: "turn-capture-mode", conversation_id: "conversation-1", conversation_revision: 1,
+    content: [{ type: "text", text: "original" }], action_approval_mode: "agent",
+    tool_selection: { mode: "manual", include: ["tool:one"], exclude: [], scope: "turn", must_use: false },
+  };
+  let captured: unknown;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  globalThis.fetch = async (_url, init) => {
+    captured = JSON.parse(String(init?.body));
+    await pending;
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "reconciliation_required", turn: { id: "turn-capture-mode", conversation_id: "conversation-1" },
+    } }));
+  };
+  const started = api.startSavedTurn(input);
+  input.turn_id = "mutated-turn";
+  input.action_approval_mode = "full";
+  (input.content as { type: "text"; text: string }[])[0].text = "changed";
+  input.tool_selection!.include![0] = "tool:changed";
+  release();
+  await started;
+  const request = (captured as { request: SavedTurnRequest }).request;
+  assert.equal(request.turn_id, "turn-capture-mode");
+  assert.equal(request.action_approval_mode, "agent");
+  assert.deepEqual(request.content, [{ type: "text", text: "original" }]);
+  assert.deepEqual(request.tool_selection?.include, ["tool:one"]);
+  await assert.rejects(api.startSavedTurn({ ...input, action_approval_mode: "side_model" } as never), /invalid/);
+  await assert.rejects(api.startSavedTurn({ ...input, approved: true } as never), /invalid/);
+});

@@ -883,6 +883,7 @@ class InteractiveEffectCoordinatorBridgeV4:
         self._activation_digest = canonical_digest(dict(capture.activation))
         self._binding = binding
         self._effect_port = effect_port
+        self._selected_policy_port = getattr(capture, "selected_tool_policy_port", None)
         self._closed = False
         self._lock = threading.RLock()
         # One coordinator call can synchronously enter the existing Broker for
@@ -965,6 +966,8 @@ class InteractiveEffectCoordinatorBridgeV4:
                     InteractiveEffectPrepareCommand(
                         context=envelope.context,
                         coordinator_principal=envelope.target_principal,
+                        policy_inheritance=(self._selected_policy_port(invocation)
+                            if self._selected_policy_port is not None else None),
                         presentation_owner_principal_id=(
                             invocation.presentation_owner_principal_id
                         ),
@@ -999,6 +1002,8 @@ class InteractiveEffectCoordinatorBridgeV4:
             ),
             presentation_owner_session_id=invocation.presentation_owner_session_id,
             effect_id=_payload_id(payload, "effect_id"),
+            policy_inheritance=(self._selected_policy_port(invocation)
+                if phase == "resume" and self._selected_policy_port is not None else None),
         )
         if phase == "status":
             return _redacted_effect_status(

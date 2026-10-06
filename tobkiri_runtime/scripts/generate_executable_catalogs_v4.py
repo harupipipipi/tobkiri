@@ -36,6 +36,14 @@ _HARD_TIMEOUT_MAX_MS = 300_000
 # identity-specific; unrelated direct gateway operations retain their 120-second
 # default.
 _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
+    # Selected-policy resume synchronously retains the actual management parent
+    # through review, exact settlement and commit. Native ask still returns after
+    # its existing five-second wait. The enclosing tool/saved deadlines apply.
+    (
+        "rumi_host_authority_bridge_pack",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "interactive_effect.manage",
+    ): 300_000,
     (
         "rumi_workspace_mount_pack",
         "rumi_workspace_mount_pack.project-directory.service",

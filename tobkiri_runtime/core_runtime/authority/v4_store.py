@@ -8,7 +8,6 @@ contain only opaque IDs and exact principal/domain digests needed for revocation
 from __future__ import annotations
 
 import base64
-import functools
 import hashlib
 import hmac
 import json
@@ -25,7 +24,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Concatenate, Iterator, ParamSpec, TypeAlias, TypeVar
+from typing import Any, Iterator, TypeAlias
 
 from cryptography.fernet import Fernet, InvalidToken
 from tobkiri_protocol.platform_paths import canonical_platform_path
@@ -38,6 +37,13 @@ from ..secure_sqlite_path import (
     secure_parent as open_secure_parent,
 )
 
+from .policy_derived_store import PolicyDerivedStoreMixin
+from .store_contracts import (
+    AuthorityStoreError as AuthorityStoreError,
+    AuditUnavailable as AuditUnavailable,
+    PendingEffectUpdate as PendingEffectUpdate,
+    _process_owned as _process_owned,
+)
 from .v4_models import (
     ApprovalRecord,
     AuthorityDenied,
@@ -58,30 +64,6 @@ from .v4_models import (
 from .pack_approval_binding import pack_approval_snapshot_digest
 
 
-class AuthorityStoreError(RuntimeError):
-    """Raised when durable authority state cannot be read or committed."""
-
-
-class AuditUnavailable(AuthorityStoreError):
-    """Raised when an authoritative audit reservation cannot be committed."""
-
-
-@dataclass(frozen=True)
-class PendingEffectUpdate:
-    """One Host pending-effect CAS fused into a lease lifecycle transaction.
-
-    The update carries the same contract as
-    ``compare_and_swap_host_pending_effect``: the row is rewritten only when
-    its stored revision still equals ``expected_revision`` and the outcome is
-    audited — but inside the enclosing lease transaction so a crash can never
-    split the lease's terminal marker from the pending-effect state.
-    """
-
-    effect_id: str
-    expected_revision: int
-    payload: Mapping[str, Any]
-
-
 Record: TypeAlias = (
     ProviderAuthorityRecord
     | ApprovalRecord
@@ -92,8 +74,6 @@ Record: TypeAlias = (
     | InteractiveApprovalDecision
 )
 
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
 _DATABASE_THREAD_LOCKS: dict[FileIdentity, threading.RLock] = {}
 _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
 _ACTIVE_DATABASE_GUARDS: set[int] = set()
@@ -278,20 +258,7 @@ class _IdentityBoundConnection:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
-def _process_owned(
-    method: Callable[Concatenate[Any, _P], _R],
-) -> Callable[Concatenate[Any, _P], _R]:
-    """Fence every public store entry before validation or state access."""
-
-    @functools.wraps(method)
-    def guarded(store: Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
-        store._assert_current_process()
-        return method(store, *args, **kwargs)
-
-    return guarded
-
-
-class AuthorityStore:
+class AuthorityStore(PolicyDerivedStoreMixin):
     """Host-owned authority database for ADR-014/015 state.
 
     Args:
@@ -3253,6 +3220,11 @@ class AuthorityStore:
         try:
             with self._lock, self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
+                policy_provenance = self._check_policy_derived_guard(connection, grant.grant_id)
+                if policy_provenance:
+                    audit_payload = {**audit_payload,
+                        "authorization_kind": policy_provenance["authorization_kind"],
+                        "root_native_request": policy_provenance["root_native_request"]}
                 epoch_row = connection.execute(
                     "SELECT value FROM authority_meta WHERE key='security_epoch'"
                 ).fetchone()
@@ -3491,6 +3463,7 @@ class AuthorityStore:
                 lease = InvocationLease.from_dict(
                     self._decrypt(row["encrypted_payload"])
                 )
+                self._check_policy_derived_guard(connection, lease.grant_id)
                 if not hmac.compare_digest(lease.digest, str(row["lease_digest"])):
                     raise AuthorityStoreError("InvocationLease digest mismatch")
                 if not hmac.compare_digest(lease.digest, expected_digest):
@@ -3598,6 +3571,7 @@ class AuthorityStore:
                     raise AuthorityDenied("InvocationLease was already used or revoked")
                 value = self._decrypt(row["encrypted_payload"])
                 lease = InvocationLease.from_dict(value)
+                self._check_policy_derived_guard(connection, lease.grant_id)
                 if not hmac.compare_digest(expected_digest, str(row["lease_digest"])):
                     raise AuthorityDenied("InvocationLease digest does not match")
                 if lease.digest != expected_digest:

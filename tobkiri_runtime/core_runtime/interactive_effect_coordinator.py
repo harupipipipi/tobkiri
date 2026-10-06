@@ -187,6 +187,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
     def __init__(
         self,
         *,
+        policy_effect_authorization_port: Any | None = None,
         broker: RequestBroker,
         controller: PendingEffectController,
         routes: tuple[CapturedInteractiveEffectRoute, ...],
@@ -210,6 +211,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
             expected = INTERACTIVE_EFFECT_SPECS.get(route.spec.kind)
             if expected != route.spec:
                 raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        self._policy_effect_authorization_port = policy_effect_authorization_port
         self._broker = broker
         self._controller = controller
         self._routes = route_map
@@ -298,6 +300,18 @@ class HostInteractiveEffectService(InteractiveEffectPort):
             if route.spec.kind == "file_create":
                 from core_runtime.owned_file_approval_v4 import assert_file_request_live
                 assert_file_request_live(request, command.context)
+            policy_plan = None
+            inheritance = getattr(command, "policy_inheritance", None)
+            if inheritance is not None and inheritance.policy.mode != "ask":
+                if route.spec.kind != "file_create" or self._policy_effect_authorization_port is None:
+                    raise InteractiveEffectUnavailable("policy effect route is unavailable")
+                policy_plan = self._policy_effect_authorization_port.capture_file_create_policy(
+                    command=command, prepared=prepared, execute_context=execute_context,
+                    effect_scope=effect_scope.to_dict(),
+                    owned_guard=lambda: assert_file_request_live(request, command.context),
+                )
+                if policy_plan is None:
+                    raise InteractiveEffectUnavailable("policy effect authorization unavailable")
             pending = self._controller.prepare(
                 prepared=prepared,
                 context=execute_context,
@@ -315,6 +329,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 expires_at=expires_at,
                 typed_confirmation_phrase="EXECUTE",
                 correlation_id=command.correlation_id,
+                policy_plan=policy_plan,
             )
             if route.spec.kind == "file_create":
                 from core_runtime.owned_file_approval_v4 import bind_file_effect
@@ -412,6 +427,8 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                     ),
                     presentation_owner_session_id=query.presentation_owner_session_id,
                     broker=self._broker,
+                    policy_inheritance=getattr(query, "policy_inheritance", None),
+                    wall_clock=self._clock,
                     execution_guard=execution_guard,
                 )
             )

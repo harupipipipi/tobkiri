@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:9ec44d73361435f4d183ac575c5f3b6e4355b08cf8254858b9ba3f46afe9a86f",
+      "digest": "sha256:8786ab09ca05b99a27b4422017e753a55ae86e381c52978852da7d0068d404c7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -26,7 +26,7 @@
       "path": "runtime/progress_host.py"
     },
     {
-      "digest": "sha256:35551f0e0c0afe3c665609e03bf80c03b5ac5ac6ee48dcf8103017761aaeffcb",
+      "digest": "sha256:466bae491319b0b5b075ffb80a2b8bf8bc21541bf50a9cda78693a42e766fe8a",
       "kind": "executable",
       "path": "runtime/saved.py"
     },
@@ -84,7 +84,7 @@
       "operations": [
         "rumi_turn_runtime_pack.turn-saved"
       ],
-      "revision_digest": "sha256:d1c5f9d966d2b0da8afd3db7cbccdb54f4ec37298cf9787576d49f1bf1a06d06"
+      "revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7"
     },
     {
       "contract_id": "tobkiri.action.turn.progress.v1",
@@ -173,7 +173,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:d1c5f9d966d2b0da8afd3db7cbccdb54f4ec37298cf9787576d49f1bf1a06d06",
+      "contract_revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7",
       "id": "rumi_turn_runtime_pack.turn-runtime.saved",
       "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
       "isolation": "dedicated_process",
@@ -194,9 +194,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:a825ffa78733db5d311775f45b14d34986ad3ae527fbf27f57cd51048c83f732",
-    "artifact_set_digest": "sha256:9d43a5a5eb911ad216d92abf81bf8e99299954837acd1a0e7dd897e7f742a04a",
-    "contract_catalog_digest": "sha256:b151e105c2653c47e70466c2cdfc1f904145226a5ec4f79a0ab99db957c8fcff"
+    "source_identity": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874",
+    "artifact_set_digest": "sha256:f29f9b9d048b25213a15a12c25688f431e647129903e6e2c04b1cbef56950c22",
+    "contract_catalog_digest": "sha256:84ae9597f188168aa17ef53ff1163afe9640b944c0fa752ff0fee5b5433d8a8a"
   },
   "migration": {
     "compatibility": "read_only",
@@ -285,7 +285,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:9bdfbcf8740340af73650819f03aaa57d716863c042aa0c5b316a38dc09a0eb8",
+    "artifact_digest": "sha256:351d8e47f4b5b3c740236561b00c390940992b87f21fb364d524481dd04e9e43",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -296,15 +296,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
-    "source_digest": "sha256:a825ffa78733db5d311775f45b14d34986ad3ae527fbf27f57cd51048c83f732",
+    "source_digest": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:ac853e163c219f4416b1b21cec59d278f7e61d3c8d90fedb2be457de1809bef0",
+    "content_root_digest": "sha256:5db618c2efa5f7fd86f5d87755a13940211fbfc3eea3859cdf4effa685ea68c9",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:957c53d063d8c485867acd98c8eefb8cdc49ca5f274913b17495234b6c4adabd",
+    "input_inventory_digest": "sha256:b03b5e7fcc4c6a2586eb65a66ff6ec348af7c6538fa7febaf7c9e392267d8c7e",
     "normative": true,
     "evidence": [
       {
@@ -315,7 +315,7 @@
       {
         "path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:a825ffa78733db5d311775f45b14d34986ad3ae527fbf27f57cd51048c83f732"
+        "digest": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874"
       }
     ]
   },

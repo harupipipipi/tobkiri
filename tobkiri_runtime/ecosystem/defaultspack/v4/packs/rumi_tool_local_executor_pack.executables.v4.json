@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_local_executor_pack",
-  "source_identity": "sha256:4ce83d8810949a7875571b729c0b635d238e56adbba823c2c2404a223225cfab",
+  "source_identity": "sha256:02d7988725c16f242ecc03662feb93924dcd3630d37d04966f19697d93a2ff72",
   "variants": [
     {
       "variant_id": "rumi_tool_local_executor_pack.tool-executor.local.python",
       "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
       "implementation_path": "runtime/executor.py",
-      "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+      "implementation_digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:f4b589c82575f7b40dfeb086442426737b24720dbc8d43812107e08947418e3b",
-  "catalog_digest": "sha256:8f1b4a513e99b717a460ddc4098ad0c099cdf7eddc70e5cfbb88d401c36c910c"
+  "materialization_catalog_digest": "sha256:be1b6d44e4b2e678d418343d7950cbc3ec906b6c0190093271df62487b716fbd",
+  "catalog_digest": "sha256:56f2f458fcd4105417d7326c856ab53f0e45b6a5abef9a555d4bd1b520c18ff8"
 }

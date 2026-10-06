@@ -217,6 +217,7 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         "strategy_reference",
         "strategy_maximum_cost_microusd",
         "thinking_level",
+        "action_approval_mode",
         "task_context",
         "context_binding",
     } != {
@@ -248,6 +249,12 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         or not 1 <= strategy_cost <= 1_000_000
     ):
         raise ValueError("saved turn strategy maximum cost is invalid")
+    # Preference data only: native Host policy must independently authorize it.
+    if "action_approval_mode" in request and (
+        type(request["action_approval_mode"]) is not str
+        or request["action_approval_mode"] not in {"ask", "agent", "full"}
+    ):
+        raise ValueError("saved turn action approval mode is invalid")
     if "thinking_level" in request and (
         not isinstance(request["thinking_level"], str)
         or request["thinking_level"] not in {

@@ -743,6 +743,8 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         raise ValueError("saved acknowledgement metadata is invalid")
     trace = saved_tool_messages(metadata.get("saved_tool_messages", []))
     expected_metadata = {"turn_id": request["turn_id"]}
+    if "action_approval_mode" in request:
+        expected_metadata["action_approval_mode"] = request["action_approval_mode"]
     selection = request.get("tool_selection", {})
     if trace:
         if selection.get("mode", "none") == "none":

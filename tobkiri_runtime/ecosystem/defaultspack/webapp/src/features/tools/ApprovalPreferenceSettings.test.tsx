@@ -33,3 +33,38 @@ test("unsupported visible selection offers explicit recovery without overwriting
   }));
   assert.doesNotMatch(hidden, /入力欄のモードを「人が承認」に戻す/);
 });
+
+const reviewerModels = [{ profile_id: "registered-reviewer", display_name: "Review AI", model_id: "raw-model-id", qualified_model_id: "provider/raw-model-id" }];
+
+test("reviewer selection saves registered profile IDs, preserves empty and stale preferences", () => {
+  const saved = renderToStaticMarkup(createElement(ApprovalPreferenceSettings, { tools: { approval_reviewer_model: "registered-reviewer" }, reviewerModels, onSettingChange: () => assert.fail("render must not save") }));
+  assert.match(saved, /value="registered-reviewer" selected=""/);
+  assert.doesNotMatch(saved, /value="raw-model-id"|value="provider\/raw-model-id"|type="text"/);
+  assert.match(saved, /この設定だけでは代理承認は有効になりません/);
+  const empty = renderToStaticMarkup(createElement(ApprovalPreferenceSettings, { tools: {}, reviewerModels, onSettingChange: () => assert.fail("must not choose fallback") }));
+  assert.match(empty, /value="" selected=""/);
+  assert.match(empty, /未選択（代理承認は利用できません）/);
+  const stale = renderToStaticMarkup(createElement(ApprovalPreferenceSettings, { tools: { approval_reviewer_model: "removed-profile" }, reviewerModels, onSettingChange: () => assert.fail("must not replace stale reference") }));
+  assert.match(stale, /value="removed-profile" disabled="" selected=""/);
+});
+
+test("reviewer change handlers reject arbitrary model values and save only admitted identity", () => {
+  const changes: unknown[][] = [];
+  const tree = ApprovalPreferenceSettings({ tools: {}, reviewerModels, onSettingChange: (...args) => changes.push(args) });
+  type Element = { type?: unknown; props?: { children?: unknown; onChange?: (event: { target: { value: string } }) => void } };
+  const elements: Element[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object") {
+      const element = value as Element;
+      elements.push(element);
+      visit(element.props?.children);
+    }
+  };
+  visit(tree);
+  const selects = elements.filter((element) => element.type === "select");
+  const reviewer = selects[selects.length - 1];
+  assert.ok(reviewer?.props?.onChange);
+  for (const value of ["raw-model-id", "provider/raw-model-id", "removed-profile", "registered-reviewer", ""]) reviewer.props.onChange({ target: { value } });
+  assert.deepEqual(changes, [["tools", "approval_reviewer_model", "registered-reviewer"], ["tools", "approval_reviewer_model", ""]]);
+});

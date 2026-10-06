@@ -1,5 +1,5 @@
 {
-  "artifact_set_digest": "sha256:2a840bd4ba72dbd4b94d73eed3a975defff8f4bc8f6d021b2f5cd73c9fbdea44",
+  "artifact_set_digest": "sha256:899cfe8d56c94c9ea31f75f4080c7c08e4af908fb391fa22bb9c973278f674de",
   "artifacts": [
     {
       "digest": "sha256:dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a",
@@ -197,17 +197,17 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:373e251a36d8e8bb1a82fea094575d2e11553abd2ddd0b21267dff6795857170",
+      "digest": "sha256:de8f8a632457080fd8c0c27b3c2a2029c981a534a28acaf6cf8f7eb6bc75fd7e",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:bfa728be5e61dd9dc01ec283cd5c052bec405902d2f6a8b1033c2f9f4e72885f",
+      "digest": "sha256:89e3cc33fcd665fba8067e7fb2a8272a9783a5b60368f79152c699e3945d25c3",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:72bea31a0cdaa86d7158ef013045dc256bdfbc5dc0a14a6ac35e8385eb9e900d",
+      "digest": "sha256:1dd75a61ac98496cf1d12f83b23383d3454e26ea28db0d21040b2a36ae208174",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -217,7 +217,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:774a36a2ba1e675c9a02aef40ade693013958a3ec2a2b5b9e19dbbce2cd6630a",
+      "digest": "sha256:5d8b4d8385883babfff5d30ba99074ab152e756246a9fd90a63180a9a638764b",
       "path": "runtime/catalog.py",
       "role": "runtime"
     }
@@ -225,8 +225,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:3a0894e5eac778e5d9d31d6aeae6ab04ff8be7ae6f1eff67849fa0b32c9facc5"
+    "signed_digest": "sha256:12413c28f88b8a09a32b19846a5036c85def1bf61b779cb06a673d18fb6f967f"
   },
   "pack_id": "rumi_model_catalog_pack",
-  "source_identity": "sha256:8877d81d84b7c73119e724eda8bdbeb7461ebb404aa64a58217c9f1f2c7c3c1e"
+  "source_identity": "sha256:d3f4ac44cca978fca300ac1d218270e63114884e05efb59f764ef6b51a83a4aa"
 }

@@ -178,8 +178,9 @@ def _load_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         model_path = manifest_path.parent / "models.json"
         if not model_path.is_file():
             continue
-        raw_models = _read_json(model_path)
-        raw_models = raw_models.get("models") if isinstance(raw_models, Mapping) else None
+        model_document = _read_json(model_path)
+        raw_models = (model_document.get("models")
+                      if isinstance(model_document, Mapping) else None)
         if not isinstance(raw_models, list):
             raise ValueError("model catalog models payload is invalid")
         for raw in raw_models:

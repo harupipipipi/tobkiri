@@ -1,32 +1,47 @@
 {
-  "artifact_set_digest": "sha256:c3c206a10d7151e0b54a5d2881c7d2beb00e5a2f6b7d4e20860c246d797bf4ff",
+  "artifact_set_digest": "sha256:7f8e2842063ddcdc9a2ffd538ac85163e259094cdea85e3e9f0ccb2839948aac",
   "artifacts": [
     {
-      "digest": "sha256:4ee8a29d6f936a76914cdf886346ff0c9490e6b571885c4f9bd917cfe5b8e970",
+      "digest": "sha256:a6c31e1e812264cf7bd60617cc36f6c7838ea786bc1588876c69bba7d4cfeef6",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:d83a917d8b065f525a4b76f3bbf880ba9667f2e6504c22c8d4f74870389e10ee",
+      "digest": "sha256:b06b256cfc9138e7ef274b893d394ec78f6c0a7c857f54a63b1672df24659748",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:e7085fa3536ff6fd8e87bda4f0815c66ae400515cd57f15be4927a5673feeb98",
+      "digest": "sha256:5e8be75b9bd11a8cd96dae50e7b4232d3dfb6d017005a36e497f7a9651914d09",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "digest": "sha256:5734d955d52d8a99d80c4e60781140a0a80114059f1573b29475fad1bf83453b",
+      "path": "runtime/approval_policy_capabilities.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
       "path": "runtime/bridge.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:57efeb953675cfce8a66a2e6ace4b5c340e8716d77bbcd83572525e4c9137a20",
+      "path": "runtime/consent.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1c093740c0d48b0b4c4f40c38d420f9a9999ef2d6e1009c7607180e03b04a203",
+      "path": "runtime/native_policy_bridge.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:8ea4d4f7f8e8749b3d35f829dc9548120f48f08930e38780afcadee5370dec72"
+    "signed_digest": "sha256:4d6a03c4745c1a57ed6622fe4bcf84eece98c69aad64266543f720a7e9528788"
   },
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:d806cee26b4456448c99173d878fb6fa76abbf94f12cdb3de6b47d2e3ee36f4e"
+  "source_identity": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522"
 }

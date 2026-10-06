@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "848d6a16ddaaaa274cd68e47bbe8de6968b978e18c1bb3c70d2f14524febcc4f",
+    "digest": "426599dc01dceb374ef29a446f9189a7ca502c8d2f8038ecf1a3a850d0b6a035",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9231,
-        "sha256": "2bf8e23e2e3ece3886726b3899e0505439ab7190fe2c6f7211c7ac3d6127dfc2"
+        "size": 9383,
+        "sha256": "88bfc7e2d118c0fa81fcec31c7ae41ec3942edb38b7ad499ef0c2a1ea9fc7be8"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 439609,
-        "sha256": "7eb6aa80a3052b23c52e65db0f3b99f82ee2a589b3f1d41f8128b7844c7ed4a7"
+        "size": 444292,
+        "sha256": "97a1111c95f9043884a7c58a2871e528a91fed48e8065310a8457cdcf55c4e4f"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -555,8 +555,8 @@
       },
       {
         "path": "src/components/ToolExperienceSettingsPanel.tsx",
-        "size": 39927,
-        "sha256": "ee2076f4c1e9cf754f57ed6ac61f9d585a801ef471db3ca2d3c9968401faf45d"
+        "size": 40257,
+        "sha256": "084ef528f877d79e3e2a8d6cfeb8bc3fd8f61ade71403e2b302a6ccfff6321b1"
       },
       {
         "path": "src/components/ToolPreview.test.ts",
@@ -955,8 +955,18 @@
       },
       {
         "path": "src/features/composer/CalendarAgentPromptEditor.tsx",
-        "size": 3512,
-        "sha256": "077bafe823820ae2c6facef800756bf0897bd346d6b6e0059649c795767bb800"
+        "size": 3978,
+        "sha256": "36231ef1ab44cabf1f14227ce017598259a63f6b7dad033ba7d0f6a774606a03"
+      },
+      {
+        "path": "src/features/composer/calendarApprovalTaskContext.test.ts",
+        "size": 3000,
+        "sha256": "27095a243dd31f64b2687f575f9a77cb7623f4dda5e596d4c78ad589567076df"
+      },
+      {
+        "path": "src/features/composer/calendarApprovalTaskContext.ts",
+        "size": 1946,
+        "sha256": "5accb1ab3e79140c524387a9b14c74ba9d94a5c0f966e427a99e482e69c7463c"
       },
       {
         "path": "src/features/composer/useComposerEntityCatalog.ts",
@@ -1360,13 +1370,13 @@
       },
       {
         "path": "src/features/tools/ApprovalPreferenceSettings.test.tsx",
-        "size": 2082,
-        "sha256": "127030da171e893afc373fd041d6cc3d0b46b3731e40bb460122dc06e2a7c841"
+        "size": 4595,
+        "sha256": "b3dee55da1ca20ebd2bee4b501be848a48d01d608580bb5265358cf5be8a0676"
       },
       {
         "path": "src/features/tools/ApprovalPreferenceSettings.tsx",
-        "size": 3266,
-        "sha256": "69b21825ff0a2bc28f4079dbf1b3579df592cba4a8809a12a58b420e7c3ffd34"
+        "size": 5715,
+        "sha256": "5f51365e9489e5d0167163412012ca13a793e364ea090400fed9540c554ef578"
       },
       {
         "path": "src/features/tools/ToolModeControl.tsx",
@@ -1377,6 +1387,16 @@
         "path": "src/features/tools/ToolSelectionReviewCard.tsx",
         "size": 4686,
         "sha256": "e068db8043724dbbc4d071301bc3c2940c669c85f718d020fe41343f2e891cdd"
+      },
+      {
+        "path": "src/features/tools/approvalPolicyCapabilities.test.ts",
+        "size": 3602,
+        "sha256": "567309903523dc6118aff79123e5795548ef684a08278252d13aca6afee5c9a1"
+      },
+      {
+        "path": "src/features/tools/approvalPolicyCapabilities.ts",
+        "size": 3986,
+        "sha256": "21210cd1f1246ba5039dbe5463c00375c0dd0787c83eed36cb261feada2b68de"
       },
       {
         "path": "src/features/tools/approvalPreferences.test.ts",
@@ -1397,6 +1417,11 @@
         "path": "src/features/tools/types.ts",
         "size": 1186,
         "sha256": "732717add8ed7cb67368fd84b38d3fb1a2b1eedeb43cf3166fa8cf67f85a01ff"
+      },
+      {
+        "path": "src/features/tools/useApprovalPolicyCapabilities.ts",
+        "size": 3084,
+        "sha256": "7caea208ac5c668ffe56b02e84143f76d580468ec9dcd16cea27d962bf22a571"
       },
       {
         "path": "src/features/tools/useToolSelectionController.ts",
@@ -1640,18 +1665,23 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 191930,
-        "sha256": "9e5a618e80b4d1fe46e5c78a2de09012c73f405f526c98b2a1fb3d1e2f03bf2e"
+        "size": 193715,
+        "sha256": "81920fb3efff0398bfd039033f4437f035426784db9d5fae6d2cd8e29fdc1dc5"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 237066,
-        "sha256": "83754b53c1e070aa678813003d303d96f45369014ee104b0f32e21b596cbda67"
+        "size": 238123,
+        "sha256": "9e2d1f5694d2642b2967f9f122aee3185e997f11e24c22280573fc9457127294"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
         "size": 5777,
         "sha256": "990de269bb9ca672767053be0aa14e082d21c2665f092f13f7b29526ee763388"
+      },
+      {
+        "path": "src/lib/approvalCapabilitiesApi.test.ts",
+        "size": 3064,
+        "sha256": "fcca90b25e6fc67bd1c25c2a2a69d61088e3cbc751884735ad90fbe91dd59bfd"
       },
       {
         "path": "src/lib/approvalPresentation.ts",
@@ -2665,8 +2695,8 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 108419,
-        "sha256": "69d68281bdf2fdf87ee0b3f1c7554c5f4d3e9c0576ea4bd106ef968518ba18b8"
+        "size": 109464,
+        "sha256": "003786ef534b189ab7192ea77d419066eaa5f63c7fbab4ed353322a5f517d090"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
@@ -2690,8 +2720,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-        "size": 274044,
-        "sha256": "d12008f485939c0db9c0d9cc9b323183c31d243fb778c7dbde71553045a62d30"
+        "size": 274225,
+        "sha256": "eefea1ee7ae72394a90e0820ca62978ae2bde55d082d9367ddb7894faeb69611"
       },
       {
         "path": "src/renderers/SpotlightShortcutRecorder.test.tsx",
@@ -2946,7 +2976,7 @@
     ]
   },
   "bundle": {
-    "digest": "b46c45f2a952cd6e9d03f1167a33b888f9b487a80b03fb1cfc9ff11fba9704c8",
+    "digest": "cd1ffefe887e6cf28cb913b264852217ec1cc6ab05ca01296579d96056bcf63d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2960,8 +2990,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2745270,
-        "sha256": "aac0c306b39cc018c409a00f3630a20de7cdb8b179b33f9291de1127011d21da"
+        "size": 2752963,
+        "sha256": "1ef616f9459e69f5c7de9a647dd7ca85f2684395440c6e2a8dd1978f342e8e80"
       },
       {
         "path": "shell-icons.js",

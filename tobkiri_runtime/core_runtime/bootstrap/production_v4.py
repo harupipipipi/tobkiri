@@ -929,7 +929,7 @@ def _commit_plan_authority(
     authority_mode: str = "profile_grant",
     pack_approval_revision: str | None = None,
     host_extension_binding: ResolvedOperationBinding | None = None,
-) -> None:
+) -> tuple[Any, Any | None]:
     if authority_mode not in _REQUESTED_EDGE_AUTHORITY_MODES:
         raise AuthorityDenied("Profile edge authority mode is invalid")
     activation = active.activation
@@ -1017,7 +1017,7 @@ def _commit_plan_authority(
             )
         elif interactive_existing != interactive_expected:
             raise AuthorityDenied("Pack catalog authority snapshot changed")
-        return
+        return provider, None
     # A Pack approval revision names the stable user decision, not one runtime
     # activation.  The immutable Authority snapshot below is activation-bound,
     # so every record in its bundle must use the activation generation as part
@@ -1099,6 +1099,8 @@ def _commit_plan_authority(
         )
     elif existing != expected:
         raise AuthorityDenied("Pack catalog authority snapshot changed")
+
+    return provider, grant
 
 
 def _packvm_approval_provenance(
@@ -1801,7 +1803,17 @@ def capture_production_dispatch(
                 # unavailable and receives no domain or Authority records.
                 pass
     target_backend_digests = dict(target_backend_digests or {})
-    authority_control = runtime.composition.authority_adapter(authority_store)
+    from core_runtime.authority.policy_exact_grant import PolicyExactGrantKernel
+    from tobkiri_host.policy_exact_authority_adapter import PolicyExactAuthorityV4Adapter
+
+    policy_kernel = PolicyExactGrantKernel(
+        authority_store, runtime.composition.resolver, lease_ttl_seconds=300
+    )
+    policy_kernel.policy_roots = {}
+    authority_control = PolicyExactAuthorityV4Adapter(
+        policy_kernel, runtime.composition.resolver,
+    )
+    profile_edge_authority_records: dict[Any, tuple[Any, Any | None]] = {}
 
     def unavailable_chat_continuation(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
         raise PermissionError("chat approval continuation is unavailable")
@@ -1933,7 +1945,7 @@ def capture_production_dispatch(
                 session_id=(f"session.provider.host-control.{target_suffix}.{activation_suffix}"),
                 principal=target,
             )
-            _commit_plan_authority(
+            profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
                 authority_store,
                 authority_control,
                 active=active,
@@ -2028,7 +2040,7 @@ def capture_production_dispatch(
                 ),
                 principal=target,
             )
-            _commit_plan_authority(
+            profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
                 authority_store,
                 authority_control,
                 active=active,
@@ -2121,7 +2133,7 @@ def capture_production_dispatch(
             ),
             principal=target,
         )
-        _commit_plan_authority(
+        profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
             authority_store,
             authority_control,
             active=active,
@@ -2640,12 +2652,23 @@ def capture_production_dispatch(
         finally:
             release_presentation_owner(context.caller_session_id)
 
+    from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
+
+    saved_tool_entry_guards = SavedToolEntryGuardRegistry()
+    from core_runtime.policy_invocation_v4 import PolicyInvocationRegistry
+    policy_invocation_registry = PolicyInvocationRegistry()
+    from core_runtime.saved_tool_policy_selection_v4 import RetainedSelectionDispatchV4
+    policy_selection_dispatch = RetainedSelectionDispatchV4()
+
     def capture_invocation_scope(envelope: Any) -> CapturedInvocationScopeV4:
         with caller_session_bindings_lock:
             parent = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
+        saved_tool_entry_guard = saved_tool_entry_guards.capture(envelope)
 
         def guard() -> None:
             assert_dispatched_invocation(envelope, authority_store)
+            if saved_tool_entry_guard is not None:
+                saved_tool_entry_guard()
             if parent is not None:
                 parent.assert_current()
             if not dispatch_holder:
@@ -2899,6 +2922,29 @@ def capture_production_dispatch(
     directory_selection_port = ProjectDirectoryPort(directory_picker, directory_selections)
     close_callbacks.append(directory_selection_port.close)
 
+    from core_runtime.saved_tool_capture_v4 import (
+        LOCAL_EXECUTOR_FUNCTION,
+        LateBoundSavedToolConsentPortV4,
+        optional_captured_consent_route,
+        assert_saved_tool_requested_mode,
+    )
+
+    saved_tool_consent_port = LateBoundSavedToolConsentPortV4()
+    saved_tool_mode_admission_holder: list[Callable[[Any], str]] = [
+        assert_saved_tool_requested_mode
+    ]
+
+    def saved_tool_mode_admission(invocation: Any) -> str:
+        return saved_tool_mode_admission_holder[0](invocation)
+    approval_policy_capabilities_holder: list[Any] = []
+
+    def project_approval_policy_capabilities(
+        invocation: Any, applicability: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        if len(approval_policy_capabilities_holder) != 1:
+            raise PermissionError("approval policy capabilities are not captured")
+        return approval_policy_capabilities_holder[0](invocation, applicability)
+
     def host_provider_capture_context(
         provider_bindings: tuple[ResolvedOperationBinding, ...],
         *,
@@ -2907,6 +2953,11 @@ def capture_production_dispatch(
         declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
         wake_port: LateBoundWakePortV4 | None = None,
         directory_port: ProjectDirectoryPort | None = None,
+        saved_tool_port: Callable[..., Mapping[str, Any]] | None = None,
+        saved_tool_mode_port: Callable[[Any], str] | None = None,
+        capabilities_port: Callable[..., Mapping[str, Any]] | None = None,
+        selected_tool_policy_port: Callable[[Any], Any] | None = None,
+        action_approval_policy_port: Any | None = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2929,6 +2980,11 @@ def capture_production_dispatch(
             directory_selection_port=directory_port,
             declared_pack_data=declared_pack_data,
             wake_port=wake_port,
+            saved_tool_consent_port=saved_tool_port,
+            saved_tool_mode_admission=saved_tool_mode_port,
+            action_approval_policy_capabilities_port=capabilities_port,
+            selected_tool_policy_port=selected_tool_policy_port,
+            action_approval_policy_port=action_approval_policy_port,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -3037,6 +3093,22 @@ def capture_production_dispatch(
                     else None
                 ),
                 wake_port=wake_port,
+                saved_tool_port=(saved_tool_consent_port if
+                    factory.function_id == LOCAL_EXECUTOR_FUNCTION else None),
+                saved_tool_mode_port=(saved_tool_mode_admission if
+                    factory.function_id == LOCAL_EXECUTOR_FUNCTION else None),
+                selected_tool_policy_port=(policy_invocation_registry.capture_current if
+                    factory.function_id in {
+                        "rumi_default_tools_pack.file-create-tool",
+                        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+                    } else None),
+                action_approval_policy_port=(policy_selection_dispatch if
+                    factory.function_id == ("rumi_host_authority_bridge_pack"
+                                            ".host-authority.approval-policy") else None),
+                capabilities_port=(project_approval_policy_capabilities if
+                    factory.function_id == ("rumi_host_authority_bridge_pack"
+                                            ".host-authority.approval-policy-capabilities")
+                    else None),
                 directory_port=(directory_selection_port if
                     factory.function_id in {
                         "rumi_workspace_mount_pack.project-directory.service",
@@ -3491,9 +3563,30 @@ def capture_production_dispatch(
                 raise AuthorityDenied("interactive effect context binding changed")
             return context
 
+        from tobkiri_host.typed_pending_effect_persistence import (
+            TypedPendingEffectPersistence,
+        )
+
+        from tobkiri_host.policy_effect_authorization import PolicyEffectAuthorizationAdapter
+        from core_runtime.owned_file_approval_v4 import assert_file_request_live
+
+        def authenticated_policy_root(selection_id: str) -> Any:
+            root = policy_kernel.policy_roots.get(selection_id)
+            if root is None:
+                raise AuthorityDenied("native selected policy root unavailable")
+            root.resolve_current()
+            return root
+
+        policy_effect_authorizations = PolicyEffectAuthorizationAdapter(
+            authority=authority_control, broker=broker,
+            root_for=authenticated_policy_root,
+            owned_file_guard=assert_file_request_live,
+        )
+
         interactive_effect_controller = PendingEffectController(
-            persistence=authority_control,
+            persistence=TypedPendingEffectPersistence(authority_control),
             approvals=authority_control,
+            policy_authorizations=policy_effect_authorizations,
             coordinator_principal=coordinator_principal,
             coordinator_publisher_lineage=coordinator_binding.artifact.publisher_lineage,
             presentation_owner_scope=pending_effect_owner_scope,
@@ -3503,6 +3596,7 @@ def capture_production_dispatch(
             HostInteractiveEffectService(
                 broker=broker,
                 controller=interactive_effect_controller,
+                policy_effect_authorization_port=policy_effect_authorizations,
                 routes=tuple(routes),
                 context_for_execute=context_for_interactive_effect,
                 assert_current_capture=assert_current_capture,
@@ -3528,6 +3622,174 @@ def capture_production_dispatch(
         if len(candidates) != 1:
             raise AuthorityDenied("operation effect edge is ambiguous or outside the Profile")
         return candidates[0].ceilings.caller_effect.to_dict()
+
+    executor_bindings = tuple(
+        binding
+        for function_id, bindings, _factory, _backend_id in loaded_host_factories
+        if function_id == LOCAL_EXECUTOR_FUNCTION
+        for binding in bindings
+    )
+    consent_route = (optional_captured_consent_route(captured_edges, executor_bindings)
+                     if executor_bindings else None)
+    ask_saved_tool_execution = None
+    if consent_route is not None:
+        from tobkiri_host.saved_tool_consent import SavedToolConsentExecution
+        from tobkiri_host.saved_tool_context import NestedToolBinding
+        from tobkiri_host.consumed_tool_consent import ConsumedConsentVerifier
+
+        def bind_saved_tool_nested(
+            invocation: Any, contract_id: str, operation_id: str,
+            payload: Mapping[str, Any],
+        ) -> NestedToolBinding:
+            """Retain the same production ancestry until prepared execution ends."""
+            scope = capture_invocation_scope(invocation.envelope)
+            scope.assert_current()
+            session_id = execution_session_id(invocation.envelope)
+            owner = (invocation.presentation_owner_principal_id,
+                     invocation.presentation_owner_session_id)
+            authority_session_id = bind_nested_session(
+                session_id, invocation.envelope.target_principal.value, owner,
+                parent_invocation=scope,
+            )
+            try:
+                context = context_for(contract_id, operation_id, session_id)
+                ceiling = effect_scope_for(contract_id, operation_id, payload, context)
+                if context.caller_principal != executor_bindings[0].principal_ref:
+                    raise AuthorityDenied("saved tool nested caller changed")
+                return NestedToolBinding(
+                    context=context, ceiling=ceiling,
+                    caller_publisher_lineage=executor_bindings[0].artifact.publisher_lineage,
+                    cancellation_proof=nested_cancellation_proof_for(
+                        invocation.envelope, owner[0], owner[1],
+                    ),
+                    release=lambda: release_nested_session(
+                        session_id, authority_session_id,
+                    ),
+                )
+            except BaseException:
+                release_nested_session(session_id, authority_session_id)
+                raise
+
+        ask_saved_tool_execution = SavedToolConsentExecution(
+            broker=broker, authority=authority_control,
+            window=authority_approval_window,
+            consent_proof=ConsumedConsentVerifier(authority_store),
+            entry_guard_registry=saved_tool_entry_guards,
+            route=consent_route,
+            bind_nested=bind_saved_tool_nested,
+        )
+
+    from core_runtime.approval_policy_capabilities_v4 import (
+        HostApprovalPolicyCapabilitiesV4,
+    )
+    def approval_policy_conversation_membership(
+        invocation: Any, conversation_id: str, workspace_id: str,
+    ) -> bool:
+        invocation.assert_current()
+        client = invocation.contract_client(
+            allowed_contract_ids=frozenset({"tobkiri.resource.conversation.v1"}),
+            consumer_pack_id="rumi_host_authority_bridge_pack",
+            include_credentials=False,
+        )
+        result = client.invoke(
+            "tobkiri.resource.conversation.v1",
+            "rumi_conversation_store_pack.conversation-resource",
+            {"profile_id": str(profile["profile_id"]), "operation": "get",
+             "conversation_id": conversation_id},
+        )
+        invocation.assert_current()
+        return (isinstance(result, Mapping)
+                and isinstance(result.get("conversation"), Mapping)
+                and result["conversation"].get("id") == conversation_id
+                and isinstance(result["conversation"].get("metadata"), Mapping)
+                and result["conversation"]["metadata"].get("workspace_id") == workspace_id)
+
+    policy_projection = None
+    if (ask_saved_tool_execution is not None
+            and workspace_binding_resolver is not None
+            and authority_approval_window_open is not None):
+        from core_runtime.bootstrap.saved_tool_policy_composition_v4 import compose_saved_tool_policy_v4
+        from ecosystem.rumi_workspace_mount_pack.runtime.mounts import capture_selected_workspace_binding
+
+        def current_selected_workspace() -> Mapping[str, Any]:
+            assert_current_capture()
+            return capture_selected_workspace_binding(
+                str(profile["profile_id"]), user_data_root=authority_user_data,
+            )
+
+        def policy_owner_context(function_id: str) -> HostProviderCaptureContextV4:
+            matches = tuple(item for item in loaded_host_factories if item[0] == function_id)
+            if len(matches) != 1:
+                raise AuthorityDenied("reviewer captured owner source unavailable")
+            _, bindings_for_owner, owner_factory, _ = matches[0]
+            return host_provider_capture_context(
+                bindings_for_owner, workspace_mutation_port=workspace_mutation_port,
+                declared_pack_data=host_provider_data.capture_for(owner_factory),
+            )
+
+        def read_policy_conversation(invocation: Any, conversation_id: str) -> Mapping[str, Any]:
+            invocation.assert_current()
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({"tobkiri.resource.conversation.v1"}),
+                consumer_pack_id="rumi_tool_local_executor_pack", include_credentials=False,
+            )
+            result = client.invoke("tobkiri.resource.conversation.v1",
+                "rumi_conversation_store_pack.conversation-resource",
+                {"profile_id": str(profile["profile_id"]), "operation": "get",
+                 "conversation_id": conversation_id})
+            invocation.assert_current()
+            conversation = result.get("conversation") if isinstance(result, Mapping) else None
+            if not isinstance(conversation, Mapping):
+                raise AuthorityDenied("policy conversation resource unavailable")
+            return conversation
+
+        try:
+            composed_policy = compose_saved_tool_policy_v4(
+                broker=broker, authority=authority_control, store=authority_store,
+                kernel=policy_kernel, catalog=runtime.composition.catalog,
+                profile_id=str(profile["profile_id"]), edges=tuple(captured_edges),
+                bindings=tuple(catalog_bindings), window=authority_approval_window,
+                ask=ask_saved_tool_execution, bind_nested=bind_saved_tool_nested,
+                entry_guards=saved_tool_entry_guards,
+                policy_invocations=policy_invocation_registry,
+                selection_dispatch=policy_selection_dispatch,
+                read_conversation=read_policy_conversation,
+                resolve_workspace=workspace_binding_resolver,
+                selected_workspace=current_selected_workspace,
+                host_context=policy_owner_context, invocation_context=invocation_context,
+                bind_nested_session=bind_nested_session,
+                release_nested_session=release_nested_session,
+                context_for=context_for, effect_scope_for=effect_scope_for,
+                capture_invocation_scope=capture_invocation_scope,
+                nested_cancellation_proof_for=nested_cancellation_proof_for,
+                assert_current_capture=assert_current_capture,
+                authority_records=profile_edge_authority_records,
+                dispatch_capture={"profile_revision": str(plan["profile_revision"]),
+                    "plan_digest": str(plan["plan_digest"]),
+                    "activation_id": str(active.activation["activation_id"]),
+                    "security_epoch": int(active.activation["security_epoch"])},
+            )
+        except (AuthorityDenied, PermissionError, KeyError, LookupError):
+            # Optional topology does not prevent local-first startup or native ask.
+            saved_tool_consent_port.bind(ask_saved_tool_execution)
+        else:
+            saved_tool_consent_port.bind(composed_policy.execute)
+            saved_tool_mode_admission_holder[0] = composed_policy.admit
+            policy_projection = composed_policy.project
+    elif ask_saved_tool_execution is not None:
+        saved_tool_consent_port.bind(ask_saved_tool_execution)
+
+    approval_policy_capabilities_holder.append(HostApprovalPolicyCapabilitiesV4(
+        profile_id=str(profile["profile_id"]),
+        activation_id=str(active.activation["activation_id"]),
+        capture={"plan_digest": str(plan["plan_digest"]),
+                 "activation_digest": activation_digest,
+                 "security_epoch": int(active.activation["security_epoch"])},
+        assert_current_capture=assert_current_capture,
+        workspace_binding=workspace_binding_resolver,
+        policy_projection=policy_projection,
+        conversation_membership=approval_policy_conversation_membership,
+    ))
 
     wake_drivers: list[CapturedWakeDriverV4] = []
 

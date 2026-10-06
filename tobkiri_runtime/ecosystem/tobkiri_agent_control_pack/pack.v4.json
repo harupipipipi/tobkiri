@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:b45551e795317b59c5e4ea49a5eb521d554ac9f4673c54ed02c7153db45d3b70",
+      "digest": "sha256:2f40a706debdfcb84f14df2204eca3372a74713802a95aee3bfedea64893142b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -112,7 +112,7 @@
       "operations": [
         "tobkiri_agent_control_pack.inbox-action"
       ],
-      "revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d"
+      "revision_digest": "sha256:1aea71463a93333ca25ffd85266effe5be82eb33decb433b711a04abf651e700"
     },
     {
       "contract_id": "tobkiri.action.work-plan.execute.v1",
@@ -168,7 +168,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d",
+      "contract_revision_digest": "sha256:1aea71463a93333ca25ffd85266effe5be82eb33decb433b711a04abf651e700",
       "id": "tobkiri_agent_control_pack.work-plan.inbox",
       "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "isolation": "dedicated_process",
@@ -229,9 +229,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:74372f1cc0e74cc60650474aaad52a684bb55f83ff59fcc92ed9bc3f9d9e3cbb",
-    "contract_catalog_digest": "sha256:19cf9d2d88418c21374f327e1c5506188884856ae23a702612e2863216af6486",
-    "source_identity": "sha256:1a2c1571ecbd20b3994d94a86fd323b49b4ce3c91df6d3a180cfd2fff841ed43"
+    "artifact_set_digest": "sha256:7fc9e34bc964cfbf4f10d2a233822437513816b9792aecbc893accfb1df462a3",
+    "contract_catalog_digest": "sha256:e70c968b2caa6892fb6b1895f2627de4524a3a4fe5f58896984afc5f19add5fc",
+    "source_identity": "sha256:d48861735cb36138101dd8ff4007e179996d45311e2e264a79c83687c2443b8b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -340,7 +340,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:74372f1cc0e74cc60650474aaad52a684bb55f83ff59fcc92ed9bc3f9d9e3cbb",
+    "artifact_digest": "sha256:7fc9e34bc964cfbf4f10d2a233822437513816b9792aecbc893accfb1df462a3",
     "display_name": "Tobkiri Agent Control",
     "id": "tobkiri_agent_control_pack",
     "kind": "host_extension",
@@ -350,7 +350,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:1a2c1571ecbd20b3994d94a86fd323b49b4ce3c91df6d3a180cfd2fff841ed43",
+        "digest": "sha256:d48861735cb36138101dd8ff4007e179996d45311e2e264a79c83687c2443b8b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -361,7 +361,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:1a2c1571ecbd20b3994d94a86fd323b49b4ce3c91df6d3a180cfd2fff841ed43",
+    "source_digest": "sha256:d48861735cb36138101dd8ff4007e179996d45311e2e264a79c83687c2443b8b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_agent_control_pack"
   },

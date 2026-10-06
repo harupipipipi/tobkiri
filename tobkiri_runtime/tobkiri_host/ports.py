@@ -400,6 +400,8 @@ class InteractiveEffectPrepareCommand:
     payload: Mapping[str, Any]
     prepared_result: Mapping[str, Any]
     correlation_id: str | None = None
+    # Host-private actual ancestry; never supplied by a Pack payload.
+    policy_inheritance: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -423,6 +425,8 @@ class InteractiveEffectOwnerQuery:
     presentation_owner_principal_id: str
     presentation_owner_session_id: str
     effect_id: str
+    # Resume carries its own current coordinator parent, not the committed prepare lease.
+    policy_inheritance: Any | None = None
 
 
 @dataclass(frozen=True)

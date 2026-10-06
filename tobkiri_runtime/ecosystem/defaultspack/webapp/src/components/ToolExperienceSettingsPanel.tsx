@@ -1,9 +1,10 @@
 import { AlertTriangle, Check, ChevronDown, Loader2, Search, Shield, Sparkles, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import type { ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogService, ToolCatalogTool, ToolSelectionMode, ToolSelectionStrategy } from "../lib/api";
+import type { ModelProfile, ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogService, ToolCatalogTool, ToolSelectionMode, ToolSelectionStrategy } from "../lib/api";
 import { toolResources } from "../features/tools/resources/toolResources";
 import { cn } from "../lib/cn";
+import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
 import { ApprovalPreferenceSettings } from "../features/tools/ApprovalPreferenceSettings";
 import { ErrorNotice } from "./ErrorNotice";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
@@ -328,6 +329,8 @@ export function ToolExperienceSettingsPanel({
   settingsValues,
   onSettingChange,
   displayMode = "standard",
+  actionApprovalModes,
+  approvalReviewerModels,
   basicSettings,
   connectionSettings,
   advancedSettings,
@@ -337,6 +340,8 @@ export function ToolExperienceSettingsPanel({
   settingsValues: SettingsValues;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
   displayMode?: "standard" | "advanced";
+  actionApprovalModes?: readonly ActionApprovalMode[];
+  approvalReviewerModels?: readonly ModelProfile[];
   basicSettings?: ReactNode;
   connectionSettings?: ReactNode;
   advancedSettings?: ReactNode;
@@ -506,7 +511,7 @@ export function ToolExperienceSettingsPanel({
           onChange={(value) => updateToolSetting("keep_selected_tools_after_send", value)}
         />
       </section>
-      <ApprovalPreferenceSettings tools={toolSettings} onSettingChange={onSettingChange} />
+      <ApprovalPreferenceSettings tools={toolSettings} availableModes={actionApprovalModes} reviewerModels={approvalReviewerModels} onSettingChange={onSettingChange} />
       {basicSettings}
     </div>
   );

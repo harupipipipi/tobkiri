@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:28128e746d9b3f77bb712793750fa3be1381c3732ccb4bdd7034998b3ef4cff7",
+  "catalog_digest": "sha256:5ef4ced8592f0c02480c0134117b0b9633d97b492c9b56ac2717d3801b31a9d7",
   "pack_id": "tobkiri_agent_control_pack",
-  "source_identity": "sha256:1a2c1571ecbd20b3994d94a86fd323b49b4ce3c91df6d3a180cfd2fff841ed43",
+  "source_identity": "sha256:d48861735cb36138101dd8ff4007e179996d45311e2e264a79c83687c2443b8b",
   "variants": [
     {
       "architecture": "any",
@@ -436,6 +436,15 @@
                   "request": {
                     "additionalProperties": false,
                     "properties": {
+                      "action_approval_mode": {
+                        "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                        "enum": [
+                          "ask",
+                          "agent",
+                          "full"
+                        ],
+                        "type": "string"
+                      },
                       "content": {
                         "oneOf": [
                           {
@@ -863,7 +872,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d",
+          "revision_digest": "sha256:1aea71463a93333ca25ffd85266effe5be82eb33decb433b711a04abf651e700",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

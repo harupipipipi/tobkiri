@@ -938,6 +938,8 @@ class SavedBridgeCallbacks:
         role = "user" if hop == 1 else "assistant"
         trace = trace or []
         metadata = {"turn_id": request["turn_id"]}
+        if "action_approval_mode" in request:
+            metadata["action_approval_mode"] = request["action_approval_mode"]
         fields = {"id", "role", "content", "parent_id", "metadata", "status"}
         if role == "assistant":
             fields.add("finish_reason")

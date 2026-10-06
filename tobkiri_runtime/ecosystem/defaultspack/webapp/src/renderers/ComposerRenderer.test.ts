@@ -2741,3 +2741,17 @@ test("calendar Composer obeys hidden policy display and blocks a save while refe
   assert.match(html, /aria-label="Agentタスクを保存"[^>]*disabled=""/);
   assert.doesNotMatch(html, /rumi-composer-textarea-highlighted/);
 });
+
+test("calendar displays the selected available approval mode through the shared control", () => {
+  const html = renderToStaticMarkup(createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "Run this task", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: false, mode: "auto", showApprovalControl: true, showToolControl: false,
+    actionApprovalMode: "full", actionApprovalModes: ["ask", "full"], onActionApprovalModeChange: () => undefined,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  }));
+  assert.match(html, />フル<\/span>/);
+  assert.doesNotMatch(html, /disabled=""[^>]*aria-label="アクションの承認方法"/);
+  assert.doesNotMatch(html, /この会話の承認は設定された権限に従います/);
+});

@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
     CapturedHostProviderV4,
@@ -90,6 +90,63 @@ def _values(
                 current[name] = deepcopy(field["default"])
         values[identifier] = current
     return values
+
+
+def build_reviewer_configuration_revision(
+    context: HostProviderCaptureContextV4,
+    verified_settings_binding: Any,
+    *,
+    assert_current: Callable[[], None],
+) -> Callable[[], tuple[str, int]]:
+    """Capture a private, read-only revision guard from the settings owner.
+
+    Host composition supplies the already verified settings-read context and
+    binding. No Broker call, lock-file creation, repair, or write occurs here.
+    The returned guard is private Host state, never a Pack or request port.
+    """
+    assert_current()
+    if (
+        not context.profile_id
+        or context.user_data_root is None
+        or len(context.provider_bindings) != 1
+        or context.provider_bindings[0] is not verified_settings_binding
+    ):
+        raise PermissionError("reviewer settings owner capture is incomplete")
+    binding = verified_settings_binding
+    operation = binding.operation
+    if (
+        binding.function.function_id != FUNCTION_ID
+        or operation.contract_id != CONTRACT_ID
+        or operation.operation_id != OPERATION_ID
+        or operation.contract_version != "1.0.0"
+        or not binding.principal_ref.value
+        or not context.domain_ids.get(
+            (CONTRACT_ID, OPERATION_ID, binding.principal_ref.value)
+        )
+    ):
+        raise PermissionError("reviewer settings owner binding is invalid")
+    # Reuse the owner-declared location from SettingsReadHostFactoryV4;
+    # neither a request nor an environment variable chooses this path.
+    store = FrontendSettingsStore(
+        context.user_data_root / "defaultspack" / "shared" / "frontend_settings.json"
+    )
+    captured_profile = context.profile_id
+
+    def current_configuration() -> tuple[str, int]:
+        assert_current()
+        if context.profile_id != captured_profile:
+            raise PermissionError("reviewer settings Profile changed")
+        snapshot = store.read_snapshot()
+        revision = snapshot.get("_settings_revision", 0)
+        if type(revision) is not int or revision < 0:
+            raise ValueError("saved settings document revision is invalid")
+        tools = snapshot.get("tools")
+        model = tools.get("approval_reviewer_model") if isinstance(tools, Mapping) else None
+        reference = model.strip() if isinstance(model, str) else ""
+        assert_current()
+        return reference, revision
+
+    return current_configuration
 
 
 class SettingsReadHostFactoryV4:

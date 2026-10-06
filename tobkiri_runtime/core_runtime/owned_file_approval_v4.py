@@ -39,6 +39,7 @@ class _LiveFileRequest:
     deadline: float
     cancel: Any = None
     file_edit_receipt: dict[str, Any] | None = None
+    policy_inheritance: Any = None
 
 
 _live_lock = RLock()
@@ -46,16 +47,29 @@ _live_requests: dict[str, _LiveFileRequest] = {}
 _file_effects: dict[str, str] = {}
 
 
-def register_file_tool_request(request: Mapping[str, Any], invocation: Any) -> dict[str, Any]:
+def register_file_tool_request(
+    request: Mapping[str, Any], invocation: Any, *, policy_inheritance: Any = None,
+) -> dict[str, Any]:
     """Retain a guarded Host invocation before any durable effect is created."""
     authenticated_file_tool_owner(invocation)
+    if policy_inheritance is not None:
+        policy_inheritance.assert_current()
+        if policy_inheritance.policy.mode not in {"agent", "full"}:
+            raise PermissionError("file create selected policy is unavailable")
+
+    def current_file_guard() -> None:
+        authenticated_file_tool_owner(invocation)
+        if policy_inheritance is not None:
+            policy_inheritance.assert_current()
+
     key = str(uuid.uuid4())
     bound = {**dict(request), "invocation_key": key}
     record = _LiveFileRequest(
         canonical_digest(bound),
         _capture_identity(invocation.envelope.context),
-        lambda: authenticated_file_tool_owner(invocation),
+        current_file_guard,
         time.monotonic() + 90,
+        policy_inheritance=policy_inheritance,
     )
     with _live_lock:
         _live_requests[key] = record
@@ -80,6 +94,19 @@ def assert_file_request_live(request: Mapping[str, Any], context: Any) -> None:
     with _live_lock:
         if _live_requests.get(key) is not record:
             raise PermissionError("file create original invocation drained")
+
+
+def file_request_policy(request: Mapping[str, Any], context: Any) -> Any:
+    """Return only the private policy already bound to this exact live file request."""
+    assert_file_request_live(request, context)
+    with _live_lock:
+        record = _live_requests.get(request["invocation_key"])
+        if record is None:
+            raise PermissionError("file create original invocation drained")
+        inheritance = record.policy_inheritance
+    if inheritance is not None:
+        inheritance.assert_current()
+    return inheritance
 
 
 def bind_file_effect(effect_id: str, request: Mapping[str, Any], context: Any, cancel: Any) -> None:

@@ -118,7 +118,8 @@
     "semantic_backend",
     "selector_trace",
     "final_tool_limit",
-    "semantic_candidate_limit"
+    "semantic_candidate_limit",
+    "approval_reviewer_model"
   ],
   "computer_use_haze": [
     "enabled",

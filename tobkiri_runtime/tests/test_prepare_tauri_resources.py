@@ -1045,3 +1045,24 @@ def test_canonical_host_inventory_admits_native_project_picker_modules():
     files = module.canonical_host_files(source_root)
     assert Path("tobkiri_host/directory_picker.py") in files
     assert Path("tobkiri_host/directory_selections.py") in files
+
+
+@pytest.mark.parametrize("change", ["missing", "unlisted"])
+def test_canonical_host_inventory_rejects_authority_module_drift(tmp_path, change):
+    """Refuse incomplete or undeclared authority code before native staging."""
+    module = _load_prepare_tauri_resources()
+    host_root = tmp_path / "tobkiri_host"
+    host_root.mkdir()
+    inventory = {
+        "schema": "io.tobkiri.host-file-inventory.v1",
+        "files": ["canonical-files.v1.json", "saved_tool_consent.py"],
+    }
+    (host_root / "canonical-files.v1.json").write_text(
+        json.dumps(inventory), encoding="utf-8"
+    )
+    if change == "unlisted":
+        (host_root / "saved_tool_consent.py").write_text("", encoding="utf-8")
+        (host_root / "unreviewed_authority.py").write_text("", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Canonical Host source inventory mismatch"):
+        module.canonical_host_files(tmp_path)
