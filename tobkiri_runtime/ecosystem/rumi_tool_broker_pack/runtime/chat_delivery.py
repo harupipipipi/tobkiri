@@ -65,17 +65,17 @@ def captured_delivery_ancestors(
         scopes.append(scope)
         token = _current.get()
         if (token is not None and token.active and token.root is not None
-                and (scope.envelope.contract_id, scope.envelope.operation_id) == SAVED
-                and scope.parent is not None
                 and token.scope.parent is not None
+                and token.scope.parent.parent is not None
                 and scope.envelope is token.scope.parent.envelope):
             parent, calendar = _assert_saved_source_ancestry(
                 token.scope, token.source_proof, token.owner,
             )
-            if (not calendar or parent.envelope is not scope.envelope
+            if (not calendar or parent is not scope
                     or not any(item.envelope is token.root for item in scopes)
                     or len(scopes) < 2
-                    or scopes[-2].envelope is not token.scope.envelope):
+                    or scopes[-2].envelope is not token.scope.envelope
+                    or scopes[-2].parent is not parent):
                 raise PermissionError("Calendar delivery source changed")
             break
         scope = scope.parent
@@ -85,7 +85,15 @@ def captured_delivery_ancestors(
 def _delivery_owner(scopes: list[CapturedInvocationScopeV4]) -> tuple[str, str]:
     """Use the selected source proof for Calendar; ordinary roots stay exact."""
     root = scopes[-1]
-    if root.parent is not None:
+    from tobkiri_host.finite_chat_dispatch import _current
+
+    token = _current.get()
+    retained_calendar_parent = (
+        token is not None and token.active and token.scope.parent is not None
+        and token.scope.parent.parent is not None
+        and root.envelope is token.scope.parent.envelope
+    )
+    if root.parent is not None or retained_calendar_parent:
         from tobkiri_host.finite_chat_dispatch import (
             _current, _assert_saved_source_ancestry,
         )
@@ -95,7 +103,7 @@ def _delivery_owner(scopes: list[CapturedInvocationScopeV4]) -> tuple[str, str]:
         parent, calendar = _assert_saved_source_ancestry(
             token.scope, token.source_proof, token.owner,
         )
-        if not calendar or parent.envelope is not root.envelope:
+        if not calendar or parent is not root:
             raise PermissionError("Calendar delivery owner changed")
         return token.owner
     context = root.envelope.context
@@ -185,7 +193,8 @@ def assert_delivery_child(invocation: Any, held: Any) -> None:
         (
             item
             for item in scopes[holder + 1 :]
-            if (item.envelope.contract_id, item.envelope.operation_id) == SAVED
+            if (item.envelope.contract_id, item.envelope.operation_id)
+            == ("conversation.saved-turn.v1", "saved_complete")
         ),
         None,
     )

@@ -504,15 +504,25 @@ def test_normative_fixture_new_functions_resolve_exact_candidate_bytes(tmp_path:
     pack = repository / "tobkiri_runtime/ecosystem/rumi_default_tools_pack"
     (pack / "runtime").mkdir(parents=True)
     original = ECOSYSTEM / "rumi_default_tools_pack"
-    for relative in (
-        "rumi.pack.v3.json", "artifact-manifest.json",
-        "runtime/calculator.py", "runtime/files.py",
-    ):
-        shutil.copyfile(original / relative, pack / relative)
-    shutil.copyfile(create.__file__, pack / "runtime/file_create.py")
     fixture = json.loads(
         (Path(__file__).parent / "fixtures/legacy_executable_sources.v1.json").read_text()
     )
+    implementations = {
+        entry["implementation_path"]
+        for entry in fixture["packs"]["rumi_default_tools_pack"]["entries"]
+    }
+    for relative in sorted(
+        implementations
+        | {
+            "rumi.pack.v3.json",
+            "artifact-manifest.json",
+            "runtime/calculator.py",
+        }
+    ):
+        destination = pack / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(original / relative, destination)
+    shutil.copyfile(create.__file__, pack / "runtime/file_create.py")
     value = {
         "schema": fixture["schema"],
         "source_format": fixture["source_format"],
@@ -541,30 +551,45 @@ def test_integrated_file_and_mount_prepare_schemas_coexist(real_create, source):
             (runtime_root / "tests/fixtures/legacy_executable_sources.v1.json").read_text()
         )
         schema = next(
-            item for item in fixture["packs"]["rumi_host_authority_bridge_pack"]["entries"]
+            item
+            for item in fixture["packs"]["rumi_host_authority_bridge_pack"]["entries"]
             if item["function_id"]
             == "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
         )["schemas"]["input"]
     else:
         catalog = json.loads((runtime_root / "schemas/pack_v4_catalog.v1.json").read_text())
         pack = next(
-            item for item in catalog["packs"]
+            item
+            for item in catalog["packs"]
             if item["pack_id"] == "rumi_host_authority_bridge_pack"
         )
         schema = next(
-            item for item in pack["provided_contracts"]
+            item
+            for item in pack["provided_contracts"]
             if item["contract_id"] == "tobkiri.service.interactive-effect.v1"
         )["schemas"]["input"]
     validator = Draft202012Validator(schema)
-    for kind, payload in (("file_create", request), ("workspace_mount", {"selection_id": "ticket"})):
+    for kind, payload in (
+        ("file_create", request),
+        ("workspace_mount", {"selection_id": "ticket"}),
+    ):
         prepare = {
-            "phase": "prepare", "effect_kind": kind, "request": payload,
+            "phase": "prepare",
+            "effect_kind": kind,
+            "request": payload,
             "correlation_id": "00000000-0000-4000-8000-000000000001",
         }
         assert not list(validator.iter_errors(prepare))
-        assert sum(Draft202012Validator(branch).is_valid(prepare) for branch in schema["oneOf"]) == 1
-        assert not list(validator.iter_errors({
-            "phase": "lookup", "effect_kind": kind,
-            "correlation_id": prepare["correlation_id"],
-        }))
+        assert (
+            sum(Draft202012Validator(branch).is_valid(prepare) for branch in schema["oneOf"]) == 1
+        )
+        assert not list(
+            validator.iter_errors(
+                {
+                    "phase": "lookup",
+                    "effect_kind": kind,
+                    "correlation_id": prepare["correlation_id"],
+                }
+            )
+        )
         assert list(validator.iter_errors({**prepare, "approved": True}))

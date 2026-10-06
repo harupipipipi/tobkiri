@@ -209,7 +209,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:272e8e43eed1a063aa71e1b03cbae6d8c21371a1b8033853e89729c7c6294557",
+    "source_digest": "sha256:96cdded72fbd654cada0c1685d2cd0fae1962f4ce0bfb8a7f2676d5d734b16f4",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -4823,7 +4823,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2",
+        "semantics_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
         "dimensions": {
           "contract": [
             "tobkiri.action.calendar.schedule.v1"

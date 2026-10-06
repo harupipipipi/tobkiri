@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -270,7 +270,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -281,7 +281,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -368,7 +368,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -379,7 +379,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -535,7 +535,8 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:schedule.manage"
+            "capability:schedule.manage",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
@@ -551,7 +552,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -562,7 +563,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -580,7 +581,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2",
+      "revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
       "schema_catalog": {
         "sha256:6294014b5763fcb6e9b664505e7b1aeec89d5c77211b47a1289842b11793e8df": {
           "oneOf": [
@@ -1373,5 +1374,5 @@
     }
   ],
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383"
+  "source_identity": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b"
 }

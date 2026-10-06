@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:75c594f507dd9cf8fef7dc14fbb9135a8059552ae62b3941e86e8cfe378ce637",
+  "source_identity": "sha256:646381aa817e933f5fa82e63945616ad1d8aceb263320d5f1cf757daeb0be7ac",
   "variants": [
     {
       "variant_id": "rumi_schedule_store_pack.calendar.manage.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.action.calendar.schedule.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2",
+          "revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
           "operation_id": "rumi_schedule_store_pack.calendar-manage",
           "input_schema": {
             "oneOf": [
@@ -806,7 +806,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "read",
+          "effect_class": "privileged",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -1249,6 +1249,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2c831fe64d0521bf61dcbc8ba928b2ebbe41a3628b221078155ed286e99ff447",
-  "catalog_digest": "sha256:b5ffafd943575d1a0f53944a1f0e275710f44467eddbd1777e71df18f3924727"
+  "materialization_catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+  "catalog_digest": "sha256:fcb27b502432bafcc08078c568ef313740c00fb3795369759eb0d5b23811a3a5"
 }

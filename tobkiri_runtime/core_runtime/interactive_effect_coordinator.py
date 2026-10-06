@@ -473,7 +473,13 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                     )
                     for ancestor in ancestors
                 )
-                if operation == ("tobkiri.service.chat.message.send.v1", "rumi_default_tools_pack.chat-message-send") or incoming:
+                source_file = False
+                if not incoming and operation == (
+                    "tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create"
+                ):
+                    from core_runtime.owned_file_approval_v4 import file_effect_source_resume
+                    source_file = file_effect_source_resume(query.effect_id, query.context, scope)
+                if operation == ("tobkiri.service.chat.message.send.v1", "rumi_default_tools_pack.chat-message-send") or incoming or source_file:
                     resume_scope_factory = self._resume_invocation_scope
                     if resume_scope_factory is None:
                         raise PermissionError("live effect resume scope is unavailable")

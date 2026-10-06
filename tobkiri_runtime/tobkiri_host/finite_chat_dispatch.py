@@ -160,9 +160,16 @@ def _assert_saved_source_ancestry(
         raise PermissionError("finite message source is not a saved guest")
     parent = scope.parent
     calendar = False
+    direct_calendar = (
+        isinstance(parent, CapturedInvocationScopeV4)
+        and (parent.envelope.contract_id, parent.envelope.operation_id) == (
+            "tobkiri.action.job.adapter.v2",
+            "rumi_turn_runtime_pack.chat-saved-job-adapter",
+        )
+    )
     if isinstance(parent, CapturedInvocationScopeV4) and parent.parent is not None:
         from tobkiri_host.operation_cancellation import _NestedCancellationProof
-        adapter = parent.parent
+        adapter = parent if direct_calendar else parent.parent
         job = adapter.parent if isinstance(adapter, CapturedInvocationScopeV4) else None
         witness = getattr(proof, "_calendar_execution_witness", None)
         if (
@@ -181,12 +188,27 @@ def _assert_saved_source_ancestry(
                     for ancestor in (adapter, job) for key in CAPTURE)
         ):
             witness()
+            if direct_calendar:
+                from concurrent.futures import Future
+
+                if proof._envelope is not adapter.envelope:
+                    raise PermissionError("Calendar source root changed")
+                with proof._registry._lock:
+                    if not any(
+                        child.envelope is scope.envelope
+                        and isinstance(child.future, Future)
+                        and child.future.running()
+                        and not child.completed
+                        for child in proof._children.values()
+                    ):
+                        raise PermissionError("Calendar source Future unavailable")
             adapter.assert_current()
             job.assert_current()
             calendar = True
     if (
         not isinstance(parent, CapturedInvocationScopeV4)
-        or (parent.envelope.contract_id, parent.envelope.operation_id) != SAVED
+        or ((parent.envelope.contract_id, parent.envelope.operation_id) != SAVED
+            and not (direct_calendar and calendar))
         or (parent.parent is not None and not calendar)
         or proof is None
         or not proof.matches_invocation(scope.envelope, *owner)
@@ -195,6 +217,20 @@ def _assert_saved_source_ancestry(
     parent.assert_current()
     source = parent.public_payload().get("request", {})
     guest = scope.public_payload().get("request", {})
+    if direct_calendar:
+        from tobkiri_protocol.canonical import canonical_digest
+
+        values = parent.public_payload()
+        task = values.get("payload", {})
+        key = values.get("idempotency_key")
+        profile = parent.envelope.context.profile_id
+        expected_turn = "calendar:" + canonical_digest(
+            [profile, values.get("schedule_id"), key]
+        ).removeprefix("sha256:")
+        expected_conversation = task.get("conversation_id") or (
+            "calendar:" + canonical_digest([profile, key]).removeprefix("sha256:")
+        )
+        source = {"conversation_id": expected_conversation, "turn_id": expected_turn}
     if any(
         not isinstance(source.get(key), str)
         or not source[key]

@@ -43,13 +43,15 @@ def _git_plan(operation: str, **details: object) -> dict[str, object]:
 
 def test_mcp_connect_freezes_provider_plan_and_redacts_argv_environment():
     request = {
-        "server_id": "fixture", "allowed_tools": ["ping"],
+        "server_id": "fixture",
+        "allowed_tools": ["ping"],
         "config": {"command": ["/bin/server", "private-arg"], "env": {"KEY": "private-key"}},
     }
     plan = {
         "version": "tobkiri.mcp.connection-plan.v1",
         "request_digest": canonical_digest(request),
-        "workspace": {"id": "workspace"}, "executable": {"path": "/bin/server"},
+        "workspace": {"id": "workspace"},
+        "executable": {"path": "/bin/server"},
     }
     spec = INTERACTIVE_EFFECT_SPECS["mcp_connect"]
     payload = _execute_payload(spec, request, plan)
@@ -152,13 +154,18 @@ def _prepared_presentation(payload: Mapping[str, Any]) -> Any:
 def test_local_provider_approval_describes_a_connection_without_credentials() -> None:
     """Local configuration must not promise or display a stored API key."""
     request = {
-        "connection_name": "local", "protocol": "local-openai-compatible",
-        "endpoint": "http://127.0.0.1:1234/v1", "key_value": "",
+        "connection_name": "local",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1",
+        "key_value": "",
     }
     plan = {
-        "profile_id": "defaults", "provider_instance_id": "provider.local",
-        "adapter_id": request["protocol"], "endpoint": request["endpoint"],
-        "expected_revision": 0, "request_digest": canonical_digest(request),
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.local",
+        "adapter_id": request["protocol"],
+        "endpoint": request["endpoint"],
+        "expected_revision": 0,
+        "request_digest": canonical_digest(request),
     }
     spec = INTERACTIVE_EFFECT_SPECS["provider_configure"]
     payload = _execute_payload(spec, request, plan)
@@ -299,13 +306,9 @@ def test_host_approval_presentation_thaws_nested_immutable_snapshot() -> None:
 
     frozen_payload = MappingProxyType(
         {
-            "redacted_plan": MappingProxyType(
-                {"plan_version": "tobkiri.shell-execute.plan.v4"}
-            ),
+            "redacted_plan": MappingProxyType({"plan_version": "tobkiri.shell-execute.plan.v4"}),
             "plan_digest": canonical_digest({"shell": "prepared"}),
-            "arguments": MappingProxyType(
-                {"command": ["git", "status"], "cwd": "."}
-            ),
+            "arguments": MappingProxyType({"command": ["git", "status"], "cwd": "."}),
         }
     )
     metadata = _presentation_metadata(
@@ -393,9 +396,7 @@ def test_push_presentation_discloses_the_sealed_force_with_lease_policy(
     }
     metadata = _presentation_metadata(
         INTERACTIVE_EFFECT_SPECS["git_push"],
-        _prepared_presentation(
-            {"plan": plan, "plan_digest": canonical_digest(plan)}
-        ),
+        _prepared_presentation({"plan": plan, "plan_digest": canonical_digest(plan)}),
     )
 
     assert expected_policy in metadata["detail"]
@@ -456,6 +457,7 @@ class _EffectPort:
         return self._status()
 
     def resume_interactive_effect(self, query: Any) -> InteractiveEffectStatus:
+        query.invocation_scope.assert_current()
         self.queries.append(query)
         return self._status()
 
@@ -489,8 +491,18 @@ class _Invocation:
         self.presentation_owner_principal_id = "presentation-owner-principal"
         self.presentation_owner_session_id = "presentation-owner-session"
         self._client = client
+        self.parent_invocation = None
+        self.stale = False
+        self.guard_checks = 0
+
+    def assert_current(self) -> None:
+        """Model the current captured Host guard, including explicit revocation."""
+        self.guard_checks += 1
+        if self.stale:
+            raise PermissionError("captured invocation is stale")
 
     def contract_client(self, **_kwargs: Any) -> _Client:
+        self.assert_current()
         return self._client
 
 
@@ -585,6 +597,7 @@ def test_bridge_runs_only_signed_prepare_then_hands_a_redacted_future_to_port() 
         "executed": False,
     }
     client = _Client(prepared)
+    invocation = _Invocation(_effect_envelope(), client)
 
     result = contribution.invoke(
         bridge._EFFECT_OPERATION,
@@ -593,10 +606,11 @@ def test_bridge_runs_only_signed_prepare_then_hands_a_redacted_future_to_port() 
             "effect_kind": "shell_execute",
             "request": {"command": ["git", "status"], "cwd": ".", "env": {}},
         },
-        _Invocation(_effect_envelope(), client),
+        invocation,
     )
 
     spec = INTERACTIVE_EFFECT_SPECS["shell_execute"]
+    assert invocation.guard_checks == 1
     assert client.calls == [
         (
             spec.prepare_contract_id,
@@ -606,13 +620,9 @@ def test_bridge_runs_only_signed_prepare_then_hands_a_redacted_future_to_port() 
     ]
     assert port.prepare_commands[0].prepared_result == prepared
     assert (
-        port.prepare_commands[0].presentation_owner_principal_id
-        == "presentation-owner-principal"
+        port.prepare_commands[0].presentation_owner_principal_id == "presentation-owner-principal"
     )
-    assert (
-        port.prepare_commands[0].presentation_owner_session_id
-        == "presentation-owner-session"
-    )
+    assert port.prepare_commands[0].presentation_owner_session_id == "presentation-owner-session"
     assert set(result) == {
         "effect_id",
         "approval_request_id",
@@ -622,9 +632,7 @@ def test_bridge_runs_only_signed_prepare_then_hands_a_redacted_future_to_port() 
     }
     assert isinstance(result["expires_at"], int)
     assert "command" not in result
-    assert "HostBoundedProcessRunner" not in Path(bridge.__file__).read_text(
-        encoding="utf-8"
-    )
+    assert "HostBoundedProcessRunner" not in Path(bridge.__file__).read_text(encoding="utf-8")
 
 
 def test_bridge_rejects_authority_claim_before_prepare_edge_is_called() -> None:
@@ -656,21 +664,20 @@ def test_bridge_preserves_host_origin_owner_for_management(phase: str) -> None:
     port = _EffectPort()
     contribution = _capture_coordinator(port).contributions[0]
 
+    invocation = _Invocation(_effect_envelope(), _Client({}))
     contribution.invoke(
         bridge._EFFECT_OPERATION,
         {"phase": phase, "effect_id": "pending-effect-1"},
-        _Invocation(_effect_envelope(), _Client({})),
+        invocation,
     )
 
     assert len(port.queries) == 1
-    assert (
-        port.queries[0].presentation_owner_principal_id
-        == "presentation-owner-principal"
-    )
-    assert (
-        port.queries[0].presentation_owner_session_id
-        == "presentation-owner-session"
-    )
+    if phase == "resume":
+        assert port.queries[0].invocation_scope.envelope is invocation.envelope
+        assert port.queries[0].invocation_scope.parent is None
+        assert invocation.guard_checks == 1
+    assert port.queries[0].presentation_owner_principal_id == "presentation-owner-principal"
+    assert port.queries[0].presentation_owner_session_id == "presentation-owner-session"
 
 
 class _PreparedBroker:
@@ -729,10 +736,13 @@ class _PendingController:
         return self._status()
 
     def operation_for_presentation(self, **kwargs: Any) -> tuple[str, str]:
-        self.owner_calls.append((
-            "operation", kwargs["presentation_owner_principal_id"],
-            kwargs["presentation_owner_session_id"],
-        ))
+        self.owner_calls.append(
+            (
+                "operation",
+                kwargs["presentation_owner_principal_id"],
+                kwargs["presentation_owner_session_id"],
+            )
+        )
         return "tobkiri.service.shell.execute.v1", "rumi_shell_execute_pack.shell-execute"
 
     def resume_for_presentation(self, **kwargs: Any) -> Any:
@@ -826,9 +836,7 @@ def test_host_service_prepares_execute_snapshot_and_scopes_all_owner_dimensions(
     scope = prepared["effect_scope"]
     assert scope["dimensions"]["caller_session_id"] == ["session.inner-effect"]
     assert scope["dimensions"]["plan_digest"] == [outer.plan_digest]
-    assert scope["dimensions"]["invocation_owner_id"][0].startswith(
-        "interactive-effect-owner."
-    )
+    assert scope["dimensions"]["invocation_owner_id"][0].startswith("interactive-effect-owner.")
     assert prepared["presentation_owner_principal_id"] == "caller-principal"
     assert prepared["presentation_owner_session_id"] == "session-caller"
     assert prepared["presentation_metadata"] == {
@@ -858,9 +866,7 @@ def test_host_service_rejects_browser_presentation_copy_before_preparing_an_effe
                     "presentation": {"detail": "client-forged approval copy"},
                 },
                 prepared_result={
-                    "redacted_plan": {
-                        "plan_version": "tobkiri.shell-execute.plan.v4"
-                    },
+                    "redacted_plan": {"plan_version": "tobkiri.shell-execute.plan.v4"},
                     "plan_digest": canonical_digest({"plan": "shell"}),
                     "executed": False,
                 },
@@ -926,3 +932,28 @@ def test_host_service_fails_closed_on_execute_binding_or_outer_session_mismatch(
                 effect_id="pending-effect-1",
             )
         )
+
+
+@pytest.mark.parametrize("phase", ["prepare", "resume"])
+def test_bridge_forwards_current_guard_and_rejects_revoked_invocation(phase: str) -> None:
+    """The fixture must reject a revoked scope rather than silently omit its guard."""
+    port = _EffectPort()
+    contribution = _capture_coordinator(port).contributions[0]
+    client = _Client({})
+    invocation = _Invocation(_effect_envelope(), client)
+    invocation.stale = True
+    payload = (
+        {"phase": "resume", "effect_id": "pending-effect-1"}
+        if phase == "resume"
+        else {
+            "phase": "prepare",
+            "effect_kind": "shell_execute",
+            "request": {"command": ["git", "status"], "cwd": ".", "env": {}},
+        }
+    )
+    with pytest.raises(PermissionError, match="stale"):
+        contribution.invoke(bridge._EFFECT_OPERATION, payload, invocation)
+    assert invocation.guard_checks == 1
+    assert client.calls == []
+    assert port.prepare_commands == []
+    assert port.queries == []

@@ -19045,7 +19045,8 @@
               "entrypoint_id": "calendar-manage",
               "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
               "effect_ceiling": [
-                "capability:schedule.manage"
+                "capability:schedule.manage",
+                "host:brokered-execution"
               ]
             }
           ],
@@ -22061,7 +22062,7 @@
         {
           "kind": "executable",
           "path": "runtime/chat_delivery.py",
-          "digest": "sha256:811b53b85d9a85eceef0a9d1b342b2c5a112e085578d0cbda633cfafb0a07b43"
+          "digest": "sha256:3aa83095d039645a727d1b8d0e9a1364bbd505548d425923d1c52bbce76a7613"
         }
       ],
       "secrets": [],

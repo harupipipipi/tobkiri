@@ -40,6 +40,7 @@ class _LiveFileRequest:
     cancel: Any = None
     file_edit_receipt: dict[str, Any] | None = None
     policy_inheritance: Any = None
+    source_invocation: Any = None
 
 
 _live_lock = RLock()
@@ -70,6 +71,7 @@ def register_file_tool_request(
         current_file_guard,
         time.monotonic() + 90,
         policy_inheritance=policy_inheritance,
+        source_invocation=invocation,
     )
     with _live_lock:
         _live_requests[key] = record
@@ -145,6 +147,61 @@ def file_effect_execution_guard(effect_id: str, context: Any) -> Any:
 
     guard()
     return guard
+
+
+def file_effect_source_resume(
+    effect_id: str, context: Any, scope: Any
+) -> bool:
+    """Select retained execution only for this live native Source ASK file call."""
+    from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+
+    with _live_lock:
+        key = _file_effects.get(effect_id)
+        record = _live_requests.get(key) if key is not None else None
+    if record is None or record.policy_inheritance is not None:
+        return False
+    file_effect_execution_guard(effect_id, context)
+    source = record.source_invocation
+    if (
+        source is None
+        or not isinstance(scope, CapturedInvocationScopeV4)
+        or not isinstance(scope.parent, CapturedInvocationScopeV4)
+        or scope.parent.envelope is not source.envelope
+        or scope.parent.parent is not source.parent_invocation
+        or scope.public_payload() != {"phase": "resume", "effect_id": effect_id}
+        or scope.envelope.context is not context
+        or source.envelope.target_principal != context.caller_principal
+        or (scope.parent.envelope.contract_id, scope.parent.envelope.operation_id)
+        != LOCAL
+    ):
+        raise PermissionError("file Source resume scope changed")
+    scope.assert_current()
+    scope.parent.assert_current()
+    authenticated_file_tool_owner(source)
+    ancestor = scope.parent.parent
+    seen: set[int] = set()
+    saved: list[CapturedInvocationScopeV4] = []
+    while ancestor is not None:
+        if (
+            not isinstance(ancestor, CapturedInvocationScopeV4)
+            or id(ancestor) in seen
+            or len(seen) >= 16
+        ):
+            raise PermissionError("file Source resume ancestry changed")
+        seen.add(id(ancestor))
+        ancestor.assert_current()
+        if (ancestor.envelope.contract_id, ancestor.envelope.operation_id) == SAVED:
+            saved.append(ancestor)
+        ancestor = ancestor.parent
+    request = saved[0].public_payload().get("request") if len(saved) == 1 else None
+    if (
+        not isinstance(request, Mapping)
+        or request.get("action_approval_mode", "ask") != "ask"
+    ):
+        raise PermissionError("file Source resume mode changed")
+    scope.assert_current()
+    file_effect_execution_guard(effect_id, context)
+    return True
 
 
 def record_file_tool_edit(

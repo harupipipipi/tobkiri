@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:cfc4c689064614b599a437878bd042f8c828ed5b3e81014a849d8a5ed861be8e",
+      "digest": "sha256:2360e91a7ea0b3895d47300832a4f13b370d0b76eb9b9ccfd99b6841c5a4a02c",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -48,12 +48,12 @@
       "operations": [
         "rumi_schedule_store_pack.calendar-manage"
       ],
-      "revision_digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2"
+      "revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2",
+      "contract_revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
       "id": "rumi_schedule_store_pack.calendar.manage",
       "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
       "isolation": "dedicated_process",
@@ -94,9 +94,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:1448dee514a4a226282f80474b14973df42a9af92df7e149f4306a6889afe583",
-    "contract_catalog_digest": "sha256:28a6f60c1c6874ffc9f42bc9f1369255bedc2522de36a363727d5704b1819547",
-    "source_identity": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383"
+    "artifact_set_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+    "contract_catalog_digest": "sha256:9166bdac2ce939046908514992743c24955bc8064887fe7aefbf4c9026f97f78",
+    "source_identity": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -113,7 +113,8 @@
     {
       "contract_reference": "tobkiri.action.calendar.schedule.v1",
       "effect_ceiling": [
-        "capability:schedule.manage"
+        "capability:schedule.manage",
+        "host:brokered-execution"
       ],
       "operation_id": "rumi_schedule_store_pack.calendar-manage",
       "owner": "rumi_schedule_store_pack",
@@ -153,7 +154,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:1448dee514a4a226282f80474b14973df42a9af92df7e149f4306a6889afe583",
+    "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
     "display_name": "Rumi Schedule Store",
     "id": "rumi_schedule_store_pack",
     "kind": "host_extension",
@@ -163,7 +164,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+        "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -174,7 +175,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383",
+    "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
   },

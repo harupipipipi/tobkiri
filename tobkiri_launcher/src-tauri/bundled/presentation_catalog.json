@@ -98,7 +98,7 @@
     },
     {
       "contract_id": "tobkiri.action.calendar.schedule.v1",
-      "digest": "sha256:e4d2fb932aa92720e63f9661b11d978decfb71f583bafe4c09103c2d266b9cb2",
+      "digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_schedule_store_pack.pack.v4.json"
     },
@@ -757,7 +757,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:04f79b71f5560147e1bd3d0bf50e74d5ea231f30a57eb4f0d0a5e791f37e9561",
+  "default_profile_digest": "sha256:ec768f8d7e5d6476d82da3f54409610a49024da02a1ca4ff2fb6191ffe9dc8aa",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -1000,11 +1000,11 @@
     "rumi_provider_adapters_pack": "sha256:51d00395b4212611fcaa10924a4df13e1468268e9548f2804d000e66dc3e0ec0",
     "rumi_provider_registry_pack": "sha256:2c66aeba1f38882ab8b13d1c22d8b74c902644294855cde1559f04ff8eba85d8",
     "rumi_sandbox_runtime_pack": "sha256:929b52246840b7e3dd58f26baad726352f9ad2ec0f5b0b5a4f10d41ff336ca45",
-    "rumi_schedule_store_pack": "sha256:16eb2d93faa02496cc73d22a22d75563f2119d8cdbfb4047698b32f05bda2e3b",
+    "rumi_schedule_store_pack": "sha256:04c38536cea9999dbd93f9c966181614c6c9089d2ffe3d27fd7f549c7af627a6",
     "rumi_scheduler_runtime_pack": "sha256:9baee24ac6fd8e3fd03cbc7522c2946962bb083f63e478747178dfb0aa6bf209",
     "rumi_shell_execute_pack": "sha256:3cab3eea6566ac40009b5247d8fcc4c4c80c043c181a29a868e30a073b92fec0",
     "rumi_shell_policy_pack": "sha256:79d2e386986658e2578c7568eb8442af8e94875b7268a77f7ef5444e361d7d78",
-    "rumi_tool_broker_pack": "sha256:8cfb2a283b526749c865d81ea466d58fd7f5aa623d3868af789b902f993b88c4",
+    "rumi_tool_broker_pack": "sha256:93a8055b710cc89aaf19b778969d71629c78145bd1cc9ab29affdadc8fad31f6",
     "rumi_tool_local_executor_pack": "sha256:45c00903d8ddf7eaf74ebbf65f1a632b5123eb6d0a642f9292f9ee670f767264",
     "rumi_tool_registry_pack": "sha256:5579625082fe537dbb960df5372f2751b20ba3914211b42424a9764f81df6e36",
     "rumi_tool_result_pack": "sha256:27d51b3d47bbac23529b9edad421737a6adedc8781fe7b6a665981cf34a8ea86",
