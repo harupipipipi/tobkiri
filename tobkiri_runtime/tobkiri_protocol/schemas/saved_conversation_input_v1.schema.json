@@ -65,6 +65,49 @@
     "request": {
       "additionalProperties": false,
       "properties": {
+        "action_approval_mode": {
+          "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+          "enum": [
+            "ask",
+            "agent",
+            "full"
+          ],
+          "type": "string"
+        },
+        "chat_references": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "profile_id",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "chat",
+                  "group"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              }
+            }
+          }
+        },
         "content": {
           "oneOf": [
             {
@@ -352,15 +395,6 @@
         },
         "turn_id": {
           "$ref": "#/$defs/identifier"
-        },
-        "action_approval_mode": {
-          "type": "string",
-          "enum": [
-            "ask",
-            "agent",
-            "full"
-          ],
-          "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask."
         }
       },
       "required": [

@@ -18,6 +18,11 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 
+from ecosystem.rumi_schedule_store_pack.runtime.recurrence import (
+    normalize_recurrence,
+    next_cron_ms,
+)
+
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
@@ -45,7 +50,11 @@ class ScheduleStore:
     ) -> None:
         self.profile_id = validate_profile_id(profile_id)
         self.root = (
-            Path(root or USER_DATA_DIR) / "packs" / SERVICE_PACK_ID / "profiles" / self.profile_id
+            Path(root or USER_DATA_DIR)
+            / "packs"
+            / SERVICE_PACK_ID
+            / "profiles"
+            / self.profile_id
         )
         self.path = self.root / "schedules.json"
         self.lock_root = self.root / "locks"
@@ -59,7 +68,9 @@ class ScheduleStore:
             "version": VERSION,
             "profile_id": self.profile_id,
             "revision": state["revision"],
-            "schedules": [state["schedules"][key] for key in sorted(state["schedules"])],
+            "schedules": [
+                state["schedules"][key] for key in sorted(state["schedules"])
+            ],
         }
 
     def get(self, schedule_id: str) -> dict[str, Any] | None:
@@ -116,10 +127,14 @@ class ScheduleStore:
                 "name": str(arguments["name"]),
                 "action_id": str(arguments["action_id"]),
                 "payload": _copy(arguments["payload"]),
+                "presentation": _copy(arguments.get("presentation", {})),
                 "next_run_at_ms": int(arguments["next_run_at_ms"]),
                 "interval_ms": int(arguments["interval_ms"]),
+                "recurrence": normalize_recurrence(arguments.get("recurrence")),
                 "max_attempts": int(arguments["max_attempts"]),
                 "attempt": 0,
+                "history": [],
+                "execution_count": 0,
                 "enabled": True,
                 "status": "scheduled",
                 "lease_id": "",
@@ -128,6 +143,8 @@ class ScheduleStore:
                 "created_at_ms": now_ms,
                 "updated_at_ms": now_ms,
             }
+            if record["recurrence"] is not None and record["interval_ms"]:
+                raise ValueError("cron recurrence cannot also have an interval")
             state["schedules"][schedule_id] = record
             return {"schedule": _copy(record)}
         record = state["schedules"].get(schedule_id)
@@ -139,6 +156,11 @@ class ScheduleStore:
             del state["schedules"][schedule_id]
             return {"deleted": schedule_id}
         if name == "update":
+            updates = arguments["updates"]
+            if updates.get(
+                "recurrence", record.get("recurrence")
+            ) is not None and updates.get("interval_ms", record["interval_ms"]):
+                raise ValueError("cron recurrence cannot also have an interval")
             if record["status"] == "running":
                 raise ScheduleConflict("running schedule cannot be edited")
             for key in (
@@ -148,6 +170,8 @@ class ScheduleStore:
                 "next_run_at_ms",
                 "interval_ms",
                 "max_attempts",
+                "recurrence",
+                "presentation",
             ):
                 if key in arguments["updates"]:
                     record[key] = _copy(arguments["updates"][key])
@@ -187,7 +211,11 @@ class ScheduleStore:
         record["lease_id"] = ""
         record["lease_expires_at_ms"] = 0
         record["last_error"] = str(arguments.get("error") or "")
-        if succeeded and int(record["interval_ms"]) > 0:
+        if succeeded and record.get("recurrence") is not None:
+            record["status"] = "scheduled"
+            record["attempt"] = 0
+            record["next_run_at_ms"] = next_cron_ms(record["recurrence"], now_ms)
+        elif succeeded and int(record["interval_ms"]) > 0:
             record["status"] = "scheduled"
             record["attempt"] = 0
             record["next_run_at_ms"] = now_ms + int(record["interval_ms"])
@@ -197,6 +225,18 @@ class ScheduleStore:
         else:
             record["status"] = "completed" if succeeded else "failed"
             record["enabled"] = False
+        record["execution_count"] = int(record.get("execution_count") or 0) + 1
+        history = list(record.get("history") or [])
+        history.append(
+            {
+                "lease_id": str(arguments["lease_id"]),
+                "status": "completed" if succeeded else "failed",
+                "started_at_ms": record["updated_at_ms"],
+                "completed_at_ms": now_ms,
+                "error": record["last_error"],
+            }
+        )
+        record["history"] = history[-200:]
         record["updated_at_ms"] = now_ms
         return {"schedule": _copy(record)}
 
@@ -283,11 +323,17 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
                 "max_attempts": max(1, min(20, int(payload.get("max_attempts") or 3))),
             }
         )
+        if "presentation" in payload:
+            arguments["presentation"] = dict(_mapping(payload["presentation"]))
+        if "recurrence" in payload:
+            arguments["recurrence"] = normalize_recurrence(payload["recurrence"])
     elif name == "update":
         arguments["updates"] = _updates(payload.get("updates"))
     elif name == "claim":
         arguments["lease_id"] = _identifier(payload.get("lease_id") or uuid.uuid4())
-        arguments["lease_expires_at_ms"] = max(0, int(payload.get("lease_expires_at_ms") or 0))
+        arguments["lease_expires_at_ms"] = max(
+            0, int(payload.get("lease_expires_at_ms") or 0)
+        )
     elif name in {"complete", "fail"}:
         arguments["lease_id"] = _identifier(payload.get("lease_id"))
         arguments["error"] = str(payload.get("error") or "")[:1000]
@@ -330,9 +376,15 @@ def _updates(value: Any) -> dict[str, Any]:
         "next_run_at_ms",
         "interval_ms",
         "max_attempts",
+        "recurrence",
+        "presentation",
     }
     if set(updates) - allowed:
         raise ValueError("schedule update contains unsupported fields")
+    if "presentation" in updates:
+        updates["presentation"] = dict(_mapping(updates["presentation"]))
+    if "recurrence" in updates:
+        updates["recurrence"] = normalize_recurrence(updates["recurrence"])
     if "action_id" in updates:
         updates["action_id"] = _identifier(updates["action_id"])
     if "name" in updates:
@@ -382,7 +434,9 @@ def _copy(value: Any) -> Any:
 def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
-    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".schedule-", suffix=".tmp")
+    fd, temporary = tempfile.mkstemp(
+        dir=path.parent, prefix=".schedule-", suffix=".tmp"
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, ensure_ascii=False, sort_keys=True)

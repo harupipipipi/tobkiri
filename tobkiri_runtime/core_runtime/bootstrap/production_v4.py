@@ -17,6 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from core_runtime.capture_guard_traversal_v4 import (
+    _capture_guard_traversal,
+    _check_shared_capture,
+)
+
 from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
 from tobkiri_host.admission import (
     AdmissionEstimate,
@@ -2291,14 +2296,31 @@ def capture_production_dispatch(
             parent_invocation=capture_invocation_scope(outer_request),
         )
         try:
-            provider_result = dispatch.invoke(
-                bridge_edge.resolved_binding.operation.contract_id,
-                bridge_edge.resolved_binding.operation.operation_id,
-                {**dict(request), "_session_id": bridge_session_id},
-                parent_deadline_monotonic=parent_deadline,
-                parent_cancellation=parent_cancellation,
-                parent_cancellation_proof=parent_cancellation_proof,
+            from contextlib import nullcontext
+            from tobkiri_host.finite_chat_dispatch import finite_saved_chat_source
+            finite_source = (
+                finite_saved_chat_source(
+                    capture_invocation_scope(outer_request),
+                    parent_cancellation_proof,
+                    request,
+                    presentation_owner_for(outer_request),
+                )
+                if (bridge_edge.resolved_binding.operation.contract_id,
+                    bridge_edge.resolved_binding.operation.operation_id) == (
+                        "tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
+                and request.get("tool_id") == "chat_send_message"
+                else nullcontext()
             )
+            with finite_source:
+                provider_result = dispatch.invoke(
+                    bridge_edge.resolved_binding.operation.contract_id,
+                    bridge_edge.resolved_binding.operation.operation_id,
+                    {**dict(request), "_session_id": bridge_session_id},
+                    parent_deadline_monotonic=parent_deadline,
+                    parent_cancellation=parent_cancellation,
+                    parent_cancellation_proof=parent_cancellation_proof,
+                    inline_parent_scope=capture_invocation_scope(outer_request),
+                )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")
             if result_projector is not None:
@@ -2461,7 +2483,7 @@ def capture_production_dispatch(
                 raise AuthorityDenied("saved bridge initial input is missing")
             arguments["operation"] = "append_saved"
             arguments["saved_input"] = validate_saved_conversation_input(initial)
-        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1"}:
+        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1", "tobkiri.resource.workspace.v1"}:
             arguments["profile_id"] = profile["profile_id"]
         runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
         return invoke_bridge_provider(
@@ -2666,14 +2688,15 @@ def capture_production_dispatch(
         saved_tool_entry_guard = saved_tool_entry_guards.capture(envelope)
 
         def guard() -> None:
-            assert_dispatched_invocation(envelope, authority_store)
-            if saved_tool_entry_guard is not None:
-                saved_tool_entry_guard()
-            if parent is not None:
-                parent.assert_current()
-            if not dispatch_holder:
-                raise AuthorityDenied("captured dispatch is unavailable")
-            dispatch_holder[0].assert_current()
+            with _capture_guard_traversal(assert_current_capture):
+                assert_dispatched_invocation(envelope, authority_store)
+                if saved_tool_entry_guard is not None:
+                    saved_tool_entry_guard()
+                if parent is not None:
+                    parent.assert_current()
+                if not dispatch_holder:
+                    raise AuthorityDenied("captured dispatch is unavailable")
+                dispatch_holder[0].assert_current()
 
         return CapturedInvocationScopeV4(envelope, guard, parent)
 
@@ -2712,6 +2735,34 @@ def capture_production_dispatch(
             nested_session_refcounts.pop(session_id, None)
             caller_session_bindings.pop(session_id, None)
 
+    @contextmanager
+    def retained_effect_resume_scope(scope: CapturedInvocationScopeV4, context: RequestContext) -> Any:
+        """Retain only this live coordinator dispatch across its approved execute."""
+        scope.assert_current()
+        if (scope.envelope.target_principal != context.caller_principal
+                or any(getattr(scope.envelope.context, field) != getattr(context, field)
+                       for field in ("profile_id", "profile_revision", "activation_id",
+                                     "activation_digest", "plan_digest", "profile_authority_digest",
+                                     "security_epoch", "fencing_token"))):
+            raise AuthorityDenied("effect execute capture or caller changed")
+        with caller_session_bindings_lock:
+            owner = presentation_owner_bindings.get(scope.envelope.context.caller_session_id)
+            if owner is None:
+                raise AuthorityDenied("effect execute owner is unavailable")
+            parent_invocation_scopes.retain(context.caller_session_id, scope)
+        try:
+            yield {
+                "execution_guard": scope.assert_current,
+                "inline_parent_scope": scope,
+                "parent_deadline_monotonic": scope.envelope.deadline_monotonic,
+                "cancellation_requested": scope.envelope.cancellation_requested,
+                "nested_cancellation_proof": nested_cancellation_proof_for(scope.envelope, owner[0], owner[1]),
+            }
+            scope.assert_current()
+        finally:
+            with caller_session_bindings_lock:
+                parent_invocation_scopes.release(context.caller_session_id)
+
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
 
@@ -2746,6 +2797,40 @@ def capture_production_dispatch(
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
             scope = capture_invocation_scope(self._envelope)
             scope.assert_current()
+            independent_saved_cancellation = None
+            if (
+                (self._envelope.contract_id, self._envelope.operation_id)
+                == ("tobkiri.action.chat.message.delivery.v1", "rumi_turn_runtime_pack.chat-message-deliver")
+                and (contract_id, operation_id)
+                == ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+            ):
+                from ecosystem.rumi_tool_broker_pack.runtime.chat_delivery import (
+                    assert_delivery_saved_branch,
+                )
+                from types import SimpleNamespace
+                delivery_scope = SimpleNamespace(
+                    envelope=self._envelope,
+                    parent_invocation=scope.parent,
+                    assert_current=scope.assert_current,
+                    presentation_owner_principal_id=self._presentation_owner[0],
+                    presentation_owner_session_id=self._presentation_owner[1],
+                )
+                assert_delivery_saved_branch(delivery_scope, payload)
+                independent_saved_cancellation = threading.Event()
+            calendar_dispatch_branch = None
+            from tobkiri_host.calendar_dispatch_branch import (
+                CalendarDispatchBranch, is_calendar_effect_dispatch,
+            )
+            if is_calendar_effect_dispatch(self._envelope, contract_id, operation_id, payload):
+                key = ("rumi_job_action_broker_pack.job-action.broker", contract_id, operation_id)
+                selected = resolved_binding_by_edge.get(key)
+                if (selected is None or pack_by_principal.get(self._envelope.target_principal.value)
+                        != "rumi_job_action_broker_pack"
+                        or selected.function.function_id != "rumi_turn_runtime_pack.chat-saved-job-adapter"):
+                    raise AuthorityDenied("Calendar selected adapter is unavailable")
+                calendar_dispatch_branch = CalendarDispatchBranch(
+                    scope, cancellation_handles, self._presentation_owner, selected,
+                )
             nested_session_id = execution_session_id(self._envelope)
             nested_authority_session_id = bind_nested_session(
                 nested_session_id,
@@ -2761,6 +2846,9 @@ def capture_production_dispatch(
                     version_range=version_range,
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
+                    independent_saved_cancellation=independent_saved_cancellation,
+                    calendar_dispatch_branch=calendar_dispatch_branch,
+                    inline_parent_scope=scope,
                     execution_guard=scope.assert_current,
                     parent_cancellation_proof=nested_cancellation_proof_for(
                         self._envelope,
@@ -2815,6 +2903,42 @@ def capture_production_dispatch(
                 group=(pack_id, group), role=role, envelope=self._envelope,
                 owner_principal=self.presentation_owner_principal_id,
                 owner_session=self.presentation_owner_session_id,
+                guard=self.assert_current,
+            )
+
+        @property
+        def approved_interrupt(self) -> Any:
+            """Expose interruption only to exact currently approved delivery."""
+            from tobkiri_host.approved_interrupt import ApprovedInterruptBinding
+            from core_runtime.owned_chat_message_approval_v4 import assert_chat_message_interrupt_authority
+            if ((self._envelope.contract_id, self._envelope.operation_id) != (
+                    "tobkiri.action.chat.message.delivery.v1", "rumi_turn_runtime_pack.chat-message-deliver")
+                    or pack_by_principal.get(self._envelope.target_principal.value) != "rumi_turn_runtime_pack"):
+                raise AuthorityDenied("approved interrupt port is unavailable")
+            def authorize(state: Any) -> None:
+                _execute, owner = assert_chat_message_interrupt_authority(self, state)
+                if owner != self.presentation_owner_principal_id:
+                    raise AuthorityDenied("approved interrupt presentation owner changed")
+            return ApprovedInterruptBinding(registry=cancellation_handles, envelope=self._envelope,
+                presentation_owner_principal_id=self.presentation_owner_principal_id,
+                authorize=authorize, guard=self.assert_current)
+
+        @property
+        def scheduled_job_cancellation(self) -> Any:
+            """Expose exact selected occurrence stop only to JobBroker cancel."""
+            from tobkiri_host.scheduled_job_cancellation import (
+                ADAPTER, ScheduledJobCancellationBinding,
+            )
+            if (
+                (self._envelope.contract_id, self._envelope.operation_id) != ADAPTER
+                or pack_by_principal.get(self._envelope.target_principal.value)
+                != "rumi_turn_runtime_pack"
+                or cancellation_roles.get(self._envelope.target_principal.value)
+                != ("rumi_turn_runtime_pack", "saved-turn", "execute")
+            ):
+                raise AuthorityDenied("scheduled occurrence stop port is unavailable")
+            return ScheduledJobCancellationBinding(
+                registry=cancellation_handles, scope=self._scope,
                 guard=self.assert_current,
             )
 
@@ -2886,15 +3010,16 @@ def capture_production_dispatch(
 
         def assert_current(self) -> None:
             """Fence durable coordination with actual lease and preserved ancestry."""
-            self._scope.assert_current()
-            if (
-                self._envelope.cancellation_requested.is_set()
-                or self._envelope.deadline_monotonic <= time.monotonic()
-            ):
-                raise AuthorityDenied("Host Provider invocation is no longer active")
-            if not dispatch_holder:
-                raise AuthorityDenied("Host Provider dispatch is not initialized")
-            dispatch_holder[0].assert_current()
+            with _capture_guard_traversal(assert_current_capture):
+                self._scope.assert_current()
+                if (
+                    self._envelope.cancellation_requested.is_set()
+                    or self._envelope.deadline_monotonic <= time.monotonic()
+                ):
+                    raise AuthorityDenied("Host Provider invocation is no longer active")
+                if not dispatch_holder:
+                    raise AuthorityDenied("Host Provider dispatch is not initialized")
+                dispatch_holder[0].assert_current()
 
     def invocation_context(envelope: Any) -> HostProviderInvocationContextV4:
         return _HostInvocation(envelope)
@@ -3473,6 +3598,9 @@ def capture_production_dispatch(
     captured_plan = dict(active.resolved.plan)
 
     def assert_current_capture() -> None:
+        _check_shared_capture(_assert_current_capture)
+
+    def _assert_current_capture() -> None:
         from ..pack_control_v4 import PackControlDenied
         from .profile_capture import capture_active_profile
 
@@ -3599,6 +3727,7 @@ def capture_production_dispatch(
                 policy_effect_authorization_port=policy_effect_authorizations,
                 routes=tuple(routes),
                 context_for_execute=context_for_interactive_effect,
+                resume_invocation_scope=retained_effect_resume_scope,
                 assert_current_capture=assert_current_capture,
                 profile_id=str(profile["profile_id"]),
                 activation_id=str(active.activation["activation_id"]),

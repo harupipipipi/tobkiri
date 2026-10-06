@@ -302,6 +302,9 @@ class V4DispatchSession:
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
+        independent_saved_cancellation: threading.Event | None = None,
+        calendar_dispatch_branch: Any = None,
+        inline_parent_scope: Any = None,
         before_dispatch: Callable[[], None] | None = None,
         execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
@@ -346,6 +349,9 @@ class V4DispatchSession:
             parent_deadline_monotonic is None
             and parent_cancellation is None
             and parent_cancellation_proof is None
+            and independent_saved_cancellation is None
+            and calendar_dispatch_branch is None
+            and inline_parent_scope is None
             and before_dispatch is None
             and execution_guard is None
         ):
@@ -357,6 +363,9 @@ class V4DispatchSession:
             parent_deadline_monotonic=parent_deadline_monotonic,
             parent_cancellation=parent_cancellation,
             parent_cancellation_proof=parent_cancellation_proof,
+            independent_saved_cancellation=independent_saved_cancellation,
+            calendar_dispatch_branch=calendar_dispatch_branch,
+            inline_parent_scope=inline_parent_scope,
             before_dispatch=before_dispatch,
             execution_guard=execution_guard,
         )

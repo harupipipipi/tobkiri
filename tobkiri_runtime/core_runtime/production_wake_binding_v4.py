@@ -50,6 +50,7 @@ def bind_production_wake_v4(
         declaration.operation_id,
         dict(declaration.payload),
         declaration.interval_ms,
+        declaration.dispatch_timeout_ms,
     )
     declaration_digest = captured.digest
     registration_id = "wake." + canonical_digest(
@@ -73,7 +74,7 @@ def bind_production_wake_v4(
             None,
             captured.operation_id,
             dict(captured.payload),
-            timeout_ms=30000,
+            timeout_ms=captured.dispatch_timeout_ms,
             idempotency_key=f"{registration_id}:{occurrence}",
         )
 

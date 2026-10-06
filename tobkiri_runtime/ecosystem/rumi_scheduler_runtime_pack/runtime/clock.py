@@ -26,6 +26,7 @@ class SchedulerClockFactoryV4:
         "rumi_scheduler_runtime_pack.scheduler-control",
         {"operation": "tick", "limit": 20},
         60000,
+        dispatch_timeout_ms=300000,
     )
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
@@ -52,8 +53,12 @@ class SchedulerClockFactoryV4:
             ):
                 raise PermissionError("clock invocation scope is invalid")
             name = payload.get("operation")
-            allowed = {"operation", "profile_id"} | ({"duration_ms"} if name == "arm" else set())
-            if set(payload) - allowed or name not in {"status", "arm", "disarm"}:
+            allowed = {"operation", "profile_id"} | (
+                {"duration_ms"} if name in {"arm", "renew"} else set()
+            )
+            if set(payload) - allowed or name not in {
+                "status", "arm", "renew", "disarm"
+            }:
                 raise PermissionError("clock request is invalid")
             invocation.assert_current()
             port = context.wake_port
@@ -69,7 +74,11 @@ class SchedulerClockFactoryV4:
                 duration = payload.get("duration_ms")
                 if type(duration) is not int or not 60000 <= duration <= 86400000:
                     raise ValueError("finite clock registration duration is invalid")
-                result = port.arm(invocation, duration)
+                result = (
+                    port.renew(invocation, duration)
+                    if name == "renew"
+                    else port.arm(invocation, duration)
+                )
             invocation.assert_current()
             return result
 

@@ -7,6 +7,12 @@ Route readiness is not a credential/network probe or a promise of AI success.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+from tobkiri_host.saved_workspace_context import (
+    WORKSPACE_TARGET, SavedWorkspacePins, resolve_saved_workspace,
+    workspace_resolution, recheck_saved_workspace,
+)
+
 import json
 import math
 import re
@@ -39,11 +45,16 @@ from tobkiri_protocol.conversation_lifecycle import (
     active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
 )
 from tobkiri_protocol.saved_task_context import saved_task_context_messages
+from tobkiri_protocol.saved_conversation import saved_chat_reference_messages
 from tobkiri_protocol.conversation_context import (
     context_link, resolve_request_context, resolved_thinking_level,
 )
 
 from ..authority.v4 import AuthorityDenied
+
+_WORKSPACE_PIN: ContextVar[SavedWorkspacePins | None] = ContextVar(
+    "saved_workspace_pin", default=None,
+)
 
 Target = tuple[str, str]
 
@@ -81,7 +92,7 @@ ALLOWED_TARGETS = (
     STRATEGY,
     STRATEGY_CATALOG,
     *TOOL_TARGETS,
-    PROMPT_TARGET,
+    PROMPT_TARGET, WORKSPACE_TARGET,
     AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
 )
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
@@ -164,7 +175,9 @@ def _request(outer: object) -> dict[str, Any]:
 def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
     """Reject owned context that the text-only saved path cannot resolve."""
     try:
-        validate_saved_conversation_context(conversation)
+        validate_saved_conversation_context(
+            conversation, workspace_resolution=workspace_resolution(conversation),
+        )
     except ValueError as error:
         raise AuthorityDenied(str(error)) from error
 
@@ -393,7 +406,9 @@ class SavedBridgeCallbacks:
                 return False
             prompt = self._system_prompt(outer, conversation)
             requirements: dict[str, Any] = {}
-            if _contains_inline_images(request["content"]):
+            if _contains_inline_images([
+                {"role": "user", "content": request["content"]}
+            ]):
                 requirements["modalities"] = ["image", "text"]
             outcome = self._dispatch(outer, READINESS, {
                 "model_profile_id": conversation["model_reference"],
@@ -401,6 +416,7 @@ class SavedBridgeCallbacks:
                     *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                     {"role": "user", "content": saved_user_text(request["content"])},
                     *saved_task_context_messages(request),
+                    *saved_chat_reference_messages(request),
                 ],
                 "requirements": requirements, "delivery_mode": "incremental",
             })
@@ -412,11 +428,36 @@ class SavedBridgeCallbacks:
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         conversation = self._read_conversation(outer, request["conversation_id"])
         try:
-            return resolve_request_context(
+            conversation = resolve_request_context(
                 conversation, request,
                 getattr(getattr(outer, "context", None), "profile_id", ""),
                 lambda parent_id: self._read_conversation(outer, parent_id),
             )
+            def read_binding(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+                self._require_targets(outer, (WORKSPACE_TARGET,))
+                outcome = self._dispatch(
+                    outer, WORKSPACE_TARGET,
+                    {key: value for key, value in payload.items()
+                     if key != "profile_id"},
+                )
+                value = outcome.get("value")
+                if outcome.get("status") != "ok" or not isinstance(value, Mapping):
+                    raise AuthorityDenied("saved workspace owner is unavailable")
+                return value
+
+            conversation = resolve_saved_workspace(
+                conversation,
+                profile_id=getattr(getattr(outer, "context", None), "profile_id", ""),
+                read_binding=read_binding,
+                guard=lambda: self._require_targets(outer, (WORKSPACE_TARGET,)),
+            )
+            resolution = workspace_resolution(conversation)
+            pin = _WORKSPACE_PIN.get()
+            if resolution is not None and type(pin) is not SavedWorkspacePins:
+                raise AuthorityDenied("saved workspace requires retained Host exchange")
+            if type(pin) is SavedWorkspacePins:
+                pin.accept(resolution)
+            return conversation
         except ValueError as error:
             raise AuthorityDenied(str(error)) from error
 
@@ -443,9 +484,13 @@ class SavedBridgeCallbacks:
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
     ) -> None:
         """Fence dependency-read changes immediately before effect admission."""
-        if context_link(conversation) is None:
+        if context_link(conversation) is None and workspace_resolution(conversation) is None:
             return
         fresh = self._conversation(outer, request)
+        try:
+            recheck_saved_workspace(conversation, fresh)
+        except ValueError as error:
+            raise AuthorityDenied(str(error)) from error
         if any(
             fresh.get(field) != conversation.get(field)
             for field in ("conversation_revision", "current_node_id")
@@ -529,6 +574,14 @@ class SavedBridgeCallbacks:
             raise AuthorityDenied(str(error)) from error
 
     def preflight(self, outer: object) -> None:
+        """Check fresh context without persisting or granting an execution scope."""
+        token = _WORKSPACE_PIN.set(SavedWorkspacePins())
+        try:
+            self._preflight(outer)
+        finally:
+            _WORKSPACE_PIN.reset(token)
+
+    def _preflight(self, outer: object) -> None:
         """Check every captured target and owned context before any user append."""
         request = _request(outer)
         self._require_targets(outer, _required_targets(request))
@@ -579,6 +632,7 @@ class SavedBridgeCallbacks:
                 *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                 {"role": "user", "content": saved_user_text(request["content"])},
                 *saved_task_context_messages(request),
+                *saved_chat_reference_messages(request),
             ],
             **({"requirements": requirements} if requirements else {}),
         }
@@ -606,6 +660,18 @@ class SavedBridgeCallbacks:
 
     def __call__(
         self, outer: object, frame: Mapping[str, Any] | SavedToolFrame
+    ) -> Mapping[str, Any]:
+        """Use only the retained Host exchange's private workspace pin owner."""
+        owner = (frame.workspace_context_owner
+                 if type(frame) is SavedToolFrame else None)
+        token = _WORKSPACE_PIN.set(owner)
+        try:
+            return self._execute_frame(outer, frame)
+        finally:
+            _WORKSPACE_PIN.reset(token)
+
+    def _execute_frame(
+        self, outer: object, frame: Mapping[str, Any] | SavedToolFrame,
     ) -> Mapping[str, Any]:
         """Dispatch authenticated continuation scope through captured targets."""
         request = _request(outer)
@@ -759,6 +825,7 @@ class SavedBridgeCallbacks:
             arguments["messages"] = [
                 *_messages(conversation, system_prompt=prompt),
                 *saved_task_context_messages(request),
+                *saved_chat_reference_messages(request),
                 *trace,
             ]
             requirements = dict(provider_payload["requirements"])
@@ -938,6 +1005,8 @@ class SavedBridgeCallbacks:
         role = "user" if hop == 1 else "assistant"
         trace = trace or []
         metadata = {"turn_id": request["turn_id"]}
+        if "resolved_chat_references" in request:
+            metadata["chat_references"] = request["resolved_chat_references"]["references"]
         if "action_approval_mode" in request:
             metadata["action_approval_mode"] = request["action_approval_mode"]
         fields = {"id", "role", "content", "parent_id", "metadata", "status"}

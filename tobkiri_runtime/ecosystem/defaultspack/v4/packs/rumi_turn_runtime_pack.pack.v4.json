@@ -1,19 +1,34 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:8786ab09ca05b99a27b4422017e753a55ae86e381c52978852da7d0068d404c7",
+      "digest": "sha256:a21f9bb8227e189557d0cf92369e46acc9333dca10d96302c66ce23fe8a4bbcf",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:c57344cf33c27211cdb3fe599117c50865034f4a4ab88bdcd60090fff5281da2",
+      "digest": "sha256:93d4be749d1b11b98be7faea89f8ef10a407baffe70186801b6741cb74f78efd",
+      "kind": "executable",
+      "path": "runtime/calendar_preparation.py"
+    },
+    {
+      "digest": "sha256:89de851a5b967943b6025a3c5aa61118d3214565afe06fe7f29cfcfd61645f5b",
+      "kind": "executable",
+      "path": "runtime/delivery.py"
+    },
+    {
+      "digest": "sha256:5789127328e8faa57a767ed611bab890f96e57dd64b9b54b40ac048c91f4a904",
       "kind": "executable",
       "path": "runtime/durable.py"
     },
     {
-      "digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "kind": "executable",
       "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:91a00f973cf18d8667be2a0e4986d2820c3548b17616e4e85fa9c24a5560e435",
+      "kind": "executable",
+      "path": "runtime/input_context.py"
     },
     {
       "digest": "sha256:405c42946539258d310a8b161f4f0bd1840bd9c6f3168dd06d568d9f727c8f6a",
@@ -26,9 +41,19 @@
       "path": "runtime/progress_host.py"
     },
     {
-      "digest": "sha256:466bae491319b0b5b075ffb80a2b8bf8bc21541bf50a9cda78693a42e766fe8a",
+      "digest": "sha256:baf896a83d56968ba4fb93a84f2d0d780c045f613c888c089feecde2c1df3e41",
       "kind": "executable",
       "path": "runtime/saved.py"
+    },
+    {
+      "digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+      "kind": "executable",
+      "path": "runtime/scheduled_job.py"
+    },
+    {
+      "digest": "sha256:9c9fb8ac001573b342ffb02e1cc1a58e1f2a8c6538fe4340c130e5c9f8128e27",
+      "kind": "executable",
+      "path": "runtime/scheduled_saved.py"
     },
     {
       "digest": "sha256:7708e695b185877d9ea88f64c733ef1036248a85472ccd6833e666a85443b60b",
@@ -49,7 +74,7 @@
       "operations": [
         "rumi_turn_runtime_pack.turn-guidance"
       ],
-      "revision_digest": "sha256:abfcbc07baf5bcba892efe50ed791ce1ac5d3a9a94ea9c3f3f15048fa530d233"
+      "revision_digest": "sha256:7045e218ababbf85cf0dd44988ad049ef3579343f0c813a9d2ff8c36daec024c"
     },
     {
       "contract_id": "tobkiri.event.turn.v1",
@@ -63,7 +88,7 @@
       "operations": [
         "rumi_turn_runtime_pack.turn-resource"
       ],
-      "revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7"
+      "revision_digest": "sha256:acf98c5bf82405666c710bdd2a4b6199d108ffdc70deaed0157c1b0f6e9f450a"
     },
     {
       "contract_id": "tobkiri.action.turn.stop.v1",
@@ -84,7 +109,7 @@
       "operations": [
         "rumi_turn_runtime_pack.turn-saved"
       ],
-      "revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7"
+      "revision_digest": "sha256:40589812c5e77cf74594b45d478f25eda923a771a9b6366354b4dfb03db4382b"
     },
     {
       "contract_id": "tobkiri.action.turn.progress.v1",
@@ -99,13 +124,47 @@
         "rumi_turn_runtime_pack.turn-progress-resource"
       ],
       "revision_digest": "sha256:ebeb8fc8b1ba2d42cb2238993ecddb778cdb54768d4325bb213c10fb6384e2cd"
+    },
+    {
+      "contract_id": "tobkiri.action.chat.message.delivery.v1",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-message-deliver"
+      ],
+      "revision_digest": "sha256:85f95b7fd4fe603c4c2efe8bc483bc44dfaf336e074eff83cc54d0319553f7d0"
+    },
+    {
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-saved-job-adapter"
+      ],
+      "revision_digest": "sha256:d5dd5f26f86d6f725aa3a201c1ec761b1efda5fbb550aeb59b73b0a21e68b7fc"
     }
   ],
   "functions": [
     {
+      "contract_revision_digest": "sha256:85f95b7fd4fe603c4c2efe8bc483bc44dfaf336e074eff83cc54d0319553f7d0",
+      "id": "rumi_turn_runtime_pack.chat-message-deliver",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-message-deliver"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:d5dd5f26f86d6f725aa3a201c1ec761b1efda5fbb550aeb59b73b0a21e68b7fc",
+      "id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+      "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-saved-job-adapter"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:c65360507f2da991fbea5d83a09e510e9d148287f975b8c8d765c2f1dc1485e6",
       "id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-events"
@@ -113,9 +172,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:abfcbc07baf5bcba892efe50ed791ce1ac5d3a9a94ea9c3f3f15048fa530d233",
+      "contract_revision_digest": "sha256:7045e218ababbf85cf0dd44988ad049ef3579343f0c813a9d2ff8c36daec024c",
       "id": "rumi_turn_runtime_pack.turn-runtime.guidance",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-guidance"
@@ -125,7 +184,7 @@
     {
       "contract_revision_digest": "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
       "id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-lifecycle"
@@ -135,7 +194,7 @@
     {
       "contract_revision_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
       "id": "rumi_turn_runtime_pack.turn-runtime.progress",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-progress"
@@ -145,7 +204,7 @@
     {
       "contract_revision_digest": "sha256:ebeb8fc8b1ba2d42cb2238993ecddb778cdb54768d4325bb213c10fb6384e2cd",
       "id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-progress-resource"
@@ -155,7 +214,7 @@
     {
       "contract_revision_digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
       "id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-reconcile"
@@ -163,9 +222,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
+      "contract_revision_digest": "sha256:acf98c5bf82405666c710bdd2a4b6199d108ffdc70deaed0157c1b0f6e9f450a",
       "id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-resource"
@@ -173,9 +232,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7",
+      "contract_revision_digest": "sha256:40589812c5e77cf74594b45d478f25eda923a771a9b6366354b4dfb03db4382b",
       "id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-saved"
@@ -185,7 +244,7 @@
     {
       "contract_revision_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
       "id": "rumi_turn_runtime_pack.turn-runtime.stop",
-      "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
+      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-stop"
@@ -194,9 +253,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874",
-    "artifact_set_digest": "sha256:f29f9b9d048b25213a15a12c25688f431e647129903e6e2c04b1cbef56950c22",
-    "contract_catalog_digest": "sha256:84ae9597f188168aa17ef53ff1163afe9640b944c0fa752ff0fee5b5433d8a8a"
+    "source_identity": "sha256:b5686d59fd391c914f5ef81bd4227d3d5c2966cda96889b4a58d6efd820dff4e",
+    "artifact_set_digest": "sha256:181a4f2eb16e75710ba56d584f6d708bbf050cc09c7e9ee1490a03e1b202a6e5",
+    "contract_catalog_digest": "sha256:6f79974fb073f8e962652d309b2bc05ca2e72f35bdf461979e9e983c520487cc"
   },
   "migration": {
     "compatibility": "read_only",
@@ -211,6 +270,22 @@
     "sunset_at": "2027-12-31"
   },
   "operation_catalog": [
+    {
+      "operation_id": "rumi_turn_runtime_pack.chat-message-deliver",
+      "owner": "rumi_turn_runtime_pack",
+      "contract_reference": "tobkiri.action.chat.message.delivery.v1",
+      "provider_id": "rumi_turn_runtime_pack.chat-message-deliver",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+      "owner": "rumi_turn_runtime_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "provider_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
     {
       "operation_id": "rumi_turn_runtime_pack.turn-events",
       "owner": "rumi_turn_runtime_pack",
@@ -285,7 +360,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:351d8e47f4b5b3c740236561b00c390940992b87f21fb364d524481dd04e9e43",
+    "artifact_digest": "sha256:12b95eb251ac9ad8c92435a5711e5523ca69382596758c0c9ff4a790e18b3d53",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -296,15 +371,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
-    "source_digest": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874",
+    "source_digest": "sha256:b5686d59fd391c914f5ef81bd4227d3d5c2966cda96889b4a58d6efd820dff4e",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:5db618c2efa5f7fd86f5d87755a13940211fbfc3eea3859cdf4effa685ea68c9",
+    "content_root_digest": "sha256:3379fc493298e74ed517dbeeef5ad270035013fcdcb6cc112f8a0343f412a7f9",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:b03b5e7fcc4c6a2586eb65a66ff6ec348af7c6538fa7febaf7c9e392267d8c7e",
+    "input_inventory_digest": "sha256:c8deff67fe49f03c310a0c0a24ac08fdbe0815158b7fbb8843a66e573cf6493f",
     "normative": true,
     "evidence": [
       {
@@ -315,11 +390,27 @@
       {
         "path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:7bcca8769f07da21cbff5d62548dc6985c60d32ec33b724a18b8b3eb28534874"
+        "digest": "sha256:b5686d59fd391c914f5ef81bd4227d3d5c2966cda96889b4a58d6efd820dff4e"
       }
     ]
   },
   "provider_catalog": [
+    {
+      "provider_id": "rumi_turn_runtime_pack.chat-message-deliver",
+      "owner": "rumi_turn_runtime_pack",
+      "contract_reference": "tobkiri.action.chat.message.delivery.v1",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-message-deliver"
+      ]
+    },
+    {
+      "provider_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+      "owner": "rumi_turn_runtime_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "rumi_turn_runtime_pack.chat-saved-job-adapter"
+      ]
+    },
     {
       "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
       "owner": "rumi_turn_runtime_pack",
@@ -396,6 +487,7 @@
   "requirements": {
     "approval_policy": "none",
     "capabilities": [
+      "job.adapter.invoke",
       "turn.execute",
       "turn.manage",
       "turn.read",
@@ -446,6 +538,45 @@
         "cardinality": "one",
         "contract_id": "tobkiri.resource.prompt.studio.v1",
         "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.chat.reference.v1",
+        "operations": [
+          "rumi_conversation_store_pack.chat-reference-read"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.lifecycle.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
         "version_range": "^1.0.0"
       }
     ],

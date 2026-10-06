@@ -16,6 +16,9 @@ import re
 from typing import Any
 
 from tobkiri_protocol.saved_task_context import validate_saved_task_context
+from tobkiri_protocol.saved_conversation import (
+    validate_chat_references, validate_resolved_chat_references,
+)
 
 TARGETS = (
     ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"),
@@ -187,8 +190,16 @@ def _request(value: Any) -> dict[str, Any]:
         "action_approval_mode",
         "task_context",
         "context_binding",
+        "chat_references",
+        "resolved_chat_references",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
+    if "chat_references" in value:
+        validate_chat_references(value["chat_references"])
+        if value["chat_references"] and "resolved_chat_references" not in value:
+            raise ValueError("saved chat references require owner resolution")
+    if "resolved_chat_references" in value:
+        validate_resolved_chat_references(value["resolved_chat_references"], value.get("chat_references", []))
     if "context_binding" in value:
         _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
@@ -252,7 +263,8 @@ def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
     optional = {"tool_selection", "strategy_reference", "thinking_level",
-                "task_context", "context_binding", "action_approval_mode"}
+                "task_context", "context_binding", "chat_references",
+                "resolved_chat_references", "action_approval_mode"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
@@ -271,7 +283,7 @@ def _state_request(value: Any) -> dict[str, Any]:
         "none", "low", "medium", "high", "xhigh"
     }:
         raise ValueError("saved conversation thinking level is invalid")
-    if "tool_selection" in value or "task_context" in value:
+    if any(key in value for key in ("tool_selection", "task_context", "chat_references", "resolved_chat_references")):
         _request({**value, "content": "saved content"})
     return value
 
@@ -300,6 +312,18 @@ def _tool_logs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return logs
 
 
+def _message_metadata(request: dict[str, Any]) -> dict[str, Any]:
+    """Persist owner-resolved reference facts alongside the saved turn identity."""
+    metadata = {"turn_id": request["turn_id"]}
+    if "resolved_chat_references" in request:
+        metadata["chat_references"] = json.loads(_json(
+            request["resolved_chat_references"]["references"]
+        ))
+    if "action_approval_mode" in request:
+        metadata["action_approval_mode"] = request["action_approval_mode"]
+    return metadata
+
+
 def _message(
     state: dict[str, Any], role: str, *, user_content: Any | None = None,
 ) -> dict[str, Any]:
@@ -314,11 +338,7 @@ def _message(
         "role": role,
         "content": content,
         "parent_id": state["parent_id"] if role == "user" else _message_id(request, "user"),
-        "metadata": {
-            "turn_id": request["turn_id"],
-            **({"action_approval_mode": request["action_approval_mode"]}
-               if "action_approval_mode" in request else {}),
-        },
+        "metadata": _message_metadata(request),
         "status": "complete",
     }
     if role == "assistant":
@@ -573,11 +593,7 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                         message.get("id") != _message_id(request, "user")
                         or message.get("role") != "user"
                         or message.get("parent_id") != state["parent_id"]
-                        or message.get("metadata") != {
-                            "turn_id": request["turn_id"],
-                            **({"action_approval_mode": request["action_approval_mode"]}
-                               if "action_approval_mode" in request else {}),
-                        }
+                        or message.get("metadata") != _message_metadata(request)
                         or message.get("status") != "complete"
                         or not _saved_user_content(message.get("content"))
                         or "sha256:" + hashlib.sha256(

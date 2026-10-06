@@ -39,12 +39,18 @@ class CapturedWakeDeclarationV4:
     operation_id: str
     payload: Mapping[str, Any]
     interval_ms: int
+    dispatch_timeout_ms: int = 30000
 
     def __post_init__(self) -> None:
         if not self.contract_id or not self.operation_id:
             raise ValueError("wake target is missing")
         if type(self.interval_ms) is not int or not 100 <= self.interval_ms <= 86400000:
             raise ValueError("wake interval is invalid")
+        if (
+            type(self.dispatch_timeout_ms) is not int
+            or not 1 <= self.dispatch_timeout_ms <= 300000
+        ):
+            raise ValueError("wake dispatch timeout is invalid")
         canonical_digest(dict(self.payload))
         object.__setattr__(
             self, "payload", MappingProxyType(json.loads(json.dumps(dict(self.payload))))
@@ -53,14 +59,17 @@ class CapturedWakeDeclarationV4:
     @property
     def digest(self) -> str:
         """Pin the entire copied declaration and detect any nested drift."""
-        return canonical_digest(
-            {
-                "contract_id": self.contract_id,
-                "operation_id": self.operation_id,
-                "payload": dict(self.payload),
-                "interval_ms": self.interval_ms,
-            }
-        )
+        declared = {
+            "contract_id": self.contract_id,
+            "operation_id": self.operation_id,
+            "payload": dict(self.payload),
+            "interval_ms": self.interval_ms,
+        }
+        # The implicit original 30s ceiling retains existing persisted identity.
+        # Every non-default trusted budget is explicitly pinned in its digest.
+        if self.dispatch_timeout_ms != 30000:
+            declared["dispatch_timeout_ms"] = self.dispatch_timeout_ms
+        return canonical_digest(declared)
 
 
 class CapturedWakePortV4(Protocol):
@@ -71,6 +80,9 @@ class CapturedWakePortV4(Protocol):
 
     def disarm(self, invocation: Any) -> Mapping[str, Any]:
         """Fence and disable this exact registration."""
+
+    def renew(self, invocation: Any, duration_ms: int) -> Mapping[str, Any]:
+        """Extend only this armed registration without replacing its source."""
 
     def status(self) -> Mapping[str, Any]:
         """Return truthful driver/adapter and finite registration status."""
@@ -102,6 +114,10 @@ class LateBoundWakePortV4:
     def disarm(self, invocation: Any) -> Mapping[str, Any]:
         """Revoke only the authenticated owner's finite registration."""
         return self._current(invocation).disarm()
+
+    def renew(self, invocation: Any, duration_ms: int) -> Mapping[str, Any]:
+        """Require the actual selected clock invocation before finite renewal."""
+        return self._current(invocation).renew(duration_ms)
 
     def status(self) -> Mapping[str, Any]:
         """Never claim an unbound production driver is armed."""
@@ -401,6 +417,39 @@ class CapturedWakeDriverV4:
                 self._kernel.revoke(self._active_registration.registration_id)
                 self._registered = False
             self._armed, self._reason = False, "registration_disabled"
+            return self.status()
+
+    def renew(self, duration_ms: int) -> Mapping[str, Any]:
+        """Extend finite intent while preserving generation and in-flight work."""
+        if type(duration_ms) is not int or not 1000 <= duration_ms <= 86400000:
+            raise ValueError("finite wake duration is invalid")
+        with self._lock:
+            self._check()
+            state = self._state()
+            now = self._wall()
+            if (
+                not self._armed
+                or not self._registered
+                or self._adapter is None
+                or not self._adapter.status.available
+                or state is None
+                or state[0] != self._identity
+                or not state[2]
+                or state[3] <= now
+            ):
+                raise PermissionError("only an armed wake registration can renew")
+            expiration = max(float(state[3]), now + duration_ms / 1000)
+            with self._database:
+                changed = self._database.execute(
+                    "UPDATE wake_state SET expires_wall=? WHERE id=1 "
+                    "AND identity=? AND generation=? AND enabled=1 "
+                    "AND expires_wall=?",
+                    (expiration, self._identity, state[1], state[3]),
+                ).rowcount
+            if changed != 1:
+                raise PermissionError("wake renewal registration changed")
+            # Do not reset next_wall, claim_until, generation, the kernel source,
+            # or _delivery_cancellation: renewal may happen inside a live tick.
             return self.status()
 
     def deliver_due(self) -> None:

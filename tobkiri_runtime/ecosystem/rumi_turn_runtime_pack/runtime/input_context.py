@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from typing import Any, Callable, Mapping
+import time
 
 from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT, INBOX_CONTRACT
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    validate_saved_conversation_input, validate_chat_references,
+    validate_resolved_chat_references,
+)
+
+CHAT_REFERENCES = "tobkiri.resource.chat.reference.v1"
+CHAT_REFERENCES_OP = "rumi_conversation_store_pack.chat-reference-read"
 
 CONVERSATION = "tobkiri.resource.conversation.v1"
 CONVERSATION_OP = "rumi_conversation_store_pack.conversation-resource"
@@ -27,12 +34,15 @@ def execute_with_input_context(
     client: Any,
     guard: Callable[[], None],
     execute: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    clock_ms: Callable[[], int] = lambda: int(time.time() * 1000),
     recover_input: Callable[[Mapping[str, Any]], Mapping[str, Any] | None] = lambda _: None,
     bind_input: Callable[
         [Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]
     ] = lambda _, value: value,
 ) -> dict[str, Any]:
     """Derive context before immutable capture and ack only owner acceptance."""
+    if "resolved_chat_references" in payload.get("request", {}):
+        raise ValueError("caller cannot provide resolved chat references")
     source = validate_saved_conversation_input(payload)
     initial = validate_saved_conversation_input(payload)
     # Accepted context comes only from the selected captured provider. The
@@ -43,6 +53,21 @@ def execute_with_input_context(
     recovered = recover_input(source)
     if recovered is not None:
         initial = validate_saved_conversation_input(recovered)
+    references = validate_chat_references(request.get("chat_references", []), profile_id=client.session.profile_id)
+    if references and recovered is None:
+        operation_id = _provider(client, CHAT_REFERENCES)
+        if operation_id != CHAT_REFERENCES_OP:
+            raise RuntimeError("chat reference read provider is unavailable")
+        guard()
+        snapshot = client.invoke(CHAT_REFERENCES, operation_id, {
+            "operation": "resolve", "profile_id": client.session.profile_id,
+            "references": [{"kind": ref["kind"], "id": ref["id"]} for ref in references],
+        })
+        resolved = validate_resolved_chat_references(snapshot, references)
+        if "expires_at" in resolved and resolved["expires_at"] <= clock_ms():
+            raise ValueError("chat reference snapshot has expired")
+        initial["request"]["resolved_chat_references"] = resolved
+        initial = validate_saved_conversation_input(initial)
     operation = _provider(client, CONTEXT_CONTRACT) if recovered is None else None
     projection = None
     prepare = {

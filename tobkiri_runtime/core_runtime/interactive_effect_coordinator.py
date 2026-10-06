@@ -15,7 +15,7 @@ import shlex
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, ContextManager, Mapping, TypedDict
 
 from core_runtime.authority.v4 import AuthorityScope
 from core_runtime.workspace_mount_effect import validate_project_plan
@@ -25,6 +25,7 @@ from core_runtime.workspace_task_effect import (
 )
 from tobkiri_host.broker import PreparedInvocation, RequestBroker
 from tobkiri_host.interactive_effects import (
+    _PreparedExecutionGuardKwargs,
     PendingEffectController,
     PendingEffectStatus,
 )
@@ -38,6 +39,13 @@ from tobkiri_host.ports import (
 )
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.workspace_task_v1 import EXECUTE, PREPARE, TASK_CONTRACT
+
+
+class _EffectResumeKwargs(TypedDict, total=False):
+    """Finite live Host arguments forwarded to the existing effect controller."""
+
+    synchronous_dispatch: bool
+    dispatch_scope: Callable[[RequestContext], ContextManager[_PreparedExecutionGuardKwargs]]
 
 
 class InteractiveEffectUnavailable(PermissionError):
@@ -60,6 +68,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "chat_message_send": InteractiveEffectSpec(
+        kind="chat_message_send",
+        prepare_contract_id="tobkiri.service.chat.message.send.v1",
+        prepare_operation_id="rumi_default_tools_pack.chat-message-prepare",
+        execute_contract_id="tobkiri.service.chat.message.send.v1",
+        execute_operation_id="rumi_default_tools_pack.chat-message-send",
+    ),
     "file_create": InteractiveEffectSpec(
         kind="file_create",
         prepare_contract_id="tobkiri.service.file.create.v1",
@@ -198,6 +213,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
         plan_digest: str,
         security_epoch: int,
         clock: Callable[[], float] = time.time,
+        resume_invocation_scope: Any | None = None,
     ) -> None:
         if not routes:
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
@@ -223,6 +239,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
         self._plan_digest = plan_digest
         self._security_epoch = security_epoch
         self._clock = clock
+        self._resume_invocation_scope = resume_invocation_scope
 
     def prepare_interactive_effect(
         self,
@@ -297,6 +314,9 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 caller_session_id=execute_context.caller_session_id,
                 plan_digest=execute_context.plan_digest,
             )
+            if route.spec.kind == "chat_message_send":
+                from core_runtime.owned_chat_message_approval_v4 import assert_chat_message_request_live
+                assert_chat_message_request_live(request, command.context)
             if route.spec.kind == "file_create":
                 from core_runtime.owned_file_approval_v4 import assert_file_request_live
                 assert_file_request_live(request, command.context)
@@ -340,6 +360,15 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                         presentation_owner_session_id=command.presentation_owner_session_id,
                     )
                 bind_file_effect(pending.effect_id, request, execute_context, cancel_file_effect)
+            if route.spec.kind == "chat_message_send":
+                from core_runtime.owned_chat_message_approval_v4 import bind_chat_message_effect
+                def cancel_chat_message_effect() -> None:
+                    self._controller.cancel_for_presentation(
+                        effect_id=pending.effect_id,
+                        presentation_owner_principal_id=command.presentation_owner_principal_id,
+                        presentation_owner_session_id=command.presentation_owner_session_id,
+                    )
+                bind_chat_message_effect(pending.effect_id, request, execute_context, cancel_chat_message_effect, plan=execute_payload["plan"])
             return _port_status(pending)
         except InteractiveEffectUnavailable:
             raise
@@ -416,9 +445,40 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 presentation_owner_principal_id=query.presentation_owner_principal_id,
                 presentation_owner_session_id=query.presentation_owner_session_id,
             )
+            if operation == ("tobkiri.service.chat.message.send.v1", "rumi_default_tools_pack.chat-message-send"):
+                from core_runtime.owned_chat_message_approval_v4 import chat_message_effect_execution_guard
+                execution_guard = chat_message_effect_execution_guard(query.effect_id, query.context)
             if operation == ("tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create"):
                 from core_runtime.owned_file_approval_v4 import file_effect_execution_guard
                 execution_guard = file_effect_execution_guard(query.effect_id, query.context)
+            resume_kwargs: _EffectResumeKwargs = {}
+            scope = query.invocation_scope
+            if scope is None and operation == ("tobkiri.service.chat.message.send.v1", "rumi_default_tools_pack.chat-message-send"):
+                raise PermissionError("current effect resume scope is unavailable")
+            if scope is not None:
+                from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+                if (not isinstance(scope, CapturedInvocationScopeV4)
+                        or scope.envelope.context is not query.context
+                        or scope.envelope.target_principal != query.coordinator_principal
+                        or (scope.envelope.contract_id, scope.envelope.operation_id) != (
+                            "tobkiri.service.interactive-effect.v1", "interactive_effect.manage")):
+                    raise PermissionError("current effect resume scope is invalid")
+                scope.assert_current()
+                from ecosystem.rumi_tool_broker_pack.runtime.chat_delivery import captured_delivery_ancestors
+                ancestors = captured_delivery_ancestors(scope.parent, limit=13)
+                incoming = any(
+                    (ancestor.envelope.contract_id, ancestor.envelope.operation_id) == (
+                        "tobkiri.action.chat.message.delivery.v1",
+                        "rumi_turn_runtime_pack.chat-message-deliver",
+                    )
+                    for ancestor in ancestors
+                )
+                if operation == ("tobkiri.service.chat.message.send.v1", "rumi_default_tools_pack.chat-message-send") or incoming:
+                    resume_scope_factory = self._resume_invocation_scope
+                    if resume_scope_factory is None:
+                        raise PermissionError("live effect resume scope is unavailable")
+                    resume_kwargs = {"synchronous_dispatch": True,
+                        "dispatch_scope": lambda context: resume_scope_factory(scope, context)}
             return _port_status(
                 self._controller.resume_for_presentation(
                     effect_id=_effect_id(query.effect_id),
@@ -430,6 +490,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                     policy_inheritance=getattr(query, "policy_inheritance", None),
                     wall_clock=self._clock,
                     execution_guard=execution_guard,
+                    **resume_kwargs,
                 )
             )
         except Exception as exc:
@@ -514,6 +575,12 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "chat_message_send":
+        from tobkiri_protocol.chat_message_v1 import validate_execute_payload
+        try:
+            return validate_execute_payload(request, prepared_result)
+        except (TypeError, ValueError, KeyError, PermissionError) as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
     if spec.kind == "file_create":
         from tobkiri_protocol.file_create_v1 import validate_execute_payload
         try:
@@ -736,6 +803,17 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "chat_message_send":
+        from tobkiri_protocol.chat_message_v1 import validate_execute_payload
+        try:
+            bound = validate_execute_payload(payload["request"], payload["plan"])
+        except (TypeError, ValueError, KeyError, PermissionError) as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
+        from tobkiri_protocol.chat_message_v1 import approval_metadata
+        try:
+            return approval_metadata(bound["request"], bound["plan"])
+        except (TypeError, ValueError, KeyError, PermissionError) as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
     if spec.kind == "workspace_task":
         try:
             task_plan = workspace_task_snapshot(payload)

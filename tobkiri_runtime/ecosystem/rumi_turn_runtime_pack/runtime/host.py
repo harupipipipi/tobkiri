@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tobkiri_protocol.saved_conversation import saved_guidance_context
+
 import re
 import time
 from typing import Any, Mapping
@@ -13,6 +15,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+from ecosystem.rumi_turn_runtime_pack.runtime.delivery import delivery_host_factory
 from ecosystem.rumi_turn_runtime_pack.runtime.progress_host import progress_operation
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
@@ -119,7 +122,7 @@ class TurnHostFactoryV4:
                     or not isinstance(guidance_id, str)
                     or _ID.fullmatch(guidance_id) is None
                     or not isinstance(guidance, Mapping)
-                    or set(guidance) != _GUIDANCE_KEYS
+                    or set(guidance) - {"chat_references", "tool_selection", "action_approval_mode"} != _GUIDANCE_KEYS
                 ):
                     raise ValueError("guidance request is invalid")
                 prompt = guidance.get("prompt")
@@ -142,6 +145,10 @@ class TurnHostFactoryV4:
                     or guidance_size > 32 * 1024
                 ):
                     raise ValueError("guidance request is invalid")
+                guidance = {
+                    **dict(guidance),
+                    **saved_guidance_context(guidance, profile_id=context.profile_id),
+                }
                 current = store.get(turn_id)
                 if current is None or current.get("conversation_id") != conversation_id:
                     raise PermissionError("guidance turn does not match conversation")
@@ -323,6 +330,21 @@ class TurnHostFactoryV4:
                 if key not in {"profile_id", "operation", "_session_id"}
             }
             if self.kind != "lifecycle":
+                if self.kind == "resource" and action == "delivery_state":
+                    _fields(values, {"conversation_id"})
+                    conversation_id = _identifier(values["conversation_id"])
+                    reader = invocation.contract_client(
+                        allowed_contract_ids=frozenset({"tobkiri.resource.conversation.v1"}),
+                        consumer_pack_id=_PACK, include_credentials=False,
+                    )
+                    response = reader.invoke("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource", {
+                        "profile_id": store.profile_id, "operation": "get", "conversation_id": conversation_id,
+                    })
+                    conversation = response.get("conversation") if isinstance(response, Mapping) else None
+                    if not isinstance(conversation, Mapping) or conversation.get("id") != conversation_id or type(conversation.get("conversation_revision")) is not int:
+                        raise PermissionError("delivery conversation state is unavailable")
+                    invocation.assert_current()
+                    return store.delivery_state(conversation_id, conversation_revision=conversation["conversation_revision"])
                 if action == "get":
                     required = {"turn_id", "conversation_id"} if self.kind == "events" else {"turn_id"}
                     _fields(values, required)
@@ -447,3 +469,7 @@ def _identifier(value: Any) -> str:
 HOST_PROVIDER_FACTORY = {
     f"{_PACK}.turn-runtime.{kind}": TurnHostFactoryV4(kind) for kind in _CONTRACTS
 }
+
+
+# Delivery is a distinct single-operation Host function, not a lifecycle alias.
+HOST_PROVIDER_FACTORY["rumi_turn_runtime_pack.chat-message-deliver"] = delivery_host_factory()

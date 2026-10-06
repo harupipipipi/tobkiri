@@ -1,28 +1,28 @@
 {
-  "artifact_set_digest": "sha256:d93bef49391cc124728ad86e90be28077aecca15a75a4c3b71d630e1fe4485fd",
+  "artifact_set_digest": "sha256:f57f61bebd9d6c66efeb0e805cb806a69be2f710484d504e8d02290844058702",
   "artifacts": [
     {
-      "digest": "sha256:0cd4f1b0d9907c95c98000bea39d54d6d567ff9c4b9f759316a78b79ce5fc948",
+      "digest": "sha256:413f0b4382f39396a15ca134da4543c456417b85866e176eb11696246bcc728b",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:cea1f9273f3f6a6a2b9f6016450a896c0b8b3f06d7ad357b422200a0a810458b",
+      "digest": "sha256:900777fc36c95ac4cd5b0ceda275b317c29aa7dd3d096143b57da60b240762a1",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:d02b9738d56234edbb41c1a97bd9a49b1eae663d371a360c975e95900e3ec43a",
+      "digest": "sha256:b45f135e415c3be4f024973c6fc2c3593efe60531df17dee716434913379ba0f",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd",
+      "digest": "sha256:fcfc3dd750d2de3c6aa8c76730d1ffedfa14ecc75606c38d14eee4bdbbf662bf",
       "path": "runtime/clock.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
+      "digest": "sha256:4bb556d11178fcd8ef3bad5847fcfb7f574fca31e74101742a18c85ef33d427c",
       "path": "runtime/scheduler.py",
       "role": "runtime"
     }
@@ -30,8 +30,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:72d6de7f55cd4ea1c3135d1d1e2e711aec1126d1c1a3dc4434b9deaaa39e651f"
+    "signed_digest": "sha256:c01a15c6b51b9493107be8baf3735a9e0c8aa0449fab96d2e87caca9a73047c1"
   },
   "pack_id": "rumi_scheduler_runtime_pack",
-  "source_identity": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4"
+  "source_identity": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf"
 }

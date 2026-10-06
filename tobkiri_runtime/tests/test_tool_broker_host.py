@@ -53,7 +53,7 @@ def tool_host(tmp_path):
             assert kwargs == {
                 "allowed_contract_ids": frozenset({
                     broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE,
-                    broker.ACTION,
+                    broker.ACTION, "tobkiri.resource.chat.reference.v1",
                 }),
                 "consumer_pack_id": broker.PACK_ID, "include_credentials": False,
             }

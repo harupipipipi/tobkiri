@@ -425,6 +425,8 @@ class InteractiveEffectOwnerQuery:
     presentation_owner_principal_id: str
     presentation_owner_session_id: str
     effect_id: str
+    # Host-private current dispatch scope; never normalized or persisted wire data.
+    invocation_scope: Any | None = None
     # Resume carries its own current coordinator parent, not the committed prepare lease.
     policy_inheritance: Any | None = None
 

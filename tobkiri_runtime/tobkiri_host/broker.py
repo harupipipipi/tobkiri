@@ -132,6 +132,18 @@ class NestedCancellationProof(Protocol):
     def reserve_child(self, envelope: "RequestEnvelope") -> int:
         """Reserve a child before Broker submission."""
 
+    def reserve_independent_saved_child(self, envelope: "RequestEnvelope") -> int:
+        """Reserve an authenticated saved child with its own cancellation signal."""
+
+    def independent_saved_execution_scope(self, envelope: "RequestEnvelope") -> Any:
+        """Enter the private proof of one exact registered saved branch."""
+
+    def reserve_independent_calendar_child(self, envelope: "RequestEnvelope") -> int:
+        """Reserve one exact selected Calendar adapter with a fresh signal."""
+
+    def independent_calendar_execution_scope(self, envelope: "RequestEnvelope") -> Any:
+        """Enter one enrolled real-Future Calendar execution branch."""
+
     def abandon_child(self, child_id: int) -> None:
         """Discard a reservation which never submitted work."""
 
@@ -399,14 +411,37 @@ class RequestBroker:
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
+        independent_saved_cancellation: threading.Event | None = None,
+        calendar_dispatch_branch: Any = None,
         before_dispatch: Callable[[], None] | None = None,
         execution_guard: Callable[[], None] | None = None,
+        inline_parent_scope: Any = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("request broker is closed")
         _validate_parent_cancellation(parent_cancellation, parent_cancellation_proof)
+        if independent_saved_cancellation is not None and (
+            type(independent_saved_cancellation) is not threading.Event
+            or independent_saved_cancellation.is_set()
+            or independent_saved_cancellation is parent_cancellation
+            or parent_cancellation is None
+            or parent_cancellation_proof is None
+            or (frame.contract_id, frame.operation_id)
+            != ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+        ):
+            raise PermissionError("independent saved cancellation is unavailable")
+        if calendar_dispatch_branch is not None:
+            from .calendar_dispatch_branch import CalendarDispatchBranch
+            if (type(calendar_dispatch_branch) is not CalendarDispatchBranch
+                    or independent_saved_cancellation is not None
+                    or parent_cancellation is not calendar_dispatch_branch.scope.envelope.cancellation_requested
+                    or (frame.contract_id, frame.operation_id) != (
+                        "tobkiri.action.job.adapter.v2", "rumi_turn_runtime_pack.chat-saved-job-adapter")):
+                raise PermissionError("Calendar independent branch is unavailable")
+            calendar_dispatch_branch.scope.assert_current()
+            frame = replace(frame, idempotency_key=calendar_dispatch_branch.scope.envelope.payload.get("idempotency_key"))
         if execution_guard is not None:
             execution_guard()
         _validate_parent_deadline(parent_deadline_monotonic, time.monotonic)
@@ -428,9 +463,12 @@ class RequestBroker:
             effect_scope=effect_scope,
             monotonic_clock=time.monotonic,
             before_dispatch=before_dispatch,
-            cancellation_requested=parent_cancellation,
+            cancellation_requested=(calendar_dispatch_branch.cancellation if calendar_dispatch_branch is not None else independent_saved_cancellation or parent_cancellation),
+            independent_parent_cancellation=(parent_cancellation if independent_saved_cancellation is not None or calendar_dispatch_branch is not None else None),
+            calendar_dispatch_branch=calendar_dispatch_branch,
             nested_cancellation_proof=parent_cancellation_proof,
             execution_guard=execution_guard,
+            inline_parent_scope=inline_parent_scope,
         )
 
     def invoke_prepared(
@@ -448,6 +486,7 @@ class RequestBroker:
         nested_cancellation_proof: NestedCancellationProof | None = None,
         execution_guard: Callable[[], None] | None = None,
         parent_deadline_monotonic: float | None = None,
+        inline_parent_scope: Any = None,
     ) -> Mapping[str, Any]:
         """Execute one durable Host snapshot without re-running adapters.
 
@@ -501,6 +540,7 @@ class RequestBroker:
             cancellation_requested=cancellation_requested,
             nested_cancellation_proof=nested_cancellation_proof,
             execution_guard=execution_guard,
+            inline_parent_scope=inline_parent_scope,
         )
 
     def _execute_prepared(
@@ -515,6 +555,9 @@ class RequestBroker:
         nested_cancellation_proof: NestedCancellationProof | None = None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
         execution_guard: Callable[[], None] | None = None,
+        independent_parent_cancellation: threading.Event | None = None,
+        inline_parent_scope: Any = None,
+        calendar_dispatch_branch: Any = None,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -695,6 +738,27 @@ class RequestBroker:
                     cancellation_signal
                 ),
             )
+            if calendar_dispatch_branch is not None:
+                with calendar_dispatch_branch.parent_scope(
+                    envelope, binding, nested_cancellation_proof,
+                ) as calendar_proof:
+                    return self._dispatch(
+                        backend,
+                        envelope,
+                        binding,
+                        reservation,
+                        deadline,
+                        monotonic_clock,
+                        before_dispatch,
+                        background_requests,
+                        calendar_proof,
+                        acceptance_request_id,
+                        pending_effect_link,
+                        execution_guard,
+                        independent_parent_cancellation,
+                        inline_parent_scope,
+                        "calendar",
+                    )
             return self._dispatch(
                 backend,
                 envelope,
@@ -708,6 +772,8 @@ class RequestBroker:
                 acceptance_request_id,
                 pending_effect_link,
                 execution_guard,
+                independent_parent_cancellation,
+                inline_parent_scope,
             )
         except Exception:
             if lease_issued:
@@ -914,11 +980,27 @@ class RequestBroker:
         acceptance_request_id: str | None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
         execution_guard: Callable[[], None] | None = None,
+        independent_parent_cancellation: threading.Event | None = None,
+        inline_parent_scope: Any = None,
+        independent_branch_kind: str = "saved",
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
         proof = nested_cancellation_proof
         child_id: int | None = None
         provider_entry_claimed = threading.Event()
+        independent_entry_bound = threading.Event()
+        registered_child_bound = threading.Event()
+
+        def inherit_parent_cancellation() -> None:
+            # Parent timeout/shutdown may set its Event without registry.request.
+            # Publish that cancellation on this authenticated independent branch
+            # before provider entry, every wait poll, and accepting its result.
+            if (
+                independent_parent_cancellation is not None
+                and independent_parent_cancellation.is_set()
+            ):
+                envelope.cancellation_requested.set()
+
         try:
             if execution_guard is not None:
                 execution_guard()
@@ -940,6 +1022,7 @@ class RequestBroker:
             # dispatch markers so an expired or cancelled request terminates
             # unexecuted instead of running a provider side effect past its
             # deadline and reporting false ambiguity.
+            inherit_parent_cancellation()
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
             if monotonic_clock() >= deadline:
@@ -950,17 +1033,25 @@ class RequestBroker:
                 before_dispatch()
             # The dispatch markers themselves may consume the remaining
             # budget; never submit a work item whose deadline already passed.
+            inherit_parent_cancellation()
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
             if monotonic_clock() >= deadline:
                 raise TimeoutError("request deadline expired before provider dispatch")
             if proof is not None:
                 try:
-                    child_id = proof.reserve_child(envelope)
+                    child_id = (
+                        (proof.reserve_independent_calendar_child(envelope)
+                         if independent_branch_kind == "calendar"
+                         else proof.reserve_independent_saved_child(envelope))
+                        if independent_parent_cancellation is not None
+                        else proof.reserve_child(envelope)
+                    )
                 except PermissionError as exc:
                     raise RequestCancellationRequestedError(
                         "nested cancellation scope is unavailable"
                     ) from exc
+                inherit_parent_cancellation()
                 if envelope.cancellation_requested.is_set():
                     proof.abandon_child(child_id)
                     child_id = None
@@ -1009,6 +1100,8 @@ class RequestBroker:
                     already-published unexecuted termination.
                     """
 
+                    inherit_parent_cancellation()
+
                     if envelope.cancellation_requested.is_set():
                         raise RequestCancellationRequestedError(
                             "request cancellation was requested"
@@ -1020,6 +1113,25 @@ class RequestBroker:
                     if execution_guard is not None:
                         execution_guard()
                     provider_entry_claimed.set()
+                    if proof is not None and child_id is not None:
+                        # Every registered child publishes its actual Future
+                        # before entry; an inherited Calendar dispatch may
+                        # consume this proof immediately inside the provider.
+                        while not independent_entry_bound.is_set():
+                            inherit_parent_cancellation()
+                            if envelope.cancellation_requested.is_set():
+                                raise RequestCancellationRequestedError(
+                                    "request cancellation was requested"
+                                )
+                            remaining_entry = deadline - monotonic_clock()
+                            if remaining_entry <= 0:
+                                raise TimeoutError("saved branch expired before Future binding")
+                            independent_entry_bound.wait(min(remaining_entry, 0.05))
+                        if not registered_child_bound.is_set():
+                            raise RequestCancellationRequestedError(
+                                "registered child Future binding is unavailable"
+                            )
+                    inherit_parent_cancellation()
                     if envelope.cancellation_requested.is_set():
                         raise RequestCancellationRequestedError(
                             "request cancellation was requested"
@@ -1030,6 +1142,7 @@ class RequestBroker:
                         )
                     if execution_guard is not None:
                         execution_guard()
+                    inherit_parent_cancellation()
                     if envelope.cancellation_requested.is_set():
                         raise RequestCancellationRequestedError(
                             "request cancellation was requested"
@@ -1038,19 +1151,67 @@ class RequestBroker:
                         raise TimeoutError(
                             "request deadline expired before provider entry"
                         )
+                    if independent_parent_cancellation is not None:
+                        if proof is None:
+                            raise RequestCancellationRequestedError(
+                                "independent saved execution proof is unavailable"
+                            )
+                        branch_scope = (proof.independent_calendar_execution_scope(envelope)
+                            if independent_branch_kind == "calendar"
+                            else proof.independent_saved_execution_scope(envelope))
+                        with branch_scope:
+                            inherit_parent_cancellation()
+                            if envelope.cancellation_requested.is_set():
+                                raise RequestCancellationRequestedError(
+                                    "request cancellation was requested"
+                                )
+                            return provider_call(*provider_arguments)
                     return provider_call(*provider_arguments)
 
-                future = self._executor.submit(
-                    operation_context.run,
-                    invoke_with_entry_gate,
+                from .finite_chat_dispatch import select_inline_chat_dispatch
+                from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+                inline = (
+                    type(backend) is ExactHostProviderBackendV4
+                    and select_inline_chat_dispatch(envelope, proof, inline_parent_scope)
                 )
+                if inline:
+                    # Use an actual Future and the same registered proof tree.
+                    # Bind it before provider entry so concurrent Stop can see
+                    # and signal this child even before its inline call begins.
+                    future = Future()
+                    future.set_running_or_notify_cancel()
+                    if proof is not None and child_id is not None:
+                        try:
+                            proof.bind_child(child_id, future)
+                            registered_child_bound.set()
+                        except BaseException as error:
+                            # This real inline Future has already entered
+                            # RUNNING. Publish terminal failure even when
+                            # registration fails before provider entry.
+                            future.set_exception(error)
+                            raise
+                        finally:
+                            independent_entry_bound.set()
+                    try:
+                        future.set_result(operation_context.run(invoke_with_entry_gate))
+                    except BaseException as error:
+                        future.set_exception(error)
+                else:
+                    future = self._executor.submit(
+                        operation_context.run,
+                        invoke_with_entry_gate,
+                    )
             except Exception:
                 if proof is not None and child_id is not None:
                     proof.abandon_child(child_id)
                     child_id = None
                 raise
-            if proof is not None and child_id is not None:
-                proof.bind_child(child_id, future)
+            if proof is not None and child_id is not None and not inline:
+                try:
+                    proof.bind_child(child_id, future)
+                    registered_child_bound.set()
+                finally:
+                    independent_entry_bound.set()
             receipt_port = self._acceptance_receipts
             if acceptance_request_id is not None and receipt_port is not None:
                 receipt_request_id = acceptance_request_id
@@ -1060,6 +1221,7 @@ class RequestBroker:
                     )
                 )
             while True:
+                inherit_parent_cancellation()
                 if envelope.cancellation_requested.is_set():
                     raise RequestCancellationRequestedError("request cancellation was requested")
                 remaining = max(0.0, deadline - monotonic_clock())
@@ -1074,11 +1236,13 @@ class RequestBroker:
                     # while Future.result is waiting. It still needs the same
                     # authenticated cancellation and exact resource drain as
                     # a child whose result poll has not finished yet.
+                    inherit_parent_cancellation()
                     if envelope.cancellation_requested.is_set():
                         raise RequestCancellationRequestedError(
                             "request cancellation was requested"
                         ) from exc
                     raise
+            inherit_parent_cancellation()
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
             # Future.result(timeout=0) still returns an already-completed

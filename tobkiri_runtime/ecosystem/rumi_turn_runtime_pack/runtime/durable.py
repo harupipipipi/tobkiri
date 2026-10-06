@@ -51,6 +51,54 @@ class DurableTurnRuntime:
             / "turns.sqlite3"
         )
 
+    def recover_calendar_preparation(self, **arguments: Any) -> dict[str, Any] | None:
+        """Recover the immutable Calendar occurrence before any preparation."""
+        from .calendar_preparation import recover_preparation
+        return recover_preparation(self, **arguments)
+
+    def reserve_calendar_preparation(self, **arguments: Any) -> dict[str, Any]:
+        """Reserve target idle admission before Calendar model preparation."""
+        from .calendar_preparation import reserve_preparation
+        return reserve_preparation(self, **arguments)
+
+    def bind_calendar_preparation(self, **arguments: Any) -> dict[str, Any]:
+        """Bind one immutable post-preparation normal saved source envelope."""
+        from .calendar_preparation import bind_preparation
+        return bind_preparation(self, **arguments)
+
+    def release_calendar_preparation(self, **arguments: Any) -> dict[str, Any]:
+        """Release only the exact scheduler reservation before execution."""
+        from .calendar_preparation import release_preparation
+        return release_preparation(self, **arguments)
+
+    def admit_delivery(self, delivery: Mapping[str, Any]) -> dict[str, Any]:
+        """Admit one approved delivery atomically alongside normal saved turns."""
+        from ecosystem.rumi_turn_runtime_pack.runtime.delivery import admit_delivery
+        return admit_delivery(self, delivery)
+
+    def delivery_receipt(self, delivery_id: str) -> dict[str, Any] | None:
+        """Read one durable admission receipt, without starting target execution."""
+        if not self.path.exists():
+            return None
+        self._check_path()
+        connection = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
+        try:
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='message_deliveries'"
+            ).fetchone() is None:
+                return None
+            row = connection.execute(
+                "SELECT body FROM message_deliveries WHERE id=?", (delivery_id,)
+            ).fetchone()
+            return json.loads(row[0]) if row else None
+        finally:
+            connection.close()
+
+    def cancel_delivery(self, delivery_id: str) -> dict[str, Any]:
+        """Cancel unstarted input or queued guidance; never claim a live stop."""
+        from ecosystem.rumi_turn_runtime_pack.runtime.delivery import cancel_delivery
+        return cancel_delivery(self, delivery_id)
+
     def begin_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Bind validated saved input without starting or retrying execution."""
         return self.begin(self._saved_begin_payload(payload))
@@ -97,8 +145,17 @@ class DurableTurnRuntime:
         captured = validate_saved_conversation_input(accepted)
         original_request = dict(initial["request"])
         accepted_request = dict(captured["request"])
+        if "resolved_chat_references" in original_request:
+            raise PermissionError("source cannot claim resolved chat references")
         original_request.pop("task_context", None)
-        context = accepted_request.pop("task_context", None)
+        context = {
+            "kind": "tobkiri.saved.input-projection.v1",
+            "task_context": accepted_request.pop("task_context", None),
+            "resolved_chat_references": accepted_request.pop("resolved_chat_references", None),
+            "target_settings": {key: original_request[key] for key in (
+                "tool_selection",
+            ) if key in original_request},
+        }
         if canonical_digest(original_request) != canonical_digest(accepted_request):
             raise PermissionError("context capture cannot change saved user input")
         body = json.dumps(context, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
@@ -118,7 +175,16 @@ class DurableTurnRuntime:
                 (initial["request"]["turn_id"],),
             ).fetchone()
             if turn is not None and self._record(turn).get("input_digest") != canonical_digest(captured):
-                raise TurnConflict("turn input identity was rebound")
+                record = self._record(turn)
+                if ((record.get("delivery_provenance") or record.get("calendar_preparation"))
+                        and record["status"] == "queued"
+                        and record.get("input_digest") == canonical_digest(initial)):
+                    # Only the immutable admitted source may receive the owner's
+                    # optional task context before the first saved execution.
+                    record["input_digest"] = canonical_digest(captured)
+                    self._save(connection, record)
+                else:
+                    raise TurnConflict("turn input identity was rebound")
             if connection.execute("SELECT COUNT(*) FROM saved_inputs").fetchone()[0] >= self.max_turns:
                 raise TurnConflict("saved input capacity is exhausted")
             connection.execute(
@@ -138,51 +204,106 @@ class DurableTurnRuntime:
             raise ValueError("saved context exceeds size limit")
         captured = validate_saved_conversation_input(source)
         captured["request"].pop("task_context", None)
+        captured["request"].pop("resolved_chat_references", None)
         context = json.loads(body)
-        if context is not None:
+        if isinstance(context, dict) and context.get("kind") == "tobkiri.saved.input-projection.v1":
+            if set(context) not in (
+                {"kind", "task_context", "resolved_chat_references"},
+                {"kind", "task_context", "resolved_chat_references", "target_settings"},
+            ):
+                raise ValueError("saved projection fields are invalid")
+            if "target_settings" in context:
+                expected_settings = {key: captured["request"][key] for key in (
+                    "tool_selection",
+                ) if key in captured["request"]}
+                if context["target_settings"] != expected_settings:
+                    raise ValueError("saved target settings identity is invalid")
+            for field in ("task_context", "resolved_chat_references"):
+                if context[field] is not None:
+                    captured["request"][field] = context[field]
+        elif context is not None:
+            # Old owner rows retain their original task-context-only shape.
             captured["request"]["task_context"] = context
         captured = validate_saved_conversation_input(captured)
         if canonical_digest(captured) != accepted_digest:
             raise ValueError("saved accepted input identity is invalid")
         return captured
 
-    def claim_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Acquire a saved turn once, without invoking or authorizing execution.
-
-        Only a queued record can be claimed. The revision comparison and
-        transition commit under the same SQLite lock in ``mutate``. A lost
-        claim reply is deliberately not recoverable as another claim: callers
-        must reconcile the existing turn instead of replaying side effects.
-        Guidance racing with the claim also returns a non-claim snapshot; this
-        method never spins or retries an ambiguous mutation.
-        """
-        record = self.begin_saved(payload)
-        if record["status"] != "queued":
-            return {"claimed": False, "turn": record}
+    def delivery_state(self, conversation_id: str, *, conversation_revision: int | None = None) -> dict[str, Any]:
+        """Read exact conversation admission state without truncated pagination."""
+        if not isinstance(conversation_id, str) or not _ID.fullmatch(conversation_id):
+            raise ValueError("delivery state conversation is invalid")
+        from .delivery import target_delivery_state
+        connection = self._connect_write()
         try:
-            request = validate_saved_conversation_input(payload)["request"]
+            connection.execute("BEGIN IMMEDIATE")
+            return target_delivery_state(self, connection, conversation_id, conversation_revision)
+        finally:
+            connection.close()
+
+    def delivery_target_settings(self, conversation_id: str) -> dict[str, Any]:
+        """Read finite settings proved by a completed ordinary owner receipt."""
+        from .delivery import latest_target_settings
+
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            return latest_target_settings(self, connection, conversation_id)
+        finally:
+            connection.close()
+
+    def claim_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Atomically acquire one queued saved turn without granting authority.
+
+        Guidance may update the queued revision before this transaction starts.
+        Preserve that guidance while reading and claiming the latest owner state
+        under the same SQLite lock. Only a queued record can win. Lost claim
+        replies still reconcile the running record, never claim execution again.
+        """
+        self.begin_saved(payload)
+        request = validate_saved_conversation_input(payload)["request"]
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id=?",
+                (request["turn_id"],),
+            ).fetchone()
+            if row is None:
+                raise TurnConflict("saved turn disappeared before claim")
+            current = self._record(row)
+            if current.get("input_digest") != canonical_digest(
+                validate_saved_conversation_input(payload)
+            ):
+                raise TurnConflict("turn input identity was rebound")
+            if current["status"] != "queued":
+                return {"claimed": False, "turn": current}
+            from ecosystem.rumi_turn_runtime_pack.runtime.delivery import (
+                assert_conversation_idle,
+            )
+            assert_conversation_idle(
+                self, connection, current["conversation_id"], current["id"]
+            )
             message_ids = {
-                role: "message:"
-                + canonical_digest(
+                role: "message:" + canonical_digest(
                     [request["conversation_id"], request["turn_id"], role]
                 ).removeprefix("sha256:")
                 for role in ("user", "assistant")
             }
-            record = self.mutate(
-                "transition",
-                record["id"],
-                expected_revision=record["revision"],
-                status="running",
+            runtime = self._restore(row)
+            record = runtime.transition(
+                current["id"], "running", expected_revision=current["revision"],
                 details={
                     "phase": "saved_execution_claimed",
                     "user_message_id": message_ids["user"],
                     "assistant_message_id": message_ids["assistant"],
                 },
             )
-        except TurnConflict:
-            # Revalidate the complete input binding on the readback too.
-            return {"claimed": False, "turn": self.begin_saved(payload)}
-        return {"claimed": True, "turn": record}
+            self._save(connection, record)
+            connection.commit()
+            return {"claimed": True, "turn": record}
+        finally:
+            connection.close()
 
     def begin(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Begin or recover the same persisted request without re-executing it."""
@@ -227,6 +348,8 @@ class DurableTurnRuntime:
                 is not None
             ):
                 raise TurnConflict("turn already exists")
+            from ecosystem.rumi_turn_runtime_pack.runtime.delivery import assert_conversation_idle
+            assert_conversation_idle(self, connection, candidate["conversation_id"], candidate["id"])
             if connection.execute("SELECT COUNT(*) FROM turns").fetchone()[0] >= self.max_turns:
                 raise TurnConflict("durable turn capacity is exhausted")
             self._save(connection, candidate)
@@ -298,7 +421,16 @@ class DurableTurnRuntime:
                     # caller payload. Check under the write lock, so creation
                     # or pruning cannot race a separate preflight read.
                     raise PermissionError("saved turn status is coordinator-owned")
+            existing = self._record(row)
+            if existing.get("calendar_preparation") and existing["status"] == "queued" and (action == "steer" or (action == "transition" and not existing.get("input_digest"))):
+                raise TurnConflict("Calendar preparation is coordinator-owned")
+            if action == "steer" and existing["status"] == "queued" and existing.get("delivery_provenance"):
+                raise TurnConflict("delivery reservation cannot receive guidance before claim")
             runtime = self._restore(row)
+            if action == "transition" and arguments.get("status") == "running":
+                from ecosystem.rumi_turn_runtime_pack.runtime.delivery import assert_conversation_idle
+                record = self._record(row)
+                assert_conversation_idle(self, connection, record["conversation_id"], turn_id)
             result = getattr(runtime, action)(
                 turn_id, expected_revision=expected_revision, **arguments
             )
@@ -825,6 +957,11 @@ class DurableTurnRuntime:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS saved_inputs (id TEXT PRIMARY KEY, source_digest TEXT NOT NULL, accepted_digest TEXT NOT NULL, context TEXT NOT NULL)"
             )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS message_deliveries (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, body TEXT NOT NULL)"
+            )
+            connection.execute("CREATE TABLE IF NOT EXISTS message_interrupts (id TEXT PRIMARY KEY, body TEXT NOT NULL)")
+            connection.execute("CREATE TABLE IF NOT EXISTS calendar_preparations (id TEXT PRIMARY KEY, body TEXT NOT NULL)")
             return connection
         except Exception:
             connection.close()

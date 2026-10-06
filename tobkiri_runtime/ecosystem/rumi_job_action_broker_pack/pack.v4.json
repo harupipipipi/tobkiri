@@ -1,14 +1,19 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:d52b73e77a35e38e22c22c5441c2058452b15051ff1dfa3d10496ba302f0d496",
+      "digest": "sha256:f552d419e9ad17a4fa86ca38105d893bad0cd207a912154c810aa58a682c64a7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "digest": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
       "kind": "executable",
       "path": "runtime/broker.py"
+    },
+    {
+      "digest": "sha256:316ffe851f4ad830f47614245b8a4f1cdea3c391de992167d42f5a0179aee611",
+      "kind": "executable",
+      "path": "runtime/dispatch_envelope.py"
     }
   ],
   "contracts": [
@@ -24,7 +29,7 @@
     {
       "contract_revision_digest": "sha256:ab96a0e5e59960b6495a7e2a790c73b6f6720901b9994d3e89f84c56d515e36f",
       "id": "rumi_job_action_broker_pack.job-action.broker",
-      "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "implementation_digest": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_job_action_broker_pack.job-action-broker"
@@ -33,9 +38,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:c599efe069b762e180cb7985e46ec4a090ece6486924fc38de422c006f8fcc12",
-    "contract_catalog_digest": "sha256:33b8edc4a73e16e6d346b254d512294845931a09095f3a1e584b9a75b3879410",
-    "source_identity": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46"
+    "artifact_set_digest": "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6",
+    "contract_catalog_digest": "sha256:c4e0102b31ea89c3175155b9b255a48b330518f7733c2e456c029e808b856c32",
+    "source_identity": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +66,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c599efe069b762e180cb7985e46ec4a090ece6486924fc38de422c006f8fcc12",
+    "artifact_digest": "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6",
     "display_name": "Rumi Job Action Broker",
     "id": "rumi_job_action_broker_pack",
     "kind": "host_extension",
@@ -71,7 +76,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46",
+        "digest": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +87,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46",
+    "source_digest": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_job_action_broker_pack"
   },

@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
+      "artifact_hash": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
       "contract_id": "rumi.resource.workspace.v1",
       "id": "workspace-resource",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_workspace_resource"
     },
     {
-      "artifact_hash": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
+      "artifact_hash": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
       "contract_id": "rumi.action.workspace.mount.v1",
       "id": "workspace-mount",
       "loader": "python",
@@ -109,9 +109,9 @@
           },
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:afac49bab010220af8303aad45b8f3ddb3753f0cca5a9e5614cf7e2b5b892c29",
+            "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:8f9f51ad589b06aa352aecedb63694f8ac969bbed156e256e65ebc9b01cd6e4f"
+            "source_identity": "sha256:901be81b4af9c56354d541c5bf5f2fc4fca583bba3ef51199b3631aa549a5315"
           },
           "owner_surfaces": [
             "workspace_mount_metadata"
@@ -122,7 +122,7 @@
         "pack_identity": "rumi:ecosystem/rumi_workspace_mount_pack",
         "provenance": {
           "build_identity": "rumi_workspace_mount_pack:1.0.0",
-          "content_hash": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
+          "content_hash": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
           "signature": null,
           "trust_class": "local"
         },
@@ -159,7 +159,7 @@
       "owner": "rumi_workspace_mount_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:8f9f51ad589b06aa352aecedb63694f8ac969bbed156e256e65ebc9b01cd6e4f"
+      "source_identity": "sha256:901be81b4af9c56354d541c5bf5f2fc4fca583bba3ef51199b3631aa549a5315"
     }
   },
   "migration": {
@@ -200,7 +200,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_workspace_mount_pack:1.0.0",
-    "content_hash": "sha256:b9a0998e28a7d86fb3a670d875fa161323fd290fe3e573a8f834d989c08a3af6",
+    "content_hash": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
     "signature": null,
     "trust_class": "local"
   },

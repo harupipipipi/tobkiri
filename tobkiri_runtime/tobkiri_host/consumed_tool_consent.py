@@ -163,11 +163,12 @@ class ConsumedConsentVerifier:
             raise PermissionError("native consumed consent provider is unavailable")
         if (
             trust is None
+            or trust.trust_id != provider.host_extension_id
+            or trust.trust_id != lease.host_extension_id
             or trust.revoked
             or trust.security_epoch != lease.security_epoch
             or trust.parent_artifact_digest != lease.target.parent_artifact_digest
             or trust.publisher_lineage != lease.target_publisher_lineage
-            or trust.trust_provenance_digest != provider.trust_provenance_digest
             or trust.valid_from > now
             or (trust.expires_at is not None and trust.expires_at <= now)
             or lease.target.principal_id not in trust.provider_principal_ids

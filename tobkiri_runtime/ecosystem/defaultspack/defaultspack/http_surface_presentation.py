@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tobkiri_protocol.saved_conversation import saved_guidance_context
+
 import re
 import time
 import uuid
@@ -27,6 +29,11 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .provider_status_presentation import present_provider_connection_status
+from .calendar_presentation import CALENDAR_TARGETS, normalize_calendar_payload
+
+from .chat_reference_presentation import (
+    CHAT_REFERENCE_TARGETS, normalize_chat_reference_read,
+)
 
 from .kanban_presentation import (
     KANBAN_TARGETS, normalize_kanban_request, present_kanban_result,
@@ -278,6 +285,20 @@ class DefaultspackHTTPPresentation:
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
         )
+        if identity in CHAT_REFERENCE_TARGETS:
+            session.assert_current()
+            return normalize_chat_reference_read(
+                identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+
+        if identity in CALENDAR_TARGETS:
+            session.assert_current()
+            return normalize_calendar_payload(
+                identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+
         if identity in {_PROJECT_READ_TARGET, _PROJECT_WRITE_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
@@ -506,7 +527,7 @@ class DefaultspackHTTPPresentation:
                 or type(revision) is not int
                 or revision < 1
                 or not isinstance(guidance, Mapping)
-                or set(guidance) != _GUIDANCE_KEYS
+                or set(guidance) - {"chat_references", "tool_selection", "action_approval_mode"} != _GUIDANCE_KEYS
             ):
                 raise ValueError("turn guidance request is invalid")
             prompt = guidance.get("prompt")
@@ -531,6 +552,10 @@ class DefaultspackHTTPPresentation:
                 or guidance_size > 32 * 1024
             ):
                 raise ValueError("turn guidance request is invalid")
+            guidance = {
+                **dict(guidance),
+                **saved_guidance_context(guidance, profile_id=profile_id),
+            }
             return {
                 "profile_id": profile_id,
                 "turn_id": turn_id,
@@ -555,6 +580,9 @@ class DefaultspackHTTPPresentation:
             "rumi_turn_runtime_pack.turn-runtime.saved",
             "rumi_turn_runtime_pack.turn-runtime.saved",
         ):
+            request = payload.get("request")
+            if isinstance(request, Mapping) and "resolved_chat_references" in request:
+                raise ValueError("caller cannot provide resolved chat references")
             return validate_saved_conversation_input(payload)
 
         if (

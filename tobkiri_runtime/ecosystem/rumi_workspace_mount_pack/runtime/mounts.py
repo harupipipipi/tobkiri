@@ -39,7 +39,7 @@ VERSION = "rumi.workspace-mounts.v1"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _RESOURCE_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.resource"
 _ACTION_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.manage"
-_RESOURCE_SERVICE_OPERATIONS = frozenset({"list", "get"})
+_RESOURCE_SERVICE_OPERATIONS = frozenset({"list", "get", "binding"})
 _ACTION_SERVICE_OPERATIONS = frozenset(
     {"mount", "unmount", "update", "select", "trust"}
 )
@@ -471,6 +471,35 @@ class WorkspaceResourceHostFactoryV4:
             mount = store.get(str(request.get("workspace_id") or ""))
             if mount is None:
                 raise KeyError("workspace mount is unknown")
+            if service_operation == "binding":
+                if set(payload) - {"_session_id"} != {
+                    "profile_id",
+                    "operation",
+                    "workspace_id",
+                }:
+                    raise ValueError("workspace binding fields are invalid")
+                invocation.assert_current()
+                binding = capture_workspace_binding(
+                    context.profile_id,
+                    str(request["workspace_id"]),
+                    user_data_root=user_data_root,
+                )
+                current = store.get(binding.workspace_id)
+                if (
+                    current != mount
+                    or mount.get("mount_revision") != binding.mount_revision
+                ):
+                    raise PermissionError("workspace mount changed during binding")
+                invocation.assert_current()
+                return {
+                    "mount": mount,
+                    "binding": {
+                        "workspace_id": binding.workspace_id,
+                        "mount_revision": binding.mount_revision,
+                        "root_st_dev": binding.root_st_dev,
+                        "root_st_ino": binding.root_st_ino,
+                    },
+                }
             return mount
 
         return CapturedHostProviderV4(
@@ -707,16 +736,18 @@ class ProjectWorkspaceHostFactoryV4:
                 or not isinstance(payload["plan"], Mapping)
             ):
                 raise PermissionError("project workspace plan is required")
-            execute_plan = payload["plan"]
-            validate_project_plan(payload["request"], execute_plan)
+            execution_plan: Mapping[str, Any] = payload["plan"]
+            validate_project_plan(payload["request"], execution_plan)
             if (
-                execute_plan["profile_id"] != scope.profile_id
-                or execute_plan["activation_id"] != scope.activation_id
-                or execute_plan["plan_digest"] != scope.plan_digest
-                or execute_plan["security_epoch"] != scope.security_epoch
+                execution_plan["profile_id"] != scope.profile_id
+                or execution_plan["activation_id"] != scope.activation_id
+                or execution_plan["plan_digest"] != scope.plan_digest
+                or execution_plan["security_epoch"] != scope.security_epoch
             ):
                 raise PermissionError("project workspace capture changed")
-            return store.mount_project(execute_plan, assert_current=invocation.assert_current)
+            return store.mount_project(
+                execution_plan, assert_current=invocation.assert_current
+            )
 
         return CapturedHostProviderV4(
             tuple(_contributions(context, invoke)), lambda: None

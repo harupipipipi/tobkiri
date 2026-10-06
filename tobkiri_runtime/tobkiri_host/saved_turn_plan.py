@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .saved_workspace_context import SavedWorkspacePins
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.turn_progress_v1 import AI_STREAM
@@ -32,6 +35,7 @@ class SavedToolFrame:
     expected_conversation_revision: int | None
     expected_current_node_id: str | None
     ai_mode: str = "buffered"
+    workspace_context_owner: SavedWorkspacePins | None = None
 
 
 class SavedTurnPlan:

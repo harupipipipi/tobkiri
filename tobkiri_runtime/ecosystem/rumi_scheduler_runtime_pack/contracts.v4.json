@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
       },
@@ -122,7 +122,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -133,7 +133,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
       },
@@ -192,7 +192,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:27918148dc5edf9245f5980e65b536a3779dfe57bffd2cf5949e8d79547020b1",
+          "input_schema_digest": "sha256:f9e72ffadd6446cf37d910ba660b0240d56732b8e121020428780321f2484e9b",
           "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -202,7 +202,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -213,7 +213,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
       },
@@ -231,9 +231,12 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:258c2776826749c8f9f7025589a03eb7fbde64dfdea7edef1fa5d8a0b0eea20e",
+      "revision_digest": "sha256:557c748a38877dc71283915753a0d9d33ab0390c498c026c683acf5fa3db1923",
       "schema_catalog": {
-        "sha256:27918148dc5edf9245f5980e65b536a3779dfe57bffd2cf5949e8d79547020b1": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:f9e72ffadd6446cf37d910ba660b0240d56732b8e121020428780321f2484e9b": {
           "additionalProperties": false,
           "properties": {
             "duration_ms": {
@@ -245,7 +248,8 @@
               "enum": [
                 "status",
                 "arm",
-                "disarm"
+                "disarm",
+                "renew"
               ]
             },
             "profile_id": {
@@ -258,9 +262,6 @@
             "operation"
           ],
           "type": "object"
-        },
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
         }
       },
       "status": "accepted",
@@ -268,5 +269,5 @@
     }
   ],
   "pack_id": "rumi_scheduler_runtime_pack",
-  "source_identity": "sha256:70e1aa66a1ff9e1b97c9fa62a02aedf6316b3f271d1f49246688535fbe8970c4"
+  "source_identity": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf"
 }

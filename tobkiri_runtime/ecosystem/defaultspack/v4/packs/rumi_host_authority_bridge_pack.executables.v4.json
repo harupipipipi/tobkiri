@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:cabf8907cca34134d3d61d169e83e48d9a7d147958c9c9aea2f18bd8215e1925",
+  "source_identity": "sha256:46d678a1b15a073fd8a54ad5f931f2fc079acd7d65edba0b1048f4b27524e21d",
   "variants": [
     {
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy.python",
@@ -192,7 +192,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-window.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
+      "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -237,7 +237,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
+      "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -289,7 +289,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
+      "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -472,7 +472,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
+      "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -484,7 +484,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "revision_digest": "sha256:3638d6459189ed29710d4827a662d872c8f8002cccfe64916744a9235e3b96e3",
           "operation_id": "interactive_approval.get",
           "input_schema": {
             "additionalProperties": false,
@@ -517,7 +517,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "revision_digest": "sha256:3638d6459189ed29710d4827a662d872c8f8002cccfe64916744a9235e3b96e3",
           "operation_id": "interactive_approval.list",
           "input_schema": {
             "additionalProperties": false,
@@ -550,7 +550,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "revision_digest": "sha256:3638d6459189ed29710d4827a662d872c8f8002cccfe64916744a9235e3b96e3",
           "operation_id": "interactive_approval.approve",
           "input_schema": {
             "additionalProperties": false,
@@ -583,7 +583,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "revision_digest": "sha256:3638d6459189ed29710d4827a662d872c8f8002cccfe64916744a9235e3b96e3",
           "operation_id": "interactive_approval.deny",
           "input_schema": {
             "additionalProperties": false,
@@ -619,7 +619,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
+      "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -631,7 +631,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:659c423492edf36c2456c0f98015ee465b22340274324e08cebee37181c06566",
+          "revision_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
           "operation_id": "interactive_effect.manage",
           "input_schema": {
             "additionalProperties": false,
@@ -652,7 +652,8 @@
                       "git_apply_patch",
                       "git_push",
                       "mcp_connect",
-                      "file_create"
+                      "file_create",
+                      "chat_message_send"
                     ]
                   },
                   "phase": {
@@ -802,7 +803,8 @@
                       "workspace_task",
                       "file_create",
                       "workspace_mount",
-                      "provider_model_access"
+                      "provider_model_access",
+                      "chat_message_send"
                     ]
                   },
                   "phase": {
@@ -912,7 +914,8 @@
                   "workspace_task",
                   "file_create",
                   "workspace_mount",
-                  "provider_model_access"
+                  "provider_model_access",
+                  "chat_message_send"
                 ]
               },
               "phase": {
@@ -944,6 +947,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:c397940cc5e4291c3886ecd75a24405fcfa4ea77d1c72b14e196eb16bb38c015",
-  "catalog_digest": "sha256:d6dc623fceed84c480dd75fdf4b5296c37a9cc98b1c022ef906930ea9ee91a2e"
+  "materialization_catalog_digest": "sha256:c0b518b6f6fb70a81025f1e0c326a3cd3c48875b579ac692538438b031652038",
+  "catalog_digest": "sha256:778e39f8a222efd22687101e9151c661ecad21e64fdb3468e85c61f85c4f58bc"
 }

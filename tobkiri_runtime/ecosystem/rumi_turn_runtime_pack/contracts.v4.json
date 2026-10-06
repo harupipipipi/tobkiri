@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -76,7 +76,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:3e836064f25f87b2bf830eb6190c09fbc4475893be2d5ef748c170f135e4b3e1",
+          "input_schema_digest": "sha256:1da3cab94d96ed9ce492425e0b43ee46c063c930e2cbdcac06eb8e15c041ccb8",
           "operation_id": "rumi_turn_runtime_pack.turn-guidance",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -86,7 +86,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +97,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -116,9 +116,9 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:abfcbc07baf5bcba892efe50ed791ce1ac5d3a9a94ea9c3f3f15048fa530d233",
+      "revision_digest": "sha256:7045e218ababbf85cf0dd44988ad049ef3579343f0c813a9d2ff8c36daec024c",
       "schema_catalog": {
-        "sha256:3e836064f25f87b2bf830eb6190c09fbc4475893be2d5ef748c170f135e4b3e1": {
+        "sha256:1da3cab94d96ed9ce492425e0b43ee46c063c930e2cbdcac06eb8e15c041ccb8": {
           "additionalProperties": false,
           "properties": {
             "expected_revision": {
@@ -128,8 +128,49 @@
             "guidance": {
               "additionalProperties": false,
               "properties": {
+                "action_approval_mode": {
+                  "enum": [
+                    "ask",
+                    "agent",
+                    "full"
+                  ]
+                },
                 "auto_send": {
                   "type": "boolean"
+                },
+                "chat_references": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "chat",
+                          "group"
+                        ]
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array",
+                  "uniqueItems": true
                 },
                 "conversation_id": {
                   "maxLength": 256,
@@ -151,6 +192,136 @@
                 },
                 "target_type": {
                   "const": "conversation"
+                },
+                "tool_selection": {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "mode": {
+                            "const": "none"
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "include": {
+                            "maxItems": 0
+                          },
+                          "must_use": {
+                            "const": false
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "exclude": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "include": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "mode": {
+                      "enum": [
+                        "auto",
+                        "manual",
+                        "none"
+                      ]
+                    },
+                    "must_use": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "enum": [
+                        "turn",
+                        "conversation"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "type": "object"
                 },
                 "visible": {
                   "type": "boolean"
@@ -221,7 +392,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -232,7 +403,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -273,9 +444,9 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:fceb855626cdd8fc69013541f881ba373864f5259b03040c35defde00a86b3ff",
           "operation_id": "rumi_turn_runtime_pack.turn-resource",
-          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "output_schema_digest": "sha256:418e4f9b3a387f4e5cb273c8d62296795ff3454a77622ce2a8d4fad540fd9865",
           "scope_semantics": "host_broker"
         }
       ],
@@ -283,7 +454,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -294,7 +465,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -313,10 +484,107 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
+      "revision_digest": "sha256:acf98c5bf82405666c710bdd2a4b6199d108ffdc70deaed0157c1b0f6e9f450a",
       "schema_catalog": {
+        "sha256:418e4f9b3a387f4e5cb273c8d62296795ff3454a77622ce2a8d4fad540fd9865": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "request_id": {
+                  "maxLength": 256,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "idle",
+                    "queued",
+                    "running",
+                    "waiting"
+                  ]
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "conversation_id",
+                "conversation_revision",
+                "turn_id",
+                "request_id",
+                "revision",
+                "status"
+              ],
+              "type": "object"
+            }
+          ]
+        },
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
+        },
+        "sha256:fceb855626cdd8fc69013541f881ba373864f5259b03040c35defde00a86b3ff": {
+          "oneOf": [
+            {
+              "not": {
+                "properties": {
+                  "operation": {
+                    "const": "delivery_state"
+                  }
+                },
+                "required": [
+                  "operation"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "type": "string"
+                },
+                "operation": {
+                  "const": "delivery_state"
+                },
+                "profile_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation",
+                "conversation_id"
+              ],
+              "type": "object"
+            }
+          ]
         }
       },
       "status": "accepted",
@@ -345,7 +613,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -356,7 +624,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -483,7 +751,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -494,7 +762,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -569,7 +837,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:deb3bc979b43543c6fcd1ffa0d13b5bc5e8553140120c2e9e191e88bc814f565",
+          "input_schema_digest": "sha256:de770102b9a6a7982f6d7be9fbfc0e8e41ac6924dfb1d6bececf4af281a3eb88",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -579,7 +847,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -590,7 +858,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -609,7 +877,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:8c8169ea3f0104ab1ef3390d51f26bc6085d32b779c76c9a1d85665d0b4da7e7",
+      "revision_digest": "sha256:40589812c5e77cf74594b45d478f25eda923a771a9b6366354b4dfb03db4382b",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -630,7 +898,7 @@
           ],
           "type": "object"
         },
-        "sha256:deb3bc979b43543c6fcd1ffa0d13b5bc5e8553140120c2e9e191e88bc814f565": {
+        "sha256:de770102b9a6a7982f6d7be9fbfc0e8e41ac6924dfb1d6bececf4af281a3eb88": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -705,6 +973,40 @@
                     "full"
                   ],
                   "type": "string"
+                },
+                "chat_references": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "chat",
+                          "group"
+                        ]
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array",
+                  "uniqueItems": true
                 },
                 "content": {
                   "oneOf": [
@@ -1006,7 +1308,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -1017,7 +1319,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -1415,7 +1717,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -1426,7 +1728,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -1712,8 +2014,677 @@
       },
       "status": "accepted",
       "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.chat.message.delivery.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.execute",
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a20702c87e3e0d0f8f416f3e1fe4136f321d68bed6f4ada75c4307afb0bf188b",
+          "operation_id": "rumi_turn_runtime_pack.chat-message-deliver",
+          "output_schema_digest": "sha256:d9ac46ea7836ce0bfd0510befbb2df556a89db57d74aca4c33c6cc009a74257d",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.chat-message-deliver",
+        "required_capabilities": [
+          "turn.execute",
+          "turn.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:85f95b7fd4fe603c4c2efe8bc483bc44dfaf336e074eff83cc54d0319553f7d0",
+      "schema_catalog": {
+        "sha256:a20702c87e3e0d0f8f416f3e1fe4136f321d68bed6f4ada75c4307afb0bf188b": {
+          "additionalProperties": false,
+          "properties": {
+            "plan": {
+              "additionalProperties": false,
+              "properties": {
+                "content_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "plan_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "recipient_ids": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "request_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expires_at": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "tobkiri.chat.reference.snapshot.v1"
+                    },
+                    "next_cursor": {
+                      "type": "null"
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "project_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "references": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversation_ids": {
+                            "items": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "chat",
+                              "group"
+                            ]
+                          },
+                          "label": {
+                            "maxLength": 256,
+                            "type": "string"
+                          },
+                          "member_count": {
+                            "maximum": 4096,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "membership_complete": {
+                            "type": "boolean"
+                          },
+                          "snapshot_digest": {
+                            "pattern": "^sha256:[0-9a-f]{64}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "label",
+                          "conversation_ids",
+                          "snapshot_digest",
+                          "member_count",
+                          "membership_complete"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "snapshot_time": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "store_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "truncated": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "profile_id",
+                    "store_revision",
+                    "project_revision",
+                    "snapshot_time",
+                    "expires_at",
+                    "references",
+                    "next_cursor",
+                    "truncated"
+                  ],
+                  "type": "object"
+                },
+                "snapshot_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "source_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_states": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "conversation_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "request_id": {
+                        "maxLength": 256,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "enum": [
+                          "idle",
+                          "queued",
+                          "running",
+                          "waiting"
+                        ]
+                      },
+                      "turn_id": {
+                        "maxLength": 256,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "conversation_id",
+                      "conversation_revision",
+                      "turn_id",
+                      "request_id",
+                      "revision",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
+                },
+                "version": {
+                  "const": "tobkiri.chat.message-plan.v1"
+                }
+              },
+              "required": [
+                "version",
+                "request_digest",
+                "snapshot",
+                "snapshot_digest",
+                "recipient_ids",
+                "source_conversation_id",
+                "source_turn_id",
+                "profile_id",
+                "content_digest",
+                "plan_digest",
+                "target_states"
+              ],
+              "type": "object"
+            },
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "delivery": {
+                  "enum": [
+                    "steer",
+                    "interrupt"
+                  ]
+                },
+                "invocation_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_kind": {
+                  "enum": [
+                    "chat",
+                    "group"
+                  ]
+                },
+                "tool_call_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "source_conversation_id",
+                "source_turn_id",
+                "target_id",
+                "tool_call_id",
+                "invocation_key",
+                "target_kind",
+                "content",
+                "delivery"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "request",
+            "plan"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "sha256:d9ac46ea7836ce0bfd0510befbb2df556a89db57d74aca4c33c6cc009a74257d": {
+          "additionalProperties": false,
+          "properties": {
+            "deliveries": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "assistant_message_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assistant_message_saved": {
+                    "type": "boolean"
+                  },
+                  "delivery": {
+                    "enum": [
+                      "steer",
+                      "interrupt"
+                    ]
+                  },
+                  "delivery_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "guidance_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "interrupt_status": {
+                    "enum": [
+                      "stopped_confirmed",
+                      "idle_noop",
+                      "stop_unconfirmed",
+                      null
+                    ]
+                  },
+                  "interrupted_turn_id": {
+                    "maxLength": 256,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "parent_turn_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "enum": [
+                      "target_stop_owner_unavailable",
+                      "target_stop_unconfirmed",
+                      "target_guidance_pending",
+                      "target_state_changed",
+                      "delivery_not_started"
+                    ]
+                  },
+                  "status": {
+                    "enum": [
+                      "reserved",
+                      "queued",
+                      "running",
+                      "waiting",
+                      "completed",
+                      "failed",
+                      "cancelled",
+                      "not_started",
+                      "reconciliation_required",
+                      "stop_required",
+                      "unsupported"
+                    ]
+                  },
+                  "target_conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_turn_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "user_message_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "user_message_saved": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "delivery_id",
+                  "profile_id",
+                  "target_conversation_id",
+                  "target_turn_id",
+                  "user_message_id",
+                  "assistant_message_id",
+                  "guidance_id",
+                  "parent_turn_id",
+                  "status",
+                  "user_message_saved",
+                  "assistant_message_saved",
+                  "delivery",
+                  "interrupted_turn_id",
+                  "interrupt_status"
+                ],
+                "type": "object"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array"
+            },
+            "plan_digest": {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "completed",
+                "queued",
+                "partial",
+                "reconciliation_required"
+              ]
+            },
+            "version": {
+              "const": "tobkiri.chat.message-delivery.v1"
+            }
+          },
+          "required": [
+            "version",
+            "plan_digest",
+            "status",
+            "deliveries"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:job.adapter.invoke",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2",
+          "operation_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
+        "required_capabilities": [
+          "job.adapter.invoke"
+        ],
+        "routing_keys": [
+          "chat.saved"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:d5dd5f26f86d6f725aa3a201c1ec761b1efda5fbb550aeb59b73b0a21e68b7fc",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2": {
+          "additionalProperties": false,
+          "properties": {
+            "action_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "lease_id": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "describe",
+                "dispatch",
+                "cancel",
+                "status"
+              ]
+            },
+            "payload": {
+              "type": "object"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "2.0.0"
     }
   ],
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:fbad6a599a17c9439ddef6af897cee79d97fea9cf21192a5ab34d47789f87ddc"
+  "source_identity": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285"
 }

@@ -41,6 +41,8 @@ def append_receipt(
     }
     role = message.get("role")
     metadata = {"turn_id": request["turn_id"]}
+    if "resolved_chat_references" in request:
+        metadata["chat_references"] = request["resolved_chat_references"]["references"]
     if "action_approval_mode" in request:
         metadata["action_approval_mode"] = request["action_approval_mode"]
     trace = saved_tool_messages((message.get("metadata") or {}).get("saved_tool_messages", []))

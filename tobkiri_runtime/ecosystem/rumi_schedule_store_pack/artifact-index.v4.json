@@ -1,23 +1,33 @@
 {
-  "artifact_set_digest": "sha256:8091ff5c0dd71ea99612b03c30f0187e34e815dd0f4aa0caa172300760cb440e",
+  "artifact_set_digest": "sha256:1448dee514a4a226282f80474b14973df42a9af92df7e149f4306a6889afe583",
   "artifacts": [
     {
-      "digest": "sha256:d7a21d059c0f2e6b0692839d150be8518b0539eb8b2bb973c02e3e9e5487021b",
+      "digest": "sha256:28a6f60c1c6874ffc9f42bc9f1369255bedc2522de36a363727d5704b1819547",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:b595ac6f6e71816487ffeee9f3619160f0e6b8b9799847f21f7d4fba145cb335",
+      "digest": "sha256:cfc4c689064614b599a437878bd042f8c828ed5b3e81014a849d8a5ed861be8e",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:20b94233fc3b2838d977b2ce2665c57271f4ff70429edbdd9bc48bce8553ab42",
+      "digest": "sha256:75c594f507dd9cf8fef7dc14fbb9135a8059552ae62b3941e86e8cfe378ce637",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
+      "digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "path": "runtime/calendar.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a1e561a8329234a52dcb00ea0b2008426cd8f8298595a84aab5203dc553d1ecc",
+      "path": "runtime/recurrence.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:79f98169d720e7fc890f91f4e93ac6115d35b38de56698bf2a3dca2f1437e95b",
       "path": "runtime/store.py",
       "role": "runtime"
     }
@@ -25,8 +35,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:4d81f454b0bceb9fd8fb6cee2ed25d8b7d7284b57e69af82ee3b03193a3a47ef"
+    "signed_digest": "sha256:31f0068ac27d9e62f486b7b0c43eed911fafb60350b38dda08eb7802975ca6c7"
   },
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819"
+  "source_identity": "sha256:ece63bb0c6c840ec2e93f3781d51a20c0704b735640f1109a742b0d2ae147383"
 }

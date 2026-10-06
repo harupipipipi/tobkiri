@@ -38,7 +38,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "artifact_hash": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
       "contract_id": "rumi.action.job.v1",
       "id": "job-action-broker",
       "loader": "python",
@@ -74,9 +74,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:c599efe069b762e180cb7985e46ec4a090ece6486924fc38de422c006f8fcc12",
+            "artifact_digest": "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46"
+            "source_identity": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916"
           },
           "owner_surfaces": [
             "job_dispatch_idempotency_ledger"
@@ -87,7 +87,7 @@
         "pack_identity": "rumi:ecosystem/rumi_job_action_broker_pack",
         "provenance": {
           "build_identity": "rumi_job_action_broker_pack:1.0.0",
-          "content_hash": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+          "content_hash": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
           "signature": null,
           "trust_class": "local"
         },
@@ -115,7 +115,7 @@
       "owner": "rumi_job_action_broker_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46"
+      "source_identity": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916"
     }
   },
   "migration": {
@@ -150,7 +150,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_job_action_broker_pack:1.0.0",
-    "content_hash": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+    "content_hash": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
     "signature": null,
     "trust_class": "local"
   },

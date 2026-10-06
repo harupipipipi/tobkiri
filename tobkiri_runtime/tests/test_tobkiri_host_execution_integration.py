@@ -1769,3 +1769,44 @@ def test_trigger_kernel_deduplicates_and_issues_one_shot_lease() -> None:
     assert events == ["trigger_lease:occurrence-1"]
     kernel.acknowledge(delivery)
     assert kernel.claim_due() is None
+
+
+def test_registered_pool_child_waits_for_actual_future_binding(monkeypatch):
+    """A fast worker cannot consume its parent proof before bind_child exits."""
+    parent = RequestEnvelope(
+        context=context(), target_principal=OpaqueAuthorityRef("provider"),
+        target_domain=OpaqueAuthorityRef("domain"), contract_id="contract",
+        contract_version="1.0.0", operation_id="operation", payload={},
+        request_digest=digest("bound-entry-parent"),
+        deadline_monotonic=time.monotonic() + 3,
+        lease=OpaqueInvocationLease(b"bound-entry-lease"), idempotency_key=None,
+    )
+    handles = OwnedCancellationHandles()
+    binding = handles.bind(group=("pack", "saved-turn"), role="execute",
+        envelope=parent, owner_principal="owner", owner_session="session",
+        guard=lambda: None)
+    entered = Event()
+    bound = Event()
+    class CheckingBackend(FakeBackend):
+        def invoke(self, request):
+            assert bound.is_set(), "provider entered before actual Future binding"
+            entered.set()
+            return self.outcome
+    fixture = make_broker(effect=EffectClass.READ, timeout_ms=1000,
+                          backend=CheckingBackend([]))
+    try:
+        with binding.track("turn"):
+            proof = nested_cancellation_proof_for(parent, "owner", "session")
+            original = type(proof).bind_child
+            def paused_bind(self, child_id, future):
+                assert not entered.wait(0.05), "pool worker bypassed entry latch"
+                original(self, child_id, future)
+                bound.set()
+            monkeypatch.setattr(type(proof), "bind_child", paused_bind)
+            fixture.broker.invoke(frame(1000), context(), effect_scope={},
+                parent_deadline_monotonic=parent.deadline_monotonic,
+                parent_cancellation=parent.cancellation_requested,
+                parent_cancellation_proof=proof)
+            assert entered.is_set()
+    finally:
+        fixture.broker.close()

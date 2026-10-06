@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+import hashlib
+import json
 import time
 import uuid
 from typing import Any, Callable, Mapping
@@ -18,6 +20,7 @@ AUTHORITY = "rumi.service.host.authorize.v1"
 SCHEDULE_RESOURCE = "rumi.resource.schedule.v1"
 SCHEDULE_ACTION = "rumi.action.schedule.v1"
 JOB_ACTION = "rumi.action.job.v1"
+CLOCK_ACTION = "tobkiri.action.scheduler.clock.v1"
 SERVICE_PACK_ID = "rumi_scheduler_runtime_pack"
 STORE_PACK_ID = "rumi_schedule_store_pack"
 
@@ -32,16 +35,52 @@ class SchedulerRuntime:
         *,
         clock: Callable[[], int] = lambda: int(time.time() * 1000),
         canonical: bool = False,
+        process_state: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
         self.profile_id = profile_id
-        self.lock = threading.RLock()
-        self.stopping = False
-        self.active: dict[str, str] = {}
-        self.last_tick_at_ms = 0
-        self.last_error = ""
+        self._process_state: dict[str, Any] = (
+            process_state
+            if process_state is not None
+            else {
+                "lock": threading.RLock(),
+                "stopping": False,
+                "active": {},
+                "last_tick_at_ms": 0,
+                "last_error": "",
+            }
+        )
+        self.lock = self._process_state["lock"]
+        self.active: dict[str, str] = self._process_state["active"]
         self.clock = clock
         self.canonical = canonical
+
+    @property
+    def stopping(self) -> bool:
+        """Read shared inert activation process state."""
+        return self._process_state["stopping"]
+
+    @stopping.setter
+    def stopping(self, value: bool) -> None:
+        self._process_state["stopping"] = value
+
+    @property
+    def last_tick_at_ms(self) -> int:
+        """Read shared inert activation process state."""
+        return self._process_state["last_tick_at_ms"]
+
+    @last_tick_at_ms.setter
+    def last_tick_at_ms(self, value: int) -> None:
+        self._process_state["last_tick_at_ms"] = value
+
+    @property
+    def last_error(self) -> str:
+        """Read shared inert activation process state."""
+        return self._process_state["last_error"]
+
+    @last_error.setter
+    def last_error(self, value: str) -> None:
+        self._process_state["last_error"] = value
 
     def status(self) -> dict[str, Any]:
         """Return process-lifetime clock state without schedule ownership."""
@@ -75,6 +114,8 @@ class SchedulerRuntime:
         if not self.canonical:
             self._redeem(payload, name, arguments)
         if name == "tick":
+            if self.canonical:
+                self._renew_live_clock()
             return self._tick(arguments["now_ms"], arguments["limit"])
         if name == "trigger":
             return self._trigger(arguments["schedule_id"])
@@ -85,7 +126,9 @@ class SchedulerRuntime:
         if self.canonical:
             # Process-local active handles disappear after an accepted dispatch.
             # The public schedule owner retains the exact outstanding lease.
-            state = self._invoke(SCHEDULE_RESOURCE, "list", {"profile_id": self.profile_id})
+            state = self._invoke(
+                SCHEDULE_RESOURCE, "list", {"profile_id": self.profile_id}
+            )
             revision = state["revision"]
             active.update(
                 {
@@ -126,22 +169,20 @@ class SchedulerRuntime:
         self,
         now_ms: int,
         limit: int,
-        target_schedule_id: str = "",
+        target_schedule_id: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             if self.stopping:
                 return {"status": "stopped", "dispatched": [], "count": 0}
             self.last_tick_at_ms = now_ms
-        due = self._invoke(
-            SCHEDULE_RESOURCE,
-            "due",
-            {
-                "profile_id": self.profile_id,
-                "now_ms": now_ms,
-                "limit": limit,
-                "schedule_id": target_schedule_id,
-            },
-        )
+        arguments = {
+            "profile_id": self.profile_id,
+            "now_ms": now_ms,
+            "limit": limit,
+        }
+        if target_schedule_id is not None:
+            arguments["schedule_id"] = target_schedule_id
+        due = self._invoke(SCHEDULE_RESOURCE, "due", arguments)
         revision = int(due.get("revision") or 0)
         dispatched = []
         pending = []
@@ -249,7 +290,10 @@ class SchedulerRuntime:
                     pending.append(
                         {
                             "schedule_id": schedule_id,
-                            "result": {"status": "reconciliation_required", "reason": safe_error},
+                            "result": {
+                                "status": "reconciliation_required",
+                                "reason": safe_error,
+                            },
                         }
                     )
                     continue
@@ -349,10 +393,40 @@ class SchedulerRuntime:
             },
         )
 
+    def _renew_live_clock(self) -> None:
+        """Extend a finite live registration without fencing its current tick."""
+        with self.lock:
+            if self.stopping:
+                return
+        state = self._invoke(SCHEDULE_RESOURCE, "list", {"profile_id": self.profile_id})
+        if not any(
+            item.get("enabled") and item.get("status") in {"scheduled", "running"}
+            for item in state.get("schedules", [])
+        ):
+            return
+        status = self._invoke(CLOCK_ACTION, "status", {"profile_id": self.profile_id})
+        deadline = status.get("expires_at_ms")
+        if not status.get("available") or not status.get("armed"):
+            raise PermissionError("scheduler finite wake registration is unavailable")
+        if type(deadline) is not int:
+            raise PermissionError("scheduler wake deadline is unavailable")
+        if deadline - self.clock() <= 120000:
+            renewed = self._invoke(
+                CLOCK_ACTION,
+                "renew",
+                {"profile_id": self.profile_id, "duration_ms": 86400000},
+            )
+            if not renewed.get("armed") or not renewed.get("available"):
+                raise PermissionError("scheduler wake renewal failed")
+
     def _invoke(self, contract: str, operation: str, payload: Mapping[str, Any]) -> Any:
         if not self.canonical:
             return self.client.invoke(contract, operation, dict(payload))
         routes = {
+            CLOCK_ACTION: (
+                CLOCK_ACTION,
+                "rumi_scheduler_runtime_pack.scheduler-clock-control",
+            ),
             SCHEDULE_RESOURCE: (
                 "tobkiri.resource.schedule.v1",
                 "rumi_schedule_store_pack.schedule-resource",
@@ -361,7 +435,10 @@ class SchedulerRuntime:
                 "tobkiri.action.schedule.v1",
                 "rumi_schedule_store_pack.schedule-action",
             ),
-            JOB_ACTION: ("tobkiri.action.job.v1", "rumi_job_action_broker_pack.job-action-broker"),
+            JOB_ACTION: (
+                "tobkiri.action.job.v1",
+                "rumi_job_action_broker_pack.job-action-broker",
+            ),
         }
         target, exact_operation = routes[contract]
         return self.client.invoke(
@@ -392,11 +469,14 @@ class SchedulerRuntime:
             },
         )
         if not result.get("authorized"):
-            raise PermissionError(str(result.get("reason") or "scheduler control denied"))
+            raise PermissionError(
+                str(result.get("reason") or "scheduler control denied")
+            )
 
 
 _RUNTIMES: dict[str, SchedulerRuntime] = {}
 _LOCK = threading.Lock()
+_V4_PROCESS_STATES: dict[str, dict[str, Any]] = {}
 
 
 def create_scheduler_resource(client: Any) -> Callable[[str, Mapping[str, Any]], Any]:
@@ -445,7 +525,9 @@ def _pending(result: Any) -> bool:
 def _safe_error(result: Any) -> str:
     if not isinstance(result, Mapping):
         return "job action returned an invalid result"
-    return str(result.get("error") or result.get("message") or "job action failed")[:1000]
+    return str(result.get("error") or result.get("message") or "job action failed")[
+        :1000
+    ]
 
 
 def _now_ms() -> int:
@@ -476,18 +558,41 @@ def _invoke_v4_owner(
                 "tobkiri.resource.schedule.v1",
                 "tobkiri.action.schedule.v1",
                 "tobkiri.action.job.v1",
+                CLOCK_ACTION,
             }
         ),
         consumer_pack_id=SERVICE_PACK_ID,
         include_credentials=False,
     )
     # Runtime state belongs to an exact activation, never merely a Profile ID.
-    key = f"{context.profile_id}:{context.plan_digest}:{context.security_epoch}"
+    activation_digest = hashlib.sha256(
+        json.dumps(
+            dict(context.activation),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    key = (
+        f"{context.profile_id}:{context.plan_digest}:"
+        f"{context.security_epoch}:{activation_digest}"
+    )
     with _LOCK:
-        runtime = _RUNTIMES.setdefault(
-            key, SchedulerRuntime(client, context.profile_id, canonical=True)
+        state = _V4_PROCESS_STATES.setdefault(
+            key,
+            {
+                "lock": threading.RLock(),
+                "stopping": False,
+                "active": {},
+                "last_tick_at_ms": 0,
+                "last_error": "",
+            },
         )
-        runtime.client = client
+    # Only inert process state persists. A client belongs to this invocation;
+    # never hold the registry lock over dispatch, so stop/status stay callable.
+    runtime = SchedulerRuntime(
+        client, context.profile_id, canonical=True, process_state=state
+    )
     if function_id.endswith(".status"):
         if operation != "status":
             raise ValueError("scheduler resource operation is invalid")

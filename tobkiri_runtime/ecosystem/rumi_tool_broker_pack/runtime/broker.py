@@ -41,6 +41,11 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
     # An outer synchronous Broker invocation must not fill every worker with
     # calls waiting on their own nested execution. Reject contention, don't queue.
     single_flight = threading.BoundedSemaphore(1)
+    child_flight = threading.BoundedSemaphore(1)
+    candidate_flight = threading.BoundedSemaphore(1)
+    state_lock = threading.Lock()
+    active: list[Any] = []
+    active_candidates: list[Any] = []
 
     def invoke(
         payload: Mapping[str, Any], invocation: HostProviderInvocationContextV4,
@@ -60,14 +65,72 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
             ))
         ):
             raise ValueError("tool invocation payload is invalid")
-        if not single_flight.acquire(blocking=False):
-            raise PermissionError("tool broker is busy")
+        from tobkiri_host.operation_cancellation import nested_cancellation_proof_for
+        from tobkiri_host.finite_chat_dispatch import _current
+        from tobkiri_host.active_chat_source import assert_active_chat_candidate
+        from ecosystem.rumi_tool_broker_pack.runtime.chat_delivery import (
+            assert_delivery_child,
+        )
+
+        proof = nested_cancellation_proof_for(
+            invocation.envelope,
+            invocation.presentation_owner_principal_id,
+            invocation.presentation_owner_session_id,
+        )
+        mode = None
+        with state_lock:
+            # A retained candidate is part of the busy state even if the
+            # original request completes while its native prompt is open.
+            owns_gate = not active_candidates and single_flight.acquire(blocking=False)
+            if owns_gate:
+                active.append((invocation, proof))
+                mode = "main"
+            held = tuple(active_candidates + active)
+        if not owns_gate:
+            child = False
+            for held_invocation, _ in held:
+                try:
+                    assert_delivery_child(invocation, held_invocation)
+                    child = True
+                    break
+                except (PermissionError, AttributeError, TypeError, ValueError):
+                    continue
+            if child:
+                if not child_flight.acquire(blocking=False):
+                    raise PermissionError("delivery child tool broker is busy")
+                mode = "child"
+            elif payload["tool_id"] == "chat_send_message" and len(held) == 1:
+                with state_lock:
+                    if not candidate_flight.acquire(blocking=False):
+                        raise PermissionError("tool broker is busy")
+                    mode = "candidate"
+                    active_candidates.append((invocation, proof))
+            else:
+                raise PermissionError("tool broker is busy")
         try:
+            # Reference reads use this same immutable client binding. The
+            # signed edge and ordinary authority checks remain mandatory.
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({DEFINITION, VALIDATE, EXECUTE, NORMALIZE, ACTION}),
+                allowed_contract_ids=frozenset({
+                    DEFINITION, VALIDATE, EXECUTE, NORMALIZE, ACTION,
+                    "tobkiri.resource.chat.reference.v1",
+                }),
                 consumer_pack_id=PACK_ID,
                 include_credentials=False,
             )
+            if mode == "candidate":
+                held_invocation, held_proof = held[0]
+                witness = assert_active_chat_candidate(
+                    invocation, held_invocation, held_proof,
+                    reference_client=client,
+                )
+                token = _current.get()
+                if token is None or token.root is not invocation.envelope:
+                    raise PermissionError("tool broker is busy")
+                token.bind_candidate(witness)
+                with state_lock:
+                    if len(active_candidates) != 1 or active_candidates[0][0] is not invocation:
+                        raise PermissionError("tool broker is busy")
             progress_id = payload.get("progress_id")
             progress_bound = False
 
@@ -197,7 +260,16 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
                     _LOGGER.warning("Tool display result unavailable")
             return normalized
         finally:
-            single_flight.release()
+            if mode == "main":
+                with state_lock:
+                    active.clear()
+                single_flight.release()
+            elif mode == "candidate":
+                with state_lock:
+                    active_candidates.clear()
+                candidate_flight.release()
+            elif mode == "child":
+                child_flight.release()
 
     return invoke
 

@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:424ee345a184dd6d292cf4077bd4b72718c04424fb5dd34edb6acf4146b6d6aa",
+      "digest": "sha256:6966238916a4525ad45d2a5ee11ca2b9890a61b10e2c9f4c1970e01ba11ae11d",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
+      "digest": "sha256:164d33af011f4edc2d93e6d2396219fca545b04cdab1f2309614de1470f46631",
       "kind": "executable",
       "path": "runtime/executor.py"
     }
@@ -24,7 +24,7 @@
     {
       "contract_revision_digest": "sha256:ed2eba5075751888f2889bcc404c72e63263c629a0d2a1aff043fade09b0c0eb",
       "id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "implementation_digest": "sha256:37b535fdb1fbf504d46ffe9fd2df23d43c72f146aa4159d4e01ab2aa45ee2cfc",
+      "implementation_digest": "sha256:164d33af011f4edc2d93e6d2396219fca545b04cdab1f2309614de1470f46631",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_local_executor_pack.tool-local-execute"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:2037d848a7887c32ab8f6fbd5f5e904f186e87bee0476c10dc3d2adb2ba64ffa",
-    "contract_catalog_digest": "sha256:37cba3352df00d03ce7e6a6f8633b04dd84ea1c84cce2ec46cb23bb1b89f820d",
-    "source_identity": "sha256:0677dc1e2efa6c9ddcd3be0ebbf426894794ef6b73e42565124e7186a01bff1f"
+    "artifact_set_digest": "sha256:02d7a42e3b30d3be37fbdb0c7e4b620ddfe7f3ed407279cc0f60fdbb4685c27f",
+    "contract_catalog_digest": "sha256:56b621663382bdc1da3ddc7cc8a9f7bb4da79d40c27f74fdc7ecf26168626c94",
+    "source_identity": "sha256:c24fa0852257c9222d8d5c9951450061766ff41ae83e4323c7447287c1db0855"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:2037d848a7887c32ab8f6fbd5f5e904f186e87bee0476c10dc3d2adb2ba64ffa",
+    "artifact_digest": "sha256:02d7a42e3b30d3be37fbdb0c7e4b620ddfe7f3ed407279cc0f60fdbb4685c27f",
     "display_name": "Tobkiri Tool Local Executor",
     "id": "rumi_tool_local_executor_pack",
     "kind": "host_extension",
@@ -71,7 +71,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:0677dc1e2efa6c9ddcd3be0ebbf426894794ef6b73e42565124e7186a01bff1f",
+        "digest": "sha256:c24fa0852257c9222d8d5c9951450061766ff41ae83e4323c7447287c1db0855",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +82,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0677dc1e2efa6c9ddcd3be0ebbf426894794ef6b73e42565124e7186a01bff1f",
+    "source_digest": "sha256:c24fa0852257c9222d8d5c9951450061766ff41ae83e4323c7447287c1db0855",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_local_executor_pack"
   },

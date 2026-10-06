@@ -59,6 +59,14 @@ class HostProviderInvocationContextV4(Protocol):
     def cancellation(self) -> OwnedCancellationBinding:
         """Return only this verified factory's owner-scoped cancellation role."""
 
+    @property
+    def approved_interrupt(self) -> Any:
+        """Return the Host-only approved-delivery interruption binding."""
+
+    @property
+    def scheduled_job_cancellation(self) -> Any:
+        """Return the Host-private exact granted JobBroker occurrence stop port."""
+
     def contract_client(
         self,
         *,

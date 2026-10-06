@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Mapping
+from dataclasses import dataclass
 import re
 from typing import Any
 
@@ -156,7 +157,23 @@ def saved_user_text(value: Any) -> str:
     return value[0]["text"] + suffix
 
 
-def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None:
+@dataclass(frozen=True)
+class SavedWorkspaceResolution:
+    """Host-local owner facts; never a request field or authority grant."""
+
+    profile_id: str
+    conversation_id: str
+    conversation_revision: int
+    workspace_id: str
+    mount_revision: int
+    root_st_dev: int
+    root_st_ino: int
+
+
+def validate_saved_conversation_context(
+    conversation: Mapping[str, Any], *,
+    workspace_resolution: SavedWorkspaceResolution | None = None,
+) -> None:
     """Validate prompt references and reject other unresolved owned context.
 
     A prompt reference still needs an authenticated owner read before claiming
@@ -167,6 +184,27 @@ def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None
     tags = conversation.get("tags") or []
     if not isinstance(metadata, Mapping) or not isinstance(tags, list):
         raise ValueError("saved bridge owned context is invalid")
+    workspace_id = metadata.get("workspace_id")
+    if workspace_id and (
+        type(workspace_resolution) is not SavedWorkspaceResolution
+        or workspace_resolution.conversation_id != conversation.get("id")
+        or workspace_resolution.conversation_revision != conversation.get(
+            "conversation_revision"
+        )
+        or workspace_resolution.workspace_id != workspace_id
+        or type(workspace_resolution.conversation_revision) is not int
+        or workspace_resolution.conversation_revision < 1
+        or any(type(value) is not int or value < 0 for value in (
+            workspace_resolution.mount_revision,
+            workspace_resolution.root_st_dev,
+            workspace_resolution.root_st_ino,
+        ))
+        or type(workspace_resolution.profile_id) is not str
+        or type(workspace_resolution.workspace_id) is not str
+        or not _ID.fullmatch(workspace_resolution.profile_id)
+        or not _ID.fullmatch(workspace_resolution.workspace_id)
+    ):
+        raise ValueError("saved bridge workspace resolution is required")
     if (
         conversation.get("agent_id")
         or conversation.get("conversation_kind") not in (None, "", "chat")
@@ -176,7 +214,6 @@ def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None
             for key in (
                 "group_id",
                 "groupId",
-                "workspace_id",
                 "workspaceId",
                 "workspace_root",
                 "workspaceRoot",
@@ -196,6 +233,147 @@ def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None
         or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
     ):
         raise ValueError("saved bridge context resolution is required")
+
+
+def validate_chat_references(
+    value: Any, *, profile_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Validate explicit lean confirmed references, never infer them from text."""
+    if not isinstance(value, list) or len(value) > 16:
+        raise ValueError("saved chat references are invalid")
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"kind", "profile_id", "id"}:
+            raise ValueError("saved chat reference fields are invalid")
+        if not isinstance(item["kind"], str) or item["kind"] not in {"chat", "group"}:
+            raise ValueError("saved chat reference kind is invalid")
+        for field in ("profile_id", "id"):
+            if not isinstance(item[field], str) or _ID.fullmatch(item[field]) is None:
+                raise ValueError("saved chat reference identity is invalid")
+        if profile_id is not None and item["profile_id"] != profile_id:
+            raise ValueError("saved chat reference profile mismatch")
+        key = (item["kind"], item["profile_id"], item["id"])
+        if key in seen:
+            raise ValueError("duplicate saved chat reference")
+        seen.add(key)
+    return strict_loads(canonical_json(value))
+
+
+def saved_guidance_context(
+    guidance: Mapping[str, Any], *, profile_id: str
+) -> dict[str, Any]:
+    """Normalize finite saved-input preferences, never metadata execution grants."""
+    result: dict[str, Any] = {}
+    if "chat_references" in guidance:
+        result["chat_references"] = validate_chat_references(
+            guidance["chat_references"], profile_id=profile_id
+        )
+    if "tool_selection" in guidance:
+        result["tool_selection"] = validate_tool_selection(guidance["tool_selection"])
+    if "action_approval_mode" in guidance:
+        mode = guidance["action_approval_mode"]
+        if type(mode) is not str or mode not in {"ask", "agent", "full"}:
+            raise ValueError("saved guidance action approval mode is invalid")
+        result["action_approval_mode"] = mode
+    return result
+
+
+def validate_resolved_chat_references(value: Any, references: Any) -> dict[str, Any]:
+    """Validate owner-resolved metadata; this syntax check grants no authority."""
+    lean = validate_chat_references(references)
+    if not isinstance(value, dict) or set(value) != {
+        "kind",
+        "profile_id",
+        "store_revision",
+        "project_revision",
+        "references",
+        "snapshot_time", "expires_at", "next_cursor", "truncated",
+    }:
+        raise ValueError("resolved chat reference snapshot fields are invalid")
+    if value["kind"] != "tobkiri.chat.reference.snapshot.v1":
+        raise ValueError("resolved chat reference snapshot kind is invalid")
+    if (
+        not isinstance(value["profile_id"], str)
+        or _ID.fullmatch(value["profile_id"]) is None
+    ):
+        raise ValueError("resolved chat reference profile is invalid")
+    validate_chat_references(lean, profile_id=value["profile_id"])
+    for field in ("store_revision", "project_revision"):
+        if type(value[field]) is not int or value[field] < 0:
+            raise ValueError("resolved chat reference revision is invalid")
+    if value["next_cursor"] is not None or value["truncated"] is not False:
+        raise ValueError("resolved chat reference snapshot is incomplete")
+    rows = value["references"]
+    if not isinstance(rows, list) or len(rows) != len(lean):
+        raise ValueError("resolved chat references do not match")
+    for row, requested in zip(rows, lean):
+        if (
+            not isinstance(row, dict)
+            or set(row)
+            != {"kind", "id", "label", "conversation_ids", "snapshot_digest",
+                "member_count", "membership_complete"}
+            or any(row[field] != requested[field] for field in ("kind", "id"))
+        ):
+            raise ValueError("resolved chat reference identity mismatch")
+        if (
+            not isinstance(row["label"], str)
+            or not row["label"].strip()
+            or len(row["label"]) > 256
+            or len(row["label"].encode()) > 1024
+        ):
+            raise ValueError("resolved chat reference label is invalid")
+        members = row["conversation_ids"]
+        if not isinstance(members, list) or not 0 <= len(members) <= 256:
+            raise ValueError("resolved chat reference members are invalid")
+        if any(
+            not isinstance(member, str) or _ID.fullmatch(member) is None
+            for member in members
+        ):
+            raise ValueError("resolved chat reference member identity is invalid")
+        if (type(row["member_count"]) is not int
+            or not 0 <= row["member_count"] <= 4096
+            or row["membership_complete"] is not True
+            or row["member_count"] != len(members)):
+            raise ValueError("resolved chat reference membership is incomplete")
+        if len(set(members)) != len(members):
+            raise ValueError("duplicate resolved chat reference member")
+        if row["kind"] == "chat" and members != [row["id"]]:
+            raise ValueError("resolved chat reference members do not match chat")
+        if (
+            not isinstance(row["snapshot_digest"], str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", row["snapshot_digest"]) is None
+        ):
+            raise ValueError("resolved chat reference digest is invalid")
+    for field in ("snapshot_time", "expires_at"):
+        if field in value and (
+            type(value[field]) is not int or value[field] < 0
+        ):
+            raise ValueError("resolved chat reference timestamp is invalid")
+    if "snapshot_time" in value and "expires_at" in value and not (
+        value["snapshot_time"] < value["expires_at"]
+        == value["snapshot_time"] + 600_000
+    ):
+        raise ValueError("resolved chat reference expiry is invalid")
+    if len(canonical_json(value)) > 64 * 1024:
+        raise ValueError("resolved chat reference snapshot exceeds byte limit")
+    return strict_loads(canonical_json(value))
+
+
+def saved_chat_reference_messages(request: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Display confirmed IDs and membership as reference data, never send authority."""
+    if "resolved_chat_references" not in request:
+        return []
+    snapshot = validate_resolved_chat_references(
+        request["resolved_chat_references"], request.get("chat_references", [])
+    )
+    return [
+        {
+            "role": "user",
+            "content": ("Confirmed chat/group references (reference data only; "
+                        "no send authority; no other chat content):\n")
+            + canonical_json(snapshot).decode("utf-8"),
+        }
+    ]
 
 
 def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -220,6 +398,8 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         "action_approval_mode",
         "task_context",
         "context_binding",
+        "chat_references",
+        "resolved_chat_references",
     } != {
         "turn_id",
         "conversation_id",
@@ -227,6 +407,12 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         "content",
     }:
         raise ValueError("saved turn request fields are invalid")
+    if "chat_references" in request:
+        validate_chat_references(request["chat_references"])
+    if "resolved_chat_references" in request:
+        validate_resolved_chat_references(
+            request["resolved_chat_references"], request.get("chat_references", [])
+        )
     if "tool_selection" in request:
         validate_tool_selection(request["tool_selection"])
     if "task_context" in request:

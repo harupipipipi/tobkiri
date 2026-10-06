@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import hashlib
 import json
 import math
@@ -889,6 +891,10 @@ class InteractiveEffectCoordinatorBridgeV4:
         # a signed prepare or resume.  Keep it nonblocking so N outer Broker
         # workers cannot self-deadlock by all awaiting nested work.
         self._single_flight = threading.BoundedSemaphore(1)
+        self._child_flight = threading.BoundedSemaphore(1)
+        self._active_resume_scope = None
+        self._candidate_flight = threading.BoundedSemaphore(1)
+        self._candidate_record = None
         if not self._activation_id:
             raise PermissionError("interactive effect activation is unavailable")
 
@@ -934,6 +940,100 @@ class InteractiveEffectCoordinatorBridgeV4:
             return self._manage(envelope, str(phase), payload, invocation)
         raise PermissionError("interactive effect phase is invalid")
 
+    def _candidate_request(self, invocation: HostProviderInvocationContextV4) -> Any:
+        """Bind one admitted source and its exact native effect identity."""
+        from tobkiri_host.finite_chat_dispatch import _current
+        from tobkiri_host.active_chat_source import _candidate_context
+        token = _current.get()
+        if token is None or token.candidate_witness is None:
+            return None
+        try:
+            current, root, _arguments = _candidate_context(invocation)
+        except PermissionError:
+            # Approved recipient file effects retain their source token but
+            # must use the independent exact delivery-child gate below.
+            return None
+        if current is not token or root is not token.candidate_witness.source_broker_envelope:
+            raise PermissionError("candidate effect source changed")
+        if not token.active:
+            raise PermissionError("candidate effect source has ended")
+        payload = invocation.envelope.payload
+        phase = payload.get("phase")
+        with self._lock:
+            record = self._candidate_record
+            if record is None:
+                if (phase != "prepare" or payload.get("effect_kind") != "chat_message_send"
+                        or not self._candidate_flight.acquire(blocking=False)):
+                    raise PermissionError("interactive effect coordinator is busy")
+                record = {"token": token, "effect_id": None, "resume_scope": None}
+                self._candidate_record = record
+
+                def close_candidate() -> None:
+                    with self._lock:
+                        if self._candidate_record is record:
+                            self._candidate_record = None
+                            self._candidate_flight.release()
+                with token.lock:
+                    if not token.active:
+                        close_candidate()
+                        raise PermissionError("candidate effect source has ended")
+                    token.cleanup.append(close_candidate)
+            if record["token"] is not token:
+                raise PermissionError("interactive effect coordinator is busy")
+            if phase == "prepare":
+                if payload.get("effect_kind") != "chat_message_send" or record["effect_id"] is not None:
+                    raise PermissionError("candidate effect prepare is unavailable")
+            elif phase not in {"resume", "status", "cancel"} or (
+                record["effect_id"] is None or payload.get("effect_id") != record["effect_id"]
+            ):
+                raise PermissionError("candidate effect identity changed")
+            return record
+
+    @contextmanager
+    def _flight(self, invocation: HostProviderInvocationContextV4, *, resume: bool = False) -> Any:
+        from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+        record = self._candidate_request(invocation)
+        scope = CapturedInvocationScopeV4(invocation.envelope, invocation.assert_current, getattr(invocation, "parent_invocation", None))
+        mode = None
+        with self._lock:
+            owns = record is None and self._candidate_record is None and self._single_flight.acquire(blocking=False)
+            if owns:
+                self._active_resume_scope = scope if resume else None
+                mode = "main"
+            elif record is not None:
+                if resume:
+                    record["resume_scope"] = scope
+                mode = "candidate"
+            held = tuple(value for value in (
+                self._active_resume_scope,
+                self._candidate_record["resume_scope"] if self._candidate_record else None,
+            ) if value is not None)
+        if mode is None:
+            from ecosystem.rumi_tool_broker_pack.runtime.chat_delivery import assert_delivery_effect_child
+            matched = False
+            for held_scope in held:
+                try:
+                    assert_delivery_effect_child(invocation, held_scope)
+                    matched = True
+                    break
+                except PermissionError:
+                    continue
+            if not matched or not self._child_flight.acquire(blocking=False):
+                raise PermissionError("interactive effect coordinator is busy")
+            mode = "child"
+        try:
+            yield
+        finally:
+            if mode == "main":
+                with self._lock:
+                    self._active_resume_scope = None
+                self._single_flight.release()
+            elif mode == "candidate" and resume:
+                with self._lock:
+                    record["resume_scope"] = None
+            elif mode == "child":
+                self._child_flight.release()
+
     def _prepare(
         self,
         envelope: RequestEnvelope,
@@ -946,9 +1046,7 @@ class InteractiveEffectCoordinatorBridgeV4:
         if spec is None or not isinstance(request, Mapping):
             raise PermissionError("interactive effect prepare request is invalid")
         _reject_effect_request_authority(request)
-        if not self._single_flight.acquire(blocking=False):
-            raise PermissionError("interactive effect coordinator is busy")
-        try:
+        with self._flight(invocation):
             client = invocation.contract_client(
                 allowed_contract_ids=frozenset({spec.prepare_contract_id}),
                 consumer_pack_id=_EFFECT_PACK_ID,
@@ -960,7 +1058,7 @@ class InteractiveEffectCoordinatorBridgeV4:
             )
             if not isinstance(prepared_result, Mapping):
                 raise PermissionError("interactive effect prepare is unavailable")
-            return _redacted_effect_status(
+            status = _redacted_effect_status(
                 self._effect_port.prepare_interactive_effect(
                     InteractiveEffectPrepareCommand(
                         context=envelope.context,
@@ -983,8 +1081,11 @@ class InteractiveEffectCoordinatorBridgeV4:
                     )
                 )
             )
-        finally:
-            self._single_flight.release()
+            record = self._candidate_request(invocation)
+            if record is not None:
+                with self._lock:
+                    record["effect_id"] = status["effect_id"]
+            return status
 
     def _manage(
         self,
@@ -993,6 +1094,7 @@ class InteractiveEffectCoordinatorBridgeV4:
         payload: Mapping[str, Any],
         invocation: HostProviderInvocationContextV4,
     ) -> Mapping[str, Any]:
+        from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
         query = InteractiveEffectOwnerQuery(
             context=envelope.context,
             coordinator_principal=envelope.target_principal,
@@ -1001,9 +1103,11 @@ class InteractiveEffectCoordinatorBridgeV4:
             ),
             presentation_owner_session_id=invocation.presentation_owner_session_id,
             effect_id=_payload_id(payload, "effect_id"),
+            invocation_scope=CapturedInvocationScopeV4(envelope, invocation.assert_current, getattr(invocation, "parent_invocation", None)) if phase == "resume" else None,
             policy_inheritance=(self._selected_policy_port(invocation)
                 if phase == "resume" and self._selected_policy_port is not None else None),
         )
+        self._candidate_request(invocation)
         if phase == "status":
             return _redacted_effect_status(
                 self._effect_port.get_interactive_effect(query)
@@ -1012,14 +1116,10 @@ class InteractiveEffectCoordinatorBridgeV4:
             return _redacted_effect_status(
                 self._effect_port.cancel_interactive_effect(query)
             )
-        if not self._single_flight.acquire(blocking=False):
-            raise PermissionError("interactive effect coordinator is busy")
-        try:
+        with self._flight(invocation, resume=True):
             return _redacted_effect_status(
                 self._effect_port.resume_interactive_effect(query)
             )
-        finally:
-            self._single_flight.release()
 
     def _authenticated_envelope(
         self,

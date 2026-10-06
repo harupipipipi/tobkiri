@@ -1,6 +1,6 @@
 {
   "api_version": "tobkiri.commands/v1",
-  "catalog_revision": "1c935be0e5df0c89",
+  "catalog_revision": "575de2c1d478fe62",
   "command_count": 55,
   "canonical_ids": [
     "defaultspack:agent",

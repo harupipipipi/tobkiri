@@ -27,7 +27,9 @@ from core_runtime.authority.v4 import (
 )
 from core_runtime.authority.v4_models import canonical_json
 
-from .broker import PreparedInvocation, PreparedInvocationSnapshot, RequestBroker
+from .broker import (
+    NestedCancellationProof, PreparedInvocation, PreparedInvocationSnapshot, RequestBroker,
+)
 from .models import OpaqueAuthorityRef, RequestContext
 from .ports import (
     InteractiveApprovalGrantAttestation,
@@ -45,6 +47,10 @@ class _PreparedExecutionGuardKwargs(TypedDict, total=False):
     """Forward only the optional typed Host guard to a prepared Broker call."""
 
     execution_guard: Callable[[], None]
+    inline_parent_scope: Any
+    parent_deadline_monotonic: float
+    cancellation_requested: threading.Event
+    nested_cancellation_proof: NestedCancellationProof | None
 
 
 class PendingEffectError(RuntimeError):
@@ -578,6 +584,8 @@ class PendingEffectController:
         broker: RequestBroker,
         policy_inheritance: Any | None = None,
         execution_guard: Callable[[], None] | None = None,
+        dispatch_scope: Callable[[RequestContext], ContextManager[_PreparedExecutionGuardKwargs]] | None = None,
+        synchronous_dispatch: bool = False,
         dispatch_grace_seconds: float | None = None,
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
@@ -591,6 +599,8 @@ class PendingEffectController:
             wall_clock=wall_clock,
             monotonic_clock=monotonic_clock,
             execution_guard=execution_guard,
+            dispatch_scope=dispatch_scope,
+            synchronous_dispatch=synchronous_dispatch,
             presentation_owner=(
                 presentation_owner_principal_id,
                 presentation_owner_session_id,
@@ -724,8 +734,14 @@ class PendingEffectController:
         dispatch_grace_seconds: float | None = None,
         presentation_owner: tuple[str, str] | None = None,
         execution_guard: Callable[[], None] | None = None,
+        dispatch_scope: Callable[[RequestContext], ContextManager[_PreparedExecutionGuardKwargs]] | None = None,
+        synchronous_dispatch: bool = False,
     ) -> PendingEffectStatus:
         """Claim one approved effect, dispatch it, and boundedly await it.
+
+        A Host-authenticated current dispatch scope runs inline until its
+        approved Broker invocation settles. Other effects retain the bounded
+        detached-worker behavior described below.
 
         Owner verification, the CAS claim, the durable DISPATCHED marker, and
         the Provider invocation run on one detached worker against the
@@ -749,6 +765,8 @@ class PendingEffectController:
         abandon its durable settlement.
         """
 
+        if type(synchronous_dispatch) is not bool or (dispatch_scope is not None and not synchronous_dispatch):
+            raise PendingEffectError("live dispatch scope requires synchronous execution")
         grace = (
             self._dispatch_grace_seconds
             if dispatch_grace_seconds is None
@@ -853,7 +871,27 @@ class PendingEffectController:
                     guard_kwargs: _PreparedExecutionGuardKwargs = {}
                     if selected_execution_guard is not None:
                         guard_kwargs["execution_guard"] = selected_execution_guard
-                    with owner_scope:
+                    current_scope: ContextManager[_PreparedExecutionGuardKwargs] = (
+                        dispatch_scope(record.context) if dispatch_scope is not None
+                        else nullcontext({})
+                    )
+                    with owner_scope, current_scope as scoped_kwargs:
+                        scoped_guard = scoped_kwargs.get("execution_guard")
+                        if selected_execution_guard is not None and scoped_guard is not None:
+                            def combined_guard() -> None:
+                                selected_execution_guard()
+                                scoped_guard()
+                            guard_kwargs["execution_guard"] = combined_guard
+                        if "inline_parent_scope" in scoped_kwargs:
+                            guard_kwargs["inline_parent_scope"] = scoped_kwargs["inline_parent_scope"]
+                        if "parent_deadline_monotonic" in scoped_kwargs:
+                            guard_kwargs["parent_deadline_monotonic"] = scoped_kwargs["parent_deadline_monotonic"]
+                        if "cancellation_requested" in scoped_kwargs:
+                            guard_kwargs["cancellation_requested"] = scoped_kwargs["cancellation_requested"]
+                        if "nested_cancellation_proof" in scoped_kwargs:
+                            guard_kwargs["nested_cancellation_proof"] = scoped_kwargs["nested_cancellation_proof"]
+                        if scoped_guard is not None and selected_execution_guard is None:
+                            guard_kwargs["execution_guard"] = scoped_guard
                         outcome = broker.invoke_prepared(
                             record.prepared,
                             record.context,
@@ -917,7 +955,7 @@ class PendingEffectController:
             finally:
                 done.set()
 
-        if policy_inheritance is not None:
+        if synchronous_dispatch or policy_inheritance is not None:
             # The native-selected policy settles against this authenticated
             # coordinator invocation. Keep its parent lease alive until the
             # exact effect finishes; never hand authority to a detached worker

@@ -11,7 +11,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:deb3bc979b43543c6fcd1ffa0d13b5bc5e8553140120c2e9e191e88bc814f565",
+          "input_schema_digest": "sha256:e1353d3161da267fcdefbbab8dc380f8389f6e6c03f9586d9a749e4d5fd9ee1c",
           "operation_id": "saved_complete",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "declarative"
@@ -21,7 +21,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+            "digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -32,7 +32,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+        "source_digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -48,7 +48,7 @@
         "required_capabilities": [],
         "security": "restricted"
       },
-      "revision_digest": "sha256:050bd5c61e3d539f8dc6562cd0c1052877f0d230b138e8eb7ddbcc8bfb37aef7",
+      "revision_digest": "sha256:e14fe210dadd4ce1e5d886c55dd7887c615df895cafa850f5269241e146cbb52",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -69,7 +69,7 @@
           ],
           "type": "object"
         },
-        "sha256:deb3bc979b43543c6fcd1ffa0d13b5bc5e8553140120c2e9e191e88bc814f565": {
+        "sha256:e1353d3161da267fcdefbbab8dc380f8389f6e6c03f9586d9a749e4d5fd9ee1c": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -145,6 +145,40 @@
                   ],
                   "type": "string"
                 },
+                "chat_references": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "chat",
+                          "group"
+                        ]
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array",
+                  "uniqueItems": true
+                },
                 "content": {
                   "oneOf": [
                     {
@@ -175,6 +209,114 @@
                   "maximum": 9007199254740991,
                   "minimum": 1,
                   "type": "integer"
+                },
+                "resolved_chat_references": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expires_at": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "tobkiri.chat.reference.snapshot.v1"
+                    },
+                    "next_cursor": {
+                      "type": "null"
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "project_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "references": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversation_ids": {
+                            "items": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "chat",
+                              "group"
+                            ]
+                          },
+                          "label": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "\\S",
+                            "type": "string"
+                          },
+                          "member_count": {
+                            "maximum": 4096,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "membership_complete": {
+                            "const": true
+                          },
+                          "snapshot_digest": {
+                            "pattern": "^sha256:[0-9a-f]{64}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "label",
+                          "conversation_ids",
+                          "snapshot_digest",
+                          "member_count",
+                          "membership_complete"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
+                    },
+                    "snapshot_time": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "store_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "truncated": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "profile_id",
+                    "store_revision",
+                    "project_revision",
+                    "snapshot_time",
+                    "expires_at",
+                    "references",
+                    "next_cursor",
+                    "truncated"
+                  ],
+                  "type": "object"
                 },
                 "strategy_maximum_cost_microusd": {
                   "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
@@ -442,7 +584,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+            "digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -453,7 +595,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+        "source_digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -559,7 +701,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+            "digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -570,7 +712,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+        "source_digest": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -650,5 +792,5 @@
     }
   ],
   "pack_id": "defaultspack",
-  "source_identity": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017"
+  "source_identity": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6"
 }

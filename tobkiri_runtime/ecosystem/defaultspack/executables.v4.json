@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:936a20cfda67fa06ce37d4130a00ad9937a9dc5e9120613b48d91ad93ebc21c4",
+  "catalog_digest": "sha256:d4d2c147fca654ac5de5350cff9246c514a98bb10f26a4a362c32648156a9b84",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:55a8e54972dd582f466b898245b3e634eec98cbe87cfaf284b8dd97539250017",
+  "source_identity": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:00d4f840b9d00e62c45c6a925567c935b7df052eca00f0230887a23cc9493240",
+      "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -281,6 +281,40 @@
                     ],
                     "type": "string"
                   },
+                  "chat_references": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "chat",
+                            "group"
+                          ]
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "profile_id",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
                   "content": {
                     "oneOf": [
                       {
@@ -311,6 +345,114 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "resolved_chat_references": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expires_at": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "tobkiri.chat.reference.snapshot.v1"
+                      },
+                      "next_cursor": {
+                        "type": "null"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "project_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "references": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_ids": {
+                              "items": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "chat",
+                                "group"
+                              ]
+                            },
+                            "label": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "\\S",
+                              "type": "string"
+                            },
+                            "member_count": {
+                              "maximum": 4096,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "membership_complete": {
+                              "const": true
+                            },
+                            "snapshot_digest": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "label",
+                            "conversation_ids",
+                            "snapshot_digest",
+                            "member_count",
+                            "membership_complete"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
+                      },
+                      "snapshot_time": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "store_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "truncated": {
+                        "const": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "store_revision",
+                      "project_revision",
+                      "snapshot_time",
+                      "expires_at",
+                      "references",
+                      "next_cursor",
+                      "truncated"
+                    ],
+                    "type": "object"
                   },
                   "strategy_maximum_cost_microusd": {
                     "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
@@ -558,7 +700,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:050bd5c61e3d539f8dc6562cd0c1052877f0d230b138e8eb7ddbcc8bfb37aef7",
+          "revision_digest": "sha256:e14fe210dadd4ce1e5d886c55dd7887c615df895cafa850f5269241e146cbb52",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

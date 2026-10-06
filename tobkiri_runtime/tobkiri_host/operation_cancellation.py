@@ -38,6 +38,11 @@ class _TrackedChild:
     queued_cancelled: bool = False
     completed: bool = False
     resource_drained: bool = False
+    independent_saved_branch: bool = False
+    independent_calendar_branch: bool = False
+    independent_occurrence_digest: str | None = None
+    execution_proof: _NestedCancellationProof | None = None
+    execution_entered: bool = False
 
 
 class _NestedCancellationProof:
@@ -68,6 +73,8 @@ class _NestedCancellationProof:
         self._children: dict[int, _TrackedChild] = {}
         self._next_child_id = 0
         self._verified_drained = threading.Event()
+        self._execution_guard: Callable[[], None] | None = None
+        self._calendar_execution_witness: Callable[[], None] | None = None
 
     def matches_invocation(
         self,
@@ -89,9 +96,12 @@ class _NestedCancellationProof:
             return any(
                 child.envelope is envelope
                 and self._child_active(child)
+                and not envelope.cancellation_requested.is_set()
                 and (
                     envelope.cancellation_requested
                     is self._envelope.cancellation_requested
+                    or child.independent_saved_branch
+                    or child.independent_calendar_branch
                 )
                 and self._matches_child_context(envelope)
                 for child in self._children.values()
@@ -117,6 +127,109 @@ class _NestedCancellationProof:
             self._children[child_id] = _TrackedChild(envelope=envelope)
             return child_id
 
+    def reserve_independent_saved_child(self, envelope: RequestEnvelope) -> int:
+        """Reserve an exact Host-approved saved branch with its own signal.
+
+        The Broker selects this Host-only entry after authenticating the finite
+        approved delivery ancestry; no request flag selects independent mode.
+        Normal children still require the exact parent cancellation Event.
+        """
+        return self._reserve_independent_child(envelope, calendar=False)
+
+    def reserve_independent_calendar_child(self, envelope: RequestEnvelope) -> int:
+        """Enroll only a Host-authenticated selected Calendar adapter occurrence.
+
+        Production Broker must first prove the exact actual JobBroker dispatch
+        ancestry and its retained immutable occurrence. This private entry never
+        accepts a public flag and does not enable other v2 job adapters.
+        """
+        return self._reserve_independent_child(envelope, calendar=True)
+
+    def _reserve_independent_child(
+        self, envelope: RequestEnvelope, *, calendar: bool
+    ) -> int:
+        with self._registry._lock:
+            self._require_live_child(envelope, independent_saved_branch=True)
+            route = (
+                ("tobkiri.action.job.adapter.v2", "rumi_turn_runtime_pack.chat-saved-job-adapter")
+                if calendar else
+                ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+            )
+            if calendar:
+                self._validate_calendar_occurrence(envelope)
+            if (
+                (envelope.contract_id, envelope.operation_id)
+                != route
+                or type(envelope.cancellation_requested) is not threading.Event
+                or envelope.cancellation_requested.is_set()
+                or envelope.cancellation_requested is self._envelope.cancellation_requested
+                or any(
+                    child.envelope.cancellation_requested
+                    is envelope.cancellation_requested
+                    for child in self._children.values()
+                )
+                or any(
+                    signal is envelope.cancellation_requested
+                    for signal, _completed in self._registry._active.values()
+                )
+                or any(
+                    proof._envelope.cancellation_requested
+                    is envelope.cancellation_requested
+                    for proof in self._registry._records.values()
+                )
+            ):
+                raise PermissionError("independent saved cancellation is unavailable")
+            self._next_child_id += 1
+            child_id = self._next_child_id
+            self._children[child_id] = _TrackedChild(
+                envelope=envelope, independent_saved_branch=not calendar,
+                independent_calendar_branch=calendar,
+                independent_occurrence_digest=(
+                    self._validate_calendar_occurrence(envelope) if calendar else None
+                ),
+            )
+            return child_id
+
+    @staticmethod
+    def _validate_calendar_occurrence(envelope: RequestEnvelope) -> str:
+        import json
+        from collections.abc import Mapping
+        payload = envelope.payload
+        fields = {"profile_id", "operation", "action_id", "payload", "idempotency_key", "schedule_id", "lease_id"}
+        if (
+            envelope.contract_version != "2.0.0"
+            or not isinstance(payload, Mapping)
+            or set(payload) - {"_session_id"} != fields
+            or payload.get("operation") != "dispatch"
+            or payload.get("action_id") != "chat.saved"
+            or payload.get("profile_id") != envelope.context.profile_id
+            or envelope.idempotency_key != payload.get("idempotency_key")
+            or any(not isinstance(payload.get(field), str) or not payload[field]
+                   or len(payload[field]) > 256
+                   for field in fields - {"payload"})
+            or not isinstance(payload.get("payload"), Mapping)
+        ):
+            raise PermissionError("independent Calendar occurrence is unavailable")
+        task = payload["payload"]
+        if (not {"profile_id", "message", "conversation_id"} <= set(task)
+            or task.get("profile_id") != envelope.context.profile_id
+            or not isinstance(task.get("message"), str) or not task["message"]
+            or len(task["message"]) > 61440
+            or (task.get("conversation_id") is not None
+                and (not isinstance(task["conversation_id"], str)
+                     or not task["conversation_id"]
+                     or len(task["conversation_id"]) > 256))):
+            raise PermissionError("independent Calendar task is unavailable")
+        try:
+            encoded = json.dumps(dict(payload), allow_nan=False)
+        except (ValueError, TypeError, RecursionError) as exc:
+            raise PermissionError("independent Calendar occurrence is invalid") from exc
+        if len(encoded.encode()) > 131072:
+            raise PermissionError("independent Calendar occurrence is too large")
+        from tobkiri_protocol.canonical import canonical_digest
+        return canonical_digest({key: value for key, value in payload.items()
+                                 if key != "_session_id"})
+
     def abandon_child(self, child_id: int) -> None:
         """Forget a reservation when Broker submission never created a Future."""
 
@@ -124,6 +237,95 @@ class _NestedCancellationProof:
             child = self._children.get(child_id)
             if child is not None and child.future is None:
                 del self._children[child_id]
+                self._refresh_verified_drain_locked()
+
+    @contextmanager
+    def independent_saved_execution_scope(
+        self, envelope: RequestEnvelope
+    ) -> Iterator[None]:
+        """Enter one enrolled Saved provider with a private branch-root proof.
+
+        Broker must bind its real Future before provider entry. This scope adds
+        no public stop handle and does not relax ordinary Event validation.
+        """
+        with self._independent_execution_scope(envelope, calendar=False):
+            yield
+
+    @contextmanager
+    def independent_calendar_execution_scope(
+        self, envelope: RequestEnvelope
+    ) -> Iterator[None]:
+        """Enter one exact enrolled occurrence without a public stop handle."""
+        with self._independent_execution_scope(envelope, calendar=True):
+            yield
+
+    @contextmanager
+    def _independent_execution_scope(
+        self, envelope: RequestEnvelope, *, calendar: bool
+    ) -> Iterator[None]:
+        registry = self._registry
+        with registry._lock:
+            matches = [
+                child
+                for child in self._children.values()
+                if child.envelope is envelope and (
+                    child.independent_calendar_branch if calendar
+                    else child.independent_saved_branch
+                )
+            ]
+            route = (
+                ("tobkiri.action.job.adapter.v2", "rumi_turn_runtime_pack.chat-saved-job-adapter")
+                if calendar else
+                ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+            )
+            if calendar:
+                self._validate_calendar_occurrence(envelope)
+            if (
+                len(matches) != 1
+                or not self._parent_available_locked()
+                or not self._matches_child_context(envelope)
+                or (envelope.contract_id, envelope.operation_id)
+                != route
+                or envelope.cancellation_requested
+                is self._envelope.cancellation_requested
+                or envelope.cancellation_requested.is_set()
+            ):
+                raise PermissionError("independent saved execution is unavailable")
+            child = matches[0]
+            if calendar and child.independent_occurrence_digest != self._validate_calendar_occurrence(envelope):
+                raise PermissionError("independent Calendar occurrence changed")
+            if (
+                child.execution_entered
+                or child.future is None
+                or not self._child_active(child)
+            ):
+                raise PermissionError(
+                    "independent saved execution future is unavailable"
+                )
+            # An object identity cannot collide with any public reference key.
+            key = (*self._key, object())
+            proof = _NestedCancellationProof(
+                registry,
+                key,
+                envelope,
+                self._owner_principal,
+                self._owner_session,
+            )
+            child.execution_entered = True
+            child.execution_proof = proof
+            proof._execution_guard = self._execution_guard
+            proof._calendar_execution_witness = (
+                self._execution_guard if calendar
+                else self._calendar_execution_witness
+            )
+            registry._records[key] = proof
+        token = _active_nested_cancellation_proof.set(proof)
+        try:
+            yield
+        finally:
+            _active_nested_cancellation_proof.reset(token)
+            with registry._lock:
+                proof.close_scope()
                 self._refresh_verified_drain_locked()
 
     def bind_child(self, child_id: int, future: Future[object]) -> None:
@@ -144,6 +346,7 @@ class _NestedCancellationProof:
                 # A late-bound, already-done Future has no observable ordering
                 # against Stop intent.  Only still-pending work can prove drain.
                 child.cancellation_eligible = not future.done()
+                child.envelope.cancellation_requested.set()
 
         def complete(completed_future: Future[object]) -> None:
             with self._registry._lock:
@@ -210,12 +413,22 @@ class _NestedCancellationProof:
                         child.future is not None and not child.future.done()
                     )
             self._cancellation_requested = True
+            # Fan out even reserved/unbound independent branches before their
+            # Provider can enter. Shared signals remain harmlessly idempotent.
+            for child in self._children.values():
+                if child.execution_proof is not None:
+                    child.execution_proof.request()
+                child.envelope.cancellation_requested.set()
             self._refresh_verified_drain_locked()
 
     def close_scope(self) -> None:
         """Mark Host scope exit; this alone never proves child termination."""
 
         with self._registry._lock:
+            if self._envelope.cancellation_requested.is_set():
+                # Timeouts and ancestor cancellation can set the signal without
+                # calling this scope's stop binding. Children still inherit it.
+                self.request()
             self._scope_exited = True
             self._refresh_verified_drain_locked()
 
@@ -236,7 +449,9 @@ class _NestedCancellationProof:
         )
         return timeout > 0 and self._verified_drained.wait(timeout=timeout)
 
-    def _require_live_child(self, envelope: RequestEnvelope) -> None:
+    def _require_live_child(
+        self, envelope: RequestEnvelope, *, independent_saved_branch: bool = False
+    ) -> None:
         if (
             not isinstance(envelope, RequestEnvelope)
             or not self._parent_available_locked()
@@ -245,6 +460,7 @@ class _NestedCancellationProof:
             or (
                 envelope.cancellation_requested
                 is not self._envelope.cancellation_requested
+                and not independent_saved_branch
             )
             or not self._matches_child_context(envelope)
         ):
@@ -276,6 +492,8 @@ class _NestedCancellationProof:
         )
 
     def _parent_available_locked(self) -> bool:
+        if self._execution_guard is not None:
+            self._execution_guard()
         return (
             self._registry._records.get(self._key) is self
             and not self._registry._closed
@@ -308,6 +526,13 @@ class _NestedCancellationProof:
                 and (child.backend_cancelled or child.queued_cancelled)
                 and child.completed
                 and child.resource_drained
+                and (
+                    child.execution_proof is None
+                    or (child.execution_proof._scope_exited and all(
+                        nested.completed and nested.resource_drained
+                        for nested in child.execution_proof._children.values()
+                    ))
+                )
                 for child in self._children.values()
             )
         ):
@@ -354,6 +579,145 @@ class OwnedCancellationHandles:
         ] = {}
         self._records: dict[tuple[object, ...], _NestedCancellationProof] = {}
         self._closed = False
+
+    @contextmanager
+    def inherited_calendar_dispatch_scope(
+        self, inherited_proof: _NestedCancellationProof, *, scope: object,
+        target_envelope: RequestEnvelope, owner_principal: str,
+        owner_session: str,
+        selected_adapter_guard: Callable[[object, RequestEnvelope], None],
+    ) -> Iterator[_NestedCancellationProof]:
+        """Add an exact selected Calendar parent to a live enrolled Saved tree.
+
+        The inherited proof must already own the actual JobBroker child Future.
+        A separate private parent retains the selected occurrence witness; the
+        original Saved proof is never repurposed as that witness or public key.
+        """
+        from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+        if (
+            not isinstance(inherited_proof, _NestedCancellationProof)
+            or inherited_proof._registry is not self
+            or not isinstance(scope, CapturedInvocationScopeV4)
+            or not callable(selected_adapter_guard)
+            or (inherited_proof._envelope.contract_id,
+                inherited_proof._envelope.operation_id)
+            != ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+        ):
+            raise PermissionError("inherited Calendar Saved proof is unavailable")
+
+        def inherited_child() -> _TrackedChild:
+            if not inherited_proof.matches_invocation(
+                scope.envelope, owner_principal, owner_session,
+            ):
+                raise PermissionError("inherited Calendar source scope differs")
+            matches = [child for child in inherited_proof._children.values()
+                       if child.envelope is scope.envelope]
+            if (len(matches) != 1 or matches[0].future is None
+                or not inherited_proof._child_active(matches[0])
+                or scope.envelope.cancellation_requested
+                is not inherited_proof._envelope.cancellation_requested):
+                raise PermissionError("inherited Calendar source Future is unavailable")
+            return matches[0]
+
+        def assert_selected(actual_scope: object, actual_target: RequestEnvelope) -> None:
+            with self._lock:
+                inherited_child()
+            if actual_scope is not scope or actual_target is not target_envelope:
+                raise PermissionError("inherited Calendar physical scope changed")
+            selected_adapter_guard(actual_scope, actual_target)
+
+        with self._lock:
+            child = inherited_child()
+            if child.execution_proof is not None or child.execution_entered:
+                raise PermissionError("inherited Calendar source already entered")
+        with self.private_calendar_dispatch_scope(
+            scope=scope, target_envelope=target_envelope,
+            owner_principal=owner_principal, owner_session=owner_session,
+            selected_adapter_guard=assert_selected,
+        ) as selected_proof:
+            with self._lock:
+                current = inherited_child()
+                if (current is not child or current.execution_proof is not None
+                    or current.execution_entered):
+                    raise PermissionError("inherited Calendar source registration changed")
+                # Exact parent stop now immediately fans into the independent
+                # occurrence; verified parent drain retains its private scope.
+                child.execution_entered = True
+                child.execution_proof = selected_proof
+            yield selected_proof
+
+    @contextmanager
+    def private_calendar_dispatch_scope(
+        self, *, scope: object, target_envelope: RequestEnvelope,
+        owner_principal: str, owner_session: str,
+        selected_adapter_guard: Callable[[object, RequestEnvelope], None],
+    ) -> Iterator[_NestedCancellationProof]:
+        """Track a fresh actual JobBroker parent without a public stop handle.
+
+        The production-owned witness must compare ``scope`` by object identity
+        with its retained invocation and verify the actual selected signed
+        adapter target. No contract payload can supply this callable or scope.
+        The child remains separately enrolled and must bind its real Future.
+        """
+        from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+        from tobkiri_protocol.canonical import canonical_digest
+        if (
+            not isinstance(scope, CapturedInvocationScopeV4)
+            or not isinstance(target_envelope, RequestEnvelope)
+            or not callable(selected_adapter_guard)
+            or any(not isinstance(value, str) or not value
+                   for value in (owner_principal, owner_session))
+        ):
+            raise PermissionError("private Calendar parent scope is unavailable")
+        envelope = scope.envelope
+        fields = {"profile_id", "operation", "action_id", "payload",
+                  "idempotency_key", "schedule_id", "lease_id"}
+        if (
+            (envelope.contract_id, envelope.operation_id)
+            != ("tobkiri.action.job.v1", "rumi_job_action_broker_pack.job-action-broker")
+            or envelope.contract_version != "1.0.0"
+            or set(envelope.payload) - {"_session_id"} != fields
+            or envelope.payload.get("operation") != "dispatch"
+            or (target_envelope.contract_id, target_envelope.operation_id)
+            != ("tobkiri.action.job.adapter.v2", "rumi_turn_runtime_pack.chat-saved-job-adapter")
+        ):
+            raise PermissionError("private Calendar parent route is unavailable")
+        occurrence_digest = _NestedCancellationProof._validate_calendar_occurrence(target_envelope)
+        if canonical_digest({key: value for key, value in envelope.payload.items()
+                             if key != "_session_id"}) != occurrence_digest:
+            raise PermissionError("private Calendar parent occurrence differs")
+        key = (object(),)
+        proof = _NestedCancellationProof(
+            self, key, envelope, owner_principal, owner_session,
+        )
+
+        def assert_selected() -> None:
+            scope.assert_current()
+            selected_adapter_guard(scope, target_envelope)
+            if (
+                _NestedCancellationProof._validate_calendar_occurrence(target_envelope)
+                != occurrence_digest
+                or canonical_digest({key: value for key, value in envelope.payload.items()
+                                     if key != "_session_id"}) != occurrence_digest
+            ):
+                raise PermissionError("private Calendar captured occurrence changed")
+
+        with self._lock:
+            assert_selected()
+            if (self._closed or envelope.cancellation_requested.is_set()
+                or target_envelope.cancellation_requested is envelope.cancellation_requested
+                or not proof._matches_child_context(target_envelope)
+                or any(record._envelope is envelope for record in self._records.values())):
+                raise PermissionError("private Calendar parent is already unavailable")
+            proof._execution_guard = assert_selected
+            self._records[key] = proof
+        token = _active_nested_cancellation_proof.set(proof)
+        try:
+            yield proof
+        finally:
+            _active_nested_cancellation_proof.reset(token)
+            with self._lock:
+                proof.close_scope()
 
     def bind(
         self,
@@ -406,7 +770,8 @@ class OwnedCancellationHandles:
             self._closed = True
             for signal, _completed in self._active.values():
                 signal.set()
-            for proof in self._records.values():
+            for proof in list(self._records.values()):
+                proof.request()
                 proof._envelope.cancellation_requested.set()
 
 
@@ -445,11 +810,39 @@ class OwnedCancellationBinding:
                 or self._signal.is_set()
             ):
                 raise PermissionError("operation cancellation handle is unavailable")
+            inherited = _active_nested_cancellation_proof.get()
+            calendar_guard: Callable[[], None] | None = None
+            if (
+                type(inherited) is _NestedCancellationProof
+                and inherited._calendar_execution_witness is not None
+            ):
+                if (
+                    inherited._registry is not registry
+                    or not inherited.matches_invocation(
+                        self._envelope, self._owner_principal, self._owner_session,
+                    )
+                ):
+                    raise PermissionError("Calendar execution witness does not match track")
+                witness = inherited._calendar_execution_witness
+
+                def assert_calendar_track() -> None:
+                    self._guard()
+                    witness()
+                    if not inherited.matches_invocation(
+                        self._envelope, self._owner_principal, self._owner_session,
+                    ):
+                        raise PermissionError("Calendar tracked parent is unavailable")
+
+                calendar_guard = assert_calendar_track
+                calendar_guard()
             completed = threading.Event()
             proof = _NestedCancellationProof(
                 registry, key, self._envelope, self._owner_principal,
                 self._owner_session,
             )
+            if calendar_guard is not None:
+                proof._execution_guard = calendar_guard
+                proof._calendar_execution_witness = calendar_guard
             registry._active[key] = (self._signal, completed)
             registry._records[key] = proof
         context_token = _active_nested_cancellation_proof.set(proof)

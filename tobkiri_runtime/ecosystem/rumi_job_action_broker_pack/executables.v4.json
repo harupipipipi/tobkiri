@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a93a694da2efd16312c44f95b344c363438599b91ac8cf9bcdacda8cbc076b31",
+  "catalog_digest": "sha256:0711a45a521d6c63a431c3f7662252c21f371dda03016e8b03b0e324a672c515",
   "pack_id": "rumi_job_action_broker_pack",
-  "source_identity": "sha256:1add7a033e15f99a1bce6ad13efa3d9964dfd4de8d151a910618c839ec7c9b46",
+  "source_identity": "sha256:ff277173beb32d673255a62aaa6557532ba8d05207c94e186e6486c80fb61916",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_job_action_broker_pack.job-action.broker",
-      "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "implementation_digest": "sha256:dd2e29bac0fd93f0570af1c30d5fc48e1877a315fcb2aeb3b9336021a83fc668",
       "implementation_path": "runtime/broker.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -73,7 +73,7 @@
             "type": "object"
           },
           "revision_digest": "sha256:ab96a0e5e59960b6495a7e2a790c73b6f6720901b9994d3e89f84c56d515e36f",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }
       ],

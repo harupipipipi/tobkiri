@@ -7,6 +7,13 @@ read-only reconciliation and authenticated stop remain separate requirements.
 
 from __future__ import annotations
 
+from tobkiri_host.saved_workspace_context import (
+    WORKSPACE_TARGET, resolve_saved_workspace, workspace_resolution,
+)
+
+from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
+from tobkiri_protocol.saved_conversation import saved_guidance_context
+
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Callable, Mapping
 
@@ -48,6 +55,8 @@ SAVED_CONTRACTS = frozenset(
         CONTEXT_CONTRACT,
         INBOX_CONTRACT,
         COMPLETION_CONTRACT,
+        "tobkiri.resource.chat.reference.v1",
+        WORKSPACE_TARGET[0],
     }
 )
 
@@ -106,7 +115,13 @@ def execute_saved_turn(
     ):
         raise PermissionError("saved execution client does not match the owner")
     guard()
-    if store.get(initial["request"]["turn_id"]) is None:
+    existing = store.get(initial["request"]["turn_id"])
+    if existing is None or (
+        (existing.get("delivery_provenance") or existing.get("calendar_preparation"))
+        and existing.get("status") == "queued"
+    ):
+        # Delivery and Calendar reserve scheduling state before first execution;
+        # its queued input still requires all normal owner prerequisites.
         # Existing turns must remain reconcilable after the conversation changes.
         # Only new execution reads context before claiming any durable work.
         response = client.invoke(
@@ -137,7 +152,13 @@ def execute_saved_turn(
         conversation = resolve_request_context(
             conversation, initial["request"], store.profile_id, read_parent,
         )
-        validate_saved_conversation_context(conversation)
+        conversation = resolve_saved_workspace(
+            conversation, profile_id=store.profile_id, guard=guard,
+            read_binding=lambda payload: client.invoke(*WORKSPACE_TARGET, payload),
+        )
+        validate_saved_conversation_context(
+            conversation, workspace_resolution=workspace_resolution(conversation),
+        )
         prompt_id = saved_prompt_reference(conversation)
         if prompt_id is not None:
             prompt = client.invoke(*PROMPT_TARGET, {"operation": "get", "prompt_id": prompt_id})
@@ -188,6 +209,7 @@ def execute_saved_turn(
             return _drain_guidance(
                 store, result, client, guard, track_execution, _guidance_depth,
                 completion_confirmed=completion_confirmed,
+                captured_request=initial["request"],
             )
         return result
     record = claim["turn"]
@@ -268,6 +290,7 @@ def execute_saved_turn(
         track_execution,
         _guidance_depth,
         completion_confirmed=completion_confirmed,
+        captured_request=initial["request"],
     )
 
 
@@ -280,11 +303,13 @@ def _drain_guidance(
     depth: int,
     *,
     completion_confirmed: bool,
+    captured_request: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run bounded, durable guidance children after an acknowledged turn."""
 
     if result.get("status") not in {"completed", "existing"} or depth >= 8:
         return result
+    captured_request = captured_request or {}
     parent_id = str(result["turn"]["id"])
     source_id = parent_id
     parent = store.get(parent_id)
@@ -293,6 +318,8 @@ def _drain_guidance(
     source_confirmed = completion_confirmed
     attempts = 0
     for item in parent.get("guidance", []):
+        if item.get("status") == "cancelled":
+            continue
         value = item.get("value")
         if not isinstance(value, Mapping) or value.get("auto_send") is not True:
             continue
@@ -328,19 +355,44 @@ def _drain_guidance(
                     "conversation_id": parent["conversation_id"],
                     "conversation_revision": reference["conversation_revision"],
                     "content": str(value.get("prompt") or ""),
+                    # Preference continuity only; child Host authority is fresh.
+                    **({"action_approval_mode": captured_request["action_approval_mode"]}
+                       if "action_approval_mode" in captured_request else {}),
                 }
             }
-        guard()
-        store.reserve_guidance_followup(
-            parent_id, guidance_id, source_id, followup,
+            followup["request"].update(
+                saved_guidance_context(value, profile_id=store.profile_id)
+            )
+        if value.get("metadata", {}).get("delivery_provenance") and not isinstance(item.get("followup_input"), Mapping):
+            followup["request"].update(store.delivery_target_settings(parent["conversation_id"]))
+        # Public source stays lean; recovered owner input keeps the immutable
+        # captured snapshot across retries without resolving it a second time.
+        expected_mode = value.get(
+            "action_approval_mode", captured_request.get("action_approval_mode", "ask")
         )
-        child_result = execute_saved_turn(
-            store,
-            followup,
-            client=client,
-            guard=guard,
-            track_execution=track_execution,
-            _guidance_depth=depth + 1,
+        if followup["request"].get("action_approval_mode", "ask") != expected_mode:
+            raise ValueError("saved guidance approval preference was rebound")
+        source = validate_saved_conversation_input(followup)
+        source["request"].pop("task_context", None)
+        source["request"].pop("resolved_chat_references", None)
+
+        def execute_followup(accepted: Mapping[str, Any]) -> dict[str, Any]:
+            guard()
+            store.reserve_guidance_followup(
+                parent_id, guidance_id, source_id, accepted,
+            )
+            return execute_saved_turn(
+                store, accepted, client=client, guard=guard,
+                track_execution=track_execution, _guidance_depth=depth + 1,
+            )
+
+        child_result = execute_with_input_context(
+            source, client=client, guard=guard,
+            recover_input=lambda lean: store.saved_input(lean) or (
+                followup if isinstance(item.get("followup_input"), Mapping) else None
+            ),
+            bind_input=store.bind_saved_input,
+            execute=execute_followup,
         )
         child = child_result.get("turn")
         if not isinstance(child, Mapping):
@@ -743,6 +795,8 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         raise ValueError("saved acknowledgement metadata is invalid")
     trace = saved_tool_messages(metadata.get("saved_tool_messages", []))
     expected_metadata = {"turn_id": request["turn_id"]}
+    if request.get("resolved_chat_references"):
+        expected_metadata["chat_references"] = request["resolved_chat_references"]["references"]
     if "action_approval_mode" in request:
         expected_metadata["action_approval_mode"] = request["action_approval_mode"]
     selection = request.get("tool_selection", {})

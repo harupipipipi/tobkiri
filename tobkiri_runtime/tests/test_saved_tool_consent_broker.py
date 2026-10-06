@@ -3,17 +3,16 @@
 import tobkiri_host.saved_tool_entry_guards as _host_saved_tool_entry_guards
 import tobkiri_host.consumed_tool_consent as _host_consumed_tool_consent
 from dataclasses import replace
+from datetime import datetime, timezone
 import threading
 import time
 from types import SimpleNamespace
 import pytest
 from core_runtime.authority.v4 import (
     AuthorityScope,
-    HostExtensionTrustRecord,
-    ProviderAuthorityRecord,
-    AuthorityMode,
 )
 from core_runtime.host_contract import bind_host_contract
+from core_runtime.bootstrap.production_v4 import _commit_plan_authority
 from tests import test_authority_v4_lifecycle as lifecycle
 from tests.test_authority_v4_lifecycle import (
     _Harness,
@@ -195,6 +194,14 @@ class Backend:
         "revoke_between",
         "revoke_pre_effect",
         "revoke_nested",
+        "foreign_trust",
+        "trust_artifact",
+        "trust_principal",
+        "trust_epoch",
+        "trust_expired",
+        "trust_revoked",
+        "provider_host_extension",
+        "lease_host_extension",
     ],
 )
 def test_native_consent_uses_distinct_grant_then_actual_read_broker(
@@ -247,32 +254,50 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
         channel_digest=consent_domain.authenticated_channel_digest,
         principal=consent_principal,
     )
-    trust = HostExtensionTrustRecord(
-        trust_id="consent-trust",
-        parent_artifact_digest=consent_principal.parent_artifact_digest,
-        publisher_lineage="publisher.target",
-        provider_principal_ids=(consent_principal.principal_id,),
-        trust_provenance_digest=_digest("consent-trust"),
-        security_epoch=1,
-        valid_from=harness.clock(),
+    consent_artifact = make_artifact(
+        consent_principal, consent_module.CONSENT_CONTRACT, consent=True
     )
-    provider = ProviderAuthorityRecord(
-        record_id="consent-provider",
-        provider=consent_principal,
-        execution_domain_id=consent_domain.domain_id,
-        execution_domain_identity_digest=consent_domain.identity_digest,
+    consent_route = OperationRoute(
+        contract_id=consent_module.CONSENT_CONTRACT,
+        operation_id=consent_module.CONSENT_OPERATION,
+        artifact_digest=consent_artifact.digest,
+        function_id=CONSENT_FUNCTION,
+        variant_id="provider.variant",
+        execution_domain_profile="dedicated.provider",
+        materialization_mode="on_demand",
+        target_principal_ref=OpaqueAuthorityRef(consent_principal.principal_id),
+    )
+    consent_binding = OperationCatalog(
+        (consent_artifact,), (consent_route,)
+    ).resolve(consent_module.CONSENT_CONTRACT, consent_module.CONSENT_OPERATION, None)
+    active = SimpleNamespace(
+        activation={
+            "activation_id": "activation-1",
+            "plan_digest": _digest("plan"),
+            "security_epoch": 1,
+            "created_at": datetime.fromtimestamp(
+                harness.clock(), timezone.utc
+            ).isoformat(),
+        },
+        resolved=SimpleNamespace(profile={"profile_id": "profile-1"}),
+    )
+    provider, _ = _commit_plan_authority(
+        harness.store,
+        harness.kernel,
+        active=active,
+        caller=harness.caller,
+        target=consent_principal,
+        contract_id=consent_module.CONSENT_CONTRACT,
+        caller_publisher_lineage="publisher.caller",
+        target_publisher_lineage="publisher.target",
+        target_domain=consent_domain,
         scope=consent_scope,
-        authority_mode=AuthorityMode.LEASE_ONLY,
-        security_epoch=1,
-        trust_provenance_digest=trust.trust_provenance_digest,
-        publisher_lineage="publisher.target",
-        host_extension_id=trust.trust_id,
-        valid_from=harness.clock(),
-        host_broker_binding="broker.consent.v1",
+        authority_mode="interactive_only",
+        host_extension_binding=consent_binding,
     )
-    harness.kernel.commit_provider_authority_bundle(
-        provider_authorities=(provider,), host_extension_trust=trust
-    )
+    trust = harness.store.get_host_extension_trust(provider.host_extension_id)
+    assert trust is not None
+    assert provider.trust_provenance_digest != trust.trust_provenance_digest
     shell = _principal("shell")
     shell_domain = _domain("shell", shell)
     harness.kernel.register_execution_domain(
@@ -437,6 +462,42 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
 
     class CurrentConsent(Verifier):
         def assert_current(self, proof):
+            if outcome == "trust_revoked":
+                harness.kernel.revoke(
+                    target_kind="host_extension",
+                    target_id=trust.trust_id,
+                    reason="native consumed trust revoked after commit",
+                )
+                super().assert_current(proof)
+                pytest.fail("revoked trust must not reach retained tool")
+            if outcome.startswith("trust_") or outcome in {
+                "foreign_trust", "provider_host_extension", "lease_host_extension"
+            }:
+                original_trust = harness.store.get_host_extension_trust
+                original_provider = harness.store.get_provider_authority
+                original_lease = harness.store.get_lease
+                changes = {
+                    "foreign_trust": {"trust_id": "foreign-trust"},
+                    "trust_artifact": {"parent_artifact_digest": _digest("foreign")},
+                    "trust_principal": {"provider_principal_ids": (harness.target.principal_id,)},
+                    "trust_epoch": {"security_epoch": 2},
+                    "trust_expired": {"expires_at": harness.clock()},
+                    "trust_revoked": {"revoked": True},
+                }
+                # Fault only the typed records seen by the private verifier,
+                # after actual native approval and Broker lease commit.
+                with monkeypatch.context() as fault:
+                    if outcome in changes:
+                        fault.setattr(harness.store, "get_host_extension_trust",
+                            lambda identifier: replace(original_trust(identifier), **changes[outcome]))
+                    elif outcome == "provider_host_extension":
+                        fault.setattr(harness.store, "get_provider_authority",
+                            lambda identifier: replace(original_provider(identifier), host_extension_id="foreign-trust"))
+                    else:
+                        fault.setattr(harness.store, "get_lease",
+                            lambda identifier: (replace(original_lease(identifier)[0], host_extension_id="foreign-trust"), original_lease(identifier)[1]))
+                    super().assert_current(proof)
+                pytest.fail("foreign consumed trust must not reach retained tool")
             if outcome == "revoke_between" and (not getattr(self, "revoked", False)):
                 super().assert_current(proof)
                 decision = harness.store.get_interactive_approval_decision(

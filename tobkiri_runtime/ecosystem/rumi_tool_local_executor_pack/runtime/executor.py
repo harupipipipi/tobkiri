@@ -12,6 +12,7 @@ from core_runtime.host_provider_backend_v4 import (
 from core_runtime.saved_tool_stop_v4 import saved_tool_policy_stop_result
 from core_runtime.authority.v4 import AuthorityDenied
 from tobkiri_host.errors import HostCoreError
+from tobkiri_host.models import ExecutionKind, PackageKind
 
 from core_runtime.host_provider_function_v4 import (
     HostFunction,
@@ -27,15 +28,50 @@ DEFINITION = "tobkiri.resource.tool.definition.v1"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 
 
+def _native_chat_route(
+    context: HostProviderCaptureContextV4,
+    payload: Mapping[str, Any],
+    execution: Mapping[str, Any],
+    selected: Mapping[str, Any],
+) -> bool:
+    """Recognize the pinned native chat handler, never grant its write effect."""
+    function = "rumi_default_tools_pack.chat-message-tool"
+    operation = "rumi_default_tools_pack.chat-message-operation"
+    if (
+        payload["tool_id"] != "chat_send_message"
+        or execution["operation"] != operation
+        or selected.get("contract_id") != LOCAL_OPERATION
+        or selected.get("function_id") != function
+        or selected.get("backend_id") != "tobkiri.python-host-v4"
+    ):
+        return False
+    bindings = [
+        binding
+        for binding in context.catalog_bindings
+        if binding.function.function_id == function
+        and binding.operation.contract_id == LOCAL_OPERATION
+        and binding.operation.operation_id == operation
+        and binding.operation.contract_version == "1.0.0"
+        and binding.artifact.pack_id == "rumi_default_tools_pack"
+        and binding.artifact.package_kind is PackageKind.HOST_EXTENSION
+        and binding.variant.execution_kind is ExecutionKind.HOST_EXTENSION
+        and binding.variant.backend == "tobkiri.python-host-v4"
+        and binding.principal_ref.value == selected.get("principal_id")
+        and binding.artifact.digest == selected.get("artifact_digest")
+        and binding.function.implementation_digest == selected.get("implementation_digest")
+    ]
+    return len(bindings) == 1
+
+
 def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
     def invoke(
-        payload: Mapping[str, Any], invocation: HostProviderInvocationContextV4,
+        payload: Mapping[str, Any],
+        invocation: HostProviderInvocationContextV4,
     ) -> Mapping[str, Any]:
         if (
             set(payload) != {"tool_id", "tool_call_id", "arguments", "definition"}
             or any(
-                not isinstance(payload[key], str)
-                or not _IDENTIFIER.fullmatch(payload[key])
+                not isinstance(payload[key], str) or not _IDENTIFIER.fullmatch(payload[key])
                 for key in ("tool_id", "tool_call_id")
             )
             or not isinstance(payload["arguments"], dict)
@@ -57,7 +93,8 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         # from the Broker. Confirm the owner still returns the exact definition
         # that was validated; never execute a replacement after a Registry edit.
         resolved = client.invoke(
-            DEFINITION, "rumi_tool_registry_pack.tool-definition-resource",
+            DEFINITION,
+            "rumi_tool_registry_pack.tool-definition-resource",
             {"operation": "resolve", "tool_id": payload["tool_id"]},
         )
         if (
@@ -75,16 +112,18 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
             or execution.get("kind") != "local"
             or execution.get("contract_id") != LOCAL_OPERATION
             or any(
-                not isinstance(execution.get(key), str)
-                or not _IDENTIFIER.fullmatch(execution[key])
+                not isinstance(execution.get(key), str) or not _IDENTIFIER.fullmatch(execution[key])
                 for key in ("provider_instance_id", "operation")
             )
         ):
             raise ValueError("local tool execution descriptor is invalid")
         candidates = [
-            item for item in client.providers(LOCAL_OPERATION)
-            if execution["provider_instance_id"] in (
-                item.get("provider_instance_id"), item.get("function_id"),
+            item
+            for item in client.providers(LOCAL_OPERATION)
+            if execution["provider_instance_id"]
+            in (
+                item.get("provider_instance_id"),
+                item.get("function_id"),
             )
             and execution["operation"] == item.get("operation_id")
             and item.get("backend_id")
@@ -96,28 +135,29 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         # The nested Host route supplies the caller, Profile, original deadline,
         # cancellation and authority. Neither the tool's labels nor this adapter
         # can authorize the target or replay it through a legacy executor.
-        nested_payload = {
-            key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")
-        }
-        # File create already uses its exact native effect coordinator. All
-        # other saved local operations require finite Host consent admission.
+        nested_payload = {key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")}
+        # Exact native handlers open their own effect approval in ask mode.
+        # Other saved operations retain finite Host consent admission.
         native_create = (
             execution["operation"] == "rumi_default_tools_pack.file-create-operation"
-            and candidates[0].get("function_id")
-            == "rumi_default_tools_pack.file-create-tool"
+            and candidates[0].get("function_id") == "rumi_default_tools_pack.file-create-tool"
             and candidates[0].get("backend_id") == "tobkiri.python-host-v4"
         )
-        if not native_create or requested_mode != "ask":
+        native_chat = _native_chat_route(_context, payload, execution, candidates[0])
+        if not (native_create or native_chat) or requested_mode != "ask":
             try:
                 if _context.saved_tool_consent_port is None:
                     raise PermissionError("saved tool consent route is unavailable")
                 return _context.saved_tool_consent_port(
-                    invocation, execution, nested_payload,
+                    invocation,
+                    execution,
+                    nested_payload,
                 )
             except (PermissionError, AuthorityDenied, HostCoreError) as error:
                 return saved_tool_policy_stop_result(error)
         return client.invoke(
-            LOCAL_OPERATION, execution["operation"],
+            LOCAL_OPERATION,
+            execution["operation"],
             {key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")},
             provider_instance_id=candidates[0]["provider_instance_id"],
         )

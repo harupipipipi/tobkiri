@@ -21,7 +21,7 @@ from core_runtime.host_provider_backend_v4 import (
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
-from .dispatch_envelope import (
+from ecosystem.rumi_job_action_broker_pack.runtime.dispatch_envelope import (
     PENDING,
     TERMINAL,
     VERSION as ENVELOPE_VERSION,

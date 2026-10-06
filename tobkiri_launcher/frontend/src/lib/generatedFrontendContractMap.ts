@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:1bc2aa6c388985949d43a50fee6d1866e0ab79e42d5bb106b750c112e5db76a5
+// Raw source digest: sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:1bc2aa6c388985949d43a50fee6d1866e0ab79e42d5bb106b750c112e5db76a5" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:1bc2aa6c388985949d43a50fee6d1866e0ab79e42d5bb106b750c112e5db76a5",
+  "artifact_digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
   "routes": [
     {
       "method": "GET",
@@ -1607,6 +1607,205 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       ]
     },
     {
+      "method": "GET",
+      "path": "/api/chat/references",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.chat.references.list",
+          "contract_id": "tobkiri.resource.chat.reference.v1",
+          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+          "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "allowed_payload_keys": [
+            "limit",
+            "cursor"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/references/resolve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.chat.references.resolve",
+          "contract_id": "tobkiri.resource.chat.reference.v1",
+          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+          "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "allowed_payload_keys": [
+            "references"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/schedules",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.list",
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "allowed_payload_keys": [
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/schedules",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.create",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "name",
+            "description",
+            "schedule_type",
+            "schedule_config",
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/schedules/{schedule_id}",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.get",
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "allowed_payload_keys": [
+            "schedule_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agent/schedules/{schedule_id}",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.update",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "schedule_id",
+            "name",
+            "description",
+            "schedule_type",
+            "schedule_config",
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/schedules/{schedule_id}",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.delete",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "schedule_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/schedules/{schedule_id}/history",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.history",
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "allowed_payload_keys": [
+            "schedule_id",
+            "limit",
+            "offset"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/schedules/{schedule_id}/pause",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.pause",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "schedule_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/schedules/{schedule_id}/resume",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.resume",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "schedule_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/schedules/{schedule_id}/trigger",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.calendar.schedules.trigger",
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "allowed_payload_keys": [
+            "schedule_id"
+          ]
+        }
+      ]
+    },
+    {
       "method": "POST",
       "path": "/api/host/action-approval-policy/capabilities",
       "presentation": "broker_result",
@@ -3030,6 +3229,183 @@ const EXPECTED_ROUTES = {
           "request",
           "effect_id",
           "correlation_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/chat/references": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.chat.references.list",
+        "contract_id": "tobkiri.resource.chat.reference.v1",
+        "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+        "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+        "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+        "allowed_payload_keys": [
+          "limit",
+          "cursor"
+        ]
+      }
+    ]
+  },
+  "POST /api/chat/references/resolve": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.chat.references.resolve",
+        "contract_id": "tobkiri.resource.chat.reference.v1",
+        "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+        "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+        "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+        "allowed_payload_keys": [
+          "references"
+        ]
+      }
+    ]
+  },
+  "GET /api/agent/schedules": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.list",
+        "contract_id": "tobkiri.resource.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-read",
+        "provider_id": "rumi_schedule_store_pack.calendar.resource",
+        "function_id": "rumi_schedule_store_pack.calendar.resource",
+        "allowed_payload_keys": [
+          "status"
+        ]
+      }
+    ]
+  },
+  "POST /api/agent/schedules": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.create",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "name",
+          "description",
+          "schedule_type",
+          "schedule_config",
+          "task"
+        ]
+      }
+    ]
+  },
+  "GET /api/agent/schedules/{schedule_id}": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.get",
+        "contract_id": "tobkiri.resource.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-read",
+        "provider_id": "rumi_schedule_store_pack.calendar.resource",
+        "function_id": "rumi_schedule_store_pack.calendar.resource",
+        "allowed_payload_keys": [
+          "schedule_id"
+        ]
+      }
+    ]
+  },
+  "PUT /api/agent/schedules/{schedule_id}": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.update",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "schedule_id",
+          "name",
+          "description",
+          "schedule_type",
+          "schedule_config",
+          "task"
+        ]
+      }
+    ]
+  },
+  "DELETE /api/agent/schedules/{schedule_id}": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.delete",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "schedule_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/agent/schedules/{schedule_id}/history": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.history",
+        "contract_id": "tobkiri.resource.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-read",
+        "provider_id": "rumi_schedule_store_pack.calendar.resource",
+        "function_id": "rumi_schedule_store_pack.calendar.resource",
+        "allowed_payload_keys": [
+          "schedule_id",
+          "limit",
+          "offset"
+        ]
+      }
+    ]
+  },
+  "POST /api/agent/schedules/{schedule_id}/pause": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.pause",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "schedule_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/agent/schedules/{schedule_id}/resume": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.resume",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "schedule_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/agent/schedules/{schedule_id}/trigger": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.calendar.schedules.trigger",
+        "contract_id": "tobkiri.action.calendar.schedule.v1",
+        "operation_id": "rumi_schedule_store_pack.calendar-manage",
+        "provider_id": "rumi_schedule_store_pack.calendar.manage",
+        "function_id": "rumi_schedule_store_pack.calendar.manage",
+        "allowed_payload_keys": [
+          "schedule_id"
         ]
       }
     ]

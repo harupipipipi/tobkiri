@@ -1,0 +1,65 @@
+{
+  "id": "chat_resolve_target",
+  "category": "tool",
+  "version": "1",
+  "display_name": "Resolve Tobkiri Chat Target",
+  "description": "Read chat and group references in the active Tobkiri profile.",
+  "enabled": true,
+  "config": {
+    "name": "chat_resolve_target",
+    "summary": "Read chat and group references in the active Tobkiri profile.",
+    "tags": [
+      "chat",
+      "group",
+      "read"
+    ],
+    "ui": {
+      "group_id": "chat/messages",
+      "group_label": "Chat",
+      "group_icon": "message",
+      "drop_capabilities": [
+        "composer.toggle_chip"
+      ],
+      "widget_kind": "tool_toggle",
+      "settings_fields": []
+    },
+    "tool_category": "chat_reference",
+    "action_type": "read",
+    "risk": "low",
+    "approval_policy": "auto",
+    "capability_grants": [
+      "service.invoke"
+    ],
+    "write_action": false,
+    "requires_approval": false,
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "chat",
+              "group"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      }
+    },
+    "execution": {
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.chat-reference-tools",
+      "operation": "rumi_default_tools_pack.chat-reference-operation"
+    }
+  }
+}

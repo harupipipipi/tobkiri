@@ -16,6 +16,7 @@ from .continuation_envelope import (
 )
 from .saved_guest_dispatch import PROTOCOL, TARGETS
 from .saved_turn_plan import SavedToolFrame, SavedTurnPlan
+from .saved_workspace_context import SavedWorkspacePins
 from tobkiri_protocol.saved_conversation import (
     MAX_SAVED_FRAME_BYTES,
     is_saved_text_content,
@@ -33,6 +34,7 @@ class SavedHostExchange:
         deadline_text: str, chains: ContinuationChains,
         request: Mapping[str, Any] | None = None,
     ) -> None:
+        self._workspace_context_owner = SavedWorkspacePins()
         self.identity = identity
         self._request_digest = request_digest
         self._artifact_identity = artifact_identity
@@ -75,6 +77,7 @@ class SavedHostExchange:
             self._user_revision,
             self._user_current_node_id,
             self._tool_plan.ai_mode if self._tool_plan else "buffered",
+            self._workspace_context_owner,
         )
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:
