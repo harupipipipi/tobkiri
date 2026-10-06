@@ -504,7 +504,10 @@ def test_normative_fixture_new_functions_resolve_exact_candidate_bytes(tmp_path:
     pack = repository / "tobkiri_runtime/ecosystem/rumi_default_tools_pack"
     (pack / "runtime").mkdir(parents=True)
     original = ECOSYSTEM / "rumi_default_tools_pack"
-    for relative in ("rumi.pack.v3.json", "artifact-manifest.json", "runtime/calculator.py"):
+    for relative in (
+        "rumi.pack.v3.json", "artifact-manifest.json",
+        "runtime/calculator.py", "runtime/files.py",
+    ):
         shutil.copyfile(original / relative, pack / relative)
     shutil.copyfile(create.__file__, pack / "runtime/file_create.py")
     fixture = json.loads(

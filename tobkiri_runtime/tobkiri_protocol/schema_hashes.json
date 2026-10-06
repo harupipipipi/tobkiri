@@ -30,9 +30,16 @@
     "request_frame_v1.schema.json": "sha256:c8f54f0453faeb682103611a4b11e5996dd6f81d526588b7a2e7aebf8c7cba90",
     "resolved_plan_v1.schema.json": "sha256:c02a20f1c851ffd0957ee88bf0e1da914f45fef033cdc1f472a93ffbe41fde16",
     "resolved_plan_v2.schema.json": "sha256:4daf5c1509d8a410d83f732c2cf0e4fa8d2fc53051cc01f5e669792e45601720",
-    "saved_conversation_input_v1.schema.json": "sha256:0d48708fa73284ad2121fb599c6219f1b43b5d4097fe4732ace92341dc18bb7b",
+    "saved_conversation_input_v1.schema.json": "sha256:9d6aee5ee743474b682898d23811dd65ab2fa421befa1c19b16648f972d10933",
     "shell_definition_v4.schema.json": "sha256:c1e4b4005b4c3267f33a72b9348b9777a3386279283390c4a12e9d9da55f2e81",
-    "shell_definition_v5.schema.json": "sha256:24ab2058a7dbe24018481a9ce06fc951211ebe9a84525da3a23aeed1df12daf6"
+    "shell_definition_v5.schema.json": "sha256:24ab2058a7dbe24018481a9ce06fc951211ebe9a84525da3a23aeed1df12daf6",
+    "surface_intent_v1.schema.json": "sha256:e5995795d0af116bef8dc5daf06da228362134210ce11aaeda61e8c5029675e6",
+    "surface_outcome_v1.schema.json": "sha256:01d0e261a479f013b80ae5207495de87531c26b1b6a5e2d5397be90cab9a2d96",
+    "surface_renderer_v1.schema.json": "sha256:e79499827aeb75c38ddcdb7cb244aa5454e38f6f7e99b1338da73256bbee38be",
+    "surface_resource_request_v1.schema.json": "sha256:12cfd00ca10e9782d30538baa88c3e9bfcd2cc69c5f51d67191a7806e6a2c5b0",
+    "surface_resource_v1.schema.json": "sha256:97bd62cd2eba087f4ba5dfd837bf68edf077bddd566fc4a460df2a99cce4c95e",
+    "surface_template_v1.schema.json": "sha256:b79c44025cd5a53271aaa0b5f1527b37a199d482b7e65a2d1c618deedfe38fa2",
+    "ui_view_v1.schema.json": "sha256:941803f9169e156fd6a1116799221c43a92c5928cac75a445f13db7b3b41ae46"
   },
   "generator": "tobkiri-protocol",
   "generator_version": "1.0.0",
