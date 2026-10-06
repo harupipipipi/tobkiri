@@ -1,3 +1,4 @@
+import { confirmedComposerSkillIds } from "./lib/confirmedComposerReferences";
 import type { ProjectDirectorySelection } from "./lib/projectWorkspaceMount";
 import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
@@ -76,6 +77,7 @@ import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolP
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, SavedTurnNotStartedError, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
+import { captureSupportedApprovalMode, readApprovalPreferences } from "./features/tools/approvalPreferences";
 import {
   PROJECTS_CHANGED_EVENT,
   bootstrapProjects,
@@ -119,7 +121,6 @@ import {
   isSafeLocalEndpoint,
   publicComposerWidgetMetadata,
   reconcileComposerSemanticDraft,
-  skillMentionIdsFromText,
   trustedComposerActionForWidget,
   withComposerMentionSelectionOwnership,
 } from "./lib/composerWidgets";
@@ -138,7 +139,7 @@ import { spotlightSidebarResults, spotlightShortcutLabel as formatSpotlightShort
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
-import { parseSearchQuery } from "./features/search/searchQuery";
+import { createSearchQueryState, parseConfirmedSearchQuery } from "./features/search/searchQueryState";
 import { useSpotlightShortcut } from "./features/search/useSpotlightShortcut";
 import { useModelCatalogSearch } from "./features/search/useModelCatalogSearch";
 import { modelCatalogItemIdentity } from "./features/search/modelCatalogSearch";
@@ -3060,7 +3061,7 @@ export function ChatApp() {
   const [structuredComposerValues, setStructuredComposerValues] = useState<Record<string, string>>({});
   const [composerCandidateMenu, setComposerCandidateMenu] = useState<ComposerCandidateMenuState>(null);
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
-  const [spotlightQuery, setSpotlightQuery] = useState("");
+  const [spotlightQueryState, setSpotlightQueryState] = useState(() => createSearchQueryState());
   const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>("all");
   const [spotlightResults, setSpotlightResults] = useState<ConversationSearchResult[]>([]);
   const [spotlightResultsScope, setSpotlightResultsScope] = useState("");
@@ -3326,7 +3327,7 @@ export function ChatApp() {
     [conversations, spotlightFilter],
   );
   const hiddenConversationIds = new Set(conversations.filter((conversation) => !conversationVisibleInHistory(conversation)).map((conversation) => conversation.id));
-  const parsedSpotlightQuery = parseSearchQuery(spotlightQuery);
+  const parsedSpotlightQuery = parseConfirmedSearchQuery(spotlightQueryState);
   const spotlightModels = useModelCatalogSearch({
     text: parsedSpotlightQuery.text, providerIds: parsedSpotlightQuery.providerIds, scopeId: runtimeProfileId,
     enabled: isSpotlightOpen && parsedSpotlightQuery.kinds.includes("model") && !parsedSpotlightQuery.conflict,
@@ -3642,10 +3643,12 @@ export function ChatApp() {
   const composerHomeTitle = useMemo(
     () => resolveComposerHomeTitle(
       input,
-      composerSkills,
+      composerSkills.filter((skill) => confirmedComposerSkillIds(
+        input, activeDroppedWidgets, composerEntityReferences, composerSkills,
+      ).includes(skill.id)),
       normalizeComposerHomeTitle(customHomeTitle),
     ),
-    [composerSkills, customHomeTitle, input],
+    [activeDroppedWidgets, composerEntityReferences, composerSkills, customHomeTitle, input],
   );
   const composerToolMentionDraft = useMemo(
     () => resolveComposerToolMentions(input, droppedWidgets, composerExtensions),
@@ -3676,7 +3679,7 @@ export function ChatApp() {
     if (toolMentionMigrations.includes(migrationKey)) return;
     const legacy = materializeLegacyToolMentions(
       input, activeConversationToolPreferences,
-      [...legacySelectedIds, ...activeTemplateToolPolicy.defaultEnabledToolIds],
+      legacySelectedIds,
       composerExtensions,
     );
     if (legacy.value !== input) setInput(legacy.value);
@@ -3686,7 +3689,7 @@ export function ChatApp() {
     });
     setToolMentionMigrations((current) => current.includes(migrationKey) ? current : [...current, migrationKey]);
   }, [activeConversation?.id, activeConversationId, activeConversationToolPreferences,
-    activeTemplateToolPolicy.defaultEnabledToolIds, catalog, composerExtensions, input,
+    catalog, composerExtensions, input,
     isGeneratingForActiveView, runtimeProfileId, setInput, setToolMentionMigrations, toolMentionMigrations]);
   useEffect(() => {
     if (isGeneratingForActiveView) return;
@@ -3963,49 +3966,9 @@ export function ChatApp() {
         )
   ), [commandCatalog, settingsValues.commands?.registered_slash_commands, usesResolvedCommandProtocol]);
 
-  useEffect(() => {
-    if (!usesResolvedCommandProtocol || pendingCommandApproval || effectiveCommandCatalog.length === 0) return;
-    let cancelled = false;
-    void api.pendingCommandApprovals()
-      .then(({ pending_approvals: approvals }) => {
-        if (cancelled || approvals.length === 0) return;
-        const pending = approvals[0];
-        const result = pending.result;
-        const requestId = result?.approval?.request_id ?? pending.approval_request_id;
-        const commandRef = result?.command_ref;
-        const details = result?.approval?.details;
-        if (!requestId || !commandRef || !details) return;
-        const command = effectiveCommandCatalog.find((candidate) => (
-          candidate.canonical_id === commandRef
-          || candidate.id === commandRef
-          || candidate.name === commandRef
-        ));
-        if (!command) return;
-        const restoredMode = details.mode;
-        setPendingCommandApproval({
-          requestId,
-          invocationId: pending.invocation_id,
-          commandRef,
-          command,
-          args: details.approved_arguments ?? details.args ?? {},
-          conversationId: typeof details.conversation_id === "string"
-            ? details.conversation_id
-            : null,
-          mode: restoredMode === "chat" || restoredMode === "coding" || restoredMode === "agent"
-            ? restoredMode
-            : mode as ComposerCommandMode,
-          approvalKind: result?.approval?.kind === "authority"
-            ? "authority"
-            : "coding",
-        });
-      })
-      .catch((restoreError) => {
-        if (!cancelled) console.error("Failed to restore pending command approval", restoreError);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveCommandCatalog, mode, pendingCommandApproval, usesResolvedCommandProtocol]);
+  // Generic Command Protocol pending-event restoration has no captured Host
+  // contract. Restore high-risk approvals through listHighRiskCommands below;
+  // authority, browser, and runtime approvals retain their own pending sources.
 
   useEffect(() => {
     if (!pendingHighRiskCommand) return;
@@ -5077,7 +5040,7 @@ export function ChatApp() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [isSpotlightOpen, spotlightFilter, spotlightQuery, spotlightSearchRetry]);
+  }, [isSpotlightOpen, spotlightFilter, spotlightQueryState, spotlightSearchRetry]);
 
   useEffect(() => {
     if (!activeConversationId || !isConversationPending || !savedTurnStoreId) return;
@@ -5677,7 +5640,7 @@ export function ChatApp() {
 
   const closeSpotlight = () => {
     setIsSpotlightOpen(false);
-    setSpotlightQuery("");
+    setSpotlightQueryState(createSearchQueryState());
     setSpotlightResults([]);
     setSpotlightSearchError(null);
 
@@ -6135,6 +6098,7 @@ export function ChatApp() {
     setIsSettingsOpen(true);
   }, []);
 
+  const approvalPreferences = readApprovalPreferences(settingsValues.tools);
   const actionApprovalMode: ActionApprovalMode = "ask";
 
   const setFullAccessEnabled = useCallback((enabled: boolean) => {
@@ -7949,6 +7913,14 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (!override && handleLocalComposerCommand(input)) return;
+    try {
+      // This captured preference is data, not execution authority. Only the
+      // currently supported human path can reach the existing saved-turn API.
+      captureSupportedApprovalMode(settingsValuesRef.current.tools);
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "承認方式を確認してください。");
+      return;
+    }
     if (!conversationOwnsSelectedView(
       savedTurnViewFenceRef.current.capture(), activeWorkspaceTabId,
       activeConversationId, activeConversation?.id ?? null,
@@ -8017,10 +7989,9 @@ export function ChatApp() {
     const droppedWidgetsForSubmit = reconciledDraft.droppedWidgets;
     const mentionDraft = resolveComposerToolMentions(userText, droppedWidgetsForSubmit, composerExtensions);
     const mentionedToolIds = mentionDraft.toolIds;
-    const explicitSkillReferenceIds = composerEntityReferences
-      .filter((reference) => reference.kind === "skill" && hasUnescapedMentionSyntax(userText, reference.syntax))
-      .map((reference) => reference.id);
-    const mentionedSkillIdsFromText = [...new Set([...explicitSkillReferenceIds, ...skillMentionIdsFromText(userText, composerSkills)])];
+    const mentionedSkillIdsFromText = confirmedComposerSkillIds(
+      userText, droppedWidgetsForSubmit, composerEntityReferences, composerSkills,
+    );
     const toolSelectionRequest = override?.toolSelectionRequest ?? composerMentionSelectionRequest(
       mentionDraft, toolSelectionController.state.effectiveMode,
     );
@@ -8788,6 +8759,8 @@ export function ChatApp() {
       entityReferences={composerEntityReferences}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
+      showToolSelectionControl={settingsValues.tools?.show_tool_selection_control === true}
+      showActionApprovalControl={approvalPreferences.controlVisible}
       toolSelectionMode={toolSelectionController.state.effectiveMode}
       toolSelectionReview={toolSelectionController.state.pendingReview}
       keyboardButtonNavigation={keyboardButtonNavigation}
@@ -9193,18 +9166,6 @@ export function ChatApp() {
                     </button>
                   </section>
                 )}
-                {commandProtocolInfo && (
-                  <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
-                      Command catalog inspector · {commandProtocolInfo.commands.length} commands
-                    </summary>
-                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px] text-zinc-500">
-                      <dt>revision</dt><dd className="font-mono">{commandProtocolInfo.catalog_revision}</dd>
-                      <dt>rollout</dt><dd>{commandProtocolInfo.rollout?.phase ?? "unavailable"}</dd>
-                      <dt>diagnostics</dt><dd>{commandProtocolInfo.diagnostics?.length ?? 0}</dd>
-                    </dl>
-                  </details>
-                )}
                 {!visibleBrowserApproval && !pendingCommandApproval && !pendingHighRiskCommand && authorityApproval && (
                   <AuthorityApprovalNotice
                     approval={authorityApproval}
@@ -9286,6 +9247,7 @@ export function ChatApp() {
           <div className="rumi-anim-fade-right">
           <Renderers.rightSidebar
             widgetContext={widgetContext}
+            runtimeProfileId={runtimeProfileId}
             items={sidebarItems}
             activeItemId={activeSidebarItemId ? `${activeSidebarItemId}:${sidebarSelectionTick}` : null}
             settingsValues={settingsValues}
@@ -9349,7 +9311,7 @@ export function ChatApp() {
 
       <ConversationSpotlight
         isOpen={isSpotlightOpen}
-        query={spotlightQuery}
+        queryState={spotlightQueryState}
         filter={spotlightFilter}
         results={visibleSpotlightResults}
         loading={(parsedSpotlightQuery.kinds.includes("chat") && !parsedSpotlightQuery.providerIds.length && spotlightLoading) || spotlightModels.loading}
@@ -9358,7 +9320,7 @@ export function ChatApp() {
         modelsComplete={spotlightModels.complete}
         locale={locale}
         shortcutLabel={spotlightShortcutLabel}
-        onQueryChange={setSpotlightQuery}
+        onQueryStateChange={setSpotlightQueryState}
         onFilterChange={setSpotlightFilter}
         onClose={closeSpotlight}
         onOpenResult={openSpotlightResult}

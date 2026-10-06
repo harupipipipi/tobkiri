@@ -1582,6 +1582,7 @@ test("composer renders action approval control and review card", () => {
 function renderToolModeComposer(overrides: Partial<ComposerRendererProps> = {}): string {
   return renderToStaticMarkup(createElement(ComposerRenderer, {
     input: "Tool mode draft",
+    showToolSelectionControl: true,
     placeholder: "Message Tobkiri",
     isGenerating: false,
     selectedProfile: {
@@ -1889,7 +1890,7 @@ test("ordinary generating composer keeps steer controls when saved registration 
   );
 
   assert.match(html, /追加の指示を入力/);
-  assert.match(html, /Enterで追加指示を送信/);
+  assert.doesNotMatch(html, /Enterで追加指示を送信/);
   assert.match(html, /title="追加指示を送る"/);
   assert.doesNotMatch(html, /data-composer-controls="preparing"/);
   assert.doesNotMatch(html, /aria-label="Tobkiriにメッセージを送信"[^>]*disabled=""/);
@@ -2057,7 +2058,7 @@ test("steer errors use an assertive error notice with a separate copy action", (
   assert.doesNotMatch(html, /text-zinc-500[^>]*>Steer queue failed/);
 });
 
-test("passive steering reconciliation renders a polite pending status instead of a failure", () => {
+test("passive steering reconciliation does not render a redundant status row", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {
       input: "",
@@ -2080,15 +2081,15 @@ test("passive steering reconciliation renders a polite pending status instead of
     }),
   );
 
-  assert.match(html, /data-steer-pending=""/);
-  assert.match(html, /role="status"/);
-  assert.match(html, /aria-live="polite"/);
-  assert.match(html, /送信状況を確認しています/);
+  assert.doesNotMatch(html, /data-steer-pending=""/);
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /送信状況を確認しています/);
   assert.doesNotMatch(html, /追加指示を送信できませんでした/);
   assert.doesNotMatch(html, /role="alert"/);
 });
 
-test("passive unavailable steering status remains polite and non-error", () => {
+test("passive unavailable steering does not add a status row or error", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {
       input: "",
@@ -2111,10 +2112,10 @@ test("passive unavailable steering status remains polite and non-error", () => {
     }),
   );
 
-  assert.match(html, /data-steer-pending=""/);
-  assert.match(html, /role="status"/);
-  assert.match(html, /aria-live="polite"/);
-  assert.match(html, /接続を待っています。送信結果はまだ確認できていません/);
+  assert.doesNotMatch(html, /data-steer-pending=""/);
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /接続を待っています。送信結果はまだ確認できていません/);
   assert.doesNotMatch(html, /追加指示を送信できませんでした/);
   assert.doesNotMatch(html, /role="alert"/);
 });
@@ -2556,4 +2557,43 @@ test("unimplemented slash commands remain unavailable while references use @", (
   }]);
   assert.equal(reference.item?.prefix, "@");
   assert.equal(reference.items[0].id, "tool:web_search");
+});
+
+
+test("tool control starts hidden and approval control starts visible", () => {
+  const defaults = renderToolModeComposer({ showToolSelectionControl: undefined });
+  assert.doesNotMatch(defaults, /data-composer-widget="tool-selection-control"/);
+  assert.match(defaults, /data-composer-widget="action-approval-control"/);
+  const shown = renderToolModeComposer({ showToolSelectionControl: true });
+  assert.match(shown, /data-composer-widget="tool-selection-control"/);
+  const hidden = renderToolModeComposer({ showToolSelectionControl: false, showActionApprovalControl: false });
+  assert.doesNotMatch(hidden, /data-composer-widget="(?:tool-selection-control|action-approval-control)"/);
+  assert.match(hidden, /data-composer-widget="send"/);
+});
+
+test("IME confirmation Enter cannot select a reference or submit", () => {
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { active: true }), true);
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { endedAt: 1_000, now: 1_020 }), true);
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { endedAt: 1_000, now: 1_051 }), false);
+  assert.equal(isComposerImeEvent({ key: "Tab", nativeEvent: { keyCode: 229 } }), true);
+  assert.deepEqual(atMentionMenuKeyAction("Enter", false, 0, 2, { isComposing: true }), { handled: false });
+  assert.deepEqual(atMentionMenuKeyAction("Tab", false, 0, 2, { keyCode: 229 }), { handled: false });
+  assert.deepEqual(atMentionMenuKeyAction("Enter", false, 1, 2), { handled: true, type: "select", index: 1 });
+  assert.deepEqual(atMentionMenuKeyAction("Tab", false, 1, 2), { handled: true, type: "select", index: 1 });
+  assert.deepEqual(atMentionMenuKeyAction("Enter", true, 1, 2), { handled: false });
+});
+
+
+test("running composer removes helper-row space while keeping steer and stop controls", () => {
+  const html = renderToolModeComposer({
+    isGenerating: true, input: "次の指示", steerQueuedCount: 2,
+    steerStatus: { kind: "pending", message: "送信状況を確認しています。" },
+    onSteerSubmit: () => undefined,
+  });
+  assert.doesNotMatch(html, /送信状況を確認しています|実行中の応答へ追加指示できます|data-steer-pending/);
+  assert.doesNotMatch(html, /class="flex min-h-6 flex-wrap items-center/);
+  assert.match(html, /aria-label="追加指示を送る"/);
+  assert.match(html, />次の指示<\/textarea>/);
+  const emptyHtml = renderToolModeComposer({ isGenerating: true, input: "", onSteerSubmit: () => undefined });
+  assert.match(emptyHtml, /aria-label="生成を停止"/);
 });

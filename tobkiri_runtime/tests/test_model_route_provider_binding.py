@@ -84,7 +84,7 @@ def test_provider_connection_snapshot_projects_only_safe_exact_identities() -> N
                 "credential_status": "configured",
                 "health_status": "verified",
                 "reachability": "available",
-                "observed_at": 123.5,
+                "observed_at": 123,
             },
             {
                 "provider_instance_id": "disabled/connection",

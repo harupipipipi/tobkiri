@@ -20,10 +20,10 @@ test("tool defaults explain lasting scope, overrides, and separate execution app
 
 test("each unchanged mode value has distinct actor and timing explanations", () => {
   for (const [mode, label, explanation] of [
-    ["auto", "Tobkiriが自動で選ぶ", "入力欄で@指定した場合は、そのツールを選びます"],
-    ["review", "選ばれたツールを確認", "あなたが確認してから回答を開始します"],
+    ["auto", "Tobkiriが自動で選ぶ", "@候補をEnter・Tab・クリックで確定すると"],
+    ["review", "選ばれたツールを確認", "候補を確認してから回答を始めます"],
     ["manual", "@で使うツールを指定", "指定がなければツールを使いません"],
-    ["none", "ツールを使わずに回答", "@指定があっても、このモードの間は使いません"],
+    ["none", "ツールを使わずに回答", "@指定があってもツールは使いません"],
   ]) {
     const html = render(mode);
     assert.match(html, new RegExp(label));
@@ -31,5 +31,15 @@ test("each unchanged mode value has distinct actor and timing explanations", () 
     const cards = [...html.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)].map((match) => match[0]);
     const selected = cards.find((card) => card.includes(label));
     assert.ok(selected?.includes("lucide-check"), `${mode} remains the selected setting`);
+  }
+});
+
+
+test("Settings offers the initially hidden tool control with practical examples", () => {
+  const html = render("auto");
+  assert.match(html, /入力欄に「機能の使い方」を表示/);
+  assert.match(html, /普段は非表示です/);
+  for (const example of ["Webで天気を調べて", "@Web Search", "文章の言い換え", "Enter・Tab・クリック"]) {
+    assert.ok(html.includes(example));
   }
 });

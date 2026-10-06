@@ -899,6 +899,42 @@ class SettingsSections:
                         "advanced": True,
                     },
                     {
+                        "id": "show_action_approval_control",
+                        "label": "入力欄に承認モードを表示",
+                        "type": "toggle",
+                        "default": True,
+                    },
+                    {
+                        "id": "action_approval_mode",
+                        "label": "入力欄の承認モード",
+                        "type": "select",
+                        "default": "ask",
+                        "options": [
+                            {"value": "ask", "label": "人が承認"},
+                            {"value": "agent", "label": "別のAIが承認"},
+                            {"value": "full", "label": "追加承認なし"},
+                        ],
+                    },
+                    {
+                        "id": "fixed_action_approval_mode",
+                        "label": "非表示時の固定モード（必須）",
+                        "type": "select",
+                        "default": "ask",
+                        "options": [
+                            {"value": "ask", "label": "人が承認"},
+                            {"value": "agent", "label": "別のAIが承認"},
+                            {"value": "full", "label": "追加承認なし"},
+                        ],
+                    },
+                    {
+                        "id": "approval_reviewer_model",
+                        "label": "承認を審査する別のAI",
+                        "type": "text",
+                        "default": "",
+                        "help": "承認審査に使用する登録済みモデル。設定だけでは代理承認は有効になりません。危険な操作や審査できない操作は、理由を知らせて停止します。",
+                        "advanced": True,
+                    },
+                    {
                         "id": "default_mode",
                         "label": "既定の使い方",
                         "type": "select",
@@ -909,6 +945,13 @@ class SettingsSections:
                             {"value": "manual", "label": "自分で選ぶ"},
                             {"value": "none", "label": "機能を使わない"},
                         ],
+                    },
+                    {
+                        "id": "show_tool_selection_control",
+                        "label": "入力欄に「機能の使い方」を表示",
+                        "type": "toggle",
+                        "default": False,
+                        "help": "メッセージごとにツールの選び方を変える場合に表示します。",
                     },
                     {
                         "id": "selection_strategy",

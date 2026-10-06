@@ -17,10 +17,10 @@ const MODE_OPTIONS: Array<{
   description: string;
   icon: typeof Sparkles;
 }> = [
-  { mode: "auto", label: "機能 自動", shortLabel: "自動", title: "自動で選ぶ", description: "依頼に必要な機能だけをTobkiriが選びます", icon: Sparkles },
-  { mode: "review", label: "機能 確認", shortLabel: "確認", title: "使う前に確認", description: "候補を確認してから回答を開始します", icon: ShieldCheck },
-  { mode: "manual", label: "機能 手動", shortLabel: "手動", title: "自分で選ぶ", description: "選んだ機能だけを候補にします", icon: SlidersHorizontal },
-  { mode: "none", label: "機能 なし", shortLabel: "なし", title: "機能を使わない", description: "このメッセージでは外部機能を使いません", icon: Ban },
+  { mode: "auto", label: "機能 自動", shortLabel: "自動", title: "自動で選ぶ", description: "例：『Webで天気を調べて』→検索を自動で選びます。", icon: Sparkles },
+  { mode: "review", label: "機能 確認", shortLabel: "確認", title: "使う前に確認", description: "例：検索する前に、使うツールの候補を確認します。", icon: ShieldCheck },
+  { mode: "manual", label: "機能 手動", shortLabel: "手動", title: "自分で選ぶ", description: "例：@Web Searchを確定すると、検索だけを使います。", icon: SlidersHorizontal },
+  { mode: "none", label: "機能 なし", shortLabel: "なし", title: "機能を使わない", description: "例：文章の言い換えを、検索やファイル操作なしで答えます。", icon: Ban },
 ];
 
 export function ToolModeControl({

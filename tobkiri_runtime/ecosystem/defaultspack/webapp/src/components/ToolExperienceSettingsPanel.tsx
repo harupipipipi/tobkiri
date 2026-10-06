@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogService, ToolCatalogTool, ToolSelectionMode, ToolSelectionStrategy } from "../lib/api";
 import { toolResources } from "../features/tools/resources/toolResources";
 import { cn } from "../lib/cn";
+import { ApprovalPreferenceSettings } from "../features/tools/ApprovalPreferenceSettings";
 import { ErrorNotice } from "./ErrorNotice";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
 import { ModalFoundation } from "./ModalFoundation";
@@ -13,10 +14,10 @@ type ToolSettings = Record<string, unknown>;
 type SettingsValues = Record<string, Record<string, unknown>>;
 
 const MODE_OPTIONS: Array<{ value: ToolSelectionMode; label: string; note: string; badge?: string }> = [
-  { value: "auto", label: "Tobkiriが自動で選ぶ", note: "依頼に応じて使えるツールを選びます。入力欄で@指定した場合は、そのツールを選びます。", badge: "推奨" },
-  { value: "review", label: "選ばれたツールを確認", note: "送信時にTobkiriが選んだツールを表示します。あなたが確認してから回答を開始します。" },
-  { value: "manual", label: "@で使うツールを指定", note: "あなたが入力欄で@指定したツールだけを選びます。指定がなければツールを使いません。" },
-  { value: "none", label: "ツールを使わずに回答", note: "ツールを使わずに回答します。入力欄に@指定があっても、このモードの間は使いません。" },
+  { value: "auto", label: "Tobkiriが自動で選ぶ", note: "例：『Webで天気を調べて』なら検索を選びます。@候補をEnter・Tab・クリックで確定すると、そのツールを指定できます。", badge: "推奨" },
+  { value: "review", label: "選ばれたツールを確認", note: "例：検索する前に、使うツールの候補を確認してから回答を始めます。" },
+  { value: "manual", label: "@で使うツールを指定", note: "例：@Web Searchを確定すると検索だけを使います。指定がなければツールを使いません。" },
+  { value: "none", label: "ツールを使わずに回答", note: "例：文章の言い換えを、検索やファイル操作なしで答えます。@指定があってもツールは使いません。" },
 ];
 
 const STRATEGY_OPTIONS: Array<{ value: ToolSelectionStrategy; label: string; note: string; warning?: boolean }> = [
@@ -481,6 +482,12 @@ export function ToolExperienceSettingsPanel({
       </section>
       <section className="grid gap-3 lg:grid-cols-2">
         <ToggleRow
+          checked={boolValue(toolSettings.show_tool_selection_control, false)}
+          title="入力欄に「機能の使い方」を表示"
+          note="普段は非表示です。表示すると、メッセージごとに自動・手動・ツールなしを選べます。"
+          onChange={(value) => updateToolSetting("show_tool_selection_control", value)}
+        />
+        <ToggleRow
           checked={boolValue(toolSettings.show_selected_tools_in_answer ?? toolSettings.show_selection_summary, true)}
           title="選んだ機能を回答内に表示"
           note="回答の候補に選んだ機能を表示します。実際に実行した機能とは異なる場合があります。"
@@ -499,6 +506,7 @@ export function ToolExperienceSettingsPanel({
           onChange={(value) => updateToolSetting("keep_selected_tools_after_send", value)}
         />
       </section>
+      <ApprovalPreferenceSettings tools={toolSettings} onSettingChange={onSettingChange} />
       {basicSettings}
     </div>
   );

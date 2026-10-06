@@ -2,7 +2,8 @@ import { AlertTriangle, Bot, Circle, Keyboard, Monitor, UserCheck } from "lucide
 import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 
 import { cn } from "../../lib/cn";
-import type { DesktopInputAction, DesktopInstance } from "../../features/sandboxes/types";
+import type { DesktopInputAction, DesktopInstance, RuntimeOperationSupport } from "../../features/sandboxes/types";
+import { runtimeOperationAllowed } from "../../features/sandboxes/runtimeStatus";
 import { useDesktopFrame } from "../../features/sandboxes/useDesktopFrames";
 import { ErrorNotice } from "../ErrorNotice";
 import { pointerToDesktopCoordinates } from "./desktopCoordinates";
@@ -24,6 +25,7 @@ type PointerSession = {
 
 type DesktopTileProps = {
   desktop: DesktopInstance;
+  operationSupport?: RuntimeOperationSupport;
   selected: boolean;
   dense?: boolean;
   prominent?: boolean;
@@ -117,10 +119,11 @@ export function keyboardCaptureDecision(event: {
 
 export function DesktopTile({
   desktop,
+  operationSupport,
   selected,
   dense = false,
   prominent = false,
-  hasLease,
+  hasLease: reportedLease,
   accessKey,
   controlBusy = false,
   onSelect,
@@ -132,6 +135,7 @@ export function DesktopTile({
   onStop,
   onDelete,
 }: DesktopTileProps) {
+  const hasLease = reportedLease && runtimeOperationAllowed(operationSupport, "control");
   const frameRegionRef = useRef<HTMLDivElement | null>(null);
   const keyboardControlButtonRef = useRef<HTMLButtonElement | null>(null);
   const [keyboardCaptured, setKeyboardCaptured] = useState(false);
@@ -139,9 +143,10 @@ export function DesktopTile({
   const lastMoveRef = useRef(0);
   const { frame, error, ageMs, pollNow } = useDesktopFrame({
     seatId: desktop.seat_id,
+    enabled: runtimeOperationAllowed(operationSupport, "frame"),
     status: desktop.status,
     selected,
-    hasControlLease: hasLease,
+    hasControlLease: hasLease && runtimeOperationAllowed(operationSupport, "control"),
     accessKey,
   });
   const resolution = frame
@@ -149,7 +154,7 @@ export function DesktopTile({
     : desktop.resolution ?? { width: 1280, height: 800 };
   const frameAspectRatio = `${Math.max(resolution.width, 1)} / ${Math.max(resolution.height, 1)}`;
   const provider = desktop.provider_label || desktop.provider_id || "provider pending";
-  const controlLabel = hasLease
+  const controlLabel = !runtimeOperationAllowed(operationSupport, "control") ? "操作未接続" : hasLease
     ? "Human control"
     : desktop.control?.holder === "ai"
       ? "AI control"
@@ -372,7 +377,7 @@ export function DesktopTile({
         )}
         style={{ aspectRatio: frameAspectRatio }}
         role={keyboardCaptured ? "application" : "group"}
-        aria-label={`${desktop.name} live snapshot${keyboardCaptured ? ", keyboard control active" : ""}`}
+        aria-label={runtimeOperationAllowed(operationSupport, "frame") ? `${desktop.name} live snapshot${keyboardCaptured ? ", keyboard control active" : ""}` : `${desktop.name} 保存情報（画面取得は未接続）`}
         aria-describedby={hasLease ? `desktop-keyboard-help-${desktop.seat_id}` : undefined}
       >
         {frame ? (
@@ -380,7 +385,7 @@ export function DesktopTile({
         ) : (
           <div className="flex flex-col items-center gap-2 text-zinc-600">
             {desktop.status === "failed" ? <AlertTriangle size={24} /> : <Monitor size={24} />}
-            <span className="text-xs">{desktop.status === "running" ? "Waiting for first snapshot" : desktop.status}</span>
+            <span className="text-xs">{!runtimeOperationAllowed(operationSupport, "frame") ? "画面取得は未接続です" : desktop.status === "running" ? "Waiting for first snapshot" : desktop.status}</span>
           </div>
         )}
         {error && (
@@ -402,6 +407,7 @@ export function DesktopTile({
         </div>
         <DesktopControlSurface
           desktop={desktop}
+          operationSupport={operationSupport}
           hasLease={hasLease}
           busy={controlBusy}
           onTakeOver={onTakeOver}

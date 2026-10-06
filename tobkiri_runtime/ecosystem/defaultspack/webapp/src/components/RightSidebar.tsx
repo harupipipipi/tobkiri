@@ -84,6 +84,7 @@ import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
 import { declarativeIconForName } from "../lib/declarativeIcons";
 import { WidgetAttentionIcon } from "../lib/widgetAttention";
+import { CustomizableSidebarRail, RailSlot } from "./CustomizableSidebarRail";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -994,6 +995,7 @@ export function RightSidebar({
   codingPanel,
   keyboardButtonNavigation = true,
   selectedProfile = null,
+  runtimeProfileId,
   toolFilterEntries = [],
   runtimeCapabilitySnapshot = null,
   contextUsage = null,
@@ -1031,6 +1033,7 @@ export function RightSidebar({
   codingPanel?: ReactNode;
   keyboardButtonNavigation?: boolean;
   selectedProfile?: ModelProfile | null;
+  runtimeProfileId?: string;
   toolFilterEntries?: ToolFilterEntry[];
   runtimeCapabilitySnapshot?: RuntimeCapabilitySnapshot | null;
   contextUsage?: ContextUsageInfo | null;
@@ -1075,8 +1078,6 @@ export function RightSidebar({
   const [openToolGroupMenu, setOpenToolGroupMenu] = useState<string | null>(null);
   const [toolGroupMenuPosition, setToolGroupMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
-  const [placementMenuOpen, setPlacementMenuOpen] = useState(false);
-  const [placementMenuPosition, setPlacementMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const sidebarSettings = settingsValues.sidebar ?? {};
   const toolsSettings = settingsValues.tools ?? {};
   const pinnedItemIds = useMemo(
@@ -1103,14 +1104,12 @@ export function RightSidebar({
     () => settingStringArrayRecord(sidebarSettings.custom_tool_tags, "rumi-tool-custom-tags"),
     [sidebarSettings.custom_tool_tags],
   );
-  const [showStarredOnly, setShowStarredOnly] = useState(false);
+  const showStarredOnly = false;
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const [tagDraftByItemId, setTagDraftByItemId] = useState<Record<string, string>>({});
   const [contextMenu, setContextMenu] = useState<{ itemId: string; x: number; y: number } | null>(null);
   const toolManagerSearchRef = useRef<HTMLDivElement | null>(null);
-  const toolGroupMenuRef = useRef<HTMLDivElement | null>(null);
   const toolGroupFloatingMenuRef = useRef<HTMLDivElement | null>(null);
-  const placementMenuRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const buttonTabIndex = keyboardButtonNavigation ? undefined : -1;
   const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
@@ -1125,15 +1124,6 @@ export function RightSidebar({
     () => new Map(buildBuiltinPlacementManifests(settingsSections).map((manifest) => [manifest.id, manifest])),
     [settingsSections],
   );
-  const rightSidebarPlacementCandidates = useMemo(() => (
-    filterPlacementCandidates([...placementManifestMap.values()], {
-      surface: "right_sidebar",
-      orientation: "vertical",
-      configurableOnly: true,
-    }).filter((manifest) => !pinnedPlacements.some((placement) => (
-      placement.id === manifest.id && placement.surface === "right_sidebar"
-    )))
-  ), [pinnedPlacements, placementManifestMap]);
 
   useEffect(() => {
     try {
@@ -1256,7 +1246,7 @@ export function RightSidebar({
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (toolGroupMenuRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-sidebar-rail-group]")) return;
       if (toolGroupFloatingMenuRef.current?.contains(target)) return;
       setOpenToolGroupMenu(null);
       setContextMenu(null);
@@ -1277,23 +1267,6 @@ export function RightSidebar({
     };
   }, [openToolGroupMenu]);
 
-  useEffect(() => {
-    if (!placementMenuOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && placementMenuRef.current?.contains(target)) return;
-      setPlacementMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPlacementMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [placementMenuOpen]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -1431,6 +1404,18 @@ export function RightSidebar({
     }));
   }, [toolItems]);
 
+  const catalogueRailGroups = useMemo(() => {
+    const groups = new Map<string, SidebarItem[]>();
+    for (const item of items.filter((entry) => entry.category === "tool" && !hiddenToolIdSet.has(entry.id))) {
+      const id = toolGroupFor(item).id;
+      groups.set(id, [...(groups.get(id) ?? []), item]);
+    }
+    return sortedToolGroups([...groups.entries()].map(([id, groupItems]) => {
+      const meta = toolGroupFor(groupItems[0]);
+      return { id, label: meta.label, path: meta.path, items: groupItems, count: groupItems.length };
+    }));
+  }, [items, hiddenToolIdSet]);
+
   const showToolGroups = categoryFilter === "tool" && toolGroups.length > 0;
 
   const visibleItems = useMemo(() => {
@@ -1497,27 +1482,22 @@ export function RightSidebar({
     if (!manifest) return;
     if (!action) {
       setActivePanel(`${PLACEMENT_PANEL_PREFIX}${placementId}`);
-      setPlacementMenuOpen(false);
       return;
     }
     if (action.type === "open_panel" && action.target) {
       const target = action.target;
       setActivePanel((current) => current === target ? null : target);
-      setPlacementMenuOpen(false);
       return;
     }
     if (action.type === "open_settings_section" && action.target) {
-      setPlacementMenuOpen(false);
       onOpenSettingsSection?.(action.target);
       return;
     }
     if (action.type === "toggle_yolo") {
-      setPlacementMenuOpen(false);
       onToggleYolo?.();
       return;
     }
     setActivePanel(`${PLACEMENT_PANEL_PREFIX}${placementId}`);
-    setPlacementMenuOpen(false);
   };
 
   const renderPlacementPanel = (placementId: string) => {
@@ -1727,7 +1707,7 @@ export function RightSidebar({
       draggable={supportsComposerDrop(item)}
       onDragStart={supportsComposerDrop(item) ? (e) => handleDragStart(e, item) : undefined}
       onContextMenu={(event) => openItemContextMenu(event, item)}
-      onClick={() => setActivePanel((current) => (current === item.id ? null : item.id))}
+      onClick={() => { setCategoryFilter(item.category); setActivePanel((current) => (current === item.id ? null : item.id)); }}
       tabIndex={buttonTabIndex}
       className={cn(
         RAIL_BUTTON_CLASS,
@@ -1831,6 +1811,16 @@ export function RightSidebar({
       </button>
     );
   };
+
+  const renderItemRailSlot = (item: SidebarItem, visible: boolean) => (
+    <RailSlot key={item.id} id={`item:${item.id}`} label={item.label}
+      category={item.category === "tool" ? "機能" : item.category === "activity" ? "アクティビティ" : "ウィジェット"}
+      icon={iconForItem(item)} available={searchFilteredItems.some((entry) => entry.id === item.id)
+        && (item.category !== "tool" || !activeTagFilter || Boolean(tagMap.get(item.id)?.includes(activeTagFilter)))}
+      defaultVisible={visible}>
+      {renderRailItemButton(item, pinnedItemIdSet.has(item.id))}
+    </RailSlot>
+  );
 
   return (
     <aside aria-label="Tools and utility panels" className="rumi-right-sidebar relative hidden h-full flex-shrink-0 border-l border-zinc-800/60 bg-[#09090b] transition-[width,opacity] duration-200 ease-out md:flex">
@@ -2457,27 +2447,29 @@ export function RightSidebar({
         </div>
       )}
 
-              <div className="rumi-right-sidebar-rail flex w-13 flex-shrink-0 flex-col overflow-visible">
-                <div
-                  className="rumi-right-sidebar-rail-scroll flex w-full flex-1 flex-col items-center gap-1 overflow-x-visible overflow-y-auto py-2 scrollbar-none"
+              <>
+                <CustomizableSidebarRail storageScope={runtimeProfileId} keyboardButtonNavigation={keyboardButtonNavigation}
                   onDragOver={(event) => {
                     if (event.dataTransfer.types.includes("application/rumi-sidebar-shortcut")) {
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "copy";
                     }
-                  }}
-                  onDrop={handleShortcutDrop}
-                >
-          {(pinnedRailItems.length > 0 || pinnedRightSidebarPlacements.length > 0) && (
-            <div className="flex w-full flex-col items-center gap-1">
-              {pinnedRailItems.map((item) => renderRailItemButton(item, true))}
-              {pinnedRightSidebarPlacements.map((placement) => renderPinnedPlacementButton(placement.id))}
-              <div className="w-5 h-px bg-sky-500/20 my-0.5" />
-            </div>
-          )}
+                  }} onDrop={handleShortcutDrop}>
+                  {pinnedItemIds.map((id) => items.find((entry) => entry.id === id))
+                    .filter((item): item is SidebarItem => Boolean(item) && (item!.category !== "tool" || !hiddenToolIdSet.has(item!.id)))
+                    .map((item) => renderItemRailSlot(item, true))}
+                  {filterPlacementCandidates([...placementManifestMap.values()], { surface: "right_sidebar", orientation: "vertical", configurableOnly: true }).map((manifest) => (
+                    <RailSlot key={manifest.id} id={`placement:${manifest.id}`} label={manifest.label} category="ウィジェットと設定"
+                      icon={placementIcon(manifest.id)} defaultVisible={pinnedRightSidebarPlacements.some((entry) => entry.id === manifest.id)}>
+                      {renderPinnedPlacementButton(manifest.id)}
+                    </RailSlot>
+                  ))}
+                  <RailSlot id="category" label="カテゴリ" category="ナビゲーション" icon={<Layers size={18} />}>
                   <CategorySwitcher active={categoryFilter} counts={counts} keyboardButtonNavigation={keyboardButtonNavigation} onChange={(id) => { setCategoryFilter(id); setOpenToolGroupMenu(null); }} />
+                  </RailSlot>
                   {workspaceTabsEnabled && workspaceTabs.length > 0 && (
-                    <button
+                    <RailSlot id="workspace-tabs" label="Workspace tabs" category="会話" icon={<LayoutGrid size={18} />}>
+<button
                       type="button"
                       tabIndex={buttonTabIndex}
                       onClick={() => setActivePanel((current) => (current === "__workspace_tabs__" ? null : "__workspace_tabs__"))}
@@ -2496,9 +2488,11 @@ export function RightSidebar({
                         {workspaceTabs.length}
                       </span>
                     </button>
+                    </RailSlot>
                   )}
                   {hasPromptWidget && (
-                    <button
+                    <RailSlot id="prompts" label="Current prompts" category="会話" icon={<FileText size={18} />}>
+<button
                       type="button"
                       tabIndex={buttonTabIndex}
                       onClick={() => setActivePanel((current) => (current === "__prompt_usage__" ? null : "__prompt_usage__"))}
@@ -2519,7 +2513,9 @@ export function RightSidebar({
                         </span>
                       )}
                     </button>
+                    </RailSlot>
                   )}
+                  <RailSlot id="search" label="検索" category="ナビゲーション" icon={<Search size={18} />}>
                   <SidebarSearchControl
                     query={searchQuery}
                     resultCount={searchFilteredItems.length}
@@ -2530,35 +2526,8 @@ export function RightSidebar({
                       setOpenToolGroupMenu(null);
                     }}
                   />
-                  <button
-                    type="button"
-                    tabIndex={buttonTabIndex}
-                    onClick={() => setShowStarredOnly((value) => !value)}
-                    aria-pressed={showStarredOnly}
-                    className={cn(
-                      RAIL_BUTTON_CLASS,
-                      showStarredOnly
-                        ? "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50",
-                    )}
-                    title="ピン留めした機能"
-                    aria-label={
-                      starredItemIds.length > 0
-                        ? `Starred tools (${starredItemIds.length})`
-                        : "Starred tools"
-                    }
-                  >
-            <Star
-              size={18}
-              strokeWidth={2.15}
-              className={cn("h-[18px] w-[18px] flex-shrink-0", starredItemIds.length > 0 && "fill-current")}
-            />
-            {starredItemIds.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[7px] font-bold leading-none text-black">
-                {starredItemIds.length}
-              </span>
-            )}
-          </button>
+                  </RailSlot>
+          <RailSlot id="tools" label="機能" category="ナビゲーション" icon={<SlidersHorizontal size={18} />}>
           <button
             type="button"
             tabIndex={buttonTabIndex}
@@ -2578,71 +2547,10 @@ export function RightSidebar({
               </span>
             )}
           </button>
-          <div className="relative">
-            <button
-              type="button"
-              tabIndex={buttonTabIndex}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                const nextOpen = !placementMenuOpen;
-                if (nextOpen) {
-                  setPlacementMenuPosition(getRailFloatingMenuPosition(event.currentTarget.getBoundingClientRect(), { width: 224, height: 320 }));
-                }
-                setPlacementMenuOpen(nextOpen);
-              }}
-              className={cn(
-                RAIL_BUTTON_CLASS,
-                placementMenuOpen
-                  ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-600/70"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50",
-              )}
-              title="ウィジェットをピン留め"
-            >
-              <Plus size={16} className="h-4 w-4 shrink-0" />
-            </button>
-            {placementMenuOpen && (
-              <LayerPortal layer="modal">
-                <div
-                  ref={placementMenuRef}
-                  className="fixed rumi-layer-modal w-56 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-1 shadow-2xl"
-                  style={placementMenuPosition ? { top: `${placementMenuPosition.top}px`, right: `${placementMenuPosition.right}px` } : undefined}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <div className="border-b border-zinc-800 px-3 py-2">
-                    <p className="text-[11px] font-semibold text-zinc-200">サイドバーにピン留め</p>
-                    <p className="text-[10px] text-zinc-500">縦表示 / 設定可</p>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto py-1">
-                    {rightSidebarPlacementCandidates.map((manifest) => (
-                      <button
-                        key={manifest.id}
-                        type="button"
-                        onClick={() => {
-                          updatePinnedPlacements((current) => togglePinnedPlacement(current, { id: manifest.id, surface: "right_sidebar" }));
-                          setPlacementMenuOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-zinc-300 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
-                      >
-                        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-400">
-                          {placementIcon(manifest.id)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12px]">{manifest.label}</span>
-                          {manifest.description && <span className="block truncate text-[10px] text-zinc-500">{manifest.description}</span>}
-                        </span>
-                      </button>
-                    ))}
-                    {rightSidebarPlacementCandidates.length === 0 && (
-                      <p className="px-3 py-3 text-[11px] text-zinc-500">追加できる候補はありません。</p>
-                    )}
-                  </div>
-                </div>
-              </LayerPortal>
-            )}
-          </div>
+          </RailSlot>
           {companyPanel && (
-            <button
+            <RailSlot id="employees" label="Employees" category="ワークスペース" icon={<Building2 size={18} />}>
+<button
               type="button"
               tabIndex={buttonTabIndex}
               onClick={() => setActivePanel((current) => (current === "__company_workspace__" ? null : "__company_workspace__"))}
@@ -2656,9 +2564,11 @@ export function RightSidebar({
             >
               <Building2 size={17} className="h-[17px] w-[17px] shrink-0" />
             </button>
+            </RailSlot>
           )}
           {codingPanel && (
-            <button
+            <RailSlot id="coding" label="Coding widget" category="ワークスペース" icon={<Code2 size={18} />}>
+<button
               type="button"
               tabIndex={buttonTabIndex}
               onClick={() => setActivePanel((current) => (current === "__coding_widget__" ? null : "__coding_widget__"))}
@@ -2672,16 +2582,19 @@ export function RightSidebar({
             >
               <Code2 size={17} className="h-[17px] w-[17px] shrink-0" />
             </button>
+            </RailSlot>
           )}
-          <div className="w-5 h-px bg-zinc-800 my-1" />
-
-          {showToolGroups && (
-            <div ref={toolGroupMenuRef} className="flex flex-col items-center gap-px w-full">
-              {railToolGroups.map((group) => {
+          <>
+              {catalogueRailGroups.map((catalogueGroup) => {
+                const filtered = toolGroups.find((entry) => entry.id === catalogueGroup.id);
+                const group = { ...catalogueGroup, items: filtered?.items ?? [], count: filtered?.count ?? 0 };
                 const isGroupActive = activeToolGroupId === group.id;
                 const isGroupOpen = openToolGroupMenu === group.id;
                         return (
-                          <div key={group.id} className="relative">
+                          <RailSlot key={group.id} id={`group:${group.id}`} label={group.label || TOOL_GROUP_LABELS[group.id] || group.id}
+                            category="機能グループ" icon={toolGroupRailIcon(catalogueGroup.items[0], group.count)} available={group.count > 0}
+                            defaultVisible={showToolGroups && railToolGroups.some((entry) => entry.id === group.id)}>
+                          <div data-sidebar-rail-group className="relative">
                             <button
                               type="button"
                               tabIndex={buttonTabIndex}
@@ -2703,7 +2616,7 @@ export function RightSidebar({
                               )}
                     title={`${group.path?.length ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id} (${group.count})`}
                   >
-                    <StableToolGroupRailGlyph count={group.count} item={group.items[0]} />
+                    <StableToolGroupRailGlyph count={group.count} item={catalogueGroup.items[0]} />
                     <span className="absolute right-full mr-2 px-2 py-1 bg-zinc-800 text-zinc-200 text-[10px] rounded-md opacity-0 group-hover/group:opacity-100 pointer-events-none transition-opacity whitespace-nowrap border border-zinc-700 shadow-lg rumi-layer-global-overlay">
                       {group.path?.length && group.path.length > 1 ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id}
                     </span>
@@ -2729,6 +2642,7 @@ export function RightSidebar({
                                 <button
                                   type="button"
                                   tabIndex={buttonTabIndex}
+                                  disabled={group.items.length === 0}
                                   onClick={() => setToolsEnabled(group.items.map((item) => item.id), true)}
                                   className="flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200 hover:bg-emerald-500/15"
                                 >
@@ -2738,6 +2652,7 @@ export function RightSidebar({
                                 <button
                                   type="button"
                                   tabIndex={buttonTabIndex}
+                                  disabled={group.items.length === 0}
                                   onClick={() => setToolsEnabled(group.items.map((item) => item.id), false)}
                                   className="flex items-center justify-center gap-1 rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-medium text-zinc-300 hover:bg-zinc-800"
                                 >
@@ -2756,6 +2671,7 @@ export function RightSidebar({
                             onContextMenu={(event) => openItemContextMenu(event, item)}
                             onClick={(event) => {
                               event.stopPropagation();
+                              setCategoryFilter(item.category);
                               setActivePanel((current) => (current === item.id ? null : item.id));
                               setOpenToolGroupMenu(null);
                             }}
@@ -2784,9 +2700,10 @@ export function RightSidebar({
                     </LayerPortal>
                   )}
                 </div>
+                </RailSlot>
               );
               })}
-              {hiddenToolGroupCount > 0 && (
+              <RailSlot id="more-tools" label="その他の機能" category="ナビゲーション" icon={<MoreVertical size={18} />} defaultVisible={hiddenToolGroupCount > 0}>
                 <button
                   type="button"
                   tabIndex={buttonTabIndex}
@@ -2811,15 +2728,11 @@ export function RightSidebar({
                     その他の機能
                   </span>
                 </button>
-              )}
-            </div>
-          )}
-
-          {showToolGroups && unpinnedVisibleItems.length > 0 && (
-            <div className="w-5 h-px bg-zinc-800 my-1" />
-          )}
-
-          {unpinnedVisibleItems.map((item) => renderRailItemButton(item))}
+              </RailSlot>
+          </>
+          {[...items].filter((item) => item.category !== "tool" || !hiddenToolIdSet.has(item.id)).sort(compareSidebarItems)
+            .map((item) => renderItemRailSlot(item, pinnedItemIdSet.has(item.id) || unpinnedVisibleItems.some((entry) => entry.id === item.id)))}
+                </CustomizableSidebarRail>
 
           {contextMenu && (() => {
             const item = items.find((candidate) => candidate.id === contextMenu.itemId);
@@ -2894,8 +2807,7 @@ export function RightSidebar({
             );
           })()}
 
-        </div>
-      </div>
+              </>
     </aside>
   );
 }

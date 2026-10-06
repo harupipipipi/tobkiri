@@ -2,13 +2,13 @@ import {
   forwardRef, useCallback, useLayoutEffect, useRef, useState,
   type InputHTMLAttributes,
 } from "react";
-import { parseSearchQuery } from "./searchQuery";
+import { parseSearchQuery, type SearchToken } from "./searchQuery";
 
 /** A native input with a presentation-only mirror for recognized query filters. */
 export const InlineSearchInput = forwardRef<
-  HTMLInputElement, InputHTMLAttributes<HTMLInputElement>
+  HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { confirmedTokens?: SearchToken[] }
 >(function InlineSearchInput({
-  className = "", value, defaultValue, onChange, onScroll, onSelect,
+  className = "", value, defaultValue, onChange, onScroll, onSelect, confirmedTokens,
   onCompositionStart, onCompositionEnd, style, ...props
 }, forwardedRef) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -17,7 +17,7 @@ export const InlineSearchInput = forwardRef<
   const [composing, setComposing] = useState(false);
   const query = String(value ?? uncontrolledValue);
   // Only literal query text is mirrored; immutable search presets stay invisible.
-  const tokens = parseSearchQuery(query).tokens;
+  const tokens = confirmedTokens ?? parseSearchQuery(query).tokens;
   const segments = [];
   let offset = 0;
   for (const token of tokens) {

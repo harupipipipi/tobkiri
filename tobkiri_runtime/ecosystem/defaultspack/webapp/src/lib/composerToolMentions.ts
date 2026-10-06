@@ -1,6 +1,6 @@
 import type { ComposerExtensionItem, DroppedWidget, ToolGroup } from "../renderers/types";
 import type { ConversationToolPreferences, ToolSelectionMode, ToolSelectionRequest, ToolTarget } from "../features/tools/types";
-import { composerKnownMentionValues, composerMentionMetadataFromWidgets, composerServiceMentionWidget, composerToolMentionWidget, toolMentionIdsFromText } from "./composerWidgets";
+import { composerMentionMetadataFromWidgets, composerServiceMentionWidget, composerToolMentionWidget } from "./composerWidgets";
 import { codePointIndexToUtf16Offset, extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
 import { toolGroupFor } from "./toolUi";
 
@@ -53,15 +53,6 @@ export function composerToolMentionGroups(items: ComposerExtensionItem[]): ToolG
   }));
 }
 
-function uniqueService(services: ReturnType<typeof servicesFor>, value: string) {
-  const normalized = value.toLocaleLowerCase();
-  const exact = services.find((service) => service.id.toLocaleLowerCase() === normalized);
-  if (exact) return exact;
-  const matches = services.filter((service) => [service.id, service.label, service.label.replace(/\s+/g, "_")]
-    .some((alias) => alias.toLocaleLowerCase() === normalized));
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 function targetWidget(target: ToolTarget, items: ComposerExtensionItem[], exclude = false): DroppedWidget | null {
   const syntax = `@${exclude ? "-" : ""}${target.id}`;
   const item = items.find((candidate) => candidate.id === target.id && !candidate.disabled);
@@ -79,16 +70,13 @@ function targetWidget(target: ToolTarget, items: ComposerExtensionItem[], exclud
   };
 }
 
-/** Resolve only available catalog tools/services represented by visible @ syntax. */
+/** Resolve confirmed widgets whose visible syntax and catalog target remain valid. */
 export function resolveComposerToolMentions(text: string, widgets: DroppedWidget[], items: ComposerExtensionItem[]): ComposerToolMentionDraft {
   const available = items.filter((item) => !item.disabled);
   const services = servicesFor(available);
   const include = new Map<string, ToolTarget>();
   const exclude = new Map<string, ToolTarget>();
   const activeWidgets: DroppedWidget[] = [];
-  const ownedSyntaxes = composerMentionMetadataFromWidgets(widgets)
-    .filter((mention) => hasUnescapedMentionSyntax(text, mention.syntax))
-    .map((mention) => mention.syntax);
   const add = (target: ToolTarget, negative: boolean, widget?: DroppedWidget | null) => {
     (negative ? exclude : include).set(`${target.kind}:${target.id}`, target);
     if (widget) activeWidgets.push(widget);
@@ -101,27 +89,6 @@ export function resolveComposerToolMentions(text: string, widgets: DroppedWidget
       if (!targetWidget(target, available)) continue;
       const record = widget.metadata?.mention as Record<string, unknown>;
       add(target, record.intent === "exclude" || mention.syntax.startsWith("@-"), widget);
-    }
-  }
-  const knownValues = [...composerKnownMentionValues(available), ...services.flatMap((service) => [service.id, service.label])];
-  for (const token of extractMentionTokens(text, knownValues.flatMap((value) => [value, `-${value}`]))) {
-    const offset = codePointIndexToUtf16Offset(text, token.start);
-    if (ownedSyntaxes.some((syntax) => extractMentionTokens(text, [syntax.slice(1)])
-      .some((owned) => owned.value === syntax.slice(1)
-        && codePointIndexToUtf16Offset(text, owned.start) === offset))) continue;
-    const negative = token.value.startsWith("-");
-    const value = negative ? token.value.slice(1) : token.value;
-    const toolIds = toolMentionIdsFromText(`@${value}`, available);
-    const service = toolIds.length ? undefined : uniqueService(services, value);
-    const targets: ToolTarget[] = toolIds.map((id) => ({ kind: "tool", id }));
-    if (service) targets.push({ kind: "service", id: service.id });
-    for (const target of targets) {
-      const widget = targetWidget(target, available, negative);
-      if (widget) {
-        const record = widget.metadata?.mention as Record<string, unknown>;
-        widget.metadata = { ...widget.metadata, mention: { ...record, syntax: `@${token.value}` } };
-      }
-      add(target, negative, widget);
     }
   }
   const excludedIds = new Set([...exclude.values()].flatMap((target) => target.kind === "tool" ? [target.id]

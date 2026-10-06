@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Trash2, X } from "lucide-react";
 
 import { sandboxesApi } from "../../features/sandboxes/api";
-import { diagnosticsText } from "../../features/sandboxes/runtimeStatus";
-import type { CreateDesktopRequest, DesktopInputAction, DesktopInstance } from "../../features/sandboxes/types";
+import { diagnosticsText, runtimeOperationSupportForMetadata, runtimeOperationAllowed, DESKTOP_UNSUPPORTED_REASON } from "../../features/sandboxes/runtimeStatus";
+import type { CreateDesktopRequest, DesktopInputAction, DesktopInstance, RuntimeOperationSupport } from "../../features/sandboxes/types";
 import { useDesktopControlLease } from "../../features/sandboxes/useDesktopControlLease";
 import { useDesktopInstances } from "../../features/sandboxes/useSandboxInstances";
 import { useRuntimeDoctor } from "../../features/sandboxes/useRuntimeDoctor";
@@ -68,6 +68,8 @@ export function clearLegacyDesktopCredentialsFromUrl(): boolean {
 export function DesktopMonitorWorkspace() {
   const legacyCredentialWasRemoved = useRef(clearLegacyDesktopCredentialsFromUrl()).current;
   const runtime = useRuntimeDoctor({ autoRunDoctor: true });
+  const operationSupport = runtimeOperationSupportForMetadata(runtime.providersResponse, runtime.doctor);
+  const actionAllowed = (operation: keyof RuntimeOperationSupport): boolean => runtimeOperationAllowed(operationSupport, operation);
   const runtimeReady = runtime.availability.status === "ready";
   const templates = useSandboxTemplates({ enabled: runtimeReady });
   const desktopInstances = useDesktopInstances({ pollIntervalMs: 2500 });
@@ -105,7 +107,7 @@ export function DesktopMonitorWorkspace() {
   const selectedDesktop = resolveVisibleSelectedDesktop(visibleDesktops, selectedSeatId, { preserveSelected });
   const visibleSelectedSeatId = selectedDesktop?.seat_id ?? null;
   const selectedAccessKey = visibleSelectedSeatId ? accessKeys[visibleSelectedSeatId] || "" : "";
-  const control = useDesktopControlLease(visibleSelectedSeatId, sandboxesApi, selectedAccessKey);
+  const control = useDesktopControlLease(actionAllowed("control") ? visibleSelectedSeatId : null, sandboxesApi, selectedAccessKey);
   const stopTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === stopTargetSeatId) ?? null;
   const deleteTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === deleteTargetSeatId) ?? null;
 
@@ -123,6 +125,7 @@ export function DesktopMonitorWorkspace() {
   }, [desktopInstances.desktops]);
 
   useEffect(() => {
+    if (!runtimeOperationAllowed(operationSupport, "access")) return;
     const missingSeatIds = desktopInstances.desktops
       .map((desktop) => desktop.seat_id)
       .filter((seatId) => !accessKeys[seatId]);
@@ -144,7 +147,7 @@ export function DesktopMonitorWorkspace() {
           error instanceof Error ? error.message : "Desktop session setup failed.",
         ));
     }
-  }, [accessKeys, desktopInstances.desktops]);
+  }, [accessKeys, desktopInstances.desktops, operationSupport.access]);
 
   useEffect(() => {
     const preserveSelected = selectedSeatId !== null && explicitSelectedSeatIdRef.current === selectedSeatId;
@@ -186,6 +189,7 @@ export function DesktopMonitorWorkspace() {
   }, [desktopInstances.error, runtime.doctor, runtime.error, runtime.providersResponse, templates.error]);
 
   const handleCreateDesktop = useCallback(async (request: CreateDesktopRequest) => {
+    if (!runtimeOperationAllowed(operationSupport, "create")) { setCreateError(DESKTOP_UNSUPPORTED_REASON); return; }
     setCreating(true);
     setCreateError(null);
     try {
@@ -199,12 +203,13 @@ export function DesktopMonitorWorkspace() {
     } finally {
       setCreating(false);
     }
-  }, [desktopInstances]);
+  }, [desktopInstances, operationSupport.create]);
 
   const runDesktopAction = useCallback(async (
     seatId: string,
     action: "start" | "restart" | "stop" | "delete",
   ) => {
+    if (!runtimeOperationAllowed(operationSupport, action === "delete" ? "delete" : "lifecycle")) { setActionError(DESKTOP_UNSUPPORTED_REASON); return; }
     setActionError(null);
     try {
       const accessKey = accessKeys[seatId] || undefined;
@@ -224,7 +229,7 @@ export function DesktopMonitorWorkspace() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : `Desktop ${action} failed.`);
     }
-  }, [accessKeys, desktopInstances, visibleSelectedSeatId]);
+  }, [accessKeys, desktopInstances, visibleSelectedSeatId, operationSupport.delete, operationSupport.lifecycle]);
 
   const handleSelectDesktop = useCallback((seatId: string) => {
     explicitSelectedSeatIdRef.current = seatId;
@@ -232,6 +237,7 @@ export function DesktopMonitorWorkspace() {
   }, []);
 
   const handleTakeOver = useCallback((seatId: string) => {
+    if (!runtimeOperationAllowed(operationSupport, "control")) { setActionError(DESKTOP_UNSUPPORTED_REASON); return; }
     setActionError(null);
     if (seatId !== visibleSelectedSeatId) {
       explicitSelectedSeatIdRef.current = seatId;
@@ -240,9 +246,10 @@ export function DesktopMonitorWorkspace() {
       return;
     }
     void control.acquire();
-  }, [control, visibleSelectedSeatId]);
+  }, [control, visibleSelectedSeatId, operationSupport.control]);
 
   const handleDesktopInput = useCallback((seatId: string, input: DesktopInputAction) => {
+    if (!runtimeOperationAllowed(operationSupport, "control")) return;
     const token = control.lease?.lease_token;
     if (!token || seatId !== visibleSelectedSeatId) return;
     void sandboxesApi.sendDesktopInput(seatId, {
@@ -255,10 +262,11 @@ export function DesktopMonitorWorkspace() {
       setActionError(error instanceof Error ? error.message : "Desktop input failed.");
       void desktopInstances.refresh();
     });
-  }, [accessKeys, control.lease?.lease_token, desktopInstances, visibleSelectedSeatId]);
+  }, [accessKeys, control.lease?.lease_token, desktopInstances, visibleSelectedSeatId, operationSupport.control]);
 
 
   const handleRequestAccess = useCallback((seatId: string) => {
+    if (!runtimeOperationAllowed(operationSupport, "access")) { setActionError(DESKTOP_UNSUPPORTED_REASON); return; }
     setAccessMessage(null);
     void sandboxesApi.requestDesktopAccess(seatId, "Requested from the Desktops workspace.")
       .then((result) => {
@@ -267,9 +275,10 @@ export function DesktopMonitorWorkspace() {
       .catch((error) => {
         setActionError(error instanceof Error ? error.message : "Desktop access request failed.");
       });
-  }, []);
+  }, [operationSupport.access]);
 
   const handleGrantAccess = useCallback((seatId: string, requestId: string) => {
+    if (!runtimeOperationAllowed(operationSupport, "access")) { setActionError(DESKTOP_UNSUPPORTED_REASON); return; }
     setAccessMessage(null);
     void sandboxesApi.grantDesktopAccess(seatId, requestId)
       .then((result) => {
@@ -278,11 +287,13 @@ export function DesktopMonitorWorkspace() {
       .catch((error) => {
         setActionError(error instanceof Error ? error.message : "Desktop access grant failed.");
       });
-  }, []);
+  }, [operationSupport.access]);
 
-  const providerNotice = (runtime.availability.status !== "ready" || runtime.operation || runtime.error || diagnosticsCopied) ? (
+  const providerNotice = (Object.values(operationSupport).some((supported) => supported === false) || runtime.availability.status !== "ready" || runtime.operation || runtime.error || diagnosticsCopied) ? (
     <DesktopProviderNotice
       availability={runtime.availability}
+      operationSupport={operationSupport}
+      onRefresh={() => void runtime.refreshProviders()}
       operation={runtime.operation}
       doctorLoading={runtime.doctorLoading}
       setupLoading={runtime.setupLoading}
@@ -294,10 +305,10 @@ export function DesktopMonitorWorkspace() {
     />
   ) : null;
 
-  const canCreate = runtimeReady && !templates.loading && templates.desktopTemplates.length > 0;
+  const canCreate = actionAllowed("create") && runtimeReady && !templates.loading && templates.desktopTemplates.length > 0;
   const setupMessage = diagnosticsCopied ? "Diagnostics copied." : null;
-  const surfaceError = actionError || desktopInstances.error || templates.error || setupMessage;
-  const showDesktopList = shouldShowDesktopList({
+  const surfaceError = actionError || runtime.error || desktopInstances.error || templates.error || setupMessage;
+  const showDesktopList = runtime.availability.status === "registered" || shouldShowDesktopList({
     runtimeReady,
     desktopCount: desktopInstances.desktops.length,
     loading: desktopInstances.loading,
@@ -313,6 +324,9 @@ export function DesktopMonitorWorkspace() {
         density={density}
         doctorLoading={runtime.doctorLoading}
         canCreate={canCreate}
+        canDoctor={actionAllowed("doctor")}
+        framesAvailable={actionAllowed("frame")}
+        unavailableReason={DESKTOP_UNSUPPORTED_REASON}
         onFilterChange={setFilter}
         onDensityChange={setDensity}
         onCreate={() => setIsCreateOpen(true)}
@@ -338,6 +352,7 @@ export function DesktopMonitorWorkspace() {
             <div className="grid min-h-0 gap-2 min-[1280px]:grid-cols-[minmax(0,1fr)_300px] min-[1536px]:grid-cols-[minmax(0,1fr)_340px]">
               <DesktopGrid
                 desktops={visibleDesktops}
+                operationSupport={operationSupport}
                 loading={desktopInstances.loading}
                 selectedSeatId={visibleSelectedSeatId}
                 density={density}
@@ -356,6 +371,7 @@ export function DesktopMonitorWorkspace() {
               />
               <DesktopInspector
                 desktop={selectedDesktop}
+                operationSupport={operationSupport}
                 hasLease={Boolean(control.lease)}
                 leaseError={control.error}
                 actionError={actionError}
@@ -370,6 +386,7 @@ export function DesktopMonitorWorkspace() {
 
       <DesktopCreateDialog
         isOpen={isCreateOpen}
+        createSupported={actionAllowed("create")}
         templates={templates.desktopTemplates}
         providers={runtime.availability.providers}
         selectedProviderId={runtime.availability.selectedProvider?.provider_id}

@@ -5,6 +5,14 @@ const verifyInline = async (input: Locator) => {
   const root = input.locator('..');
   await expect(root.locator('[data-search-token]')).toHaveCount(0);
   await input.fill('@model @openai Fixture');
+  await expect(root.locator('[data-search-token]')).toHaveCount(0);
+  for (const end of [6, 14]) {
+    await input.evaluate((el, caret) => {
+      (el as HTMLInputElement).setSelectionRange(caret, caret);
+      el.dispatchEvent(new Event('select', {bubbles:true}));
+    }, end);
+    await input.press('Enter');
+  }
   await expect(root.locator('[data-search-token]')).toHaveText(['@model', '@openai']);
   await expect(root.locator('[data-search-token]').first()).toHaveCSS('color', 'rgb(96, 165, 250)');
   await expect(input).toHaveJSProperty('tagName', 'INPUT');

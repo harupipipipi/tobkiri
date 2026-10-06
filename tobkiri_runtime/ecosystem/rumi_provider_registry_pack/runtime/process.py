@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from typing import Any, Mapping
 
@@ -208,10 +209,16 @@ def _provider_connection_snapshot(
         }:
             reachability = "unknown"
         observed_at = evidence.get("observed_at") if health_verified else None
-        if not isinstance(observed_at, (float, int)) or isinstance(
-            observed_at, bool
+        if (
+            type(observed_at) not in (float, int)
+            or not 0 <= observed_at <= 2**53 - 1
+            or not math.isfinite(observed_at)
         ):
             observed_at = None
+        else:
+            # Pack v4 canonical values do not permit floats. Preserve an epoch
+            # second conservatively before Broker serialization, not after it.
+            observed_at = math.floor(observed_at)
         if (
             not isinstance(provider_instance_id, str)
             or not provider_instance_id
@@ -224,7 +231,6 @@ def _provider_connection_snapshot(
             "provider_instance_id": provider_instance_id,
             "display_name": display_name,
             "enabled": enabled,
-            "adapter_id": adapter_id,
             "credential_status": (
                 "not_required"
                 if adapter_id == "local-openai-compatible"
@@ -237,6 +243,8 @@ def _provider_connection_snapshot(
             "reachability": reachability,
             "observed_at": observed_at,
         })
+        if isinstance(adapter_id, str) and adapter_id.strip():
+            projected[-1]["adapter_id"] = adapter_id
         metadata = item.get("metadata")
         catalog_provider_id = (
             metadata.get("catalog_provider_id")

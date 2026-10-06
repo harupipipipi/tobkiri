@@ -4975,20 +4975,6 @@ export const api = {
     });
   },
 
-  pendingCommandApprovals() {
-    return request<{
-      api_version: string;
-      pending_approvals: Array<{
-        invocation_id: string;
-        approval_request_id: string;
-        result?: CommandProtocolInvocationResult | null;
-      }>;
-    }>(defaultspackContractRoute("api/command-protocol/v1/invocations/events/query"), {
-      method: "POST",
-      body: JSON.stringify({ action: "pending_approvals" }),
-    });
-  },
-
   streamCommandInvocationEvents,
 
   commandOfflineQueue(payload: {

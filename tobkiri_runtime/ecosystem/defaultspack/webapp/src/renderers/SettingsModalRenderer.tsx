@@ -84,6 +84,9 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
 ]);
 
 const TOOL_EXPERIENCE_OWNED_FIELD_IDS = new Set([
+  "show_action_approval_control",
+  "action_approval_mode",
+  "fixed_action_approval_mode",
   "default_mode",
   "show_selection_summary",
   "show_selected_tools_in_answer",

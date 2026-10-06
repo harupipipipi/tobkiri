@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   AppWindow,
   CalendarDays,
@@ -251,63 +251,12 @@ function iconForKind(kind: WorkspaceTabKind): LucideIcon {
   return workspaceTabOption(kind).icon;
 }
 
-function NewTabMenu({
-  options,
-  onCreate,
-}: {
-  options: WorkspaceTabCreateOption[];
-  onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
-}) {
-  return (
-    <div
-      id="rumi-new-workspace-tab-menu"
-      role="menu"
-      aria-label="Create workspace tab"
-      className="rumi-workspace-new-tab-menu absolute left-0 top-[calc(100%+6px)] rumi-layer-modal w-[min(420px,calc(100vw-24px))] overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-2 shadow-2xl"
-    >
-      <div className="grid grid-cols-2 gap-1.5 px-2">
-        {options.map((option) => {
-          const Icon = option.icon;
-          return (
-            <button
-              key={option.viewReference?.contributionId ?? option.kind}
-              type="button"
-              role="menuitem"
-              disabled={option.disabled}
-              onClick={() => !option.disabled && onCreate(option.kind, option.viewReference)}
-              className={cn(
-                "flex min-h-16 min-w-0 items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
-                option.disabled
-                  ? "cursor-not-allowed border-zinc-900 bg-zinc-950/40 text-zinc-700"
-                  : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100",
-              )}
-            >
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-400">
-                <Icon size={16} />
-              </span>
-              <span className="min-w-0">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="break-words text-[12px] font-medium leading-4">{option.label}</span>
-                  {option.badge && <span className="shrink-0 rounded bg-zinc-800 px-1 py-px text-[8px] text-zinc-500">{option.badge}</span>}
-                </span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-zinc-500">{option.description}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function WorkspaceTabBar({
   tabs,
   activeTabId,
   conversationPresentations = {},
-  createOptions = WORKSPACE_TAB_CREATE_OPTIONS,
   onSelect,
   onClose,
-  onCreate,
 }: {
   tabs: WorkspaceTab[];
   activeTabId: string;
@@ -317,32 +266,6 @@ export function WorkspaceTabBar({
   onClose: (tabId: string) => void;
   onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
 }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isMenuOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || menuRef.current?.contains(target)) return;
-      setIsMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isMenuOpen]);
-
-  const handleCreate = (kind: WorkspaceTabKind, reference?: CatalogViewReference) => {
-    onCreate(kind, reference);
-    setIsMenuOpen(false);
-  };
-
   return (
     <div className="rumi-workspace-tabbar flex h-10 shrink-0 items-end gap-1 border-b border-zinc-800/60 bg-[var(--rumi-surface-base)] px-2 pt-1">
       <div role="tablist" aria-label="Open workspaces" className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden pb-0.5 scrollbar-none">
@@ -408,24 +331,6 @@ export function WorkspaceTabBar({
             </div>
           );
         })}
-      </div>
-      <div ref={menuRef} className="relative pb-0.5">
-        <button
-          type="button"
-          onClick={() => setIsMenuOpen((value) => !value)}
-          className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-100",
-            isMenuOpen && "bg-zinc-900 text-zinc-100",
-          )}
-          title="New tab"
-          aria-label="New tab"
-          aria-haspopup="menu"
-          aria-expanded={isMenuOpen}
-          aria-controls="rumi-new-workspace-tab-menu"
-        >
-          <Plus size={16} />
-        </button>
-        {isMenuOpen && <NewTabMenu options={createOptions} onCreate={handleCreate} />}
       </div>
     </div>
   );

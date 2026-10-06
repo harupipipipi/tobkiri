@@ -1674,8 +1674,13 @@ class FrontendRegistry:
             },
             "tools": {
                 "settings_version": 3,
+                "show_action_approval_control": True,
+                "action_approval_mode": "ask",
+                "fixed_action_approval_mode": "ask",
+                "approval_reviewer_model": "",
                 "default_target": "",
                 "default_mode": "auto",
+                "show_tool_selection_control": False,
                 "selection_strategy": "hybrid",
                 "semantic_backend": "auto",
                 "embedding_model": "",
@@ -2338,6 +2343,21 @@ class FrontendRegistry:
                     tools["selection_strategy"] = "all_schemas"
                 else:
                     tools["selection_strategy"] = "hybrid"
+        tools["show_tool_selection_control"] = self._setting_bool(
+            tools.get("show_tool_selection_control"), False
+        )
+        tools["show_action_approval_control"] = self._setting_bool(
+            tools.get("show_action_approval_control"), True
+        )
+        for approval_mode_key in ("action_approval_mode", "fixed_action_approval_mode"):
+            approval_mode = tools.get(approval_mode_key)
+            tools[approval_mode_key] = (
+                approval_mode if approval_mode in ("ask", "agent", "full") else "ask"
+            )
+        reviewer_model = tools.get("approval_reviewer_model")
+        tools["approval_reviewer_model"] = (
+            reviewer_model.strip() if isinstance(reviewer_model, str) else ""
+        )
         tools["settings_version"] = 3
         tools["keep_selected_tools_after_send"] = (
             False

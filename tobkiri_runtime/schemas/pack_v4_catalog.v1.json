@@ -575,7 +575,7 @@
             {
               "entrypoint_id": "defaultspack.presentation.read",
               "id": "defaultspack.presentation.read",
-              "implementation_digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235"
+              "implementation_digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29"
             }
           ],
           "owner": "defaultspack",
@@ -788,7 +788,7 @@
           "path": "runtime/conversation.py"
         },
         {
-          "digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
+          "digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
           "kind": "executable",
           "path": "runtime/application_presentation.py"
         },
@@ -1529,9 +1529,14 @@
           "path": "defaultspack/turn_progress_presentation.py"
         },
         {
-          "digest": "sha256:3cf8da7cf9adb86dce66a7c550c260e36bc7497b94dd4f6b71a0df014c19376f",
+          "digest": "sha256:c74bf3d2abad75eaa515e7382eb32544ee4351895267885bcd2a96bc13f3be9c",
           "kind": "executable",
           "path": "defaultspack/http_surface_presentation.py"
+        },
+        {
+          "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
+          "kind": "executable",
+          "path": "defaultspack/provider_status_presentation.py"
         },
         {
           "digest": "sha256:e7ac05f4164931e35e654d0c2e8c6ca522d32fb1e0cb902e104a774d6efe78c1",
@@ -15786,7 +15791,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
+          "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-manage"
           ]
@@ -15794,7 +15799,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
-          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
+          "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure-prepare"
           ]
@@ -15802,7 +15807,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.execute",
-          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
+          "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure"
           ]
@@ -15810,7 +15815,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
+          "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-resource",
             "rumi_provider_registry_pack.provider-registry-resource.generate",
@@ -15863,17 +15868,17 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
               "id": "rumi_provider_registry_pack.provider-configure-prepare",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             },
             {
               "entrypoint_id": "provider-configure",
               "id": "rumi_provider_registry_pack.provider-configure",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -15951,17 +15956,17 @@
             {
               "entrypoint_id": "provider-registry-resource",
               "id": "rumi_provider_registry_pack.provider-registry-resource",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             },
             {
               "entrypoint_id": "provider-registry-resource.generate",
               "id": "rumi_provider_registry_pack.provider-registry-resource.generate",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             },
             {
               "entrypoint_id": "provider-registry-resource.stream",
               "id": "rumi_provider_registry_pack.provider-registry-resource.stream",
-              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
+              "implementation_digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -16026,7 +16031,7 @@
           "path": "runtime/health_process.py"
         },
         {
-          "digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
+          "digest": "sha256:fa184f1ccb65e4c081ed5acadc593f8a2344aa3d1fbda908e52a9a259e6a0b60",
           "kind": "executable",
           "path": "runtime/process.py"
         },
@@ -16596,7 +16601,7 @@
         {
           "contract_id": "tobkiri.resource.managed-desktops.v1",
           "function_id": "tobkiri.managed-desktops.read",
-          "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+          "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
           "operation_ids": [
             "rumi_sandbox_runtime_pack.desktops-list",
             "rumi_sandbox_runtime_pack.runtime-providers-read",
@@ -16637,7 +16642,7 @@
               ],
               "entrypoint_id": "rumi_sandbox_runtime_pack.desktops-list",
               "id": "rumi_sandbox_runtime_pack.desktops-list",
-              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+              "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e"
             },
             {
               "effect_ceiling": [
@@ -16645,7 +16650,7 @@
               ],
               "entrypoint_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
               "id": "rumi_sandbox_runtime_pack.runtime-providers-read",
-              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+              "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e"
             },
             {
               "effect_ceiling": [
@@ -16653,7 +16658,7 @@
               ],
               "entrypoint_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
               "id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
-              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+              "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e"
             },
             {
               "effect_ceiling": [
@@ -16661,7 +16666,7 @@
               ],
               "entrypoint_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
               "id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
-              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+              "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e"
             }
           ],
           "owner": "rumi_sandbox_runtime_pack",
@@ -16704,7 +16709,7 @@
           "path": "catalog/runtime_matrix.yaml"
         },
         {
-          "digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+          "digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
           "index_role": "runtime",
           "kind": "executable",
           "path": "runtime/managed_desktops.py"
@@ -22022,23 +22027,6 @@
       "description": "Canonical workspace metadata and mount ownership.",
       "display_name": "Rumi Workspace Mount",
       "execution_boundary": "host_brokered",
-      "kind": "host_extension",
-      "legacy_ids": [
-        "rumi.action.workspace.mount.v1",
-        "rumi.resource.workspace.v1",
-        "rumi:ecosystem/rumi_workspace_mount_pack",
-        "rumi_workspace_mount_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_workspace_mount_pack",
       "functions": [
         {
           "contract_id": "tobkiri.action.workspace.mount.v1",
@@ -22081,6 +22069,23 @@
           ]
         }
       ],
+      "kind": "host_extension",
+      "legacy_ids": [
+        "rumi.action.workspace.mount.v1",
+        "rumi.resource.workspace.v1",
+        "rumi:ecosystem/rumi_workspace_mount_pack",
+        "rumi_workspace_mount_pack"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_workspace_mount_pack",
       "provided_contracts": [
         {
           "cardinality": "one",

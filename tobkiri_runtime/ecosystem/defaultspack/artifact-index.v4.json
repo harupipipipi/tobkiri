@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:a63896f2ca01dadb1837a8c4bae616af9d885322bdbb11ff30483746a718e123",
+  "artifact_set_digest": "sha256:1a5616517c7a78c21324cc5cc0547bbd3d3cb2f9f649c9c88f0cefd19b43f610",
   "artifacts": [
     {
-      "digest": "sha256:d80e6828102bdf07858a04770868fb0d1a1625f60c26cbc53539573245956290",
+      "digest": "sha256:71eb26c01f7159f2af4c9086733e80a05fd72aec68f6364510d0f2768f5f0350",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "asset"
     },
     {
-      "digest": "sha256:3cf8da7cf9adb86dce66a7c550c260e36bc7497b94dd4f6b71a0df014c19376f",
+      "digest": "sha256:c74bf3d2abad75eaa515e7382eb32544ee4351895267885bcd2a96bc13f3be9c",
       "path": "defaultspack/http_surface_presentation.py",
       "role": "runtime"
     },
@@ -27,12 +27,17 @@
       "role": "runtime"
     },
     {
+      "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
+      "path": "defaultspack/provider_status_presentation.py",
+      "role": "runtime"
+    },
+    {
       "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
       "path": "defaultspack/turn_progress_presentation.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:e7ca0f3b792e231dce85235e67a1f276282bdc5e60e1368677db62523900bb60",
+      "digest": "sha256:a42c8883a6e87e4e067c8526c8d1e7c28c1de7e2dd9869ccc61c4c4c138c7ea4",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -52,12 +57,12 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:ad8f056f5f1b96c3f841fe3573735ee528184ffd7bcdecc93bed073ce2bca3c1",
+      "digest": "sha256:44e0be421b5f8aacb668f838c82aa3b14f997dee5d6889d8b07654074f1da863",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
+      "digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
       "path": "runtime/application_presentation.py",
       "role": "runtime"
     },
@@ -665,8 +670,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:d23f67495de155894ab4197156f2c9b18e9b67e5c12c6308220432190f0fe4be"
+    "signed_digest": "sha256:6b53c4212c41d03afb55d366714fa4b508565b23b548d255fd0d19f247d7f8d3"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:1f6919f4a322ddc859f9b428b7c9bb9174575ccdd59f534754e4e046c3ba95a5"
+  "source_identity": "sha256:0f5ca68048e9fa44e13c1b6e71b4c13fdb5f5e718975b0371feb4d6644db9c0b"
 }

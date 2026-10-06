@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_sandbox_runtime_pack",
-  "source_identity": "sha256:9aa5d942f4dfdd590c6a5df78fc7282af28f569758adb4e325b97191c41c5f48",
+  "source_identity": "sha256:0518afa6ed3cf1cb5d6cce27e78df5fdce92da2f2066a588e2c71be3f7dc2deb",
   "variants": [
     {
       "variant_id": "tobkiri.managed-desktops.read.python",
       "function_id": "tobkiri.managed-desktops.read",
       "implementation_path": "runtime/managed_desktops.py",
-      "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+      "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -151,6 +151,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:465e5ca0c41c5a69a4e8476a704e3b9c96536d8d81ca27fdb59b26d298752db2",
-  "catalog_digest": "sha256:8e6985b7343094a1b6d5e8e857ba3079922aa71cb2255d777c5a8f3b27020eaf"
+  "materialization_catalog_digest": "sha256:0a0c0831511da2037fd9a357e91fed7133db7b7f1d9426199196c00fd3be151f",
+  "catalog_digest": "sha256:b0e7d9d51c61229a345b5b8470fcea457dddbe29a5ec88a0c0fe16193d9fc0a5"
 }

@@ -5,7 +5,7 @@ import { ConversationSpotlight } from '../src/components/ConversationSpotlight';
 import { SharedSearchTemplate } from '../src/features/search/SharedSearchTemplate';
 import { useSpotlightShortcut } from '../src/features/search/useSpotlightShortcut';
 import { useModelCatalogSearch } from '../src/features/search/useModelCatalogSearch';
-import { parseSearchQuery } from '../src/features/search/searchQuery';
+import { createSearchQueryState, parseConfirmedSearchQuery } from '../src/features/search/searchQueryState';
 import { requestModelProperties } from '../src/features/search/modelPropertiesNavigation';
 import { SpotlightShortcutRecorder } from '../src/renderers/SpotlightShortcutRecorder';
 import { RightSidebar } from '../src/components/RightSidebar';
@@ -38,19 +38,19 @@ const catalog: SidebarItem[] = [
 ];
 function Fixture() {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [queryState, setQueryState] = useState(() => createSearchQueryState());
   const [filter, setFilter] = useState<'all'>('all');
   const [other, setOther] = useState(false);
   const [selection, setSelection] = useState('');
   const [properties, setProperties] = useState('');
-  const [presetQuery, setPresetQuery] = useState('');
+  const [presetQuery, setPresetQuery] = useState(() => createSearchQueryState());
   const [sidebarTarget, setSidebarTarget] = useState('');
   const [targetTick, setTargetTick] = useState(0);
   const [toggleCount, setToggleCount] = useState(0);
   const [shortcut, setShortcut] = useState('Ctrl+K');
   const [changes, setChanges] = useState('');
   const [composerKeys, setComposerKeys] = useState(0);
-  const parsed = parseSearchQuery(query);
+  const parsed = parseConfirmedSearchQuery(queryState);
   const models = useModelCatalogSearch({ text: parsed.text, providerIds: parsed.providerIds,
     enabled: open && !parsed.conflict && parsed.kinds.includes('model'), searchModels: fakeSearch });
   const allowTextInput = new URLSearchParams(window.location.search).get('allowTextInput') !== 'false';
@@ -80,14 +80,15 @@ function Fixture() {
     <output data-testid="toggle-count">{toggleCount}</output>
     <output data-testid="selection">{selection}</output><output data-testid="properties">{properties}</output>
     <output data-testid="active-model">unchanged-model</output>
+    <output data-testid="query-state">{JSON.stringify(queryState)}</output>
     <output data-testid="model-count">{models.models.length}</output><output data-testid="complete">{String(models.complete)}</output>
-    <SharedSearchTemplate query={presetQuery} onQueryChange={setPresetQuery} preset={{ kinds: ['model'], providerIds: ['openrouter'] }} inputLabel="Preset search"
+    <SharedSearchTemplate queryState={presetQuery} onQueryStateChange={setPresetQuery} preset={{ kinds: ['model'], providerIds: ['openrouter'] }} inputLabel="Preset search"
       items={[{ key:'preset', kind:'model', title:'Preset Model', value:'preset' }]} onSelect={() => setSelection('preset')} />
-    <ConversationSpotlight isOpen={open} query={query} filter={filter} results={results} locale="ja" loading={models.loading} error={models.error} onRetry={models.retry}
-      shortcutLabel="Ctrl+K / Cmd+K" onQueryChange={setQuery} onFilterChange={() => setFilter('all')} onClose={() => {setOpen(false);setQuery('');}}
+    <ConversationSpotlight isOpen={open} queryState={queryState} filter={filter} results={results} locale="ja" loading={models.loading} error={models.error} onRetry={models.retry}
+      shortcutLabel="Ctrl+K / Cmd+K" onQueryStateChange={setQueryState} onFilterChange={() => setFilter('all')} onClose={() => {setOpen(false);setQueryState(createSearchQueryState());}}
       onOpenResult={result => { if (!result) return; if(result.kind === 'model') {
         setProperties(JSON.stringify(requestModelProperties(result.model, false)));
-      } else { setSelection(`${result.kind}:${result.id}`); if (result.kind === 'tool' || result.kind === 'widget') { setSidebarTarget(`${result.id}:${targetTick + 1}`); setTargetTick(targetTick + 1); } } setOpen(false); setQuery(''); }} />
+      } else { setSelection(`${result.kind}:${result.id}`); if (result.kind === 'tool' || result.kind === 'widget') { setSidebarTarget(`${result.id}:${targetTick + 1}`); setTargetTick(targetTick + 1); } } setOpen(false); setQueryState(createSearchQueryState()); }} />
   </>;
 }
 (window as any).fixtureCalls = calls;

@@ -43,6 +43,7 @@ import { ConversationTagFilter } from './history/ConversationTagFilter';
 import { HistoryNavigation } from './history/HistoryNavigation';
 import { ModalFoundation } from './ModalFoundation';
 import { LayerPortal } from '../ui/layers/LayerPortal';
+import { layerZ } from '../ui/layers/layerTokens';
 import { ConversationAttentionIndicator } from './conversation/ConversationAttentionIndicator';
 import { ConversationGlyph } from './conversation/ConversationGlyph';
 import { WarmActionIcon } from './WarmActionIcon';
@@ -2510,7 +2511,8 @@ export function HistoryBoard({
         </div>
       </div>
 
-      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.3' } } }) }}>
+      {typeof document !== "undefined" && <LayerPortal layer="globalOverlay">
+      <DragOverlay zIndex={layerZ.globalOverlay} style={{ pointerEvents: "none" }} dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.3' } } }) }}>
         {activeColumnDrag ? (
           <div className="w-[260px] h-10 flex items-center px-4 border border-zinc-500/50 bg-zinc-900 rounded-lg shadow-2xl">
             <Folder size={16} className="text-zinc-400 mr-2" />
@@ -2525,6 +2527,7 @@ export function HistoryBoard({
           </div>
         ) : null}
       </DragOverlay>
+      </LayerPortal>}
     </DndContext>
   );
 }

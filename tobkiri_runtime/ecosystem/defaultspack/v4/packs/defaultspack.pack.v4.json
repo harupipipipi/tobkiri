@@ -6,7 +6,7 @@
       "path": "defaultspack/frontend_contract_map.v4.json"
     },
     {
-      "digest": "sha256:3cf8da7cf9adb86dce66a7c550c260e36bc7497b94dd4f6b71a0df014c19376f",
+      "digest": "sha256:c74bf3d2abad75eaa515e7382eb32544ee4351895267885bcd2a96bc13f3be9c",
       "kind": "executable",
       "path": "defaultspack/http_surface_presentation.py"
     },
@@ -21,12 +21,17 @@
       "path": "defaultspack/managed_desktop_presentation.py"
     },
     {
+      "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
+      "kind": "executable",
+      "path": "defaultspack/provider_status_presentation.py"
+    },
+    {
       "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
       "kind": "executable",
       "path": "defaultspack/turn_progress_presentation.py"
     },
     {
-      "digest": "sha256:96eb9cfebe0b30b085cc38cec4c61b7602b8b81039f9bede38c5b2568560722f",
+      "digest": "sha256:ac8d581840bf82e23636d6265772884c78ad290075267e3cdc4e957929fd1c95",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -46,7 +51,7 @@
       "path": "host_contract_contributions.v1.json"
     },
     {
-      "digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
+      "digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
       "kind": "executable",
       "path": "runtime/application_presentation.py"
     },
@@ -678,7 +683,7 @@
     {
       "contract_revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
       "id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
+      "implementation_digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
       "isolation": "pack_vm",
       "operations": [
         "defaultspack.presentation.read"
@@ -707,8 +712,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:ad8f056f5f1b96c3f841fe3573735ee528184ffd7bcdecc93bed073ce2bca3c1",
-    "artifact_set_digest": "sha256:322d3ea73432ce04ebca4b44ac499d81356c903de28e6d2926d46fe37bab1d34",
+    "source_identity": "sha256:44e0be421b5f8aacb668f838c82aa3b14f997dee5d6889d8b07654074f1da863",
+    "artifact_set_digest": "sha256:4a3492354f961a461c1a1eab6c835c73186d0b9242812a3627f97c0f2aacf3c2",
     "contract_catalog_digest": "sha256:0c7d8e66aa92d41f71b4102a1a175cf951f9dde12f83d944860840abec9c5e40"
   },
   "migration": {
@@ -744,7 +749,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:a63896f2ca01dadb1837a8c4bae616af9d885322bdbb11ff30483746a718e123",
+    "artifact_digest": "sha256:1a5616517c7a78c21324cc5cc0547bbd3d3cb2f9f649c9c88f0cefd19b43f610",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -755,15 +760,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/pack.v4.json",
-    "source_digest": "sha256:ad8f056f5f1b96c3f841fe3573735ee528184ffd7bcdecc93bed073ce2bca3c1",
+    "source_digest": "sha256:44e0be421b5f8aacb668f838c82aa3b14f997dee5d6889d8b07654074f1da863",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:65f56f0d7730eec8ca0592098686451fca890064fffb8b3e9107c221d7044378",
+    "content_root_digest": "sha256:241df768f204fca89130fb194f0b29c06c937e56b0891be3d904f67a124080d1",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:5313ab616b6e58bc046669517e4b7741f8c8c7ea430bffeabbc14b03573b6481",
+    "input_inventory_digest": "sha256:e7470c2ccaf50e1accb09b6e150b6585d0a6049fd7f84f8c28b6f30060eb3a18",
     "normative": true,
     "evidence": [
       {
@@ -774,7 +779,7 @@
       {
         "path": "ecosystem/defaultspack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:ad8f056f5f1b96c3f841fe3573735ee528184ffd7bcdecc93bed073ce2bca3c1"
+        "digest": "sha256:44e0be421b5f8aacb668f838c82aa3b14f997dee5d6889d8b07654074f1da863"
       }
     ]
   },

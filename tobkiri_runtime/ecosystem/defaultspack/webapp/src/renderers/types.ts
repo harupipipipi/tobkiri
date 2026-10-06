@@ -242,6 +242,8 @@ export type ComposerRendererProps = {
   entityReferences?: ComposerEntityReference[];
   selectedToolIds?: string[];
   actionApprovalMode?: ActionApprovalMode;
+  showActionApprovalControl?: boolean;
+  showToolSelectionControl?: boolean;
   toolSelectionMode?: ToolSelectionMode;
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
@@ -319,6 +321,7 @@ export type ToolPreviewPanelRendererProps = {
 };
 
 export type RightSidebarRendererProps = {
+  runtimeProfileId?: string;
   widgetContext?: WidgetConversationContext;
   items: SidebarItem[];
   activeItemId?: string | null;

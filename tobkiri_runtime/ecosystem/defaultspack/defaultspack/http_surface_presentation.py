@@ -26,6 +26,8 @@ from core_runtime.pack_api_server import (
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
+from .provider_status_presentation import present_provider_connection_status
+
 from .kanban_presentation import (
     KANBAN_TARGETS, normalize_kanban_request, present_kanban_result,
 )
@@ -720,6 +722,19 @@ class DefaultspackHTTPPresentation:
     ) -> Mapping[str, object]:
         """Attach Defaultspack UI contributions to the committed catalog result."""
 
+        if (
+            binding.presentation == "broker_result"
+            and getattr(binding, "method", None) == "GET"
+            and getattr(binding, "path", None) == "/api/connections/status"
+            and len(binding.targets) == 1
+        ):
+            target = binding.targets[0]
+            identity = (
+                target.contribution_id, target.contract_id, target.operation_id,
+                target.provider_id, target.function_id,
+            )
+            if identity == _CONNECTION_STATUS_TARGET:
+                return present_provider_connection_status(result)
         if binding.presentation == "model_profile_list":
             return present_model_profiles(result)
         if binding.presentation == "model_profile_saved":

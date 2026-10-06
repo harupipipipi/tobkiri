@@ -1,3 +1,6 @@
+import { ComposerRegisteredModelDropdown as ModelDropdown } from "./ComposerRegisteredModelDropdown";
+export { ComposerRegisteredModelDropdown as ModelDropdown } from "./ComposerRegisteredModelDropdown";
+import { mentionConfirmationKey } from "../features/search/searchQueryState";
 import { isLocalTaskPetCommand, isTaskPetCommandInput } from "../lib/taskPetCommand";
 import {
   Activity,
@@ -90,13 +93,9 @@ import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicke
 import { ErrorCopyAction, ErrorNotice } from "../components/ErrorNotice";
 import { RuntimeCapabilityBanner } from "../components/RuntimeCapabilityBanner";
 import { ViewportPopover } from "../ui/layers/ViewportPopover";
-import { modelProfileConnectionId, savedModelProfileForOption } from "../features/models/modelSelectionIdentity";
-import type { ModelSelectOption } from "../features/models/modelSelect";
 import { StructuredComposerPanel } from "../components/StructuredComposerPanel";
 import { WarmActionIcon } from "../components/WarmActionIcon";
 import {
-  ModelSearchPicker,
-  modelSearchItemToModelSelectOption,
   DEFAULT_MODEL_SELECTOR_SCHEMA,
   filterModelProfilesBySelector,
   modelSelectorSchemaForSurface,
@@ -167,10 +166,14 @@ export function isDuplicateComposerSubmission(
 }
 
 export function isComposerImeEvent(event: {
+  key?: string;
   keyCode?: number;
-  nativeEvent?: { isComposing?: boolean };
-}): boolean {
-  return event.keyCode === 229 || event.nativeEvent?.isComposing === true;
+  nativeEvent?: { isComposing?: boolean; keyCode?: number };
+}, composition: { active?: boolean; endedAt?: number; now?: number } = {}): boolean {
+  const sinceEnd = (composition.now ?? Date.now()) - (composition.endedAt ?? -Infinity);
+  return composition.active === true || event.keyCode === 229
+    || event.nativeEvent?.keyCode === 229 || event.nativeEvent?.isComposing === true
+    || (event.key === "Enter" && sinceEnd >= 0 && sinceEnd < 50);
 }
 
 const THINKING_LABELS: Record<string, string> = {
@@ -1736,55 +1739,6 @@ export function modelPickerPage(
   return { visible: values.slice(0, limit), total: values.length };
 }
 
-export function ModelDropdown({ profiles, selectedProfile, isGenerating, placement = "above", onSelect, onClose,
-  selectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA, onOpenModelManager, anchorRef,
-}: {
-  profiles: ModelProfile[]; selectedProfile: ModelProfile | null; isGenerating: boolean;
-  placement?: "above" | "below"; onSelect: (profile: ModelProfile) => void; onClose: () => void;
-  selectorSchema?: typeof DEFAULT_MODEL_SELECTOR_SCHEMA; onOpenModelManager?: () => void;
-  anchorRef?: RefObject<HTMLElement | null>;
-}) {
-  const [search, setSearch] = useState("");
-  const [unregisteredSelection, setUnregisteredSelection] = useState(false);
-  const selectedOptionRef = useRef<ModelSelectOption | null>(null);
-  const fallbackAnchorRef = useRef<HTMLSpanElement | null>(null);
-  const resolvedSelectorSchema = modelSelectorSchemaForSurface(selectorSchema, "composer");
-  const options = profiles.map((profile) => ({
-    ...modelSearchItemToModelSelectOption({
-      ...profile, configured: profile.route_configured || profileIsConfigured(profile),
-      requires_api_key: profileNeedsApiKey(profile),
-    }),
-    registered_profile_id: profile.profile_id,
-    connection_id: modelProfileConnectionId(profile),
-    catalog_provider_id: typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined,
-  }));
-  return <>
-    {!anchorRef && <span ref={fallbackAnchorRef} aria-hidden="true" />}
-    <ViewportPopover anchorRef={anchorRef ?? fallbackAnchorRef} onClose={onClose}
-      label="モデル検索を閉じる" closeOnEscape={false} preferredPlacement={placement}
-      desiredWidth={resolvedSelectorSchema.layout.popover_width_px}
-      maxHeight={resolvedSelectorSchema.layout.popover_max_height_px}
-      className="rumi-popover">
-      <ModelSearchPicker value={selectedProfile?.profile_id ?? ""} options={options}
-        query={search} onQueryChange={(query) => { setSearch(query); setUnregisteredSelection(false); }}
-        preset={{ kinds: ["model"] }} open showTrigger={false} surface="composer"
-        selectorSchema={selectorSchema} disabled={isGenerating}
-        onOpenChange={(open) => { if (!open) onClose(); }}
-        onSelectedOptionChange={(option) => { selectedOptionRef.current = option; }}
-        onChange={() => {
-          if (isGenerating) return false;
-          const profile = savedModelProfileForOption(profiles, selectedOptionRef.current);
-          if (!profile) { setUnregisteredSelection(true); return false; }
-          onSelect(profile);
-          onClose();
-        }} />
-      {unregisteredSelection && <div role="status" className="border-t border-white/10 px-5 py-3 text-xs text-zinc-400">
-        このモデルは未登録です。設定で使用するAPIとモデルを登録してください。
-        {onOpenModelManager && <button type="button" onClick={() => { onClose(); onOpenModelManager(); }} className="ml-2 text-sky-300">モデル設定を開く</button>}
-      </div>}
-    </ViewportPopover>
-  </>;
-}
 
 function ModeSelector({
   mode,
@@ -2408,10 +2362,12 @@ export function atMentionMenuKeyAction(
   shiftKey: boolean,
   currentIndex: number,
   candidateCount: number,
+  composition: { isComposing?: boolean; keyCode?: number; repeat?: boolean } = {},
 ): AtMentionMenuKeyAction {
+  if (composition.isComposing || composition.keyCode === 229) return { handled: false };
   if (key === "Escape") return { handled: true, type: "close" };
   if (candidateCount <= 0) return { handled: false };
-  if ((key === "Tab" && !shiftKey) || (key === "Enter" && !shiftKey)) {
+  if (!shiftKey && mentionConfirmationKey({ key, shiftKey, ...composition })) {
     return { handled: true, type: "select", index: Math.min(Math.max(currentIndex, 0), candidateCount - 1) };
   }
   if (key === "ArrowDown" || key === "ArrowUp") {
@@ -2590,6 +2546,8 @@ export function ComposerRenderer({
   entityReferences = [],
   selectedToolIds = [],
   actionApprovalMode = "ask",
+  showActionApprovalControl = true,
+  showToolSelectionControl = false,
   toolSelectionMode = "auto",
   toolSelectionReview = null,
   keyboardButtonNavigation = true,
@@ -2597,7 +2555,6 @@ export function ComposerRenderer({
   steerBusy = false,
   steerControlsReady = true,
   pendingRecovery,
-  steerQueuedCount = 0,
   steerPreviewItems = [],
   suppressPopovers = false,
   onOpenModelManager,
@@ -2683,6 +2640,8 @@ export function ComposerRenderer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imeActiveRef = useRef(false);
+  const imeEndedAtRef = useRef(-Infinity);
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
   const voiceGenerationRef = useRef(new ComposerVoiceOperation());
@@ -2856,7 +2815,6 @@ export function ComposerRenderer({
     item.visible !== false && String(item.prompt ?? "").trim()
   ));
   const steerError = steerStatus?.kind === "error" ? steerStatus.message : null;
-  const steerPendingStatus = steerStatus?.kind === "pending" ? steerStatus.message : null;
   const steerSuccessStatus = steerStatus?.kind === "success" ? steerStatus.message : null;
   const currentModeMeta = MODE_META[mode];
   const ModeIcon = currentModeMeta.icon;
@@ -3327,15 +3285,14 @@ export function ComposerRenderer({
   const handleAtMentionSelect = useCallback(
     (candidate: ComposerAtMentionCandidate) => {
       const textarea = textareaRef.current;
-      if (!textarea) return;
+      if (!textarea || imeActiveRef.current) return;
 
-      const cursorPos = atMentionStart === null
-        ? textarea.selectionStart
-        : atMentionStart + atMentionQuery.length + 1;
+      const currentInput = textarea.value;
+      const cursorPos = textarea.selectionStart;
       const exclude = atMentionQuery.startsWith("-")
         && (candidate.kind === "tool" || candidate.kind === "service");
       const label = `${exclude ? "-" : ""}${candidate.label}`;
-      const next = insertAtMentionText(input, cursorPos, label, atMentionKnownValues, textarea.selectionEnd);
+      const next = insertAtMentionText(currentInput, cursorPos, label, atMentionKnownValues, textarea.selectionEnd);
       onDropWidget?.(composerAtMentionCandidateWidget(candidate, exclude));
 	      onInputChange(next.value);
 	      if (candidate.kind !== "service" && !exclude) {
@@ -3722,7 +3679,11 @@ export function ComposerRenderer({
         return;
       }
 
-      if (isComposerImeEvent(event)) return;
+      if (isComposerImeEvent(event, { active: imeActiveRef.current, endedAt: imeEndedAtRef.current })) return;
+      if (event.key === "Enter" && !event.shiftKey && event.repeat) {
+        event.preventDefault();
+        return;
+      }
 
       const currentKeyInput = textareaRef.current?.value ?? input;
       if (event.key === "Backspace" || event.key === "Delete") {
@@ -3798,6 +3759,7 @@ export function ComposerRenderer({
           event.shiftKey,
           selectedAtMentionIndex,
           atMentionCandidates.length,
+          { isComposing: event.nativeEvent.isComposing, keyCode: event.nativeEvent.keyCode, repeat: event.repeat },
         );
         if (action.handled) {
           event.preventDefault();
@@ -4106,6 +4068,7 @@ export function ComposerRenderer({
       slot: "leading",
       homeSlot: "toolbar-leading",
       order: 50,
+      visible: showActionApprovalControl,
       width: { basis: "auto", min: "4rem", max: "8.5rem", shrink: 1 },
       className: "rumi-composer-dock-control",
       render: () => (
@@ -4125,7 +4088,7 @@ export function ComposerRenderer({
       slot: "leading",
       homeSlot: "toolbar-leading",
       order: 52,
-      visible: Boolean(onToolSelectionModeChange),
+      visible: showToolSelectionControl && Boolean(onToolSelectionModeChange),
       width: { basis: "auto", min: "4rem", max: "8.5rem", shrink: 1 },
       className: "rumi-composer-dock-control",
       render: () => (
@@ -4751,17 +4714,6 @@ export function ComposerRenderer({
             </div>
           )}
 
-          {steerPendingStatus && (
-            <div
-              aria-live="polite"
-              className="mx-2 mt-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[10px] leading-4 text-zinc-400"
-              data-steer-pending=""
-              role="status"
-            >
-              {steerPendingStatus}
-            </div>
-          )}
-
           {steerError && (
             <ErrorNotice
               className="mx-2 mt-1 rounded-xl px-2 py-1.5 text-[10px] leading-4"
@@ -4925,6 +4877,8 @@ export function ComposerRenderer({
                           event.stopPropagation();
                         }
                       }}
+                      onCompositionStart={() => { imeActiveRef.current = true; }}
+                      onCompositionEnd={() => { imeActiveRef.current = false; imeEndedAtRef.current = Date.now(); }}
                       onKeyDown={handleKeyDown}
                       onCopy={handleCopy}
                       onPaste={handlePaste}
@@ -5032,7 +4986,9 @@ export function ComposerRenderer({
                         event.stopPropagation();
                       }
                     }}
-                    onKeyDown={handleKeyDown}
+                    onCompositionStart={() => { imeActiveRef.current = true; }}
+                      onCompositionEnd={() => { imeActiveRef.current = false; imeEndedAtRef.current = Date.now(); }}
+                      onKeyDown={handleKeyDown}
                     onCopy={handleCopy}
                     onPaste={handlePaste}
                   />
@@ -5050,24 +5006,6 @@ export function ComposerRenderer({
             <div className="flex flex-wrap gap-2 px-5 pt-1 text-[10px] text-zinc-500">
               {effectiveComposerHelp && <span>{effectiveComposerHelp}</span>}
               {!isNewConversation && templateComposerInfoItems.map((item) => <span key={item}>{item}</span>)}
-            </div>
-          )}
-
-          {isSteerMode && (
-            <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-1.5 text-[10px] leading-4 text-zinc-500 max-[640px]:px-3">
-              <CornerDownRight size={12} className="flex-shrink-0" />
-              <span className="min-w-[10rem] flex-1 break-words line-clamp-2">
-                {effectiveComposerHelp}
-              </span>
-              {steerBusy && <Loader2 size={11} className="flex-shrink-0 animate-spin" />}
-              {steerQueuedCount > 0 && (
-                <span className="flex-shrink-0 rounded-full border border-zinc-700 px-1.5 py-0.5 text-[9px] leading-none">
-                  {steerQueuedCount}件待機
-                </span>
-              )}
-              {steerSuccessStatus && (
-                <span className="min-w-[8rem] flex-1 break-words text-zinc-500">{steerSuccessStatus}</span>
-              )}
             </div>
           )}
 

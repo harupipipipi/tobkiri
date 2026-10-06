@@ -21,6 +21,7 @@ type DesktopCreateDialogProps = {
   providers: RuntimeProviderStatus[];
   selectedProviderId?: string | null;
   loading?: boolean;
+  createSupported?: boolean;
   error?: string | null;
   onClose: () => void;
   onCreate: (request: CreateDesktopRequest) => Promise<void> | void;
@@ -88,6 +89,7 @@ export function DesktopCreateDialog({
   providers,
   selectedProviderId,
   loading = false,
+  createSupported = true,
   error,
   onClose,
   onCreate,
@@ -135,9 +137,9 @@ export function DesktopCreateDialog({
       null
     );
   }, [providerId, providers, selectedProviderId]);
-  const selectedProviderReady = selectedProvider
+  const selectedProviderReady = createSupported && (selectedProvider
     ? providerIsDesktopReady(selectedProvider)
-    : providers.length === 0;
+    : providers.length === 0);
   const visibleTemplates = useMemo(() => {
     if (!selectedProvider) return templates;
     return templates.filter((template) =>

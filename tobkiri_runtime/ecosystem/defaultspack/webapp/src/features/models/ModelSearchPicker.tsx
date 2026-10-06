@@ -5,7 +5,9 @@ import { ErrorNotice } from "../../components/ErrorNotice";
 import type { ModelSearchItem } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { SharedSearchTemplate } from "../search/SharedSearchTemplate";
-import { parseSearchQuery, type SearchPreset } from "../search/searchQuery";
+import { type SearchPreset } from "../search/searchQuery";
+import { parseConfirmedSearchQuery } from "../search/searchQueryState";
+import { useSearchQueryState } from "../search/useSearchQueryState";
 import { useModelCatalogSearch } from "../search/useModelCatalogSearch";
 import {
   buildVisibleModelOptions, filterModelOptionsByProvider, findSelectedModelOption,
@@ -44,7 +46,8 @@ export function ModelSearchPicker({
   const [internalOpen, setInternalOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const open = controlledOpen ?? internalOpen;
-  const parsed = parseSearchQuery(query, preset);
+  const [queryState, changeQueryState] = useSearchQueryState(query, onQueryChange);
+  const parsed = parseConfirmedSearchQuery(queryState, preset);
   const catalogue = useModelCatalogSearch({
     text: parsed.text, providerIds: parsed.providerIds,
     connectionId: parsed.connectionId,
@@ -85,7 +88,7 @@ export function ModelSearchPicker({
   const contents = <>
     {searchError && <ErrorNotice message={searchError} severity="warning" copyLabel="モデル検索エラーをコピー" />}
     <SharedSearchTemplate
-      query={query} onQueryChange={onQueryChange} preset={preset}
+      queryState={queryState} onQueryStateChange={changeQueryState} preset={preset}
       inputLabel="モデルを検索" placeholder={placeholder} autoFocus
       items={visibleOptions.map((option) => {
         const display = modelSelectDisplay(option);
@@ -94,7 +97,7 @@ export function ModelSearchPicker({
       })}
       onSelect={(item) => pick(item.value)} onEscape={() => setOpen(false)}
       loading={visibleOptions.length === 0 && (loading || catalogue.loading)}
-      onRetry={() => { catalogue.retry(); onSearch?.(query); }} emptyMessage={searchError ? "表示できるモデルがありません。再試行してください。" : emptyText}
+      onRetry={() => { catalogue.retry(); onSearch?.(parsed.text); }} emptyMessage={searchError ? "表示できるモデルがありません。再試行してください。" : emptyText}
       trailingControls={searchError
         ? <button type="button" onClick={catalogue.retry} className="text-xs text-zinc-400">再試行</button> : undefined}
       renderItem={(item) => <>

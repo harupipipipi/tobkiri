@@ -198,7 +198,7 @@ test("right sidebar rail avoids transform and replayed entrance animations", () 
   assert.doesNotMatch(html, /transition-\[background-color,color,box-shadow\]/);
 });
 
-test("right sidebar keeps starred tools accessible name when count is nonzero", () => {
+test("right sidebar removes starred tools but keeps customization recoverable", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: [
@@ -220,8 +220,8 @@ test("right sidebar keeps starred tools accessible name when count is nonzero", 
     }),
   );
 
-  assert.match(html, /aria-label="Starred tools \(1\)"/);
-  assert.match(html, />1</);
+  assert.doesNotMatch(html, /Starred tools/);
+  assert.match(html, /aria-label="カスタマイズ"/);
 });
 
 test("right sidebar does not auto-open employees on initial render", () => {
@@ -528,4 +528,18 @@ test("conversation scope notifies its draft owner only after persistence succeed
   } finally {
     toolResources.updateConversationToolPreferences = original;
   }
+});
+
+
+test("legacy hidden tools do not reappear as pinned rail buttons", () => {
+  const html = renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "secret", label: "Hidden Tool", category: "tool" }],
+    settingsValues: {
+      sidebar: { pinned_item_ids: ["secret"], ui_placements: [] },
+      tools: { hidden_tool_ids: ["secret"] },
+    },
+    settingsSections: [], selectedToolIds: [], onSettingChange: noop, onOpenSettings: noop,
+  }));
+  assert.doesNotMatch(html, /title="Hidden Tool"/);
+  assert.match(html, /aria-label="カスタマイズ"/);
 });

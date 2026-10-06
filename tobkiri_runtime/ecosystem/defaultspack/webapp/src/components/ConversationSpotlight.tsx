@@ -5,24 +5,25 @@ import type { SpotlightResult } from "../lib/spotlightNavigation";
 import { formatRelativeTime } from "../lib/chat";
 import { t, type LocaleSetting } from "../lib/i18n";
 import { SharedSearchTemplate } from "../features/search/SharedSearchTemplate";
-import { parseSearchQuery, SEARCH_KIND_LABELS } from "../features/search/searchQuery";
+import { SEARCH_KIND_LABELS } from "../features/search/searchQuery";
+import { parseConfirmedSearchQuery, type SearchQueryState } from "../features/search/searchQueryState";
 import { ModalFoundation } from "./ModalFoundation";
 
 /** Global wrapper around the shared search input/filter/result template. */
 export function ConversationSpotlight({
-  isOpen, query, filter, results, loading, error, onRetry, modelsComplete, locale, shortcutLabel,
-  onQueryChange, onFilterChange, onClose, onOpenResult,
+  isOpen, queryState, filter, results, loading, error, onRetry, modelsComplete, locale, shortcutLabel,
+  onQueryStateChange, onFilterChange, onClose, onOpenResult,
 }: {
-  isOpen: boolean; query: string; filter: SpotlightFilter; results: SpotlightResult[];
+  isOpen: boolean; queryState: SearchQueryState; filter: SpotlightFilter; results: SpotlightResult[];
   loading: boolean; error?: string | null; onRetry?: () => void; modelsComplete?: boolean;
   locale: LocaleSetting; shortcutLabel?: string;
-  onQueryChange: (value: string) => void; onFilterChange: (value: SpotlightFilter) => void;
+  onQueryStateChange: (state: SearchQueryState) => void; onFilterChange: (value: SpotlightFilter) => void;
   onClose: () => void;
   onOpenResult: (result: SpotlightResult | undefined) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   if (!isOpen) return null;
-  const parsed = parseSearchQuery(query);
+  const parsed = parseConfirmedSearchQuery(queryState);
   const chatFiltersApply = parsed.kinds.includes("chat") && parsed.providerIds.length === 0;
   return <ModalFoundation
     title={t(locale, "spotlight.placeholder")} onClose={onClose} initialFocusRef={inputRef} deferEscapeToContent
@@ -30,7 +31,7 @@ export function ConversationSpotlight({
     panelClassName="rumi-spotlight-panel w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-neutral-800 shadow-2xl outline-none"
   >
     <SharedSearchTemplate
-      query={query} onQueryChange={onQueryChange} inputRef={inputRef}
+      queryState={queryState} onQueryStateChange={onQueryStateChange} inputRef={inputRef}
       inputLabel={t(locale, "spotlight.placeholder")} placeholder="検索"
       items={results.map((result) => ({ key: `${result.kind}:${result.id}`, kind: result.kind, title: result.title, value: result }))}
       onSelect={(item) => onOpenResult(item.value)} onEscape={onClose} loading={loading} error={error} onRetry={onRetry}

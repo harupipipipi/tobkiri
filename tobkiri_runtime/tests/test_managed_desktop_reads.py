@@ -419,7 +419,8 @@ def test_metadata_never_runs_provider_health_or_reads_credentials(
         item["diagnostics"]["probe_status"] == "not_run" for item in result["providers"]
     )
     assert all(
-        "ready" not in item and "installed" not in item for item in result["providers"]
+        item["ready"] is False and "installed" not in item
+        for item in result["providers"]
     )
     remote = next(
         item
@@ -427,7 +428,41 @@ def test_metadata_never_runs_provider_health_or_reads_credentials(
         if item["provider_id"] == "cloudflare_sandbox_bridge"
     )
     assert "sandbox.desktop" not in remote["capabilities"]
-    assert "credential and network capability" in remote["message"]
+    assert remote["message"] == "この接続先はデスクトップに対応していません。"
+    assert all(value is False for value in result["operation_support"].values())
+    assert result["diagnostics"]["probe_status"] == "not_run"
     doctor = owner.read_runtime_metadata("doctor")
     assert doctor["status"] == "unavailable"
     assert doctor["diagnostics"]["probe_status"] == "not_run"
+    assert doctor["operation_support"] == result["operation_support"]
+
+
+def test_macos_registration_does_not_claim_lima_guest_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mac support is an implementation fact, separate from guest health."""
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    result = owner.read_runtime_metadata("providers")
+    assert result["selected_provider_id"] == "mac_lima"
+    providers = {item["provider_id"]: item for item in result["providers"]}
+    assert providers["mac_lima"]["registered"] is True
+    assert providers["mac_lima"]["host_platform_supported"] is True
+    assert providers["mac_lima"]["ready"] is False
+    assert providers["linux_native"]["host_platform_supported"] is False
+    assert providers["windows_wsl"]["host_platform_supported"] is False
+    assert set(result["operation_support"]) == {
+        "create",
+        "setup",
+        "lifecycle",
+        "delete",
+        "access",
+        "control",
+        "frame",
+        "doctor",
+    }
+    doctor = owner.read_runtime_metadata("doctor")
+    assert "MacではLimaを使う実装があります。" in doctor["message"]
+    assert "ゲストの診断・作成・操作が未接続" in doctor["message"]
+    assert "本体の実行環境とは別" in doctor["message"]

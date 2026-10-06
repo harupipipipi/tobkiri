@@ -216,12 +216,15 @@ def read_runtime_metadata(kind: str) -> dict[str, Any]:
     providers = []
     for identifier, label, supported_platform, capabilities in definitions:
         remote = identifier == "cloudflare_sandbox_bridge"
+        platform_supported = supported_platform in {None, system}
         message = (
-            "Remote health checks require a separate credential and network capability. "
-            "This provider does not supply managed desktop capabilities."
+            "この接続先はデスクトップに対応していません。"
             if remote
-            else "Local CLI and guest health checks require a separate brokered diagnostic "
-            "capability. Installation and runtime readiness have not been checked."
+            else (
+                "このOSは対象外です。"
+                if not platform_supported
+                else "登録済みです。インストール状態とゲストの稼働は未確認です。"
+            )
         )
         providers.append(
             {
@@ -233,6 +236,9 @@ def read_runtime_metadata(kind: str) -> dict[str, Any]:
                     else "unavailable"
                 ),
                 "selected": identifier == default,
+                "registered": True,
+                "host_platform_supported": platform_supported,
+                "ready": False,
                 "platform": supported_platform or "cross-platform",
                 "capabilities": sorted(capabilities),
                 "diagnostics": {
@@ -248,6 +254,17 @@ def read_runtime_metadata(kind: str) -> dict[str, Any]:
         "default_provider_id": default,
         "runtime_version": None,
         "guest_protocol": 1,
+        "diagnostics": {"probe_status": "not_run"},
+        "operation_support": {
+            "create": False,
+            "setup": False,
+            "lifecycle": False,
+            "delete": False,
+            "access": False,
+            "control": False,
+            "frame": False,
+            "doctor": False,
+        },
     }
     if kind == "providers":
         return result
@@ -258,7 +275,15 @@ def read_runtime_metadata(kind: str) -> dict[str, Any]:
             "selected_provider_id": default,
             "missing": [],
             "diagnostics": {"probe_status": "not_run"},
-            "message": "Runtime readiness diagnostics require a separate brokered capability; no health probe has run.",
+            "operation_support": dict(result["operation_support"]),
+            "message": (
+                "MacではLimaを使う実装があります。"
+                if system == "darwin"
+                else "このOS向けのデスクトップ実装があります。"
+            )
+            + "現在のアプリでは、ゲストの診断・作成・操作が未接続です。"
+            "一覧は確認できます。対応する更新を待ってから再読み込みしてください。"
+            "Tobkiri本体の実行環境とは別の機能です。",
         }
     raise ValueError("managed runtime metadata operation is invalid")
 
