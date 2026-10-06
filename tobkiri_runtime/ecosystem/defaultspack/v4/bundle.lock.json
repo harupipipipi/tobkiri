@@ -24,7 +24,7 @@
     {
       "path": "packs/rumi-file-inspect.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:335b331f0d90b8a42eac6939c9d9313bd85b669bcf22d74b69b92810e7b27dc6"
+      "digest": "sha256:7e8eba23f6b85a3c4af7f8da4d49d0b1af616eaca9e06adf75ad742909f83207"
     },
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
@@ -599,7 +599,7 @@
     {
       "path": "packs/rumi_file_inspect_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:56bf685e08c3794cf37e5a7991d66c59c0d313c5cd1bc7f531f0befdf1464013"
+      "digest": "sha256:dd542d4a7cdd03b926bb47d4bfef02dff0d3e7e0263680700be510f9553f08db"
     },
     {
       "path": "packs/rumi_file_mutation_pack.executables.v4.json",

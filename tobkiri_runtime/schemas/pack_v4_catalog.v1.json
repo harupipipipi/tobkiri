@@ -9674,12 +9674,12 @@
             {
               "entrypoint_id": "file-inspect",
               "id": "rumi_file_inspect_pack.file-inspect",
-              "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d"
+              "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
             },
             {
               "entrypoint_id": "file-inspect-for-media",
               "id": "rumi_file_inspect_pack.file-inspect.for-media",
-              "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d"
+              "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
             }
           ],
           "owner": "rumi_file_inspect_pack",
@@ -9783,7 +9783,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+          "digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
           "kind": "executable",
           "path": "runtime/inspect.py"
         }
@@ -9808,7 +9808,25 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered"
+      "workspace_boundary": "host_brokered",
+      "functions": [
+        {
+          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "operation_ids": [
+            "rumi_file_inspect_pack.file-inspect"
+          ],
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
+        },
+        {
+          "function_id": "rumi_file_inspect_pack.file-inspect.media",
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "operation_ids": [
+            "rumi_file_inspect_pack.file-inspect.for-media"
+          ],
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",

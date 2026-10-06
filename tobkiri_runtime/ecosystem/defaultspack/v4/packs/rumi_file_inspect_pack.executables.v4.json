@@ -1,13 +1,118 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_file_inspect_pack",
-  "source_identity": "sha256:3d85524fcee864839c75c7e8357da43d171550b84198cddb077b3d58aa4249b1",
+  "source_identity": "sha256:66f73a6d6367bd9522d12c288894f6323383229a8b07b55f6a519b3d8b3a9a95",
   "variants": [
+    {
+      "variant_id": "rumi_file_inspect_pack.file-inspect.media.python",
+      "function_id": "rumi_file_inspect_pack.file-inspect.media",
+      "implementation_path": "runtime/inspect.py",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+          "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
+          "input_schema": {
+            "additionalProperties": true,
+            "properties": {
+              "_lifecycle": {
+                "type": "object"
+              },
+              "_workspace_binding": {
+                "type": "object"
+              },
+              "encoding": {
+                "type": "string"
+              },
+              "end_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_bytes": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "name": {
+                "enum": [
+                  "read",
+                  "stat",
+                  "list",
+                  "search"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "require_selected": {
+                "type": "boolean"
+              },
+              "start_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "profile_id",
+              "workspace_id",
+              "_workspace_binding"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
     {
       "variant_id": "rumi_file_inspect_pack.file-inspect.service.python",
       "function_id": "rumi_file_inspect_pack.file-inspect.service",
       "implementation_path": "runtime/inspect.py",
-      "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -105,100 +210,10 @@
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "contract_version": "1.0.0",
-          "revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
-          "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
-          "input_schema": {
-            "additionalProperties": true,
-            "properties": {
-              "_lifecycle": {
-                "type": "object"
-              },
-              "_workspace_binding": {
-                "type": "object"
-              },
-              "encoding": {
-                "type": "string"
-              },
-              "end_line": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "max_bytes": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "name": {
-                "enum": [
-                  "read",
-                  "stat",
-                  "list",
-                  "search"
-                ]
-              },
-              "path": {
-                "type": "string"
-              },
-              "pattern": {
-                "type": "string"
-              },
-              "profile_id": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "query": {
-                "type": "string"
-              },
-              "require_selected": {
-                "type": "boolean"
-              },
-              "start_line": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "workspace_id": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "profile_id",
-              "workspace_id",
-              "_workspace_binding"
-            ],
-            "type": "object"
-          },
-          "output_schema": {
-            "type": "object"
-          },
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
         }
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8e5c8a554791152db69bd5e267f69f25af0a64859046905fcf60919bf85afdd1",
-  "catalog_digest": "sha256:0176dc67c5219e569d39688ce248f6211fa581f5615d26f7cc4288a2912f8331"
+  "materialization_catalog_digest": "sha256:3750577260ce87760e90276ff6dee7fca4ff2cf657adaadd4f74a5841b7d7f0f",
+  "catalog_digest": "sha256:abd590e7d0d52e66c1ce92d6646e8784aa8e06432587a5c5ba845ee61cc6cc8c"
 }
