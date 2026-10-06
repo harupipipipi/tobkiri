@@ -45,9 +45,7 @@ def owner(tmp_path):
         )
         return client
 
-    invocation = SimpleNamespace(
-        assert_current=lambda: None, contract_client=contract_client
-    )
+    invocation = SimpleNamespace(assert_current=lambda: None, contract_client=contract_client)
     invoke = files._bind(SimpleNamespace(profile_id="test", user_data_root=tmp_path))
     return invoke, invocation, client, calls, root, store
 
@@ -59,20 +57,16 @@ def payload(tool="coding_file_read", **arguments):
 def test_real_owner_read_list_search(owner):
     invoke, invocation, _, calls, _, _ = owner
     assert (
-        json.loads(
-            invoke(payload(path="hello.txt", start_line=2), invocation)["result"]
-        )["content"]
+        json.loads(invoke(payload(path="hello.txt", start_line=2), invocation)["result"])["content"]
         == "two\n"
     )
     assert (
-        json.loads(invoke(payload("coding_file_list"), invocation)["result"])["items"][
-            0
-        ]["path"]
+        json.loads(invoke(payload("coding_file_list"), invocation)["result"])["items"][0]["path"]
         == "hello.txt"
     )
-    assert json.loads(
-        invoke(payload("coding_file_search", pattern="*.txt"), invocation)["result"]
-    )["matches"] == ["hello.txt"]
+    assert json.loads(invoke(payload("coding_file_search", pattern="*.txt"), invocation)["result"])[
+        "matches"
+    ] == ["hello.txt"]
     assert all(call[2]["profile_id"] == "test" for call in calls)
 
 
@@ -94,9 +88,7 @@ def test_client_claims_never_reach_owner(owner, extra):
     assert calls == []
 
 
-@pytest.mark.parametrize(
-    "path", ["../hello.txt", "/etc/passwd", ".env", "secrets/password"]
-)
+@pytest.mark.parametrize("path", ["../hello.txt", "/etc/passwd", ".env", "secrets/password"])
 def test_real_owner_denies_traversal_and_secrets(owner, path):
     invoke, invocation, _, _, _, _ = owner
     with pytest.raises(PermissionError):
@@ -122,9 +114,7 @@ def test_selection_switch_discards_result(owner, tmp_path):
         invoke(payload(path="hello.txt"), invocation)
 
 
-@pytest.mark.parametrize(
-    "tool", ["sandbox_file_read", "coding_file_write", "file_read"]
-)
+@pytest.mark.parametrize("tool", ["sandbox_file_read", "coding_file_write", "file_read"])
 def test_unowned_tools_never_reach_owner(owner, tool):
     invoke, invocation, _, calls, _, _ = owner
     with pytest.raises(ValueError):
