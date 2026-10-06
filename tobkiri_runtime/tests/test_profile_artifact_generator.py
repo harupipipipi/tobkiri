@@ -113,6 +113,21 @@ def test_saved_stop_caller_survives_profile_generation() -> None:
         "contract": ["tobkiri.action.turn.stop.v1"],
         "operation": ["rumi_turn_runtime_pack.turn-stop"],
     }
+    intent = json.loads(_paths(BUNDLE)["intent"].read_text(encoding="utf-8"))
+    identity_fields = (
+        "caller_function_id", "target_provider_id", "contract_id", "operation_id",
+    )
+    generated_stop_routes = sorted(
+        tuple(edge[field] for field in identity_fields)
+        for edge in profile["requested_edges"]
+        if edge["operation_id"] == "rumi_turn_runtime_pack.turn-stop"
+    )
+    requested_stop_routes = sorted(
+        tuple(edge[field] for field in identity_fields)
+        for edge in intent["requested_edges"]
+        if edge["operation_id"] == "rumi_turn_runtime_pack.turn-stop"
+    )
+    assert generated_stop_routes == requested_stop_routes
 
 
 def test_saved_coordinator_lifecycle_caller_survives_profile_generation() -> None:
