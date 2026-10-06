@@ -14,6 +14,7 @@ mod frontend_entry;
 mod health_check;
 mod host_audit;
 mod browser_access;
+mod browser_access_lifecycle;
 mod host_broker;
 mod host_broker_types;
 mod host_contract;
@@ -4002,14 +4003,14 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "browser-access-approval"
+            if browser_access_lifecycle::controlled_label(window.label())
                 && matches!(
                     event,
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
                 )
             {
                 if let Some(config) = window.app_handle().try_state::<AppConfig>() {
-                    browser_access::close(window.app_handle(), config.inner());
+                    browser_access::close_window(window.app_handle(), config.inner(), window.label());
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

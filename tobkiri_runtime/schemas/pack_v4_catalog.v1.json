@@ -324,8 +324,66 @@
                       "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                     },
                     "task_context": {
-                      "type": "object",
                       "additionalProperties": false,
+                      "properties": {
+                        "conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "generation": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "input_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "items": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "body": {
+                                "maxLength": 32000,
+                                "minLength": 1,
+                                "pattern": "\\S",
+                                "type": "string"
+                              },
+                              "id": {
+                                "$ref": "#/$defs/identifier"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "goal",
+                                  "todo",
+                                  "instruction"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind",
+                              "body"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 100,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "recipient_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": "tobkiri.saved-task-context.v1"
+                        }
+                      },
                       "required": [
                         "version",
                         "source_id",
@@ -336,65 +394,7 @@
                         "generation",
                         "items"
                       ],
-                      "properties": {
-                        "version": {
-                          "const": "tobkiri.saved-task-context.v1"
-                        },
-                        "source_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "conversation_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "recipient_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "input_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "source_revision": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "generation": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "items": {
-                          "type": "array",
-                          "minItems": 1,
-                          "maxItems": 100,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "id",
-                              "kind",
-                              "body"
-                            ],
-                            "properties": {
-                              "id": {
-                                "$ref": "#/$defs/identifier"
-                              },
-                              "kind": {
-                                "enum": [
-                                  "goal",
-                                  "todo",
-                                  "instruction"
-                                ]
-                              },
-                              "body": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 32000,
-                                "pattern": "\\S"
-                              }
-                            }
-                          }
-                        }
-                      }
+                      "type": "object"
                     },
                     "thinking_level": {
                       "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -763,22 +763,22 @@
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.action.turn.progress.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true,
+          "contract_id": "tobkiri.action.turn.progress.v1",
           "operations": [
             "rumi_turn_runtime_pack.turn-progress"
-          ]
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.resource.turn.progress.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true,
+          "contract_id": "tobkiri.resource.turn.progress.v1",
           "operations": [
             "rumi_turn_runtime_pack.turn-progress-resource"
-          ]
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -1524,9 +1524,30 @@
           "path": "extensions/tools/settings_update/manifest.json"
         },
         {
+          "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
           "kind": "executable",
-          "path": "defaultspack/turn_progress_presentation.py",
-          "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0"
+          "path": "defaultspack/turn_progress_presentation.py"
+        },
+        {
+          "digest": "sha256:3cf8da7cf9adb86dce66a7c550c260e36bc7497b94dd4f6b71a0df014c19376f",
+          "kind": "executable",
+          "path": "defaultspack/http_surface_presentation.py"
+        },
+        {
+          "digest": "sha256:e7ac05f4164931e35e654d0c2e8c6ca522d32fb1e0cb902e104a774d6efe78c1",
+          "kind": "executable",
+          "path": "defaultspack/kanban_presentation.py"
+        },
+        {
+          "digest": "sha256:dcabf7bd622d9312e44150d741588f5bfa7b0119c48294320d0574702c9b25bc",
+          "kind": "executable",
+          "path": "defaultspack/managed_desktop_presentation.py"
+        },
+        {
+          "digest": "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "defaultspack/frontend_contract_map.v4.json"
         }
       ],
       "secrets": [],
@@ -2149,6 +2170,12 @@
                 }
               ],
               "properties": {
+                "delivery_mode": {
+                  "enum": [
+                    "buffered",
+                    "incremental"
+                  ]
+                },
                 "messages": {
                   "items": {
                     "type": "object"
@@ -2187,12 +2214,6 @@
                 },
                 "requirements": {
                   "type": "object"
-                },
-                "delivery_mode": {
-                  "enum": [
-                    "buffered",
-                    "incremental"
-                  ]
                 }
               },
               "required": [
@@ -2500,19 +2521,19 @@
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.action.turn.progress.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true,
+          "contract_id": "tobkiri.action.turn.progress.v1",
           "operations": [
             "rumi_turn_runtime_pack.turn-progress"
-          ]
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -4461,6 +4482,11 @@
     },
     {
       "approval_policy": "capability_gated",
+      "artifact_metadata": {
+        "mode": "canonical-v4",
+        "owner": "rumi_coding_sandbox_service_pack",
+        "source_format": "pack.v4.json"
+      },
       "authority": "v4-authoritative",
       "capabilities": [
         "cloud.workspace.resource",
@@ -4479,6 +4505,48 @@
       "description": "Captured local COW container tasks with ordinary Host approval.",
       "display_name": "Tobkiri Coding Sandbox Service",
       "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.action.coding.sandbox.v1",
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-control"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.coding.sandbox.v1",
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-observe"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "function_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-execute"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-prepare"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "function_id": "rumi_coding_sandbox_service_pack.task-resource",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        }
+      ],
       "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.coding.sandbox.v1",
@@ -4973,54 +5041,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered",
-      "artifact_metadata": {
-        "mode": "canonical-v4",
-        "owner": "rumi_coding_sandbox_service_pack",
-        "source_format": "pack.v4.json"
-      },
-      "functions": [
-        {
-          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control",
-          "contract_id": "tobkiri.action.coding.sandbox.v1",
-          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
-          "operation_ids": [
-            "rumi_coding_sandbox_service_pack.sandbox-control"
-          ]
-        },
-        {
-          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
-          "contract_id": "tobkiri.resource.coding.sandbox.v1",
-          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
-          "operation_ids": [
-            "rumi_coding_sandbox_service_pack.sandbox-observe"
-          ]
-        },
-        {
-          "function_id": "rumi_coding_sandbox_service_pack.task-execute",
-          "contract_id": "tobkiri.action.workspace.container.v1",
-          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
-          "operation_ids": [
-            "rumi_coding_sandbox_service_pack.task-execute"
-          ]
-        },
-        {
-          "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
-          "contract_id": "tobkiri.action.workspace.container.v1",
-          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
-          "operation_ids": [
-            "rumi_coding_sandbox_service_pack.task-prepare"
-          ]
-        },
-        {
-          "function_id": "rumi_coding_sandbox_service_pack.task-resource",
-          "contract_id": "tobkiri.resource.workspace.container-task.v1",
-          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
-          "operation_ids": [
-            "rumi_coding_sandbox_service_pack.task-resource"
-          ]
-        }
-      ]
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -5074,7 +5095,7 @@
         {
           "contract_id": "tobkiri.resource.command.catalog.v1",
           "function_id": "rumi_command_protocol_pack.catalog.read",
-          "implementation_digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
+          "implementation_digest": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0",
           "operation_ids": [
             "command.catalog.read"
           ]
@@ -5438,7 +5459,7 @@
             {
               "entrypoint_id": "command.catalog.read",
               "id": "command.catalog.read",
-              "implementation_digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87"
+              "implementation_digest": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0"
             }
           ],
           "owner": "rumi_command_protocol_pack",
@@ -5506,7 +5527,7 @@
           "path": "runtime/high_risk_adapter.py"
         },
         {
-          "digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
+          "digest": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0",
           "kind": "executable",
           "path": "runtime/catalog.py"
         },
@@ -5895,13 +5916,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "company-state-action",
-              "id": "rumi_company_state_store_pack.company-state-action",
-              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
               "effect_ceiling": [
                 "capability:company.state.manage",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "company-state-action",
+              "id": "rumi_company_state_store_pack.company-state-action",
+              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -5910,10 +5931,81 @@
             "company.state.manage"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "agent_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "company_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "conversation_group_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "description": {
+                  "maxLength": 16384,
+                  "type": "string"
+                },
+                "details": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "expected_entity_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "fencing_token": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "idempotency_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "lease_duration_ms": {
+                  "maximum": 3600000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "legacy_state": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "member": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "member_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "metadata": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "name": {
+                  "maxLength": 16384,
+                  "type": "string"
+                },
                 "operation": {
                   "enum": [
                     "company.create",
@@ -5940,128 +6032,57 @@
                   ]
                 },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "company_id": {
-                  "type": "string",
                   "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "record": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "record_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "expected_revision": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "expected_entity_revision": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "name": {
-                  "type": "string",
-                  "maxLength": 16384
-                },
-                "description": {
-                  "type": "string",
-                  "maxLength": 16384
-                },
-                "settings": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "metadata": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "conversation_group_id": {
-                  "type": "string",
-                  "maxLength": 256
-                },
-                "updates": {
-                  "type": "object",
-                  "maxProperties": 64
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "replace_settings": {
                   "type": "boolean"
                 },
                 "role": {
-                  "type": "object",
-                  "maxProperties": 64
+                  "maxProperties": 64,
+                  "type": "object"
                 },
-                "member": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "record_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "record": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "agent_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "task_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                "settings": {
+                  "maxProperties": 64,
+                  "type": "object"
                 },
                 "status": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "details": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "legacy_state": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "lease_duration_ms": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 3600000
-                },
-                "member_id": {
-                  "type": "string",
                   "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
-                "idempotency_key": {
-                  "type": "string",
+                "task_id": {
+                  "maxLength": 256,
                   "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
-                "fencing_token": {
-                  "type": "integer",
-                  "minimum": 1
+                "updates": {
+                  "maxProperties": 64,
+                  "type": "object"
                 }
               },
               "required": [
                 "operation",
                 "company_id",
                 "expected_revision"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -6080,12 +6101,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "company-state-resource",
-              "id": "rumi_company_state_store_pack.company-state-resource",
-              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6",
               "effect_ceiling": [
                 "capability:company.state.read"
-              ]
+              ],
+              "entrypoint_id": "company-state-resource",
+              "id": "rumi_company_state_store_pack.company-state-resource",
+              "implementation_digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -6094,10 +6115,37 @@
             "company.state.read"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "after_sequence": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "company_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "cursor": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "kind": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "limit": {
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
                 "operation": {
                   "enum": [
                     "list",
@@ -6106,45 +6154,18 @@
                   ]
                 },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "company_id": {
-                  "type": "string",
                   "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "limit": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000
-                },
-                "cursor": {
-                  "type": "string",
-                  "maxLength": 256
-                },
-                "kind": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "after_sequence": {
-                  "type": "integer",
-                  "minimum": 0
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -6160,9 +6181,9 @@
           "path": "runtime/store.py"
         },
         {
-          "path": "runtime/team_store.py",
+          "digest": "sha256:e53219332e652d5cb6b39b1896ebac04d10aea3be053384b69efddb0290842a0",
           "kind": "executable",
-          "digest": "sha256:e53219332e652d5cb6b39b1896ebac04d10aea3be053384b69efddb0290842a0"
+          "path": "runtime/team_store.py"
         }
       ],
       "secrets": [],
@@ -7654,80 +7675,10 @@
       "pack_id": "rumi_conversation_store_pack",
       "provided_contracts": [
         {
-          "contract_id": "tobkiri.action.conversation.completion.v1",
-          "version": "1.0.0",
-          "owner": "rumi_conversation_store_pack",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
           "cardinality": "one",
+          "contract_id": "tobkiri.action.conversation.completion.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "security": "restricted",
-          "required_capabilities": [
-            "conversation.manage"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "profile_id",
-                "operation",
-                "turn_id"
-              ],
-              "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "operation": {
-                  "const": "confirm"
-                },
-                "turn_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "_session_id": {
-                  "type": "string"
-                }
-              }
-            },
-            "output": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "confirmed",
-                "conversation_id",
-                "conversation_revision",
-                "store_revision"
-              ],
-              "properties": {
-                "confirmed": {
-                  "type": "boolean"
-                },
-                "conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "conversation_revision": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "store_revision": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              }
-            },
-            "error": {
-              "type": "object"
-            }
-          },
           "lifecycle": {
             "data_owner": "rumi_conversation_store_pack",
             "deprecated": false,
@@ -7737,15 +7688,85 @@
           },
           "operations": [
             {
-              "id": "rumi_conversation_store_pack.conversation-completion",
-              "entrypoint_id": "conversation-completion",
-              "implementation_digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
               "effect_ceiling": [
                 "capability:conversation.manage",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "conversation-completion",
+              "id": "rumi_conversation_store_pack.conversation-completion",
+              "implementation_digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01"
             }
-          ]
+          ],
+          "owner": "rumi_conversation_store_pack",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+          "required_capabilities": [
+            "conversation.manage"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "operation": {
+                  "const": "confirm"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation",
+                "turn_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "confirmed": {
+                  "type": "boolean"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "store_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "confirmed",
+                "conversation_id",
+                "conversation_revision",
+                "store_revision"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         },
         {
           "cardinality": "one",
@@ -7925,13 +7946,13 @@
       ],
       "required_contracts": [
         {
-          "contract_id": "tobkiri.resource.turn.v1",
           "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
+          "contract_id": "tobkiri.resource.turn.v1",
           "operations": [
             "rumi_turn_runtime_pack.turn-resource"
-          ]
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -8783,16 +8804,60 @@
       "approval_policy": "none",
       "authority": "v4-authoritative",
       "capabilities": [
-        "tool.local.operation"
+        "tool.local.operation",
+        "file.write"
       ],
       "dependencies": {
         "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
         "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
-        "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0"
+        "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
       },
       "description": "",
       "display_name": "rumi_default_tools_pack",
       "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "function_id": "rumi_default_tools_pack.calculator",
+          "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+          "operation_ids": [
+            "rumi_default_tools_pack.calculator-evaluate"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "function_id": "rumi_default_tools_pack.files-read",
+          "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+          "operation_ids": [
+            "rumi_default_tools_pack.files-read-operation"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "function_id": "rumi_default_tools_pack.file-create-tool",
+          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "operation_ids": [
+            "rumi_default_tools_pack.file-create-operation"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "function_id": "rumi_default_tools_pack.file-create-prepare.service",
+          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "operation_ids": [
+            "rumi_default_tools_pack.file-create-prepare"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "function_id": "rumi_default_tools_pack.file-create.service",
+          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "operation_ids": [
+            "rumi_default_tools_pack.file-create"
+          ]
+        }
+      ],
       "kind": "host_extension",
       "legacy_ids": [
         "rumi:ecosystem/rumi_default_tools_pack",
@@ -8829,6 +8894,11 @@
               "entrypoint_id": "files-read-operation",
               "id": "rumi_default_tools_pack.files-read-operation",
               "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
+            },
+            {
+              "entrypoint_id": "file-create-operation",
+              "id": "rumi_default_tools_pack.file-create-operation",
+              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -8841,7 +8911,8 @@
             "file_reader",
             "coding_file_read",
             "coding_file_list",
-            "coding_file_search"
+            "coding_file_search",
+            "coding_file_create"
           ],
           "schemas": {
             "input": {
@@ -8852,6 +8923,45 @@
             }
           },
           "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.file.create.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_default_tools_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "file-create-prepare",
+              "id": "rumi_default_tools_pack.file-create-prepare",
+              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
+            },
+            {
+              "entrypoint_id": "file-create",
+              "id": "rumi_default_tools_pack.file-create",
+              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
+            }
+          ],
+          "owner": "rumi_default_tools_pack",
+          "provider_id": "rumi_default_tools_pack.file-create.service",
+          "required_capabilities": [
+            "file.write"
+          ],
+          "routing_keys": [],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
           "version": "1.0.0"
         }
       ],
@@ -8865,6 +8975,12 @@
         {
           "cardinality": "one",
           "contract_id": "tobkiri.resource.workspace.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "optional": false,
           "version_range": "^1.0.0"
         }
@@ -8897,7 +9013,7 @@
           "path": "tools/calculator/manifest.json"
         },
         {
-          "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+          "digest": "sha256:96ed5072ee1d229d70b5e631cf078156148ac5528dbe2c1a25deb04bf960669c",
           "kind": "sidecar",
           "path": "tools/coding_file_create/manifest.json"
         },
@@ -9037,9 +9153,14 @@
           "path": "domain/tool/calculator.py"
         },
         {
+          "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
           "kind": "executable",
-          "path": "runtime/files.py",
-          "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
+          "path": "runtime/files.py"
+        },
+        {
+          "digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "kind": "executable",
+          "path": "runtime/file_create.py"
         }
       ],
       "secrets": [],
@@ -9057,25 +9178,7 @@
         "source_format": "ecosystem.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local",
-      "functions": [
-        {
-          "function_id": "rumi_default_tools_pack.calculator",
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
-          "operation_ids": [
-            "rumi_default_tools_pack.calculator-evaluate"
-          ],
-          "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa"
-        },
-        {
-          "function_id": "rumi_default_tools_pack.files-read",
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
-          "operation_ids": [
-            "rumi_default_tools_pack.files-read-operation"
-          ],
-          "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
-        }
-      ]
+      "workspace_boundary": "pack_local"
     },
     {
       "approval_policy": "capability_gated",
@@ -9643,6 +9746,24 @@
       "description": "Read-only workspace-jailed file inspection.",
       "display_name": "Rumi File Inspect",
       "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+          "operation_ids": [
+            "rumi_file_inspect_pack.file-inspect"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "function_id": "rumi_file_inspect_pack.file-inspect.media",
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+          "operation_ids": [
+            "rumi_file_inspect_pack.file-inspect.for-media"
+          ]
+        }
+      ],
       "kind": "host_extension",
       "legacy_ids": [
         "rumi.service.file.inspect.v1",
@@ -9808,25 +9929,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered",
-      "functions": [
-        {
-          "function_id": "rumi_file_inspect_pack.file-inspect.service",
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "operation_ids": [
-            "rumi_file_inspect_pack.file-inspect"
-          ],
-          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
-        },
-        {
-          "function_id": "rumi_file_inspect_pack.file-inspect.media",
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "operation_ids": [
-            "rumi_file_inspect_pack.file-inspect.for-media"
-          ],
-          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261"
-        }
-      ]
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -10967,6 +11070,209 @@
             },
             "input": {
               "additionalProperties": false,
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "correlation_id": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect",
+                        "file_create"
+                      ]
+                    },
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "request": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "correlation_id": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "effect_kind": {
+                      "const": "workspace_task"
+                    },
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "argv": {
+                          "items": {
+                            "maxLength": 8192,
+                            "pattern": "^[^\\u0000]*$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "expected_revision": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "expected_writer_epoch": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "profile_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        },
+                        "task_request_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        },
+                        "timeout_seconds": {
+                          "maximum": 120,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "workspace_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "task_request_id",
+                        "profile_id",
+                        "workspace_id",
+                        "expected_revision",
+                        "expected_writer_epoch",
+                        "argv",
+                        "timeout_seconds"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "correlation_id": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "effect_kind": {
+                      "const": "workspace_mount"
+                    },
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "selection_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selection_id"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "correlation_id": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect",
+                        "workspace_task",
+                        "file_create",
+                        "workspace_mount"
+                      ]
+                    },
+                    "phase": {
+                      "const": "lookup"
+                    }
+                  },
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "effect_id": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "phase": {
+                      "enum": [
+                        "status",
+                        "resume",
+                        "cancel"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "phase",
+                    "effect_id"
+                  ],
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "correlation_id": {
                   "maxLength": 36,
@@ -10986,7 +11292,9 @@
                     "git_apply_patch",
                     "git_push",
                     "mcp_connect",
-                    "workspace_task"
+                    "workspace_task",
+                    "file_create",
+                    "workspace_mount"
                   ]
                 },
                 "phase": {
@@ -11002,170 +11310,7 @@
                   "type": "object"
                 }
               },
-              "type": "object",
-              "oneOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "phase",
-                    "effect_kind",
-                    "request"
-                  ],
-                  "properties": {
-                    "phase": {
-                      "const": "prepare"
-                    },
-                    "effect_kind": {
-                      "enum": [
-                        "provider_configure",
-                        "shell_execute",
-                        "git_commit",
-                        "git_restore",
-                        "git_apply_patch",
-                        "git_push",
-                        "mcp_connect"
-                      ]
-                    },
-                    "request": {
-                      "type": "object"
-                    },
-                    "correlation_id": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "phase",
-                    "effect_kind",
-                    "request"
-                  ],
-                  "properties": {
-                    "phase": {
-                      "const": "prepare"
-                    },
-                    "effect_kind": {
-                      "const": "workspace_task"
-                    },
-                    "request": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "task_request_id",
-                        "profile_id",
-                        "workspace_id",
-                        "expected_revision",
-                        "expected_writer_epoch",
-                        "argv",
-                        "timeout_seconds"
-                      ],
-                      "properties": {
-                        "task_request_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                        },
-                        "profile_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                        },
-                        "workspace_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                        },
-                        "expected_revision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "expected_writer_epoch": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "argv": {
-                          "type": "array",
-                          "minItems": 1,
-                          "maxItems": 64,
-                          "items": {
-                            "type": "string",
-                            "maxLength": 8192,
-                            "pattern": "^[^\\u0000]*$"
-                          }
-                        },
-                        "timeout_seconds": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 120
-                        }
-                      }
-                    },
-                    "correlation_id": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "phase",
-                    "effect_kind",
-                    "correlation_id"
-                  ],
-                  "properties": {
-                    "phase": {
-                      "const": "lookup"
-                    },
-                    "effect_kind": {
-                      "enum": [
-                        "provider_configure",
-                        "shell_execute",
-                        "git_commit",
-                        "git_restore",
-                        "git_apply_patch",
-                        "git_push",
-                        "mcp_connect",
-                        "workspace_task"
-                      ]
-                    },
-                    "correlation_id": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "phase",
-                    "effect_id"
-                  ],
-                  "properties": {
-                    "phase": {
-                      "enum": [
-                        "status",
-                        "resume",
-                        "cancel"
-                      ]
-                    },
-                    "effect_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 255
-                    }
-                  }
-                }
-              ]
+              "type": "object"
             },
             "output": {
               "type": "object"
@@ -11323,6 +11468,12 @@
           "cardinality": "one",
           "contract_id": "tobkiri.service.shell.execute.v1",
           "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "optional": true,
           "version_range": ">=1.0.0 <2.0.0"
         }
       ],
@@ -11839,13 +11990,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "job-action-broker",
-              "id": "rumi_job_action_broker_pack.job-action-broker",
-              "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
               "effect_ceiling": [
                 "capability:job.dispatch",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "job-action-broker",
+              "id": "rumi_job_action_broker_pack.job-action-broker",
+              "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6"
             }
           ],
           "owner": "rumi_job_action_broker_pack",
@@ -11854,10 +12005,28 @@
             "job.dispatch"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "action_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "idempotency_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "lease_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
                 "operation": {
                   "enum": [
                     "dispatch",
@@ -11865,45 +12034,27 @@
                     "status"
                   ]
                 },
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "action_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
                 "payload": {
                   "type": "object"
                 },
-                "idempotency_key": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "maxLength": 256
-                },
-                "lease_id": {
-                  "type": "string",
-                  "maxLength": 256
+                  "maxLength": 256,
+                  "type": "string"
                 }
               },
               "required": [
                 "operation",
                 "idempotency_key"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -11913,10 +12064,10 @@
       ],
       "required_contracts": [
         {
-          "contract_id": "tobkiri.action.job.adapter.v2",
-          "version_range": ">=2.0.0 <3.0.0",
           "cardinality": "many",
-          "optional": false
+          "contract_id": "tobkiri.action.job.adapter.v2",
+          "optional": false,
+          "version_range": ">=2.0.0 <3.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -12081,12 +12232,31 @@
         "kanban.state.read"
       ],
       "dependencies": {
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
         "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
       },
       "description": "Authoritative Kanban state with receipt-bound mutations.",
-      "display_name": "Rumi Kanban State Store",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
+      "display_name": "Tobkiri Kanban State Store",
+      "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.action.kanban.v1",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
+          "operation_ids": [
+            "rumi_kanban_state_store_pack.kanban-state-action"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.kanban.v1",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
+          "operation_ids": [
+            "rumi_kanban_state_store_pack.kanban-state-resource"
+          ]
+        }
+      ],
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.kanban.v1",
         "rumi.resource.kanban.v1",
@@ -12116,9 +12286,13 @@
           },
           "operations": [
             {
+              "effect_ceiling": [
+                "capability:kanban.state.manage",
+                "host:brokered-execution"
+              ],
               "entrypoint_id": "kanban-state-action",
               "id": "rumi_kanban_state_store_pack.kanban-state-action",
-              "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c"
+              "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0"
             }
           ],
           "owner": "rumi_kanban_state_store_pack",
@@ -12128,6 +12302,85 @@
           ],
           "schemas": {
             "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "board_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "column_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "columns": {
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "company_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "conversation_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "metadata": {
+                  "type": "object"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "board.create",
+                    "card.upsert",
+                    "card.move",
+                    "card.delete",
+                    "conversation.import"
+                  ]
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "record": {
+                  "type": "object"
+                },
+                "record_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "object"
+                },
+                "title": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "workspace_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation",
+                "board_id",
+                "expected_revision"
+              ],
               "type": "object"
             },
             "output": {
@@ -12149,9 +12402,12 @@
           },
           "operations": [
             {
+              "effect_ceiling": [
+                "capability:kanban.state.read"
+              ],
               "entrypoint_id": "kanban-state-resource",
               "id": "rumi_kanban_state_store_pack.kanban-state-resource",
-              "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c"
+              "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0"
             }
           ],
           "owner": "rumi_kanban_state_store_pack",
@@ -12161,6 +12417,30 @@
           ],
           "schemas": {
             "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "board_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get"
+                  ]
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
               "type": "object"
             },
             "output": {
@@ -12177,11 +12457,17 @@
           "contract_id": "tobkiri.service.host.authorize.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+          "digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
           "kind": "executable",
           "path": "runtime/store.py"
         }
@@ -12206,7 +12492,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "none",
@@ -14306,28 +14592,28 @@
           },
           "operations": [
             {
+              "effect_ceiling": [
+                "capability:ai.model.profile.read"
+              ],
               "entrypoint_id": "model-profile-resource",
               "id": "rumi_model_registry_pack.model-profile-resource",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
-              "effect_ceiling": [
-                "capability:ai.model.profile.read"
-              ]
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
             },
             {
+              "effect_ceiling": [
+                "capability:ai.model.profile.read"
+              ],
               "entrypoint_id": "model-profile-resource.generate",
               "id": "rumi_model_registry_pack.model-profile-resource.generate",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
-              "effect_ceiling": [
-                "capability:ai.model.profile.read"
-              ]
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
             },
             {
-              "entrypoint_id": "model-profile-resource.stream",
-              "id": "rumi_model_registry_pack.model-profile-resource.stream",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
               "effect_ceiling": [
                 "capability:ai.model.profile.read"
-              ]
+              ],
+              "entrypoint_id": "model-profile-resource.stream",
+              "id": "rumi_model_registry_pack.model-profile-resource.stream",
+              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -14336,141 +14622,11 @@
             "ai.model.profile.read"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "properties": {
-                "operation": {
-                  "enum": [
-                    "list",
-                    "get",
-                    "resolve",
-                    "policy.resolve"
-                  ]
-                },
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "model_profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "identifier": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "model_policy": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "mode": {
-                      "enum": [
-                        "inherit_conversation",
-                        "fixed",
-                        "snapshot"
-                      ]
-                    },
-                    "profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "snapshot_profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "fallback_profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "on_unavailable": {
-                      "enum": [
-                        "fail",
-                        "fallback"
-                      ]
-                    },
-                    "required_capabilities": {
-                      "type": "array",
-                      "maxItems": 32,
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 256,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                      }
-                    }
-                  },
-                  "required": []
-                },
-                "thinking_policy": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "mode": {
-                      "enum": [
-                        "inherit_conversation",
-                        "fixed",
-                        "model_default"
-                      ]
-                    },
-                    "level": {
-                      "enum": [
-                        "none",
-                        "minimal",
-                        "low",
-                        "medium",
-                        "high",
-                        "xhigh",
-                        "max",
-                        "ultra"
-                      ]
-                    }
-                  },
-                  "required": []
-                },
-                "context": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "conversation_model_profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "conversation_thinking_level": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "turn_model_profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "turn_thinking_level": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "global_model_profile_id": {
-                      "type": "string",
-                      "maxLength": 256
-                    },
-                    "global_thinking_level": {
-                      "type": "string",
-                      "maxLength": 256
-                    }
-                  },
-                  "required": []
-                },
-                "snapshot_receipt": {
-                  "type": "object",
-                  "maxProperties": 64
-                }
-              },
-              "required": [],
               "anyOf": [
                 {
                   "required": [
@@ -14482,12 +14638,142 @@
                     "identifier"
                   ]
                 }
-              ]
-            },
-            "output": {
+              ],
+              "properties": {
+                "context": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversation_model_profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "conversation_thinking_level": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "global_model_profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "global_thinking_level": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "turn_model_profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "turn_thinking_level": {
+                      "maxLength": 256,
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "identifier": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "model_policy": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "fallback_profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "snapshot"
+                      ]
+                    },
+                    "on_unavailable": {
+                      "enum": [
+                        "fail",
+                        "fallback"
+                      ]
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    "required_capabilities": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "type": "array"
+                    },
+                    "snapshot_profile_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "model_profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "resolve",
+                    "policy.resolve"
+                  ]
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "snapshot_receipt": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "thinking_policy": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "level": {
+                      "enum": [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ]
+                    },
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "model_default"
+                      ]
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -14497,10 +14783,10 @@
       ],
       "required_contracts": [
         {
-          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": false
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -15436,13 +15722,13 @@
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.action.turn.progress.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true,
+          "contract_id": "tobkiri.action.turn.progress.v1",
           "operations": [
             "rumi_turn_runtime_pack.turn-progress"
-          ]
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -15457,9 +15743,9 @@
           "path": "runtime/adapter.py"
         },
         {
-          "path": "runtime/streaming.py",
           "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "runtime/streaming.py"
         }
       ],
       "secrets": [],
@@ -15500,7 +15786,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-          "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-manage"
           ]
@@ -15508,7 +15794,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
-          "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure-prepare"
           ]
@@ -15516,7 +15802,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.execute",
-          "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure"
           ]
@@ -15524,7 +15810,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-          "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+          "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-resource",
             "rumi_provider_registry_pack.provider-registry-resource.generate",
@@ -15577,17 +15863,17 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
               "id": "rumi_provider_registry_pack.provider-configure-prepare",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             },
             {
               "entrypoint_id": "provider-configure",
               "id": "rumi_provider_registry_pack.provider-configure",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -15665,17 +15951,17 @@
             {
               "entrypoint_id": "provider-registry-resource",
               "id": "rumi_provider_registry_pack.provider-registry-resource",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             },
             {
               "entrypoint_id": "provider-registry-resource.generate",
               "id": "rumi_provider_registry_pack.provider-registry-resource.generate",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             },
             {
               "entrypoint_id": "provider-registry-resource.stream",
               "id": "rumi_provider_registry_pack.provider-registry-resource.stream",
-              "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+              "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -15740,7 +16026,7 @@
           "path": "runtime/health_process.py"
         },
         {
-          "digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+          "digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
           "kind": "executable",
           "path": "runtime/process.py"
         },
@@ -16297,14 +16583,29 @@
       "workspace_boundary": "pack_local"
     },
     {
-      "approval_policy": "none",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
-      "capabilities": [],
+      "capabilities": [
+        "desktop.read"
+      ],
       "dependencies": {},
       "description": "Declarative sandbox/runtime pack for safe code execution boundaries, secret-mount review, runtime receipts, and reproducibility checklists.",
-      "display_name": "Rumi Sandbox Runtime Pack",
-      "execution_boundary": "declarative_only",
-      "kind": "application",
+      "display_name": "Tobkiri Managed Desktops",
+      "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "function_id": "tobkiri.managed-desktops.read",
+          "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+          "operation_ids": [
+            "rumi_sandbox_runtime_pack.desktops-list",
+            "rumi_sandbox_runtime_pack.runtime-providers-read",
+            "rumi_sandbox_runtime_pack.runtime-doctor-read",
+            "rumi_sandbox_runtime_pack.sandbox-templates-read"
+          ]
+        }
+      ],
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi:ecosystem/rumi_sandbox_runtime_pack",
         "rumi_sandbox_runtime_pack"
@@ -16319,7 +16620,81 @@
         "allowed_ports": []
       },
       "pack_id": "rumi_sandbox_runtime_pack",
-      "provided_contracts": [],
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "capability:desktop.read"
+              ],
+              "entrypoint_id": "rumi_sandbox_runtime_pack.desktops-list",
+              "id": "rumi_sandbox_runtime_pack.desktops-list",
+              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+            },
+            {
+              "effect_ceiling": [
+                "capability:desktop.read"
+              ],
+              "entrypoint_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+              "id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+            },
+            {
+              "effect_ceiling": [
+                "capability:desktop.read"
+              ],
+              "entrypoint_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+              "id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+            },
+            {
+              "effect_ceiling": [
+                "capability:desktop.read"
+              ],
+              "entrypoint_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+              "id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+              "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884"
+            }
+          ],
+          "owner": "rumi_sandbox_runtime_pack",
+          "provider_id": "tobkiri.managed-desktops.read",
+          "required_capabilities": [
+            "desktop.read"
+          ],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
       "required_contracts": [],
       "runtime_artifacts": [
         {
@@ -16327,6 +16702,12 @@
           "index_role": "asset",
           "kind": "asset",
           "path": "catalog/runtime_matrix.yaml"
+        },
+        {
+          "digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+          "index_role": "runtime",
+          "kind": "executable",
+          "path": "runtime/managed_desktops.py"
         }
       ],
       "secrets": [],
@@ -16344,7 +16725,7 @@
         "source_format": "ecosystem.json"
       },
       "version": "0.1.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -16390,13 +16771,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "schedule-action",
-              "id": "rumi_schedule_store_pack.schedule-action",
-              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
               "effect_ceiling": [
                 "capability:schedule.manage",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "schedule-action",
+              "id": "rumi_schedule_store_pack.schedule-action",
+              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180"
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -16405,10 +16786,53 @@
             "schedule.manage"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "action_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "error": {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "interval_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "lease_expires_at_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "lease_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "max_attempts": {
+                  "maximum": 20,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "next_run_at_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
                 "operation": {
                   "enum": [
                     "create",
@@ -16422,108 +16846,65 @@
                     "fail"
                   ]
                 },
+                "payload": {
+                  "maxProperties": 64,
+                  "type": "object"
+                },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "expected_revision": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "name": {
-                  "type": "string",
-                  "maxLength": 120
-                },
-                "action_id": {
-                  "type": "string",
                   "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "payload": {
-                  "type": "object",
-                  "maxProperties": 64
-                },
-                "next_run_at_ms": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "interval_ms": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "max_attempts": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 20
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "updates": {
-                  "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "name": {
-                      "type": "string",
-                      "maxLength": 120
-                    },
                     "action_id": {
-                      "type": "string",
-                      "minLength": 1,
                       "maxLength": 256,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                    },
-                    "payload": {
-                      "type": "object",
-                      "maxProperties": 64
-                    },
-                    "next_run_at_ms": {
-                      "type": "integer",
-                      "minimum": 0
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
                     },
                     "interval_ms": {
-                      "type": "integer",
-                      "minimum": 0
+                      "minimum": 0,
+                      "type": "integer"
                     },
                     "max_attempts": {
-                      "type": "integer",
+                      "maximum": 20,
                       "minimum": 1,
-                      "maximum": 20
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 120,
+                      "type": "string"
+                    },
+                    "next_run_at_ms": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "payload": {
+                      "maxProperties": 64,
+                      "type": "object"
                     }
                   },
-                  "required": []
-                },
-                "lease_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "lease_expires_at_ms": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "error": {
-                  "type": "string",
-                  "maxLength": 1000
+                  "required": [],
+                  "type": "object"
                 }
               },
               "required": [
                 "operation",
                 "schedule_id",
                 "expected_revision"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -16542,12 +16923,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "schedule-resource",
-              "id": "rumi_schedule_store_pack.schedule-resource",
-              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180",
               "effect_ceiling": [
                 "capability:schedule.read"
-              ]
+              ],
+              "entrypoint_id": "schedule-resource",
+              "id": "rumi_schedule_store_pack.schedule-resource",
+              "implementation_digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180"
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -16556,10 +16937,21 @@
             "schedule.read"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "limit": {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "now_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
                 "operation": {
                   "enum": [
                     "list",
@@ -16568,35 +16960,24 @@
                   ]
                 },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "now_ms": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "limit": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 100
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -16684,13 +17065,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "scheduler-control",
-              "id": "rumi_scheduler_runtime_pack.scheduler-control",
-              "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
               "effect_ceiling": [
                 "capability:scheduler.control",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "scheduler-control",
+              "id": "rumi_scheduler_runtime_pack.scheduler-control",
+              "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac"
             }
           ],
           "owner": "rumi_scheduler_runtime_pack",
@@ -16699,10 +17080,21 @@
             "scheduler.control"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "limit": {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "now_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
                 "operation": {
                   "enum": [
                     "tick",
@@ -16711,35 +17103,24 @@
                   ]
                 },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "now_ms": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "limit": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 100
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -16758,12 +17139,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "scheduler-resource",
-              "id": "rumi_scheduler_runtime_pack.scheduler-resource",
-              "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
               "effect_ceiling": [
                 "capability:scheduler.observe"
-              ]
+              ],
+              "entrypoint_id": "scheduler-resource",
+              "id": "rumi_scheduler_runtime_pack.scheduler-resource",
+              "implementation_digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac"
             }
           ],
           "owner": "rumi_scheduler_runtime_pack",
@@ -16772,28 +17153,28 @@
             "scheduler.observe"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
                 "operation": {
                   "const": "status"
                 },
                 "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -16801,12 +17182,8 @@
           "version": "1.0.0"
         },
         {
-          "contract_id": "tobkiri.action.scheduler.clock.v1",
-          "version": "1.0.0",
-          "owner": "rumi_scheduler_runtime_pack",
-          "provider_id": "rumi_scheduler_runtime_pack.scheduler.clock",
           "cardinality": "one",
-          "security": "restricted",
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
@@ -16815,23 +17192,32 @@
           },
           "operations": [
             {
-              "id": "rumi_scheduler_runtime_pack.scheduler-clock-control",
-              "entrypoint_id": "scheduler-clock-control",
-              "implementation_digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd",
               "effect_ceiling": [
                 "capability:scheduler.clock.manage",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "scheduler-clock-control",
+              "id": "rumi_scheduler_runtime_pack.scheduler-clock-control",
+              "implementation_digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd"
             }
           ],
+          "owner": "rumi_scheduler_runtime_pack",
+          "provider_id": "rumi_scheduler_runtime_pack.scheduler.clock",
+          "required_capabilities": [
+            "scheduler.clock.manage"
+          ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "required": [
-                "operation"
-              ],
               "properties": {
+                "duration_ms": {
+                  "maximum": 86400000,
+                  "minimum": 60000,
+                  "type": "integer"
+                },
                 "operation": {
                   "enum": [
                     "status",
@@ -16840,60 +17226,55 @@
                   ]
                 },
                 "profile_id": {
-                  "type": "string",
+                  "maxLength": 256,
                   "minLength": 1,
-                  "maxLength": 256
-                },
-                "duration_ms": {
-                  "type": "integer",
-                  "minimum": 60000,
-                  "maximum": 86400000
+                  "type": "string"
                 }
-              }
+              },
+              "required": [
+                "operation"
+              ],
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
           },
-          "required_capabilities": [
-            "scheduler.clock.manage"
-          ]
+          "security": "restricted",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
         {
+          "cardinality": "one",
           "contract_id": "tobkiri.action.job.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
+          "cardinality": "one",
           "contract_id": "tobkiri.action.schedule.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
+          "cardinality": "one",
           "contract_id": "tobkiri.action.scheduler.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.resource.schedule.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": false
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "path": "runtime/clock.py",
+          "digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd",
           "kind": "executable",
-          "digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd"
+          "path": "runtime/clock.py"
         },
         {
           "digest": "sha256:1cc29b054d67189967d350cda6a834100a5445b446f60cce42694aff0af27dac",
@@ -20523,8 +20904,66 @@
                       "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                     },
                     "task_context": {
-                      "type": "object",
                       "additionalProperties": false,
+                      "properties": {
+                        "conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "generation": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "input_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "items": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "body": {
+                                "maxLength": 32000,
+                                "minLength": 1,
+                                "pattern": "\\S",
+                                "type": "string"
+                              },
+                              "id": {
+                                "$ref": "#/$defs/identifier"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "goal",
+                                  "todo",
+                                  "instruction"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind",
+                              "body"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 100,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "recipient_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "source_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": "tobkiri.saved-task-context.v1"
+                        }
+                      },
                       "required": [
                         "version",
                         "source_id",
@@ -20535,65 +20974,7 @@
                         "generation",
                         "items"
                       ],
-                      "properties": {
-                        "version": {
-                          "const": "tobkiri.saved-task-context.v1"
-                        },
-                        "source_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "conversation_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "recipient_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "input_id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "source_revision": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "generation": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "items": {
-                          "type": "array",
-                          "minItems": 1,
-                          "maxItems": 100,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "id",
-                              "kind",
-                              "body"
-                            ],
-                            "properties": {
-                              "id": {
-                                "$ref": "#/$defs/identifier"
-                              },
-                              "kind": {
-                                "enum": [
-                                  "goal",
-                                  "todo",
-                                  "instruction"
-                                ]
-                              },
-                              "body": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 32000,
-                                "pattern": "\\S"
-                              }
-                            }
-                          }
-                        }
-                      }
+                      "type": "object"
                     },
                     "thinking_level": {
                       "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -21148,12 +21529,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "turn-progress-resource",
-              "id": "rumi_turn_runtime_pack.turn-progress-resource",
-              "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe",
               "effect_ceiling": [
                 "capability:turn.read"
-              ]
+              ],
+              "entrypoint_id": "turn-progress-resource",
+              "id": "rumi_turn_runtime_pack.turn-progress-resource",
+              "implementation_digest": "sha256:f7e238c785adc5f2bb551bde99ab01a06f21c86e745aed44c4d2571ee9a433fe"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -21434,25 +21815,25 @@
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.action.agent.inbox.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true
+          "contract_id": "tobkiri.action.agent.inbox.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.action.conversation.completion.v1",
           "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
+          "contract_id": "tobkiri.action.conversation.completion.v1",
           "operations": [
             "rumi_conversation_store_pack.conversation-completion"
-          ]
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
-          "contract_id": "tobkiri.resource.context.projection.v1",
-          "version_range": ">=1.0.0 <2.0.0",
           "cardinality": "one",
-          "optional": true
+          "contract_id": "tobkiri.resource.context.projection.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         },
         {
           "cardinality": "one",
@@ -21495,14 +21876,14 @@
           "path": "runtime/saved.py"
         },
         {
-          "path": "runtime/progress.py",
           "digest": "sha256:405c42946539258d310a8b161f4f0bd1840bd9c6f3168dd06d568d9f727c8f6a",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "runtime/progress.py"
         },
         {
-          "path": "runtime/progress_host.py",
           "digest": "sha256:8176630ff6454b47d268d4f3f782b82b5f5daad8e7c8a72786f46d64da139dd9",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "runtime/progress_host.py"
         }
       ],
       "secrets": [],
@@ -21658,6 +22039,48 @@
         "allowed_ports": []
       },
       "pack_id": "rumi_workspace_mount_pack",
+      "functions": [
+        {
+          "contract_id": "tobkiri.action.workspace.mount.v1",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
+          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "operation_ids": [
+            "rumi_workspace_mount_pack.workspace-mount"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "operation_ids": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "function_id": "rumi_workspace_mount_pack.project-directory.service",
+          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "operation_ids": [
+            "workspace.directory.acquire"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "operation_ids": [
+            "workspace.mount.prepare"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "operation_ids": [
+            "workspace.mount.execute"
+          ]
+        }
+      ],
       "provided_contracts": [
         {
           "cardinality": "one",
@@ -21673,7 +22096,7 @@
             {
               "entrypoint_id": "workspace-mount",
               "id": "rumi_workspace_mount_pack.workspace-mount",
-              "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1"
+              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -21706,7 +22129,7 @@
             {
               "entrypoint_id": "workspace-resource",
               "id": "rumi_workspace_mount_pack.workspace-resource",
-              "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1"
+              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -21724,6 +22147,185 @@
           },
           "security": "sensitive",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_workspace_mount_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:workspace.metadata.read"
+              ],
+              "entrypoint_id": "project-directory",
+              "id": "workspace.directory.acquire",
+              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:workspace.metadata.read"
+              ],
+              "entrypoint_id": "project-workspace-prepare",
+              "id": "workspace.mount.prepare",
+              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:workspace.mount.manage"
+              ],
+              "entrypoint_id": "project-workspace-execute",
+              "id": "workspace.mount.execute",
+              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+            }
+          ],
+          "owner": "rumi_workspace_mount_pack",
+          "provider_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+          "required_capabilities": [
+            "workspace.metadata.read",
+            "workspace.mount.manage"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "maxProperties": 0,
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "selection_id": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "selection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "activation_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "expected_revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "plan_digest": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "profile_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "request_digest": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "root_identity": {
+                          "items": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxItems": 2,
+                          "minItems": 2,
+                          "type": "array"
+                        },
+                        "root_path": {
+                          "maxLength": 32768,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "security_epoch": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": "tobkiri.workspace.project-plan.v1"
+                        },
+                        "workspace_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "profile_id",
+                        "activation_id",
+                        "plan_digest",
+                        "security_epoch",
+                        "workspace_id",
+                        "root_path",
+                        "root_identity",
+                        "display_name",
+                        "expected_revision",
+                        "request_digest"
+                      ],
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "selection_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selection_id"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -21736,7 +22338,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+          "digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
           "kind": "executable",
           "path": "runtime/mounts.py"
         }
@@ -21937,12 +22539,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "work-plan-resource",
-              "id": "tobkiri_agent_control_pack.work-plan-resource",
-              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
               "effect_ceiling": [
                 "capability:work_plan.resource"
-              ]
+              ],
+              "entrypoint_id": "work-plan-resource",
+              "id": "tobkiri_agent_control_pack.work-plan-resource",
+              "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e"
             }
           ],
           "owner": "tobkiri_agent_control_pack",
@@ -23208,10 +23810,28 @@
             "work_plan.job"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "action_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "idempotency_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "lease_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
                 "operation": {
                   "enum": [
                     "describe",
@@ -23220,44 +23840,26 @@
                     "status"
                   ]
                 },
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "action_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
                 "payload": {
                   "type": "object"
                 },
-                "idempotency_key": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "maxLength": 256
-                },
-                "lease_id": {
-                  "type": "string",
-                  "maxLength": 256
+                  "maxLength": 256,
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
-            },
-            "output": {
+              ],
               "type": "object"
             },
-            "error": {
+            "output": {
               "type": "object"
             }
           },
@@ -23458,13 +24060,8 @@
       "workspace_boundary": "none"
     },
     {
-      "pack_id": "tobkiri_cloud_workspace_pack",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
-      "display_name": "Tobkiri Cloud Workspace",
-      "description": "Local portable work capsules and container preparation; cloud deployment is deferred.",
-      "version": "1.0.0",
-      "kind": "host_extension",
-      "dependencies": {},
       "capabilities": [
         "workspace.metadata.read",
         "file.inspect",
@@ -23473,115 +24070,50 @@
         "cloud.workspace.resource",
         "cloud.workspace.manage"
       ],
+      "dependencies": {},
+      "description": "Local portable work capsules and container preparation; cloud deployment is deferred.",
+      "display_name": "Tobkiri Cloud Workspace",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 0,
+        "sunset_at": "2027-12-31"
+      },
       "network": {
         "allowed_domains": [],
         "allowed_ports": []
       },
-      "secrets": [],
-      "execution_boundary": "host_brokered",
-      "approval_policy": "capability_gated",
-      "workspace_boundary": "host_brokered",
-      "required_contracts": [
-        {
-          "contract_id": "tobkiri.service.interactive-effect.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": true,
-          "operations": [
-            "interactive_effect.manage"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.resource.workspace.container-task.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": true,
-          "operations": [
-            "rumi_coding_sandbox_service_pack.task-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.resource.workspace.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": true,
-          "operations": [
-            "rumi_workspace_mount_pack.workspace-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": true,
-          "operations": [
-            "rumi_file_inspect_pack.file-inspect"
-          ]
-        }
-      ],
+      "pack_id": "tobkiri_cloud_workspace_pack",
       "provided_contracts": [
         {
-          "contract_id": "tobkiri.resource.cloud.workspace.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_cloud_workspace_pack",
-          "provider_id": "tobkiri_cloud_workspace_pack.resource",
           "cardinality": "one",
-          "security": "restricted",
+          "contract_id": "tobkiri.resource.cloud.workspace.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_cloud_workspace_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "workspace-resource",
+              "id": "tobkiri_cloud_workspace_pack.workspace-resource",
+              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
+            }
+          ],
+          "owner": "tobkiri_cloud_workspace_pack",
+          "provider_id": "tobkiri_cloud_workspace_pack.resource",
           "required_capabilities": [
             "cloud.workspace.resource"
           ],
-          "lifecycle": {
-            "introduced": "1.0.0",
-            "data_owner": "tobkiri_cloud_workspace_pack"
-          },
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                },
-                "operation": {
-                  "enum": [
-                    "get_for_conversation",
-                    "export",
-                    "verify",
-                    "task_source"
-                  ]
-                },
-                "conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                },
-                "workspace_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                },
-                "expected_revision": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "expected_writer_epoch": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                }
-              },
-              "required": [
-                "profile_id",
-                "operation"
-              ],
               "oneOf": [
                 {
                   "properties": {
@@ -23627,105 +24159,85 @@
                     "workspace_id"
                   ]
                 }
-              ]
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          },
-          "operations": [
-            {
-              "id": "tobkiri_cloud_workspace_pack.workspace-resource",
-              "entrypoint_id": "workspace-resource",
-              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
-            }
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.cloud.workspace.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_cloud_workspace_pack",
-          "provider_id": "tobkiri_cloud_workspace_pack.manage",
-          "cardinality": "one",
-          "security": "restricted",
-          "failure": "fail_closed",
-          "isolation": "in_process",
-          "required_capabilities": [
-            "cloud.workspace.manage"
-          ],
-          "lifecycle": {
-            "introduced": "1.0.0",
-            "data_owner": "tobkiri_cloud_workspace_pack"
-          },
-          "schemas": {
-            "input": {
-              "type": "object",
-              "additionalProperties": false,
+              ],
               "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
+                "conversation_id": {
                   "maxLength": 128,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "expected_writer_epoch": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "operation": {
                   "enum": [
-                    "initialize",
-                    "capture",
-                    "import",
-                    "restore",
-                    "prepare_handoff",
-                    "task_prepare",
-                    "task_resume",
-                    "task_status",
-                    "task_cancel",
-                    "task_apply"
+                    "get_for_conversation",
+                    "export",
+                    "verify",
+                    "task_source"
                   ]
                 },
-                "conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 128,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-                },
-                "expected_revision": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "expected_writer_epoch": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "paths": {
-                  "type": "string",
                   "minLength": 1,
-                  "maxLength": 32768
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
                 },
-                "argv_json": {
-                  "type": "string",
+                "workspace_id": {
+                  "maxLength": 128,
                   "minLength": 1,
-                  "maxLength": 24000
-                },
-                "archive_base64": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 13981016
-                },
-                "expected_receiver_head": {
-                  "type": "string",
-                  "maxLength": 71,
-                  "pattern": "^(?:sha256:[0-9a-f]{64})?$"
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "profile_id",
                 "operation"
               ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_cloud_workspace_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "workspace-manage",
+              "id": "tobkiri_cloud_workspace_pack.workspace-manage",
+              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
+            }
+          ],
+          "owner": "tobkiri_cloud_workspace_pack",
+          "provider_id": "tobkiri_cloud_workspace_pack.manage",
+          "required_capabilities": [
+            "cloud.workspace.manage"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
               "oneOf": [
                 {
                   "properties": {
@@ -23851,138 +24363,223 @@
                     "expected_writer_epoch"
                   ]
                 }
-              ]
+              ],
+              "properties": {
+                "archive_base64": {
+                  "maxLength": 13981016,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "argv_json": {
+                  "maxLength": 24000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "expected_receiver_head": {
+                  "maxLength": 71,
+                  "pattern": "^(?:sha256:[0-9a-f]{64})?$",
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "expected_writer_epoch": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "operation": {
+                  "enum": [
+                    "initialize",
+                    "capture",
+                    "import",
+                    "restore",
+                    "prepare_handoff",
+                    "task_prepare",
+                    "task_resume",
+                    "task_status",
+                    "task_cancel",
+                    "task_apply"
+                  ]
+                },
+                "paths": {
+                  "maxLength": 32768,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
           },
+          "security": "restricted",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "operations": [
-            {
-              "id": "tobkiri_cloud_workspace_pack.workspace-manage",
-              "entrypoint_id": "workspace-manage",
-              "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947"
-            }
-          ]
+            "interactive_effect.manage"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "operations": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "operations": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "operations": [
+            "rumi_file_inspect_pack.file-inspect"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "path": "runtime/__init__.py",
           "digest": "sha256:0b0afddeded6cae8379e760270af0457f1b3e963809e1f2049c7c50fe4630787",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/__init__.py"
         },
         {
-          "path": "runtime/host.py",
           "digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/host.py"
         },
         {
-          "path": "runtime/capsule.py",
           "digest": "sha256:87db32b4880940d02f82b206bc7785972982796bd170b96cd82ff0dc2cd0ef7d",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/capsule.py"
         },
         {
-          "path": "runtime/store.py",
           "digest": "sha256:8916aeef71db86c83315d209b6b070b2050153147352749dd08b5e7f417cf366",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/store.py"
         },
         {
-          "path": "runtime/service.py",
           "digest": "sha256:8e88be48e6e007abe71df6278784cad1561c50d92bc9efa24b065e0f75f4ddbb",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/service.py"
         },
         {
-          "path": "runtime/task.py",
           "digest": "sha256:f47759f5195e3f6c75457973e2a615ff9eb9cf77672744213ca459dcad3fccfa",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/task.py"
         },
         {
-          "path": "runtime/recipe.py",
           "digest": "sha256:a6c16abec9e1d27b5a01e240d166763fad04cba486733c35789778bf46e2164e",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/recipe.py"
         },
         {
-          "path": "container/Dockerfile",
           "digest": "sha256:60fa57140cb083f7a83b83423bca9e738eebca7b6eef4eb2d4039fa0ba4df270",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/Dockerfile"
         },
         {
-          "path": "container/runtime.py",
           "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/runtime.py"
         },
         {
-          "path": "container/recipe.v1.json",
           "digest": "sha256:e8e672fe5fe0d5f0a759df85e900a89ec56259e27454cba99c6e5c8ba9f4fa4d",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/recipe.v1.json"
         },
         {
-          "path": "container/task-recipe.v1.json",
           "digest": "sha256:4120b09164a3789e2635f6541a615f11dbfbb6266cdfff62ac04c36a6c101dc2",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/task-recipe.v1.json"
         },
         {
-          "path": "container/workspace_capsule_v1.py",
           "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/workspace_capsule_v1.py"
         },
         {
-          "path": "container/workspace_tree_v1.py",
           "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/workspace_tree_v1.py"
         },
         {
-          "path": "container/task_runner.py",
           "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "container/task_runner.py"
         },
         {
-          "path": "pack-source.v1.json",
           "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "pack-source.v1.json"
         },
         {
-          "path": "frontend/contributions/composer.json",
           "digest": "sha256:6a7d975de095f827d22a6cf8541e52242dfa7983da0e1c25107afa4c18699ae5",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "frontend/contributions/composer.json"
         },
         {
-          "path": "frontend/contributions/workspace.json",
           "digest": "sha256:1d7cd3f5ababd755aecbe4063081c8444bc60331cd979738db2bb99b5f55ba28",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "frontend/contributions/workspace.json"
         }
       ],
-      "legacy_ids": [],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 0,
-        "sunset_at": "2027-12-31"
-      },
+      "secrets": [],
       "source_evidence": [
         {
+          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
           "path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-          "rule_id": "reviewed-cloud-workspace-source",
-          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb"
+          "rule_id": "reviewed-cloud-workspace-source"
         }
       ],
       "source_provenance": {
         "mode": "canonical-v4",
         "owner": "tobkiri_cloud_workspace_pack",
         "source_format": "pack.v4.json"
-      }
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "host_brokered"
     },
     {
-      "pack_id": "tobkiri_conversation_lifecycle_pack",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
-      "display_name": "Tobkiri Conversation Lifecycle",
-      "description": "Optional completion-based archiving and shared elapsed-context source.",
-      "version": "1.0.0",
-      "kind": "host_extension",
-      "dependencies": {},
       "capabilities": [
         "conversation.read",
         "conversation.manage",
@@ -23992,120 +24589,51 @@
         "conversation.lifecycle.manage",
         "conversation.lifecycle.archive"
       ],
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "secrets": [],
+      "dependencies": {},
+      "description": "Optional completion-based archiving and shared elapsed-context source.",
+      "display_name": "Tobkiri Conversation Lifecycle",
       "execution_boundary": "host_brokered",
-      "approval_policy": "capability_gated",
-      "workspace_boundary": "none",
+      "kind": "host_extension",
       "legacy_ids": [],
       "legacy_operations": [],
       "migration": {
         "removal_wave": 0,
         "sunset_at": "2027-12-31"
       },
-      "required_contracts": [
-        {
-          "contract_id": "tobkiri.resource.conversation.v1",
-          "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
-          "operations": [
-            "rumi_conversation_store_pack.conversation-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
-          "operations": [
-            "rumi_conversation_store_pack.conversation-manage"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.resource.schedule.v1",
-          "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
-          "operations": [
-            "rumi_schedule_store_pack.schedule-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.schedule.v1",
-          "cardinality": "one",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0",
-          "operations": [
-            "rumi_schedule_store_pack.schedule-action"
-          ]
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
-          "kind": "executable",
-          "path": "runtime/host.py"
-        },
-        {
-          "digest": "sha256:b09cf3c3fcc5105f49d2a14c9622a42f92a6c566331cfd991d28fef916d26d18",
-          "kind": "sidecar",
-          "path": "runtime/lifecycle.py"
-        },
-        {
-          "digest": "sha256:d609cc58478a17072146aa4f9a2263237a483b13d29430052a10918724f61750",
-          "kind": "sidecar",
-          "path": "frontend/contributions/lifecycle.json"
-        },
-        {
-          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
-          "kind": "sidecar",
-          "path": "pack-source.v1.json"
-        }
-      ],
-      "source_evidence": [
-        {
-          "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
-          "rule_id": "reviewed-conversation-lifecycle-source",
-          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa"
-        }
-      ],
-      "source_provenance": {
-        "mode": "canonical-v4",
-        "owner": "tobkiri_conversation_lifecycle_pack",
-        "source_format": "pack-source.v1.json"
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
       },
+      "pack_id": "tobkiri_conversation_lifecycle_pack",
       "provided_contracts": [
         {
-          "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_conversation_lifecycle_pack",
-          "provider_id": "tobkiri_conversation_lifecycle_pack.status",
           "cardinality": "one",
-          "security": "restricted",
+          "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "required_capabilities": [
-            "conversation.lifecycle.read"
-          ],
           "lifecycle": {
             "data_owner": "tobkiri_conversation_lifecycle_pack",
             "introduced": "1.0.0"
           },
           "operations": [
             {
-              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
-              "entrypoint_id": "lifecycle-status",
-              "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
               "effect_ceiling": [
                 "capability:conversation.lifecycle.read"
-              ]
+              ],
+              "entrypoint_id": "lifecycle-status",
+              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+              "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
             }
           ],
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+          "required_capabilities": [
+            "conversation.lifecycle.read"
+          ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
@@ -24133,36 +24661,36 @@
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
-          }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         },
         {
-          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_conversation_lifecycle_pack",
-          "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
           "cardinality": "one",
-          "security": "restricted",
+          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "required_capabilities": [
-            "conversation.lifecycle.manage"
-          ],
           "lifecycle": {
             "data_owner": "tobkiri_conversation_lifecycle_pack",
             "introduced": "1.0.0"
           },
           "operations": [
             {
-              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
               "entrypoint_id": "lifecycle-manage",
+              "id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
               "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
             }
           ],
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+          "required_capabilities": [
+            "conversation.lifecycle.manage"
+          ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
@@ -24197,40 +24725,55 @@
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
-          }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         },
         {
-          "contract_id": "tobkiri.action.job.adapter.v2",
-          "version": "2.0.0",
-          "owner": "tobkiri_conversation_lifecycle_pack",
-          "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
           "cardinality": "many",
-          "security": "restricted",
+          "contract_id": "tobkiri.action.job.adapter.v2",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "required_capabilities": [
-            "conversation.lifecycle.archive"
-          ],
           "lifecycle": {
             "data_owner": "tobkiri_conversation_lifecycle_pack",
             "introduced": "1.0.0"
           },
           "operations": [
             {
-              "id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
               "entrypoint_id": "archive-job-adapter",
+              "id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
               "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
             }
           ],
+          "owner": "tobkiri_conversation_lifecycle_pack",
+          "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+          "required_capabilities": [
+            "conversation.lifecycle.archive"
+          ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "action_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "idempotency_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "lease_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
                 "operation": {
                   "enum": [
                     "describe",
@@ -24239,49 +24782,108 @@
                     "status"
                   ]
                 },
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
-                "action_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
-                },
                 "payload": {
                   "type": "object"
                 },
-                "idempotency_key": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
                 },
                 "schedule_id": {
-                  "type": "string",
-                  "maxLength": 256
-                },
-                "lease_id": {
-                  "type": "string",
-                  "maxLength": 256
+                  "maxLength": 256,
+                  "type": "string"
                 }
               },
               "required": [
                 "operation"
-              ]
+              ],
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
-          }
+          },
+          "security": "restricted",
+          "version": "2.0.0"
         }
-      ]
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "operations": [
+            "rumi_schedule_store_pack.schedule-resource"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.schedule.v1",
+          "operations": [
+            "rumi_schedule_store_pack.schedule-action"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        },
+        {
+          "digest": "sha256:b09cf3c3fcc5105f49d2a14c9622a42f92a6c566331cfd991d28fef916d26d18",
+          "kind": "sidecar",
+          "path": "runtime/lifecycle.py"
+        },
+        {
+          "digest": "sha256:d609cc58478a17072146aa4f9a2263237a483b13d29430052a10918724f61750",
+          "kind": "sidecar",
+          "path": "frontend/contributions/lifecycle.json"
+        },
+        {
+          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
+          "kind": "sidecar",
+          "path": "pack-source.v1.json"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
+          "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
+          "rule_id": "reviewed-conversation-lifecycle-source"
+        }
+      ],
+      "source_provenance": {
+        "mode": "canonical-v4",
+        "owner": "tobkiri_conversation_lifecycle_pack",
+        "source_format": "pack-source.v1.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "none"
     },
     {
       "approval_policy": "capability_gated",
@@ -25273,13 +25875,8 @@
       "workspace_boundary": "host_brokered"
     },
     {
-      "pack_id": "tobkiri_side_chat_pack",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
-      "display_name": "Tobkiri Side Chat",
-      "description": "Optional independent child history with fresh parent context.",
-      "version": "1.0.0",
-      "kind": "host_extension",
-      "dependencies": {},
       "capabilities": [
         "conversation.read",
         "conversation.manage",
@@ -25291,136 +25888,53 @@
         "conversation.side.manage",
         "conversation.side.turn"
       ],
+      "dependencies": {},
+      "description": "Optional independent child history with fresh parent context.",
+      "display_name": "Tobkiri Side Chat",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 0,
+        "sunset_at": "2027-12-31"
+      },
       "network": {
         "allowed_domains": [],
         "allowed_ports": []
       },
-      "secrets": [],
-      "execution_boundary": "host_brokered",
-      "approval_policy": "capability_gated",
-      "workspace_boundary": "host_brokered",
-      "required_contracts": [
-        {
-          "contract_id": "tobkiri.resource.conversation.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_conversation_store_pack.conversation-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_conversation_store_pack.conversation-manage"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.resource.turn.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_turn_runtime_pack.turn-resource"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.event.turn.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_turn_runtime_pack.turn-events"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.turn.saved.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_turn_runtime_pack.turn-saved"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.turn.stop.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_turn_runtime_pack.turn-stop"
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.turn.reconcile.v1",
-          "version_range": ">=1.0.0 <2.0.0",
-          "cardinality": "one",
-          "optional": false,
-          "operations": [
-            "rumi_turn_runtime_pack.turn-reconcile"
-          ]
-        }
-      ],
+      "pack_id": "tobkiri_side_chat_pack",
       "provided_contracts": [
         {
-          "contract_id": "tobkiri.resource.side-chat.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_side_chat_pack",
-          "provider_id": "tobkiri_side_chat_pack.resource",
           "cardinality": "one",
-          "security": "restricted",
+          "contract_id": "tobkiri.resource.side-chat.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_side_chat_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "capability:conversation.side.read"
+              ],
+              "entrypoint_id": "side-chat-resource",
+              "id": "tobkiri_side_chat_pack.side-chat-resource",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ],
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.resource",
           "required_capabilities": [
             "conversation.side.read"
           ],
-          "lifecycle": {
-            "introduced": "1.0.0",
-            "data_owner": "tobkiri_side_chat_pack"
-          },
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "operation": {
-                  "type": "string"
-                },
-                "_session_id": {
-                  "type": "string"
-                },
-                "parent_conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "turn_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                }
-              },
-              "required": [
-                "profile_id",
-                "operation"
-              ],
               "oneOf": [
                 {
                   "properties": {
@@ -25443,75 +25957,79 @@
                     "turn_id"
                   ]
                 }
-              ]
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          },
-          "operations": [
-            {
-              "id": "tobkiri_side_chat_pack.side-chat-resource",
-              "entrypoint_id": "side-chat-resource",
-              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
-              "effect_ceiling": [
-                "capability:conversation.side.read"
-              ]
-            }
-          ]
-        },
-        {
-          "contract_id": "tobkiri.action.side-chat.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_side_chat_pack",
-          "provider_id": "tobkiri_side_chat_pack.manage",
-          "cardinality": "one",
-          "security": "restricted",
-          "failure": "fail_closed",
-          "isolation": "in_process",
-          "required_capabilities": [
-            "conversation.side.manage"
-          ],
-          "lifecycle": {
-            "introduced": "1.0.0",
-            "data_owner": "tobkiri_side_chat_pack"
-          },
-          "schemas": {
-            "input": {
-              "type": "object",
-              "additionalProperties": false,
+              ],
               "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
+                "_session_id": {
+                  "type": "string"
+                },
+                "conversation_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
                 },
                 "operation": {
                   "type": "string"
                 },
-                "_session_id": {
+                "parent_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
                   "type": "string"
                 },
-                "parent_conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
                 },
-                "expected_parent_revision": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 9007199254740991
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "profile_id",
                 "operation"
               ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.side-chat.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_side_chat_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "side-chat-manage",
+              "id": "tobkiri_side_chat_pack.side-chat-manage",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ],
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.manage",
+          "required_capabilities": [
+            "conversation.side.manage"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
               "oneOf": [
                 {
                   "properties": {
@@ -25524,100 +26042,72 @@
                     "expected_parent_revision"
                   ]
                 }
-              ]
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          },
-          "operations": [
-            {
-              "id": "tobkiri_side_chat_pack.side-chat-manage",
-              "entrypoint_id": "side-chat-manage",
-              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
-            }
-          ]
-        },
-        {
-          "contract_id": "tobkiri.service.side-chat.turn.v1",
-          "version": "1.0.0",
-          "owner": "tobkiri_side_chat_pack",
-          "provider_id": "tobkiri_side_chat_pack.turn",
-          "cardinality": "one",
-          "security": "restricted",
-          "failure": "fail_closed",
-          "isolation": "in_process",
-          "required_capabilities": [
-            "conversation.side.turn"
-          ],
-          "lifecycle": {
-            "introduced": "1.0.0",
-            "data_owner": "tobkiri_side_chat_pack"
-          },
-          "schemas": {
-            "input": {
-              "type": "object",
-              "additionalProperties": false,
+              ],
               "properties": {
-                "profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                "_session_id": {
+                  "type": "string"
+                },
+                "expected_parent_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
                 },
                 "operation": {
                   "type": "string"
                 },
-                "_session_id": {
+                "parent_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
                   "type": "string"
                 },
-                "conversation_id": {
-                  "type": "string",
-                  "minLength": 1,
+                "profile_id": {
                   "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "turn_id": {
-                  "type": "string",
                   "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-                },
-                "expected_parent_revision": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 9007199254740991
-                },
-                "expected_child_revision": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 9007199254740991
-                },
-                "content": {
-                  "oneOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 61440
-                    },
-                    {
-                      "type": "array",
-                      "minItems": 1,
-                      "maxItems": 3,
-                      "items": {
-                        "type": "object"
-                      }
-                    }
-                  ]
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
                 }
               },
               "required": [
                 "profile_id",
                 "operation"
               ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "tobkiri_side_chat_pack",
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "side-chat-turn",
+              "id": "tobkiri_side_chat_pack.side-chat-turn",
+              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+            }
+          ],
+          "owner": "tobkiri_side_chat_pack",
+          "provider_id": "tobkiri_side_chat_pack.turn",
+          "required_capabilities": [
+            "conversation.side.turn"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
               "oneOf": [
                 {
                   "properties": {
@@ -25655,65 +26145,177 @@
                     "turn_id"
                   ]
                 }
-              ]
+              ],
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "content": {
+                  "oneOf": [
+                    {
+                      "maxLength": 61440,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "object"
+                      },
+                      "maxItems": 3,
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                },
+                "expected_child_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_parent_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object"
             }
           },
+          "security": "restricted",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.conversation.v1",
           "operations": [
-            {
-              "id": "tobkiri_side_chat_pack.side-chat-turn",
-              "entrypoint_id": "side-chat-turn",
-              "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
-            }
-          ]
+            "rumi_conversation_store_pack.conversation-resource"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.turn.v1",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.event.turn.v1",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-events"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-stop"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ],
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "path": "runtime/host.py",
           "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
-          "kind": "executable"
+          "kind": "executable",
+          "path": "runtime/host.py"
         },
         {
-          "path": "runtime/side_chat.py",
           "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
-          "kind": "sidecar"
-        },
-        {
-          "path": "pack-source.v1.json",
-          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
-          "kind": "sidecar"
-        },
-        {
-          "path": "frontend/contributions/side-chat.json",
-          "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
           "kind": "sidecar",
-          "index_role": "sidecar"
+          "path": "runtime/side_chat.py"
+        },
+        {
+          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
+          "kind": "sidecar",
+          "path": "pack-source.v1.json"
+        },
+        {
+          "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "frontend/contributions/side-chat.json"
         }
       ],
-      "legacy_ids": [],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 0,
-        "sunset_at": "2027-12-31"
-      },
+      "secrets": [],
       "source_evidence": [
         {
+          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
           "path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
-          "rule_id": "reviewed-side-chat-source",
-          "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad"
+          "rule_id": "reviewed-side-chat-source"
         }
       ],
       "source_provenance": {
         "mode": "canonical-v4",
         "owner": "tobkiri_side_chat_pack",
         "source_format": "pack.v4.json"
-      }
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "capability_gated",
@@ -25809,7 +26411,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-          "implementation_digest": "sha256:c3696f36b017f8fbd47401a90d697185442e5f862812725fe1d83cc3b48f9095",
+          "implementation_digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
           "operation_ids": [
             "tobkiri_ui_settings_pack.model-search"
           ]
@@ -26469,7 +27071,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
               "id": "tobkiri_ui_settings_pack.model-search",
-              "implementation_digest": "sha256:c3696f36b017f8fbd47401a90d697185442e5f862812725fe1d83cc3b48f9095"
+              "implementation_digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -26483,6 +27085,11 @@
               "properties": {
                 "configured_only": {
                   "type": "boolean"
+                },
+                "connection_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
                 },
                 "local_only": {
                   "type": "boolean"
@@ -26599,6 +27206,12 @@
           "contract_id": "tobkiri.resource.application.presentation.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -26618,7 +27231,7 @@
           "path": "runtime/settings.py"
         },
         {
-          "digest": "sha256:c3696f36b017f8fbd47401a90d697185442e5f862812725fe1d83cc3b48f9095",
+          "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
           "kind": "executable",
           "path": "runtime/model_search.py"
         },

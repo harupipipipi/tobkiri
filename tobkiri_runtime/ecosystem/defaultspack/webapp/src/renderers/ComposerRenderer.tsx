@@ -1,3 +1,4 @@
+import { isLocalTaskPetCommand, isTaskPetCommandInput } from "../lib/taskPetCommand";
 import {
   Activity,
   ArrowUp,
@@ -69,7 +70,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type {
@@ -88,10 +89,14 @@ import { CodingWorkspaceBadge } from "../components/coding/CodingWorkspaceBadge"
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
 import { ErrorCopyAction, ErrorNotice } from "../components/ErrorNotice";
 import { RuntimeCapabilityBanner } from "../components/RuntimeCapabilityBanner";
+import { ViewportPopover } from "../ui/layers/ViewportPopover";
+import { modelProfileConnectionId, savedModelProfileForOption } from "../features/models/modelSelectionIdentity";
+import type { ModelSelectOption } from "../features/models/modelSelect";
 import { StructuredComposerPanel } from "../components/StructuredComposerPanel";
 import { WarmActionIcon } from "../components/WarmActionIcon";
-import { chatComposerResources } from "../features/chat/resources/chatComposerResources";
 import {
+  ModelSearchPicker,
+  modelSearchItemToModelSelectOption,
   DEFAULT_MODEL_SELECTOR_SCHEMA,
   filterModelProfilesBySelector,
   modelSelectorSchemaForSurface,
@@ -99,8 +104,8 @@ import {
 import { ActionApprovalControl } from "../features/tools/ActionApprovalControl";
 import { ToolModeControl } from "../features/tools/ToolModeControl";
 import { ProjectPicker } from "../features/projects/ProjectPicker";
-import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
 import { ToolSelectionReviewCard } from "../features/tools/ToolSelectionReviewCard";
+import { composerToolMentionGroups } from "../lib/composerToolMentions";
 import {
   applyComposerVoiceTranscript,
   assertComposerMicrophoneAllowed,
@@ -116,7 +121,7 @@ import {
   type ComposerVoicePhase,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
-import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation } from "../lib/composerWidgets";
+import { composerFileMentionWidget, composerKnownMentionValues, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation } from "../lib/composerWidgets";
 import { WidgetAttentionIcon } from "../lib/widgetAttention";
 import {
   COMPOSER_REFERENCE_MIME,
@@ -130,6 +135,8 @@ import {
 } from "../lib/composerReferences";
 import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComposer";
 import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
+import { insertAtMentionText } from "../lib/composerMentionInsertion";
+export { insertAtMentionText } from "../lib/composerMentionInsertion";
 import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
 import { declarativeIconForName } from "../lib/declarativeIcons";
@@ -1093,35 +1100,6 @@ function modelProfileSearchText(profile: ModelProfile): string {
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
-function modelSearchItemToProfile(item: ModelSearchItem): ModelProfile {
-  const providerId = String(item.provider_id ?? "").trim();
-  const modelId = String(item.model_id ?? "").trim();
-  const profileId = String(item.profile_id ?? item.qualified_model_id ?? (providerId && modelId ? `${providerId}/${modelId}` : "")).trim();
-  const metadata = item.metadata && typeof item.metadata === "object" ? item.metadata : undefined;
-  const rawMaxContext = Number((metadata as Record<string, unknown> | undefined)?.max_context ?? NaN);
-  return {
-    profile_id: profileId,
-    qualified_model_id: String(item.qualified_model_id ?? profileId).trim() || profileId,
-    display_name: String(item.display_name ?? item.label ?? profileId).trim() || profileId,
-    provider_id: providerId,
-    provider_display_name: String(item.provider_display_name ?? providerId).trim() || providerId,
-    model_id: modelId,
-    max_context: Number.isFinite(rawMaxContext) ? rawMaxContext : undefined,
-    max_context_tokens: Number.isFinite(rawMaxContext) ? rawMaxContext : undefined,
-    supports_thinking: item.supports_thinking,
-    supports_vision: item.supports_vision,
-    supports_image_input: item.supports_image_input,
-    supports_tool_calling: item.supports_tool_calling,
-    supports_fast: item.supports_fast,
-    speed_tier: item.speed_tier,
-    quality_tier: item.quality_tier,
-    cost_tier: item.cost_tier,
-    knowledge_level: item.knowledge_level,
-    capability_tags: item.capability_tags,
-    availability: item.availability,
-    metadata,
-  };
-}
 
 export function filterModelProfilesBySearch(profiles: ModelProfile[], search: string, providerTrigger = "@"): ModelProfile[] {
   const rawTokens = search.trim().split(/\s+/).filter(Boolean);
@@ -1539,65 +1517,30 @@ function DroppedWidgetChip({
     );
   }
 
-  if (widget.widgetKind !== "tool_toggle" && widget.type !== "tool") {
-    const fallbackIcon = widget.widgetKind === "button"
-      ? MousePointerClick
-      : widget.widgetKind === "selector"
-        ? SlidersHorizontal
-        : PanelRightOpen;
-    const Icon = composerIconForName(widget.icon, fallbackIcon);
-    return (
-      <button
-        type="button"
-        title={widget.description ?? widget.label}
-        onClick={() => onAction?.(widget)}
-        className="inline-flex max-w-[160px] items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
-      >
-        <WidgetAttentionIcon
-          attention={widget.presentation?.icon_attention}
-          widgetId={widget.id}
-        >
-          <Icon size={10} />
-        </WidgetAttentionIcon>
-        <span className="truncate">{widget.label}</span>
-      </button>
-    );
-  }
+  if (widget.type === "tool" || widget.type === "service"
+    || widget.widgetKind === "tool_toggle"
+    || widget.widgetKind === "service_reference") return null;
 
-  const ToolIcon = composerIconForName(widget.icon, Wrench);
-  const toolToggleClassName = `inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] transition-colors ${
-    widget.enabled
-      ? "border-sky-400/25 bg-sky-400/[0.08] text-sky-100"
-      : "border-white/[0.07] bg-white/[0.04] text-zinc-400"
-  }`;
-  const toolToggleContent = (
-    <>
-      <WidgetAttentionIcon
-        attention={widget.presentation?.icon_attention}
-        widgetId={widget.id}
-      >
-        <ToolIcon size={11} className="flex-shrink-0" />
-      </WidgetAttentionIcon>
-      <span className="truncate">{widget.label}</span>
-    </>
-  );
-
-  if (!onToggle) {
-    return (
-      <span className={`${toolToggleClassName} cursor-default`}>
-        {toolToggleContent}
-      </span>
-    );
-  }
-
+  const fallbackIcon = widget.widgetKind === "button"
+    ? MousePointerClick
+    : widget.widgetKind === "selector"
+      ? SlidersHorizontal
+      : PanelRightOpen;
+  const Icon = composerIconForName(widget.icon, fallbackIcon);
   return (
     <button
       type="button"
       title={widget.description ?? widget.label}
-      className={`${toolToggleClassName} cursor-pointer hover:bg-white/[0.08]`}
-      onClick={() => onToggle(widget.id)}
+      onClick={() => onAction?.(widget)}
+      className="inline-flex max-w-[160px] items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
     >
-      {toolToggleContent}
+      <WidgetAttentionIcon
+        attention={widget.presentation?.icon_attention}
+        widgetId={widget.id}
+      >
+        <Icon size={10} />
+      </WidgetAttentionIcon>
+      <span className="truncate">{widget.label}</span>
     </button>
   );
 }
@@ -1793,427 +1736,54 @@ export function modelPickerPage(
   return { visible: values.slice(0, limit), total: values.length };
 }
 
-function ModelDropdown({
-  profiles,
-  selectedProfile,
-  isGenerating,
-  placement = "above",
-  onSelect,
-  onClose,
-  selectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA,
+export function ModelDropdown({ profiles, selectedProfile, isGenerating, placement = "above", onSelect, onClose,
+  selectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA, onOpenModelManager, anchorRef,
 }: {
-  profiles: ModelProfile[];
-  selectedProfile: ModelProfile | null;
-  isGenerating: boolean;
-  placement?: "above" | "below";
-  onSelect: (profile: ModelProfile) => void;
-  onClose: () => void;
-  selectorSchema?: typeof DEFAULT_MODEL_SELECTOR_SCHEMA;
+  profiles: ModelProfile[]; selectedProfile: ModelProfile | null; isGenerating: boolean;
+  placement?: "above" | "below"; onSelect: (profile: ModelProfile) => void; onClose: () => void;
+  selectorSchema?: typeof DEFAULT_MODEL_SELECTOR_SCHEMA; onOpenModelManager?: () => void;
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
   const [search, setSearch] = useState("");
-  const [remoteProfiles, setRemoteProfiles] = useState<ModelProfile[]>([]);
-  const [remoteOffset, setRemoteOffset] = useState(0);
-  const [remoteHasMore, setRemoteHasMore] = useState(false);
-  const [remoteLoading, setRemoteLoading] = useState(false);
-  const [remoteError, setRemoteError] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(60);
-  const [activeProviderIndex, setActiveProviderIndex] = useState(0);
-  const [activeModelIndex, setActiveModelIndex] = useState(0);
-  const searchRequestSeqRef = useRef(0);
-  const activeOptionRef = useRef<HTMLButtonElement | null>(null);
-  const trimmedSearch = search.trim();
-  const resolvedSelectorSchema = useMemo(
-    () => modelSelectorSchemaForSurface(selectorSchema, "composer"),
-    [selectorSchema],
-  );
-  const providerTrigger = resolvedSelectorSchema.layout.provider_trigger;
-  const providerState = useMemo(
-    () => modelProviderSearchState(search, providerTrigger),
-    [providerTrigger, search],
-  );
-  const pageSize = Math.min(
-    100,
-    Math.max(1, resolvedSelectorSchema.layout.max_visible_options),
-  );
-  const remoteSearchPayload = useMemo(
-    () => composerModelSearchPayload(search, providerState, pageSize),
-    [pageSize, providerState, search],
-  );
-  const remoteProviderId = remoteSearchPayload.provider_id ?? "";
-  const remoteQuery = remoteSearchPayload.query;
-  const eligibleProfiles = useMemo(
-    () => filterModelProfilesBySelector(profiles, resolvedSelectorSchema, "composer"),
-    [profiles, resolvedSelectorSchema],
-  );
-  const providerOptions = useMemo(() => modelProviderOptions(eligibleProfiles), [eligibleProfiles]);
-  const providerSuggestions = useMemo(() => {
-    if (!providerState.active) return [];
-    const query = normalizeProviderSearchToken(providerState.providerQuery);
-    const selectedProviderId = profileProviderId(selectedProfile);
-    return providerOptions
-      .filter((provider) => !query || [provider.id, provider.label].some((value) => normalizeProviderSearchToken(value).includes(query)))
-      .sort((left, right) => {
-        if (left.id === selectedProviderId) return -1;
-        if (right.id === selectedProviderId) return 1;
-        return left.label.localeCompare(right.label, "ja");
-      });
-  }, [providerOptions, providerState.active, providerState.providerQuery, selectedProfile]);
-  const filtered = useMemo(
-    () => filterModelProfilesBySearch(
-      eligibleProfiles,
-      search,
-      providerTrigger,
-    ),
-    [eligibleProfiles, providerTrigger, search],
-  );
-
-  useEffect(() => {
-    searchRequestSeqRef.current += 1;
-    const requestSeq = searchRequestSeqRef.current;
-    setRemoteProfiles([]);
-    setRemoteOffset(0);
-    setRemoteHasMore(false);
-    setRemoteLoading(false);
-    setRemoteError(false);
-    setVisibleLimit(pageSize);
-    if (providerState.active) {
-      return;
-    }
-    let disposed = false;
-    const timer = window.setTimeout(() => {
-      setRemoteLoading(true);
-      chatComposerResources.searchModels(remoteSearchPayload)
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeqRef.current) return;
-          const models = result.models ?? [];
-          setRemoteProfiles(filterModelProfilesBySelector(
-            models.map(modelSearchItemToProfile),
-            resolvedSelectorSchema,
-            "composer",
-          ));
-          setRemoteOffset(models.length);
-          setRemoteHasMore(result.has_more ?? models.length === pageSize);
-          setRemoteLoading(false);
-        })
-        .catch(() => {
-          if (disposed || requestSeq !== searchRequestSeqRef.current) return;
-          setRemoteProfiles([]);
-          setRemoteLoading(false);
-          setRemoteError(true);
-        });
-    }, remoteQuery ? 160 : 0);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    pageSize,
-    providerState.active,
-    remoteProviderId,
-    remoteQuery,
-    remoteSearchPayload,
-    resolvedSelectorSchema,
-  ]);
-
-  const modelPage = useMemo(() => modelPickerPage(
-    filtered,
-    remoteProfiles,
-    selectedProfile,
-    !trimmedSearch && resolvedSelectorSchema.layout.selected_position === "first",
-    visibleLimit,
-  ), [
-    filtered,
-    remoteProfiles,
-    resolvedSelectorSchema.layout.selected_position,
-    selectedProfile,
-    trimmedSearch,
-    visibleLimit,
-  ]);
-  const visibleProfiles = modelPage.visible;
-  const hasMoreProfiles = modelPage.total > visibleLimit || remoteHasMore || remoteError;
-  const showMoreProfiles = () => {
-    if (remoteLoading) return;
-    if (modelPage.total > visibleLimit) {
-      setVisibleLimit((limit) => limit + pageSize);
-      return;
-    }
-    const requestSeq = searchRequestSeqRef.current;
-    setRemoteLoading(true);
-    setRemoteError(false);
-    void chatComposerResources.searchModels(composerModelSearchPayload(
-      search,
-      providerState,
-      pageSize,
-      remoteOffset,
-    )).then((result) => {
-      if (requestSeq !== searchRequestSeqRef.current) return;
-      const models = result.models ?? [];
-      setRemoteProfiles((previous) => [...previous, ...filterModelProfilesBySelector(
-        models.map(modelSearchItemToProfile),
-        resolvedSelectorSchema,
-        "composer",
-      )]);
-      setRemoteOffset((offset) => offset + models.length);
-      setRemoteHasMore(models.length > 0 && (
-        result.has_more ?? models.length === pageSize
-      ));
-      setVisibleLimit((limit) => limit + pageSize);
-      setRemoteLoading(false);
-    }).catch(() => {
-      if (requestSeq !== searchRequestSeqRef.current) return;
-      setRemoteLoading(false);
-      setRemoteError(true);
-    });
-  };
-
-  useEffect(() => {
-    setActiveProviderIndex(0);
-  }, [search, providerSuggestions.length]);
-
-  useEffect(() => {
-    setActiveModelIndex(0);
-  }, [search, visibleProfiles.length]);
-
-  useEffect(() => {
-    activeOptionRef.current?.scrollIntoView({ block: "nearest" });
-  }, [activeModelIndex, activeProviderIndex, providerState.active]);
-
-  const groupedByProvider = useMemo(() => {
-    if (resolvedSelectorSchema.layout.group_by === "none") {
-      return [["", visibleProfiles] as [string, ModelProfile[]]];
-    }
-    const map = new Map<string, ModelProfile[]>();
-    for (const profile of visibleProfiles) {
-      const provider = profile.provider_id ?? "other";
-      const list = map.get(provider) ?? [];
-      list.push(profile);
-      map.set(provider, list);
-    }
-    return [...map.entries()];
-  }, [resolvedSelectorSchema.layout.group_by, visibleProfiles]);
-
-  const activeProvider = providerSuggestions[Math.min(activeProviderIndex, Math.max(0, providerSuggestions.length - 1))] ?? null;
-  const activeProfile = visibleProfiles[Math.min(activeModelIndex, Math.max(0, visibleProfiles.length - 1))] ?? null;
-  const highlightedPrefix = providerState.highlightPrefix;
-  const highlightedSuffix = highlightedPrefix ? search.slice(highlightedPrefix.length) : "";
-  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    const action = modelSearchKeyAction({
-      key: event.key,
-      shiftKey: event.shiftKey,
-      providerMode: providerState.active,
-      providerCount: providerSuggestions.length,
-      providerIndex: activeProviderIndex,
-      modelCount: visibleProfiles.length,
-      modelIndex: activeModelIndex,
-      providerConfirmKey: resolvedSelectorSchema.layout.provider_confirm_key,
-      modelConfirmKeys: resolvedSelectorSchema.layout.model_confirm_keys,
-    });
-    if (!action.handled) return;
-    event.preventDefault();
-    if (action.type === "close") {
-      onClose();
-      return;
-    }
-    if (action.type === "move_provider") {
-      setActiveProviderIndex(action.index);
-      return;
-    }
-    if (action.type === "confirm_provider") {
-      const provider = providerSuggestions[action.index];
-      if (provider) setSearch(`${providerTrigger}${provider.id} `);
-      return;
-    }
-    if (action.type === "move_model") {
-      setActiveModelIndex(action.index);
-      return;
-    }
-    const profile = visibleProfiles[action.index];
-    if (profile) {
-      onSelect(profile);
-      onClose();
-    }
-  };
-
-  return (
-    <>
-      <button type="button" aria-label="close model dropdown" className="fixed inset-0 rumi-layer-local-popover cursor-default" onClick={onClose} />
-      <div
-        className={`absolute rumi-layer-command-palette w-[min(400px,calc(100vw-88px))] max-w-[calc(100vw-88px)] overflow-hidden rumi-popover ${
-          modelDropdownPlacementClassName(placement)
-        }`}
-      >
-        <div className="border-b border-white/[0.06] p-2.5">
-          <div className="mb-2 flex min-w-0 items-center justify-between gap-2 px-0.5 text-[10px] text-zinc-500">
-            <span className="truncate">現在: {compactProfileName(profileDisplayName(selectedProfile))}</span>
-            <span className="flex-shrink-0">↑↓ で移動</span>
-          </div>
-          <label className="flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 px-2.5 text-sm focus-within:border-sky-400/50">
-            <Search size={14} className="flex-shrink-0 text-zinc-500" />
-            <span className="relative min-w-0 flex-1">
-              {highlightedPrefix && (
-                <span aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center whitespace-pre text-sm">
-                  <span className="font-medium text-sky-300">{highlightedPrefix}</span>
-                  <span className="text-zinc-200">{highlightedSuffix}</span>
-                </span>
-              )}
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                placeholder={`モデルを検索... ${providerTrigger} でプロバイダー`}
-                role="combobox"
-                aria-label="モデルを検索"
-                aria-expanded="true"
-                aria-controls={providerState.active ? "model-provider-options" : "model-search-options"}
-                aria-activedescendant={providerState.active
-                  ? activeProvider ? `model-provider-${activeProvider.id}` : undefined
-                  : activeProfile ? `model-option-${activeProfile.profile_id}` : undefined}
-                className={`relative w-full bg-transparent outline-none placeholder:text-zinc-600 ${highlightedPrefix ? "text-transparent caret-zinc-100" : "text-zinc-200"}`}
-                autoFocus
-              />
-            </span>
-          </label>
-          {providerState.active && (
-            <div className="mt-2 rounded-lg border border-sky-400/20 bg-sky-400/[0.07] px-2.5 py-2" aria-live="polite">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">プロバイダー選択中</span>
-                <span className="rounded border border-sky-400/20 bg-sky-400/[0.08] px-1.5 py-0.5 text-[9px] text-sky-200">
-                  {resolvedSelectorSchema.layout.provider_confirm_key}でプロバイダーを確定
-                </span>
-              </div>
-              <p className="mt-1 truncate text-[12px] font-medium text-zinc-100">
-                {activeProvider?.label ?? "一致するプロバイダーなし"}
-              </p>
-              <p className="truncate text-[10px] text-zinc-500">
-                {activeProvider
-                  ? `${activeProvider.id}${resolvedSelectorSchema.layout.show_provider_count ? ` · ${activeProvider.modelCount} models` : ""}`
-                  : `${providerTrigger} の後にプロバイダー名を入力`}
-              </p>
-            </div>
-          )}
-        </div>
-        <div
-          id={providerState.active ? "model-provider-options" : "model-search-options"}
-          role="listbox"
-          aria-label={providerState.active ? "プロバイダー候補" : "モデル候補"}
-          className="max-h-64 overflow-y-auto py-1"
-        >
-          {providerState.active ? providerSuggestions.map((provider, index) => {
-            const active = index === activeProviderIndex;
-            return (
-              <button
-                ref={active ? activeOptionRef : undefined}
-                id={`model-provider-${provider.id}`}
-                key={provider.id}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onMouseMove={() => setActiveProviderIndex(index)}
-                onClick={() => setSearch(`${providerTrigger}${provider.id} `)}
-                className={`flex w-full items-center justify-between gap-3 border-l-2 px-3 py-2 text-left transition-colors ${
-                  active ? "border-sky-400 bg-sky-400/[0.09] text-zinc-100" : "border-transparent text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
-                }`}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium">{providerTrigger}{provider.label}</span>
-                  <span className="block truncate text-[10px] text-zinc-500">
-                    {provider.id}{resolvedSelectorSchema.layout.show_provider_count ? ` · ${provider.modelCount} models` : ""}
-                  </span>
-                </span>
-                {active && <span className="flex items-center gap-1 text-[10px] text-sky-300"><Check size={12} /> {resolvedSelectorSchema.layout.provider_confirm_key}</span>}
-              </button>
-            );
-          }) : groupedByProvider.map(([provider, profiles]) => (
-            <div key={provider}>
-              {provider && <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">{provider}</div>}
-              {profiles.map((profile) => {
-                const needsKey = profileNeedsApiKey(profile);
-                const badges = capabilityBadges(profile).slice(0, 4);
-                const keyboardActive = activeProfile === profile;
-                const current = selectedProfile?.profile_id === profile.profile_id;
-                return (
-                  <button
-                    ref={keyboardActive ? activeOptionRef : undefined}
-                    id={`model-option-${profile.profile_id}`}
-                    key={profile.profile_id}
-                    type="button"
-                    role="option"
-                    aria-selected={keyboardActive}
-                    draggable
-                    disabled={isGenerating}
-                    onMouseMove={() => setActiveModelIndex(visibleProfiles.indexOf(profile))}
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(
-                        "application/rumi-widget",
-                        JSON.stringify({ id: profile.profile_id, type: "model", label: profile.display_name }),
-                      );
-                      event.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onClick={() => {
-                      onSelect(profile);
-                      onClose();
-                    }}
-                    className={`w-full flex items-center justify-between gap-2 border-l-2 px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06] disabled:opacity-50 ${
-                      keyboardActive ? "border-sky-400 bg-sky-400/[0.09]" : current ? "border-zinc-600 bg-zinc-800/60" : "border-transparent"
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] text-zinc-200">{compactProfileName(profileDisplayName(profile))}</span>
-                      <span className="block truncate text-[10px] text-zinc-500">
-                        {profile.provider_display_name ?? profile.provider_id} · {profile.provider_id}/{profile.model_id}
-                      </span>
-                      {resolvedSelectorSchema.layout.show_capability_tags && badges.length > 0 && (
-                        <span className="mt-1 flex flex-wrap gap-1">
-                          {badges.map((badge) => (
-                            <span key={badge} className="rounded border border-zinc-700 px-1.5 py-0.5 text-[9px] leading-none text-zinc-400">
-                              {badge}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </span>
-                    {keyboardActive ? (
-                      <span className="flex flex-shrink-0 items-center gap-1 text-[10px] text-sky-300"><Check size={12} /> {resolvedSelectorSchema.layout.model_confirm_keys[0] ?? "Enter"}</span>
-                    ) : needsKey ? (
-                      <span className="flex-shrink-0 rounded-full border border-amber-500/30 px-2 py-0.5 text-[10px] text-amber-300">
-                        API key
-                      </span>
-                    ) : (
-                      <span className="flex-shrink-0 text-right text-[10px] text-zinc-500">
-                        <span className="block">{profile.max_context_tokens ?? profile.max_context ?? "?"}</span>
-                        {typeof profile.knowledge_level === "number" && <span className="block">KL {profile.knowledge_level}</span>}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-          {providerState.active && providerSuggestions.length === 0 && (
-            <div className="px-3 py-4 text-center text-xs text-zinc-500">プロバイダーが見つかりません</div>
-          )}
-          {!providerState.active && groupedByProvider.length === 0 && (
-            <div className="px-3 py-4 text-center text-xs text-zinc-500">モデルが見つかりません</div>
-          )}
-          {!providerState.active && hasMoreProfiles && (
-            <button
-              type="button"
-              disabled={remoteLoading}
-              onClick={showMoreProfiles}
-              className="w-full border-t border-white/[0.06] px-3 py-2 text-center text-xs text-sky-300 hover:bg-white/[0.05] disabled:opacity-50"
-            >
-              {remoteLoading
-                ? "読み込み中..."
-                : remoteError
-                  ? "モデルを再読み込み"
-                  : "さらにモデルを表示"}
-            </button>
-          )}
-        </div>
-      </div>
-    </>
-  );
+  const [unregisteredSelection, setUnregisteredSelection] = useState(false);
+  const selectedOptionRef = useRef<ModelSelectOption | null>(null);
+  const fallbackAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const resolvedSelectorSchema = modelSelectorSchemaForSurface(selectorSchema, "composer");
+  const options = profiles.map((profile) => ({
+    ...modelSearchItemToModelSelectOption({
+      ...profile, configured: profile.route_configured || profileIsConfigured(profile),
+      requires_api_key: profileNeedsApiKey(profile),
+    }),
+    registered_profile_id: profile.profile_id,
+    connection_id: modelProfileConnectionId(profile),
+    catalog_provider_id: typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined,
+  }));
+  return <>
+    {!anchorRef && <span ref={fallbackAnchorRef} aria-hidden="true" />}
+    <ViewportPopover anchorRef={anchorRef ?? fallbackAnchorRef} onClose={onClose}
+      label="モデル検索を閉じる" closeOnEscape={false} preferredPlacement={placement}
+      desiredWidth={resolvedSelectorSchema.layout.popover_width_px}
+      maxHeight={resolvedSelectorSchema.layout.popover_max_height_px}
+      className="rumi-popover">
+      <ModelSearchPicker value={selectedProfile?.profile_id ?? ""} options={options}
+        query={search} onQueryChange={(query) => { setSearch(query); setUnregisteredSelection(false); }}
+        preset={{ kinds: ["model"] }} open showTrigger={false} surface="composer"
+        selectorSchema={selectorSchema} disabled={isGenerating}
+        onOpenChange={(open) => { if (!open) onClose(); }}
+        onSelectedOptionChange={(option) => { selectedOptionRef.current = option; }}
+        onChange={() => {
+          if (isGenerating) return false;
+          const profile = savedModelProfileForOption(profiles, selectedOptionRef.current);
+          if (!profile) { setUnregisteredSelection(true); return false; }
+          onSelect(profile);
+          onClose();
+        }} />
+      {unregisteredSelection && <div role="status" className="border-t border-white/10 px-5 py-3 text-xs text-zinc-400">
+        このモデルは未登録です。設定で使用するAPIとモデルを登録してください。
+        {onOpenModelManager && <button type="button" onClick={() => { onClose(); onOpenModelManager(); }} className="ml-2 text-sky-300">モデル設定を開く</button>}
+      </div>}
+    </ViewportPopover>
+  </>;
 }
 
 function ModeSelector({
@@ -2331,6 +1901,40 @@ export type ComposerAtMentionCandidate =
   | { kind: "service"; id: string; label: string; displayLabel?: string; description?: string; service: ToolGroup; section: ComposerMentionSection }
   | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
   | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
+
+/** Build a semantic candidate while retaining exclusion intent for tools. */
+export function composerAtMentionCandidateWidget(
+  candidate: ComposerAtMentionCandidate,
+  exclude = false,
+): DroppedWidget {
+  const negative = exclude && (candidate.kind === "tool" || candidate.kind === "service");
+  const syntax = `@${negative ? "-" : ""}${candidate.label}`;
+  const widget = candidate.kind === "tool"
+    ? composerToolMentionWidget(candidate.item, syntax)
+    : candidate.kind === "service"
+      ? composerServiceMentionWidget({
+        id: candidate.service.id,
+        label: candidate.service.label,
+        description: candidate.service.description,
+        toolIds: candidate.service.items.filter((item) => !item.disabled).map((item) => item.id),
+      })
+      : candidate.kind === "skill"
+        ? composerSkillMentionWidget(candidate.skill)
+        : composerFileMentionWidget(candidate.file);
+  if (!negative) return widget;
+  return {
+    ...widget,
+    id: `exclude:${widget.id}`,
+    metadata: {
+      ...widget.metadata,
+      mention: {
+        ...(widget.metadata?.mention as Record<string, unknown>),
+        syntax,
+        intent: "exclude",
+      },
+    },
+  };
+}
 
 /** Ensure Settings Mode stays available when a host catalog omits skills. */
 export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkillItem[] {
@@ -2637,20 +2241,6 @@ export function filterAtMentionFiles(files: string[], query: string): string[] {
   if (!query) return files.slice(0, 20);
   const q = query.toLowerCase();
   return files.filter((file) => file.toLowerCase().includes(q)).slice(0, 20);
-}
-
-export function insertAtMentionText(
-  input: string,
-  cursorPos: number,
-  label: string,
-  knownValues?: Iterable<string>,
-): { value: string; cursor: number } {
-  const activeMention = activeMentionAtCursor(input, cursorPos, knownValues);
-  const insertAt = activeMention?.start ?? cursorPos;
-  const before = input.slice(0, insertAt);
-  const after = input.slice(cursorPos);
-  const value = `${before}@${label} ${after}`;
-  return { value, cursor: insertAt + label.length + 2 };
 }
 
 export type ComposerInlineMentionPart = {
@@ -3001,7 +2591,6 @@ export function ComposerRenderer({
   selectedToolIds = [],
   actionApprovalMode = "ask",
   toolSelectionMode = "auto",
-  toolSelectionTargets = [],
   toolSelectionReview = null,
   keyboardButtonNavigation = true,
   steerStatus = null,
@@ -3015,13 +2604,13 @@ export function ComposerRenderer({
   onOpenToolSettings,
   onActionApprovalModeChange,
   onToolSelectionModeChange,
-  onToolSelectionTargetRemove,
   onToolSelectionReviewApprove,
   onToolSelectionReviewEdit,
   onToolSelectionReviewNoTools,
   onToolSelectionReviewCancel,
   onSwitchToVisionModel,
   onExtensionSelect,
+  onLocalCommandSubmit,
   onCommandSelect,
   onModelCommandCandidateSelect,
   onModelCommandCandidatesClose,
@@ -3051,6 +2640,8 @@ export function ComposerRenderer({
   onCodingContextRefresh,
   onProjectSelect,
   onProjectDirectorySelect,
+  onProjectWorkspaceCreate,
+  projectProfileId,
   onProjectStoragePrepare,
 }: ComposerRendererProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -3060,6 +2651,7 @@ export function ComposerRenderer({
   const [openFolder, setOpenFolder] = useState<"tools" | "models" | "commands">("tools");
   const [openToolGroup, setOpenToolGroup] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [openModelStatusId, setOpenModelStatusId] = useState<string | null>(null);
   const [apiKeyPromptProfile, setApiKeyPromptProfile] = useState<ModelProfile | null>(null);
   const [locallyConfiguredProviders, setLocallyConfiguredProviders] = useState<Set<string>>(() => new Set());
@@ -3172,28 +2764,11 @@ export function ComposerRenderer({
 	  const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
   const visibleDroppedWidgets = useMemo(
     () => droppedWidgets
-      .filter((widget) => widget.metadata?.source !== "composer_at_mention")
+      .filter((widget) => widget.metadata?.source !== "composer_at_mention"
+        && widget.type !== "tool" && widget.type !== "service"
+        && widget.widgetKind !== "tool_toggle" && widget.widgetKind !== "service_reference")
       .map((widget) => widgetWithCurrentPresentation(widget, toolItems)),
     [droppedWidgets, toolItems],
-  );
-  const visibleToolWidgetIdSet = useMemo(
-    () => new Set(
-      visibleDroppedWidgets
-        .filter((widget) => widget.type === "tool" || widget.widgetKind === "tool_toggle")
-        .map((widget) => widget.sourceItemId || widget.id),
-    ),
-    [visibleDroppedWidgets],
-  );
-  const inlineMentionToolIdSet = useMemo(
-    () => new Set(composerMentionToolIdsFromWidgets(droppedWidgets)),
-    [droppedWidgets],
-  );
-  const visibleToolSelectionTargets = useMemo(
-    () => toolSelectionTargets.filter((target) => (
-      target.kind !== "tool"
-      || (!inlineMentionToolIdSet.has(target.id) && !visibleToolWidgetIdSet.has(target.id))
-    )),
-    [inlineMentionToolIdSet, toolSelectionTargets, visibleToolWidgetIdSet],
   );
   const inlineMentionParts = useMemo(
     () => composerInlineMentionParts(input, droppedWidgets),
@@ -3206,12 +2781,9 @@ export function ComposerRenderer({
     inlineMentionLayerRef.current.scrollLeft = textarea.scrollLeft;
   }, []);
   const toolGroups = useMemo(() => groupToolItems(toolItems), [toolItems]);
+  const mentionToolGroups = useMemo(() => composerToolMentionGroups(toolItems), [toolItems]);
   const serviceLabelById = useMemo(() => new Map(toolGroups.map((group) => [group.id, group.label])), [toolGroups]);
-  const toolLabelById = useMemo(() => new Map(toolItems.map((item) => [item.id, item.label || item.id])), [toolItems]);
   const labelForServiceId = useCallback((serviceId: string) => serviceLabelById.get(serviceId) ?? serviceId, [serviceLabelById]);
-  const labelForToolTarget = useCallback((target: { kind: string; id: string }) => (
-    target.kind === "tool" ? (toolLabelById.get(target.id) ?? target.id) : labelForServiceId(target.id)
-  ), [labelForServiceId, toolLabelById]);
   const computerUseSelected = selectedToolIds.some((toolId) => (
     toolId === "computer_use"
     || toolId === "browser_computer"
@@ -3223,6 +2795,7 @@ export function ComposerRenderer({
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
+  const localPetInput = Boolean(onLocalCommandSubmit && isTaskPetCommandInput(input));
   const steeringControlsPending = surfaceMode !== "thread" && isGenerating && !steerControlsReady;
   const isPendingRecovery = steeringControlsPending && Boolean(pendingRecovery?.onDetach);
   const composerInputBlocked = steeringControlsPending && !isPendingRecovery;
@@ -3294,17 +2867,19 @@ export function ComposerRenderer({
   const atMentionKnownValues = useMemo(() => [
     ...composerKnownMentionValues(toolItems),
     ...composerKnownMentionValues(mentionSkills),
-    ...toolGroups.flatMap((service) => [service.id, service.label]),
+    ...mentionToolGroups.flatMap((service) => [service.id, service.label]),
     ...(mode === "coding" ? codingContext?.files ?? [] : []),
-  ], [codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
+  ], [codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
   const atMentionCandidates = useMemo<ComposerAtMentionCandidate[]>(() => {
-    const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 32).map((item) => {
+    const exclude = atMentionQuery.startsWith("-");
+    const query = exclude ? atMentionQuery.slice(1) : atMentionQuery;
+    const toolCandidates = filterComposerToolMentions(toolItems, query, 32).map((item) => {
       const display = composerToolMentionDisplay(item);
       return {
         kind: "tool" as const,
         id: `tool:${item.id}`,
         label: display.label,
-        description: display.description,
+        description: exclude ? ["このメッセージで除外", display.description].filter(Boolean).join(" · ") : display.description,
         item,
         section: composerMentionSectionForTool(item),
       };
@@ -3312,7 +2887,7 @@ export function ComposerRenderer({
     const toolsInSection = (sectionId: ComposerMentionSection["id"]) => toolCandidates
       .filter((candidate) => candidate.section.id === sectionId)
       .slice(0, atMentionQuery.trim() ? 8 : 6);
-    const skillCandidates = filterComposerSkillMentions(mentionSkills, atMentionQuery, 8).map((skill) => {
+    const skillCandidates = filterComposerSkillMentions(mentionSkills, query, 8).map((skill) => {
       const display = composerSkillMentionDisplay(skill);
       return {
         kind: "skill" as const,
@@ -3323,8 +2898,8 @@ export function ComposerRenderer({
         section: COMPOSER_MENTION_SECTIONS.skill,
       };
     });
-    const normalizedServiceQuery = atMentionQuery.trim().toLowerCase();
-    const serviceCandidates = toolGroups
+    const normalizedServiceQuery = query.trim().toLowerCase();
+    const serviceCandidates = mentionToolGroups
       .filter((service) => service.items.some((item) => !item.disabled))
       .filter((service) => (
         !normalizedServiceQuery
@@ -3339,17 +2914,17 @@ export function ComposerRenderer({
           kind: "service" as const,
           id: `service:${service.id}`,
           label: service.label,
-          displayLabel: `${service.label}（まとめ）`,
+          displayLabel: `${service.label}（${exclude ? "除外" : "まとめ"}）`,
           description: [
             service.description,
-            `${availableItemCount}件のツールをまとめて選択`,
+            `${availableItemCount}件のツールをまとめて${exclude ? "除外" : "選択"}`,
           ].filter(Boolean).join(" · "),
           service,
           section: composerMentionSectionForToolGroup(service.items),
         };
       });
     const fileCandidates = mode === "coding"
-      ? filterAtMentionFiles(codingContext?.files ?? [], atMentionQuery).slice(0, 8).map((file) => ({
+      ? filterAtMentionFiles(codingContext?.files ?? [], query).slice(0, 8).map((file) => ({
           kind: "file" as const,
           id: `file:${file}`,
           label: file,
@@ -3362,11 +2937,11 @@ export function ComposerRenderer({
       ...toolsInSection("plugin"),
       ...toolsInSection("builtin-tool"),
       ...toolsInSection("custom-tool"),
-      ...skillCandidates,
+      ...(exclude ? [] : skillCandidates),
       ...serviceCandidates,
-      ...fileCandidates,
+      ...(exclude ? [] : fileCandidates),
     ]);
-  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
+  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);
   const commandPalette = useMemo(() => commandPalettePayload(matchedCommands), [matchedCommands]);
@@ -3685,6 +3260,8 @@ export function ComposerRenderer({
       setOpenFolder("commands");
       setMenuOpen(true);
     }
+    const localCommandInput = command && isLocalTaskPetCommand(command) ? "/pet" : rawInput;
+    if (onLocalCommandSubmit?.(localCommandInput)) return;
     onCommandSelect?.(commandId, rawInput);
     if (hasSlashCommandPrefix && !(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
       onInputChange("");
@@ -3755,23 +3332,13 @@ export function ComposerRenderer({
       const cursorPos = atMentionStart === null
         ? textarea.selectionStart
         : atMentionStart + atMentionQuery.length + 1;
-      const next = insertAtMentionText(input, cursorPos, candidate.label, atMentionKnownValues);
-	      if (candidate.kind === "tool") {
-	        onDropWidget?.(composerToolMentionWidget(candidate.item));
-	      } else if (candidate.kind === "skill") {
-	        onDropWidget?.(composerSkillMentionWidget(candidate.skill));
-	      } else if (candidate.kind === "service") {
-	        onDropWidget?.(composerServiceMentionWidget({
-	          id: candidate.service.id,
-	          label: candidate.service.label,
-	          description: candidate.service.description,
-	          toolIds: candidate.service.items.map((item) => item.id),
-	        }));
-	      } else {
-	        onDropWidget?.(composerFileMentionWidget(candidate.file));
-	      }
+      const exclude = atMentionQuery.startsWith("-")
+        && (candidate.kind === "tool" || candidate.kind === "service");
+      const label = `${exclude ? "-" : ""}${candidate.label}`;
+      const next = insertAtMentionText(input, cursorPos, label, atMentionKnownValues, textarea.selectionEnd);
+      onDropWidget?.(composerAtMentionCandidateWidget(candidate, exclude));
 	      onInputChange(next.value);
-	      if (candidate.kind !== "service") {
+	      if (candidate.kind !== "service" && !exclude) {
 	        const reference: ComposerEntityReference = {
 	          kind: candidate.kind,
 	          id: candidate.kind === "tool" ? candidate.item.id : candidate.kind === "skill" ? candidate.skill.id : candidate.file,
@@ -3791,7 +3358,7 @@ export function ComposerRenderer({
         textarea.focus();
       }, 0);
     },
-		    [atMentionKnownValues, atMentionQuery.length, atMentionStart, entityReferences, input, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange],
+		    [atMentionKnownValues, atMentionQuery, atMentionStart, entityReferences, input, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange],
 		  );
 
   const attachFiles = useCallback(async (files: FileList | File[] | null) => {
@@ -3929,6 +3496,7 @@ export function ComposerRenderer({
   const handleSubmitWithApiKeyGuard = useCallback(
     (event: React.SyntheticEvent) => {
       event.preventDefault();
+      if (onLocalCommandSubmit?.(input)) return;
       if (voiceStatus !== "idle" && !isGenerating) return;
       if (isGenerating) {
         if (surfaceMode === "thread") { if (event.type === "click") onStopGenerating?.(); return; }
@@ -3952,7 +3520,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [surfaceMode, submissionDisabled, voiceStatus, attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerControlsReady],
+    [surfaceMode, submissionDisabled, voiceStatus, attachedFiles, input, isGenerating, needsApiKey, onLocalCommandSubmit, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerControlsReady],
   );
 
   const handleSendButtonClick = useCallback(
@@ -4543,7 +4111,8 @@ export function ComposerRenderer({
       render: () => (
         <ActionApprovalControl
           mode={actionApprovalMode}
-          disabled={isGenerating}
+          disabled={isGenerating || !onActionApprovalModeChange}
+          disabledReason={!onActionApprovalModeChange ? "この会話の承認は設定された権限に従います。ここで代理承認やフルアクセスに変更する機能は未対応です。" : undefined}
           surfaceClassName={COMPOSER_CONTROL_SURFACE_CLASSNAME}
           tabIndex={chromeButtonTabIndex}
           onModeChange={(nextMode) => onActionApprovalModeChange?.(nextMode)}
@@ -4582,12 +4151,13 @@ export function ComposerRenderer({
       render: () => (
         <ProjectPicker
           projects={projects}
+          profileId={projectProfileId}
           selectedProjectId={selectedProjectId}
           disabled={isGenerating}
           codingWorkspaces={codingWorkspaces}
           onSelect={(project) => onProjectSelect?.(project)}
           onDirectorySelect={onProjectDirectorySelect}
-          onCodingWorkspaceCreate={onCodingWorkspaceCreate}
+          onCodingWorkspaceCreate={onProjectWorkspaceCreate}
           onProjectStoragePrepare={onProjectStoragePrepare}
         />
       ),
@@ -4645,6 +4215,7 @@ export function ComposerRenderer({
             <button
               type="button"
               tabIndex={chromeButtonTabIndex}
+              ref={modelDropdownTriggerRef}
               aria-label={`モデル: ${profileName}`}
               disabled={isGenerating}
               onClick={() => setModelDropdownOpen((v) => !v)}
@@ -4655,7 +4226,9 @@ export function ComposerRenderer({
             </button>
             {modelDropdownOpen && (
               <ModelDropdown
+                anchorRef={modelDropdownTriggerRef}
                 profiles={selectableProfiles}
+                onOpenModelManager={onOpenModelManager}
                 selectedProfile={selectedProfile}
                 isGenerating={isGenerating}
                 placement={resolvedModelSelectorSchema.layout.placement === "auto"
@@ -4739,18 +4312,18 @@ export function ComposerRenderer({
           type={isGenerating ? "button" : "submit"}
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
-          aria-label={isGenerating
+          aria-label={localPetInput ? "/pet を実行" : isGenerating
             ? (steeringControlsPending
               ? (isPendingRecovery ? "送信結果が未確認" : "会話を準備中")
               : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={steeringControlsPending || (isGenerating ? surfaceMode === "thread" && !onStopGenerating : (
+          disabled={!localPetInput && (steeringControlsPending || (isGenerating ? surfaceMode === "thread" && !onStopGenerating : (
             submissionDisabled || pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
-          ))}
-          title={isGenerating
+          )))}
+          title={localPetInput ? "ペットを表示" : isGenerating
             ? (steeringControlsPending
               ? (isPendingRecovery ? "送信結果が未確認" : "会話を準備中")
               : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "停止")
@@ -4769,7 +4342,7 @@ export function ComposerRenderer({
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}
         >
-          {steeringControlsPending ? (
+          {localPetInput ? <SendButtonIcon size={18} /> : steeringControlsPending ? (
             isPendingRecovery
               ? <Clock3 size={14} aria-hidden="true" />
               : <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -5261,14 +4834,6 @@ export function ComposerRenderer({
             />
           )}
 
-          {!isNewConversation && visibleToolSelectionTargets.length > 0 && (
-            <ToolOverrideChips
-              targets={visibleToolSelectionTargets}
-              labelForTarget={labelForToolTarget}
-              onRemove={(target) => onToolSelectionTargetRemove?.(target)}
-            />
-          )}
-
           {visibleDroppedWidgets.length > 0 && (
             <div className="rumi-composer-context-strip flex max-w-full flex-wrap gap-1.5 px-4 pb-0.5 pt-2 max-[640px]:px-3">
               {visibleDroppedWidgets.map((widget) => (
@@ -5421,7 +4986,7 @@ export function ComposerRenderer({
                       ref={inlineMentionLayerRef}
                       aria-hidden="true"
                       data-composer-inline-mentions
-                      className={`rumi-composer-inline-mention-layer absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2 pb-0 pt-2.5 text-[15px] leading-[22px] text-zinc-100 max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
+                      className={`rumi-composer-inline-mention-layer absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2 pb-0 pt-2.5 text-[15px] font-normal leading-[22px] text-zinc-100 max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     >
                       {inlineMentionParts.map((part, index) => (
                         <span key={`${index}:${part.text}`} className={part.mention ? "rumi-composer-inline-mention" : undefined}>{part.text}</span>
@@ -5447,7 +5012,7 @@ export function ComposerRenderer({
                     aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                     role="combobox"
                     disabled={composerInputBlocked}
-                    className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
+                    className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] font-normal leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
                     onFocus={(event) => {
                       setTextareaFocused(true);

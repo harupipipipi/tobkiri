@@ -3,7 +3,7 @@
     {
       "path": "runtime/catalog.py",
       "role": "runtime",
-      "sha256": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87"
+      "sha256": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0"
     },
     {
       "path": "runtime/datasource.py",

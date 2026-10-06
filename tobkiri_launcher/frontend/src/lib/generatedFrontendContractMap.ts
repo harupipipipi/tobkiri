@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216
+// Raw source digest: sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216",
+  "artifact_digest": "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d",
   "routes": [
     {
       "method": "GET",
@@ -1304,6 +1304,249 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": []
         }
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/kanban/boards",
+      "presentation": "kanban_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.list",
+          "contract_id": "tobkiri.resource.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "allowed_payload_keys": [
+            "scope_type",
+            "scope_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/kanban/board",
+      "presentation": "kanban_board",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.get",
+          "contract_id": "tobkiri.resource.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "allowed_payload_keys": [
+            "board_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/kanban/boards/bootstrap",
+      "presentation": "kanban_board",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.create",
+          "contract_id": "tobkiri.action.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "allowed_payload_keys": [
+            "scope_type",
+            "scope_id",
+            "title",
+            "expected_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/kanban/cards",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.card-upsert",
+          "contract_id": "tobkiri.action.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "allowed_payload_keys": [
+            "board_id",
+            "column_id",
+            "title",
+            "description",
+            "priority",
+            "conversation_id",
+            "workspace_id",
+            "company_id",
+            "expected_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/kanban/cards/move",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.card-move",
+          "contract_id": "tobkiri.action.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "allowed_payload_keys": [
+            "board_id",
+            "card_id",
+            "column_id",
+            "position",
+            "expected_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/kanban/cards",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.card-delete",
+          "contract_id": "tobkiri.action.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "allowed_payload_keys": [
+            "board_id",
+            "card_id",
+            "expected_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/desktops",
+      "presentation": "managed_desktop_read",
+      "targets": [
+        {
+          "contribution_id": "defaults.managed-desktops.desktops-list",
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+          "provider_id": "tobkiri.managed-desktops.read",
+          "function_id": "tobkiri.managed-desktops.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime/providers",
+      "presentation": "managed_desktop_read",
+      "targets": [
+        {
+          "contribution_id": "defaults.managed-desktops.runtime-providers-read",
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+          "provider_id": "tobkiri.managed-desktops.read",
+          "function_id": "tobkiri.managed-desktops.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime/doctor",
+      "presentation": "managed_desktop_read",
+      "targets": [
+        {
+          "contribution_id": "defaults.managed-desktops.runtime-doctor-read",
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+          "provider_id": "tobkiri.managed-desktops.read",
+          "function_id": "tobkiri.managed-desktops.read",
+          "allowed_payload_keys": [
+            "request_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/sandbox/templates",
+      "presentation": "managed_desktop_read",
+      "targets": [
+        {
+          "contribution_id": "defaults.managed-desktops.sandbox-templates-read",
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+          "provider_id": "tobkiri.managed-desktops.read",
+          "function_id": "tobkiri.managed-desktops.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/kanban/import-conversation",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.kanban.import-conversation",
+          "contract_id": "tobkiri.action.kanban.v1",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "allowed_payload_keys": [
+            "board_id",
+            "conversation_id",
+            "column_id",
+            "title",
+            "model",
+            "workspace_id",
+            "company_id",
+            "use_ai",
+            "expected_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/select-directory",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.projects.directory",
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "operation_id": "workspace.directory.acquire",
+          "provider_id": "rumi_workspace_mount_pack.project-directory.service",
+          "function_id": "rumi_workspace_mount_pack.project-directory.service",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/workspace",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.projects.workspace",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "allowed_payload_keys": [
+            "phase",
+            "effect_kind",
+            "request",
+            "effect_id",
+            "correlation_id"
+          ]
+        }
+      ]
     }
   ]
 };
@@ -2443,6 +2686,223 @@ const EXPECTED_ROUTES = {
         "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
         "function_id": "rumi_provider_registry_pack.provider-registry.resource",
         "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/kanban/boards": {
+    "presentation": "kanban_list",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.list",
+        "contract_id": "tobkiri.resource.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+        "allowed_payload_keys": [
+          "scope_type",
+          "scope_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/kanban/board": {
+    "presentation": "kanban_board",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.get",
+        "contract_id": "tobkiri.resource.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+        "allowed_payload_keys": [
+          "board_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/kanban/boards/bootstrap": {
+    "presentation": "kanban_board",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.create",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "allowed_payload_keys": [
+          "scope_type",
+          "scope_id",
+          "title",
+          "expected_revision"
+        ]
+      }
+    ]
+  },
+  "POST /api/kanban/cards": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.card-upsert",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "allowed_payload_keys": [
+          "board_id",
+          "column_id",
+          "title",
+          "description",
+          "priority",
+          "conversation_id",
+          "workspace_id",
+          "company_id",
+          "expected_revision"
+        ]
+      }
+    ]
+  },
+  "POST /api/kanban/cards/move": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.card-move",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "allowed_payload_keys": [
+          "board_id",
+          "card_id",
+          "column_id",
+          "position",
+          "expected_revision"
+        ]
+      }
+    ]
+  },
+  "DELETE /api/kanban/cards": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.card-delete",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "allowed_payload_keys": [
+          "board_id",
+          "card_id",
+          "expected_revision"
+        ]
+      }
+    ]
+  },
+  "GET /api/desktops": {
+    "presentation": "managed_desktop_read",
+    "targets": [
+      {
+        "contribution_id": "defaults.managed-desktops.desktops-list",
+        "contract_id": "tobkiri.resource.managed-desktops.v1",
+        "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+        "provider_id": "tobkiri.managed-desktops.read",
+        "function_id": "tobkiri.managed-desktops.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/runtime/providers": {
+    "presentation": "managed_desktop_read",
+    "targets": [
+      {
+        "contribution_id": "defaults.managed-desktops.runtime-providers-read",
+        "contract_id": "tobkiri.resource.managed-desktops.v1",
+        "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "provider_id": "tobkiri.managed-desktops.read",
+        "function_id": "tobkiri.managed-desktops.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/runtime/doctor": {
+    "presentation": "managed_desktop_read",
+    "targets": [
+      {
+        "contribution_id": "defaults.managed-desktops.runtime-doctor-read",
+        "contract_id": "tobkiri.resource.managed-desktops.v1",
+        "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "provider_id": "tobkiri.managed-desktops.read",
+        "function_id": "tobkiri.managed-desktops.read",
+        "allowed_payload_keys": [
+          "request_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/sandbox/templates": {
+    "presentation": "managed_desktop_read",
+    "targets": [
+      {
+        "contribution_id": "defaults.managed-desktops.sandbox-templates-read",
+        "contract_id": "tobkiri.resource.managed-desktops.v1",
+        "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+        "provider_id": "tobkiri.managed-desktops.read",
+        "function_id": "tobkiri.managed-desktops.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/kanban/import-conversation": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.kanban.import-conversation",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+        "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+        "allowed_payload_keys": [
+          "board_id",
+          "conversation_id",
+          "column_id",
+          "title",
+          "model",
+          "workspace_id",
+          "company_id",
+          "use_ai",
+          "expected_revision"
+        ]
+      }
+    ]
+  },
+  "POST /api/ui/select-directory": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.projects.directory",
+        "contract_id": "tobkiri.service.workspace.project.v1",
+        "operation_id": "workspace.directory.acquire",
+        "provider_id": "rumi_workspace_mount_pack.project-directory.service",
+        "function_id": "rumi_workspace_mount_pack.project-directory.service",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/projects/workspace": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.projects.workspace",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "operation_id": "interactive_effect.manage",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "allowed_payload_keys": [
+          "phase",
+          "effect_kind",
+          "request",
+          "effect_id",
+          "correlation_id"
+        ]
       }
     ]
   }

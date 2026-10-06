@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bell, Check, CircleAlert, Pin, RefreshCw, X } from "lucide-react";
 
 import { ErrorCopyAction, errorNoticeCopyText } from "./ErrorNotice";
@@ -10,9 +10,31 @@ type ChatNotification = {
   tone: "error" | "warning" | "success";
   title: string;
   message: string;
+  copyText?: string;
 };
 
 export const CHAT_NOTIFICATION_DURATION_MS = 8_000;
+
+const useCommittedLayoutEffect = typeof document === "undefined"
+  ? useEffect
+  : useLayoutEffect;
+
+/** Promotes a short first error line while preserving the exact copy payload. */
+export function chatErrorPresentation(error: string): {
+  title: string;
+  message: string;
+  copyText: string;
+} {
+  const lines = error.split(/\r\n?|\n/);
+  const firstLine = lines[0].trim();
+  const promoteFirstLine = firstLine.length > 0
+    && Array.from(firstLine).length <= 120;
+  return {
+    title: promoteFirstLine ? firstLine : "処理を完了できませんでした",
+    message: promoteFirstLine ? lines.slice(1).join("\n").trim() : error,
+    copyText: error,
+  };
+}
 
 /** Floating chat notices retain their details after the banner folds away. */
 export function ChatNotifications({
@@ -28,8 +50,7 @@ export function ChatNotifications({
     ...(error ? [{
       id: `error:${error}`,
       tone: "error" as const,
-      title: "処理を完了できませんでした",
-      message: error,
+      ...chatErrorPresentation(error),
     }] : []),
     ...(completionNotice ? [{
       id: `completion:${completionNotice.tone}:${completionNotice.title}:${completionNotice.message}`,
@@ -41,6 +62,33 @@ export function ChatNotifications({
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [scrollable, setScrollable] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const reconcileInteraction = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) {
+      pointerRef.current = null;
+      setHovered(false);
+      setFocused(false);
+      setScrollable(false);
+      return;
+    }
+    const ownerDocument = container.ownerDocument;
+    const isScrollable = container.scrollHeight > container.clientHeight;
+    setScrollable(isScrollable);
+    setFocused(container.contains(ownerDocument.activeElement));
+    const pointer = pointerRef.current;
+    const hit = pointer && typeof ownerDocument.elementFromPoint === "function"
+      ? ownerDocument.elementFromPoint(pointer.x, pointer.y)
+      : null;
+    // The overflowing stack accepts pointer events for its scrollbar/padding;
+    // otherwise hit testing counts only live cards and reopen controls.
+    setHovered(pointer
+      ? Boolean(hit && container.contains(hit))
+      : (isScrollable && container.matches(":hover"))
+        || Array.from(container.children).some((child) => child.matches(":hover")));
+  }, []);
   const paused = hovered || focused;
   const visibleNotifications = notifications.filter((notice) => !foldedIds.includes(notice.id));
   const foldedCount = notifications.length - visibleNotifications.length;
@@ -54,6 +102,47 @@ export function ChatNotifications({
       setFocused(false);
     }
   }, [identity]);
+
+  // Removal of the focused/hovered node need not dispatch blur or mouseleave.
+  // Check the committed DOM even when the remaining notice identity is stable.
+  useCommittedLayoutEffect(() => {
+    reconcileInteraction();
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const ownerDocument = container.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView;
+    const trackPointer = (event: MouseEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      reconcileInteraction();
+    };
+    const leaveDocument = (event: MouseEvent) => {
+      if (event.relatedTarget === null) {
+        pointerRef.current = null;
+        setHovered(false);
+      }
+    };
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(reconcileInteraction);
+    observer?.observe(container);
+    Array.from(container.children).forEach((child) => observer?.observe(child));
+    ownerDocument.addEventListener("mousemove", trackPointer, true);
+    ownerDocument.addEventListener("mouseout", leaveDocument, true);
+    ownerDocument.addEventListener("scroll", reconcileInteraction, true);
+    ownerWindow?.addEventListener("resize", reconcileInteraction);
+    container.addEventListener("animationend", reconcileInteraction);
+    return () => {
+      observer?.disconnect();
+      ownerDocument.removeEventListener("mousemove", trackPointer, true);
+      ownerDocument.removeEventListener("mouseout", leaveDocument, true);
+      ownerDocument.removeEventListener("scroll", reconcileInteraction, true);
+      ownerWindow?.removeEventListener("resize", reconcileInteraction);
+      container.removeEventListener("animationend", reconcileInteraction);
+    };
+  }, [identity, foldedIds, reconcileInteraction]);
 
   useEffect(() => {
     const foldableIds = notifications
@@ -73,8 +162,16 @@ export function ChatNotifications({
     <div
       className="rumi-chat-notifications rumi-layer-toast"
       data-chat-notifications=""
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      data-notifications-scrollable={scrollable || undefined}
+      ref={containerRef}
+      onMouseEnter={(event) => {
+        pointerRef.current = { x: event.clientX, y: event.clientY };
+        reconcileInteraction();
+      }}
+      onMouseLeave={(event) => {
+        pointerRef.current = { x: event.clientX, y: event.clientY };
+        reconcileInteraction();
+      }}
       onFocusCapture={() => setFocused(true)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
@@ -148,9 +245,10 @@ function NotificationCard({
         <Icon size={19} data-error-icon={isError ? "chat" : undefined} />
       </span>
       <div className="rumi-chat-notification-content">
-        <p className="rumi-chat-notification-app">Tobkiri</p>
-        <p className="rumi-chat-notification-title">{notice.title}</p>
-        <p className="rumi-chat-notification-message">{notice.message}</p>
+        <p className="rumi-chat-notification-title">{notice.title} - Tobkiri</p>
+        {notice.message && notice.message !== notice.title ? (
+          <p className="rumi-chat-notification-message">{notice.message}</p>
+        ) : null}
         {children}
       </div>
       <div className="rumi-chat-notification-actions">
@@ -167,7 +265,7 @@ function NotificationCard({
         {notice.tone !== "success" ? (
           <ErrorCopyAction
             className="rumi-chat-notification-copy"
-            copyText={errorNoticeCopyText(notice.title, notice.message)}
+            copyText={notice.copyText ?? errorNoticeCopyText(notice.title, notice.message)}
             label={isError ? "チャットエラーをコピー" : "通知をコピー"}
           />
         ) : null}

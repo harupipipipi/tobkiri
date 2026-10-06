@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from contextlib import nullcontext
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Callable, ContextManager, Mapping
+from typing import Any, Callable, ContextManager, Mapping, TypedDict
 
 from core_runtime.authority.v4 import (
     AuthorityScope,
@@ -39,6 +39,12 @@ from .ports import (
     InteractiveEffectStatus,
     PendingEffectPersistencePort,
 )
+
+
+class _PreparedExecutionGuardKwargs(TypedDict, total=False):
+    """Forward only the optional typed Host guard to a prepared Broker call."""
+
+    execution_guard: Callable[[], None]
 
 
 class PendingEffectError(RuntimeError):
@@ -513,6 +519,18 @@ class PendingEffectController:
         )
         return self.observe_approval(record.effect_id)
 
+    def operation_for_presentation(
+        self, *, effect_id: str, presentation_owner_principal_id: str,
+        presentation_owner_session_id: str,
+    ) -> tuple[str, str]:
+        """Read a finite operation identity only for the durable exact owner."""
+        _revision, record = self._load_owned(
+            effect_id,
+            presentation_owner_principal_id=presentation_owner_principal_id,
+            presentation_owner_session_id=presentation_owner_session_id,
+        )
+        return record.prepared.contract_id, record.prepared.operation_id
+
     def resume_for_presentation(
         self,
         *,
@@ -520,6 +538,7 @@ class PendingEffectController:
         presentation_owner_principal_id: str,
         presentation_owner_session_id: str,
         broker: RequestBroker,
+        execution_guard: Callable[[], None] | None = None,
         dispatch_grace_seconds: float | None = None,
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
@@ -531,6 +550,7 @@ class PendingEffectController:
             dispatch_grace_seconds=dispatch_grace_seconds,
             wall_clock=wall_clock,
             monotonic_clock=monotonic_clock,
+            execution_guard=execution_guard,
             presentation_owner=(
                 presentation_owner_principal_id,
                 presentation_owner_session_id,
@@ -630,6 +650,7 @@ class PendingEffectController:
         monotonic_clock: Callable[[], float] = time.monotonic,
         dispatch_grace_seconds: float | None = None,
         presentation_owner: tuple[str, str] | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> PendingEffectStatus:
         """Claim one approved effect, dispatch it, and boundedly await it.
 
@@ -675,6 +696,8 @@ class PendingEffectController:
             fused = False
             try:
                 try:
+                    if execution_guard is not None:
+                        execution_guard()
                     if presentation_owner is not None:
                         principal_id, session_id = presentation_owner
                         _owner_revision, owned = self._load_owned(
@@ -686,6 +709,8 @@ class PendingEffectController:
                         if observed.state is not PendingEffectState.APPROVED:
                             latest[:] = [observed]
                             return
+                    if execution_guard is not None:
+                        execution_guard()
                     claimed = self.claim(effect_id)
                     claimed_by_worker = True
                     latest[:] = [claimed]
@@ -745,6 +770,9 @@ class PendingEffectController:
                         if self._presentation_owner_scope is not None
                         else nullcontext()
                     )
+                    guard_kwargs: _PreparedExecutionGuardKwargs = {}
+                    if execution_guard is not None:
+                        guard_kwargs["execution_guard"] = execution_guard
                     with owner_scope:
                         outcome = broker.invoke_prepared(
                             record.prepared,
@@ -755,6 +783,7 @@ class PendingEffectController:
                             monotonic_clock=monotonic_clock,
                             before_dispatch=before_dispatch,
                             pending_effect_link=link,
+                            **guard_kwargs,
                         )
                 except Exception:
                     settled = (

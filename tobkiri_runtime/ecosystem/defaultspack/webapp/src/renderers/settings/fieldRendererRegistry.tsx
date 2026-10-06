@@ -1,5 +1,6 @@
 import { type ComponentType, type ReactElement } from "react";
 
+import type { ModelPropertiesRequest } from "../../features/search/modelPropertiesNavigation";
 import type { ModelProfile } from "../../lib/api";
 import type { SettingChangeHandler } from "../types";
 import {
@@ -10,6 +11,9 @@ import {
 } from "../template/settingsFieldMetadata";
 
 export type SettingsFieldRendererProps = {
+  displayMode?: "standard" | "advanced";
+  modelPropertiesRequest?: ModelPropertiesRequest | null;
+  onModelPropertiesAcknowledged?: (request: ModelPropertiesRequest) => void;
   sectionId: string;
   field: TemplateSettingsField;
   value: unknown;

@@ -150,7 +150,7 @@ test("Japanese settings use task-oriented copy while preserving technical search
 
   assert.equal(sections.find((section) => section.id === "workspace_ui")?.label, "表示と入力");
   const workspaceFields = sections.find((section) => section.id === "workspace_ui")?.fields ?? [];
-  assert.equal(workspaceFields.find((field) => field.id === "composer_placeholder")?.label, "入力欄の案内文");
+  assert.equal(sections.find((section) => section.id === "advanced")?.fields.find((field) => field.id === "composer_placeholder")?.label, "入力欄の案内文");
   assert.equal(workspaceFields.find((field) => field.id === "language")?.options?.[0]?.label, "端末に合わせる");
   const semanticField = sections.find((section) => section.id === "tools_mcp")?.fields.find((field) => field.id === "semantic_backend");
   assert.equal(semanticField?.label, "機能候補の探し方");
@@ -178,7 +178,7 @@ test("display language leads the everyday display and input settings", () => {
   ] as SettingsSection[]);
 
   const fieldIds = sections.find((section) => section.id === "workspace_ui")?.fields.map((field) => field.id);
-  assert.deepEqual(fieldIds, ["language", "composer_placeholder", "voice_input_enabled", "auto_open"]);
+  assert.deepEqual(fieldIds, ["language", "voice_input_enabled", "auto_open"]);
 });
 
 test("response guidance belongs to the AI assistant section", () => {
@@ -623,4 +623,47 @@ test("Codex App Server prelude maps safe Tools & MCP status", () => {
   assert.equal(prelude.requiresOpenaiAuth, true);
   assert.equal(prelude.toolSourceStatus, "blocked_auth_required");
   assert.equal(prelude.automationEndpointStatus, "disabled");
+});
+
+
+test("composer text customization is advanced while retaining its source and default", () => {
+  const sourceField = { id: "composer_placeholder", label: "Composer Placeholder", type: "text",
+    default: "Write a message", advanced: false, control_center_section: "workspace_ui" };
+  const source = { id: "general", label: "General", fields: [sourceField,
+    { id: "language", label: "Language", type: "select" },
+    { id: "voice_input_enabled", label: "Voice Input", type: "toggle" },
+    { id: "spotlight_shortcut", label: "Search shortcut", type: "text" },
+  ] } as SettingsSection;
+  const sections = buildControlCenterSections([source]);
+  const workspace = sections.find((section) => section.id === "workspace_ui")!;
+  const advanced = sections.find((section) => section.id === "advanced")!;
+  const placeholder = advanced.fields.find((field) => field.id === "composer_placeholder")!;
+  assert.deepEqual(workspace.fields.map((field) => field.id), [
+    "language", "voice_input_enabled", "spotlight_shortcut",
+  ]);
+  assert.ok(advanced.order > workspace.order);
+  assert.equal(placeholder.advanced, true);
+  assert.equal(placeholder.sourceSectionId, "general");
+  assert.equal(placeholder.controlSectionId, "advanced");
+  assert.equal(placeholder.type, "text");
+  assert.equal(placeholder.default, sourceField.default);
+  assert.ok(sections.flatMap((section) => section.fields).filter((field) => !field.advanced)
+    .every((field) => field.id !== "composer_placeholder"));
+  assert.equal(sourceField.advanced, false);
+  assert.equal(sourceField.control_center_section, "workspace_ui");
+});
+
+test("legacy route controls are advanced and follow normal model and API controls", () => {
+  const sourceField = { id: "model_api_routes", label: "Model API Routes", type: "model_api_routes", default: [] };
+  const sections = buildControlCenterSections([{ id: "models", label: "Models", fields: [
+    sourceField, { id: "main_model", label: "Main model", type: "text" },
+  ] }, { id: "apis", label: "APIs", fields: [{ id: "api_keys", label: "API Keys", type: "api_keys" }] }] as SettingsSection[]);
+  const fields = sections.find((section) => section.id === "models_api")!.fields;
+  assert.deepEqual(fields.map((field) => field.id), ["main_model", "api_keys", "model_api_routes"]);
+  const routes = fields.find((field) => field.id === "model_api_routes")!;
+  assert.equal(routes.advanced, true);
+  assert.equal(routes.sourceSectionId, "models");
+  assert.equal(routes.controlSectionId, "models_api");
+  assert.equal(routes.default, sourceField.default);
+  assert.deepEqual(fields.filter((field) => !field.advanced).map((field) => field.id), ["main_model", "api_keys"]);
 });

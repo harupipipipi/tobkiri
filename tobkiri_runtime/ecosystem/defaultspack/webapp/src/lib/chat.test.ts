@@ -9,6 +9,9 @@ import {
   orderConversationMessages,
 } from "./chat";
 import type { ChatMessage } from "./api";
+import { chatRetryEligible, type ChatRetryContext, type ChatRetryOwnership } from "./chatRetry";
+import { SavedTurnViewFence } from "./optimisticSavedTurn";
+
 
 test("contentBlocksToText flattens text blocks", () => {
   const text = contentBlocksToText([
@@ -208,4 +211,83 @@ test("orderConversationMessages collapses canonical duplicate finals with distin
   assert.equal(ordered.length, 1);
   assert.equal(ordered[0]?.raw_text, "final");
   assert.equal(diagnostics.duplicateSequenceCount, 1);
+});
+
+const retry: ChatRetryOwnership = {
+  profileId: "defaults",
+  errorMessage: "Load failed",
+  errorGeneration: 4,
+  storeId: "store-a",
+  viewTicket: { workspaceTabId: "tab-a", conversationId: "conversation-a", epoch: 7 },
+};
+const context: ChatRetryContext = {
+  profileId: "defaults",
+  conversationId: "conversation-a",
+  error: "Load failed",
+  errorGeneration: 4,
+  storeId: "store-a",
+  viewTicket: { ...retry.viewTicket },
+  isGenerating: false,
+  hasPendingSavedTurn: false,
+  hasActiveSubmission: false,
+};
+
+test("fresh retry remains eligible only for the exact error and owner", () => {
+  assert.equal(chatRetryEligible(retry, context), true);
+  assert.equal(chatRetryEligible(null, context), false);
+  assert.equal(chatRetryEligible({ ...retry, storeId: null }, { ...context, storeId: null }), false);
+  const denied: Partial<ChatRetryContext>[] = [
+    { error: null },
+    { error: "Another failure" },
+    { errorGeneration: 5 },
+    { storeId: null },
+    { storeId: "store-b" },
+    { profileId: "another-profile" },
+    { conversationId: "conversation-b" },
+    { viewTicket: { ...context.viewTicket, epoch: 8 } },
+    { viewTicket: { ...context.viewTicket, workspaceTabId: "tab-b" } },
+    { viewTicket: { ...context.viewTicket, conversationId: "conversation-b" } },
+    { isGenerating: true },
+    { hasPendingSavedTurn: true },
+    { hasActiveSubmission: true },
+  ];
+  for (const patch of denied) {
+    assert.equal(chatRetryEligible(retry, { ...context, ...patch }), false, JSON.stringify(patch));
+  }
+});
+
+test("returning to the same conversation cannot revive retry from an earlier epoch", () => {
+  const fence = new SavedTurnViewFence("tab-a", "conversation-a");
+  const ownedRetry = { ...retry, viewTicket: fence.capture() };
+  assert.equal(chatRetryEligible(ownedRetry, { ...context, viewTicket: fence.capture() }), true);
+  fence.synchronize("tab-b", "conversation-b");
+  assert.equal(chatRetryEligible(ownedRetry, { ...context, viewTicket: fence.capture() }), false);
+  fence.synchronize("tab-a", "conversation-a");
+  assert.equal(chatRetryEligible(ownedRetry, { ...context, viewTicket: fence.capture() }), false);
+});
+
+test("synchronous error consumption rejects a repeated stale retry handler", () => {
+  let generation = context.errorGeneration;
+  assert.equal(chatRetryEligible(retry, { ...context, errorGeneration: generation }), true);
+  generation += 1;
+  // Even if React has not committed the cleared error or retry state yet.
+  assert.equal(chatRetryEligible(retry, { ...context, errorGeneration: generation }), false);
+  // A later unrelated error with identical wording still cannot revive it.
+  generation += 1;
+  assert.equal(chatRetryEligible(retry, { ...context, errorGeneration: generation }), false);
+});
+
+test("new-conversation pre-start retry can own a null conversation without a null store", () => {
+  const viewTicket = { ...retry.viewTicket, conversationId: null };
+  assert.equal(chatRetryEligible({ ...retry, viewTicket }, { ...context, viewTicket, conversationId: null }), true);
+});
+
+test("a pre-start failure after own conversation adoption keeps the adopted owner", () => {
+  const fence = new SavedTurnViewFence("tab-a", null);
+  const adopted = fence.adoptConversation(fence.capture(), "conversation-a");
+  assert.ok(adopted);
+  const ownedRetry = { ...retry, viewTicket: adopted };
+  // React publishing the adopted conversation must not create a fresh epoch.
+  assert.equal(fence.synchronize("tab-a", "conversation-a"), false);
+  assert.equal(chatRetryEligible(ownedRetry, { ...context, viewTicket: fence.capture() }), true);
 });

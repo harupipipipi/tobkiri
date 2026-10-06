@@ -228,7 +228,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 65);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 79);
   for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
     assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
       (route) => route.method === 'POST' && route.path === path,
@@ -258,6 +258,17 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     provider_id: 'rumi_turn_runtime_pack.turn-runtime.resource',
     function_id: 'rumi_turn_runtime_pack.turn-runtime.resource',
     allowed_payload_keys: ['conversation_id'],
+  }]);
+  const progress = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'GET' && route.path === '/api/chat/turn/progress',
+  );
+  assert.deepEqual(progress?.targets, [{
+    contribution_id: 'defaults.conversations.turn.progress',
+    contract_id: 'tobkiri.resource.turn.progress.v1',
+    operation_id: 'rumi_turn_runtime_pack.turn-progress-resource',
+    provider_id: 'rumi_turn_runtime_pack.turn-runtime.progress-resource',
+    function_id: 'rumi_turn_runtime_pack.turn-runtime.progress-resource',
+    allowed_payload_keys: ['turn_id', 'conversation_id', 'cursor', 'progress_id'],
   }]);
   assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.every(
     (route) => route.path !== '/api/chat/steer' && route.targets.every(

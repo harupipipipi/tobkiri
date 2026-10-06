@@ -306,7 +306,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
+      "artifact_hash": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0",
       "contract_id": "rumi.resource.command.catalog.v1",
       "id": "catalog-read",
       "loader": "python",
@@ -368,9 +368,9 @@
         "metadata": {
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:0bd4040a0f097520388ea31700e1ddf3c78c022242216b6799d9b2840ab704f9",
+            "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:cec607e7f1f6e7333c88a8c7404b13ceee4f5fb8bcc52e7b12435e3335465f0c"
+            "source_identity": "sha256:c79cf44b3333d53bc7419bed79613fb54485ffab1664091e3f6f4ab7b2f35784"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -381,7 +381,7 @@
         "pack_identity": "rumi:ecosystem/rumi_command_protocol_pack",
         "provenance": {
           "build_identity": "rumi_command_protocol_pack:1.0.0",
-          "content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
+          "content_hash": "sha256:24bb1a3900b8cbd34761290618f7c039eb6d2c4f3cb15c6f72dc60a11f37e8ec",
           "signature": null,
           "trust_class": "local"
         },
@@ -410,7 +410,7 @@
       "owner": "rumi_command_protocol_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:cec607e7f1f6e7333c88a8c7404b13ceee4f5fb8bcc52e7b12435e3335465f0c"
+      "source_identity": "sha256:c79cf44b3333d53bc7419bed79613fb54485ffab1664091e3f6f4ab7b2f35784"
     }
   },
   "migration": {
@@ -450,7 +450,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_command_protocol_pack:1.0.0",
-    "content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
+    "content_hash": "sha256:24bb1a3900b8cbd34761290618f7c039eb6d2c4f3cb15c6f72dc60a11f37e8ec",
     "signature": null,
     "trust_class": "local"
   },

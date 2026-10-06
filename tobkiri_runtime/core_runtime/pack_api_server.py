@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import heapq
-import json
 import logging
 import os
 import re

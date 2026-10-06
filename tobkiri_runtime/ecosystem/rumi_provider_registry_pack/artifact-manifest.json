@@ -38,7 +38,7 @@
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b"
+      "sha256": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e"
     },
     {
       "path": "runtime/health_process.py",

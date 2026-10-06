@@ -1,14 +1,23 @@
 .rumi-chat-notifications {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 3.25rem);
+  top: calc(env(safe-area-inset-top, 0px) + 3rem);
   left: 50%;
-  width: min(440px, calc(100vw - 24px));
+  width: min(448px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 4px;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 3rem - 8px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 3rem - 8px);
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 4px;
   transform: translateX(-50%);
   display: grid;
+  grid-auto-rows: max-content;
   justify-items: end;
   gap: 10px;
   pointer-events: none;
 }
+
+.rumi-chat-notifications[data-notifications-scrollable] { overflow-y: auto; pointer-events: auto; }
 
 .rumi-chat-notification {
   width: 100%;
@@ -51,9 +60,10 @@
 
 .rumi-chat-notification-content { min-width: 0; flex: 1; }
 .rumi-chat-notification-app { margin-bottom: 3px; font-size: 11px; font-weight: 500; color: #b5b5bf; }
-.rumi-chat-notification-title { font-size: 13px; line-height: 1.5; font-weight: 600; }
+.rumi-chat-notification-title { font-size: 13px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
 .rumi-chat-notification-message {
   margin-top: 4px;
+  max-height: min(240px, 40vh);
   max-height: min(240px, 40dvh);
   overflow-y: auto;
   white-space: pre-wrap;

@@ -6,17 +6,47 @@
       "path": "catalog/runtime_matrix.yaml"
     },
     {
-      "digest": "sha256:20386c908bb81f6123c0e193dd16b01db76a15acc0700dbf6b6212e2c1e7fb03",
+      "digest": "sha256:e0a80884bde71ed933ba3bd73af077d271b9bf4ca266edf9d2b7da257beedfa7",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+      "kind": "executable",
+      "path": "runtime/managed_desktops.py"
     }
   ],
-  "contracts": [],
-  "functions": [],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ],
+      "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+      "id": "tobkiri.managed-desktops.read",
+      "implementation_digest": "sha256:c2b2cb2c3b9038582bf8b1c7691d1b32d76d420422c9691e6992ada255666884",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
   "integrity": {
-    "source_identity": "sha256:1639d7b571c04aea50879f24dca42763817aae20b5b4a699c9270a1e4432187b",
-    "artifact_set_digest": "sha256:6e12dc4c473c06e7d90d86c1c9fc6e06bbac94ada6f36fee011b79d4353d2b8f",
-    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "source_identity": "sha256:9aa5d942f4dfdd590c6a5df78fc7282af28f569758adb4e325b97191c41c5f48",
+    "artifact_set_digest": "sha256:924860c25048207b7f89f80fbc1ffd66b89c29055257cdf40a8172e88ba8f13a",
+    "contract_catalog_digest": "sha256:77974905bc7823b58675bed5057fa71d345ae011b255ea205ddb6616f26b8742"
   },
   "migration": {
     "compatibility": "read_only",
@@ -27,12 +57,45 @@
     "removal_wave": 10,
     "sunset_at": "2027-12-31"
   },
-  "operation_catalog": [],
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
   "pack": {
-    "artifact_digest": "sha256:4e4c3d6d011381cb8c1837a05a01248833d85a423b74bf3e097ebf555cd868b6",
-    "display_name": "Rumi Sandbox Runtime Pack",
+    "artifact_digest": "sha256:57045e423d8bb0fc5f653a4338822b13fe0b728e23d5998105f8e2bf5d9acaaf",
+    "display_name": "Tobkiri Managed Desktops",
     "id": "rumi_sandbox_runtime_pack",
-    "kind": "application",
+    "kind": "host_extension",
     "version": "0.1.0"
   },
   "pack_api_version": "io.tobkiri.pack.v4",
@@ -40,15 +103,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
-    "source_digest": "sha256:1639d7b571c04aea50879f24dca42763817aae20b5b4a699c9270a1e4432187b",
+    "source_digest": "sha256:9aa5d942f4dfdd590c6a5df78fc7282af28f569758adb4e325b97191c41c5f48",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:ed99088faaac77def8f3221b291f1f57ed9d1f03b6414f32cceab5977a2e9be1",
+    "content_root_digest": "sha256:696716c456c2cbd8c96c33e5ffe3f8704d5d4cd6a33fdfd00c9c001191ef79cb",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:3d70cd9aaaa408f144cf577d2c394ae93caf999bf7c5a3b796bca13a262637cb",
+    "input_inventory_digest": "sha256:7fea3ff7d022709475ec428ac891f49db89bf0199edfb8209423cd140f209d0e",
     "normative": true,
     "evidence": [
       {
@@ -59,22 +122,36 @@
       {
         "path": "ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:1639d7b571c04aea50879f24dca42763817aae20b5b4a699c9270a1e4432187b"
+        "digest": "sha256:9aa5d942f4dfdd590c6a5df78fc7282af28f569758adb4e325b97191c41c5f48"
       }
     ]
   },
-  "provider_catalog": [],
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri.managed-desktops.read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ]
+    }
+  ],
   "requirements": {
-    "approval_policy": "none",
-    "capabilities": [],
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "desktop.read"
+    ],
     "contract_dependencies": [],
-    "execution_boundary": "declarative_only",
+    "execution_boundary": "host_brokered",
     "network": {
       "allowed_domains": [],
       "allowed_ports": []
     },
     "pack_dependencies": {},
     "secrets": [],
-    "workspace_boundary": "pack_local"
+    "workspace_boundary": "host_brokered"
   }
 }

@@ -26,6 +26,13 @@ from core_runtime.pack_api_server import (
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
+from .kanban_presentation import (
+    KANBAN_TARGETS, normalize_kanban_request, present_kanban_result,
+)
+from .managed_desktop_presentation import (
+    READ_TARGETS as MANAGED_DESKTOP_READ_TARGETS,
+    normalize_managed_desktop_read, present_managed_desktop_read,
+)
 from .model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
     MODEL_PROFILE_SAVE_TARGET,
@@ -122,6 +129,7 @@ _MODEL_SEARCH_TARGET = (
 _MODEL_SEARCH_FILTER_KEYS = frozenset(
     {
         "query",
+        "connection_id",
         "type",
         "model_type",
         "requires",
@@ -595,6 +603,18 @@ class DefaultspackHTTPPresentation:
             target.provider_id,
             target.function_id,
         )
+        if target_identity in KANBAN_TARGETS:
+            session.assert_current()
+            return normalize_kanban_request(
+                target_identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+        if target_identity in MANAGED_DESKTOP_READ_TARGETS:
+            session.assert_current()
+            return normalize_managed_desktop_read(
+                target_identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
         if target_identity in {WORKSPACE_LIST_TARGET, WORKSPACE_GET_TARGET}:
             session.assert_current()
             return normalize_workspace_read(
@@ -714,6 +734,14 @@ class DefaultspackHTTPPresentation:
             return present_conversation_record(result)
         if binding.presentation == "conversation_deleted":
             return present_conversation_deleted(result)
+        if binding.presentation in {"kanban_list", "kanban_board"}:
+            target = binding.targets[0]
+            return present_kanban_result((
+                target.contribution_id, target.contract_id, target.operation_id,
+                target.provider_id, target.function_id,
+            ), result)
+        if binding.presentation == "managed_desktop_read":
+            return present_managed_desktop_read(result)
         if binding.presentation == "workspace_list":
             return present_workspace_list(result)
         if binding.presentation == "workspace_record":

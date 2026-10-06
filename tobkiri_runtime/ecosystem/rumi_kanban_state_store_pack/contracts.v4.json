@@ -7,23 +7,24 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:kanban.state.manage"
+            "capability:kanban.state.manage",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:d3f7f5ab0aa420594c780f5f4b96bc48608d9211e9176651d760a34fdcc7568f",
           "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_kanban_state_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+            "digest": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+        "source_digest": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_kanban_state_store_pack"
       },
@@ -53,9 +54,91 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:e0039add360ec1f3bbe64d55faefa78402dab364cc372d34459f4220c898f73c",
+      "revision_digest": "sha256:86050860cfda62f07e3e804099a00b355961c45dd1aa47c13a2196c84f9df358",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d3f7f5ab0aa420594c780f5f4b96bc48608d9211e9176651d760a34fdcc7568f": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "board_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "column_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "columns": {
+              "maxItems": 32,
+              "type": "array"
+            },
+            "company_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "metadata": {
+              "type": "object"
+            },
+            "model": {
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "board.create",
+                "card.upsert",
+                "card.move",
+                "card.delete",
+                "conversation.import"
+              ]
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "record": {
+              "type": "object"
+            },
+            "record_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "scope": {
+              "type": "object"
+            },
+            "title": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation",
+            "board_id",
+            "expected_revision"
+          ],
           "type": "object"
         }
       },
@@ -74,17 +157,17 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:ee449911efa1e080e5295b5f29818ea254e6887a8fdba478c59fa0f2ef52814a",
           "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_kanban_state_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+            "digest": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -95,7 +178,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+        "source_digest": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_kanban_state_store_pack"
       },
@@ -114,9 +197,36 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:162b7343f551e1fa8e2a70f80a7ac7e460be91f6514a0da9989111feadeea464",
+      "revision_digest": "sha256:4ee7bfd57d713906001cbfcce93458898d53e7574955d903b899079d1caf049e",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:ee449911efa1e080e5295b5f29818ea254e6887a8fdba478c59fa0f2ef52814a": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "board_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "list",
+                "get"
+              ]
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
           "type": "object"
         }
       },
@@ -125,5 +235,5 @@
     }
   ],
   "pack_id": "rumi_kanban_state_store_pack",
-  "source_identity": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c"
+  "source_identity": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d"
 }

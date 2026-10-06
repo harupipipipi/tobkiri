@@ -1,10 +1,30 @@
 {
-  "artifact_set_digest": "sha256:322dd9ed09105702717eb2966388d9703ad28ea44520916dd712e61bbda0a03a",
+  "artifact_set_digest": "sha256:a63896f2ca01dadb1837a8c4bae616af9d885322bdbb11ff30483746a718e123",
   "artifacts": [
     {
-      "digest": "sha256:8928451957ac5655c447b49588896479c06761e8d8c8fd974a762cbe41d71aa8",
+      "digest": "sha256:d80e6828102bdf07858a04770868fb0d1a1625f60c26cbc53539573245956290",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d",
+      "path": "defaultspack/frontend_contract_map.v4.json",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:3cf8da7cf9adb86dce66a7c550c260e36bc7497b94dd4f6b71a0df014c19376f",
+      "path": "defaultspack/http_surface_presentation.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e7ac05f4164931e35e654d0c2e8c6ca522d32fb1e0cb902e104a774d6efe78c1",
+      "path": "defaultspack/kanban_presentation.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:dcabf7bd622d9312e44150d741588f5bfa7b0119c48294320d0574702c9b25bc",
+      "path": "defaultspack/managed_desktop_presentation.py",
+      "role": "runtime"
     },
     {
       "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
@@ -12,7 +32,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:31c32668b080c0ca32a01bf1374735cd51b07a3d1d87ac656a113509373899f1",
+      "digest": "sha256:e7ca0f3b792e231dce85235e67a1f276282bdc5e60e1368677db62523900bb60",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -32,7 +52,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:6ce493ab7bf4227bb4ee2226500ce181833dc78297860d32e5dd197070c5d5e3",
+      "digest": "sha256:ad8f056f5f1b96c3f841fe3573735ee528184ffd7bcdecc93bed073ce2bca3c1",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -645,8 +665,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:508fce360ffadbe969b342150ef420499554180b0391ed6b5a3fad41e98718ce"
+    "signed_digest": "sha256:d23f67495de155894ab4197156f2c9b18e9b67e5c12c6308220432190f0fe4be"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:081fe9a53f9d115df3e4108a08f445764f53834f545398a862f0ad09ac9eed8d"
+  "source_identity": "sha256:1f6919f4a322ddc859f9b428b7c9bb9174575ccdd59f534754e4e046c3ba95a5"
 }

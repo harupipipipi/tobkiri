@@ -169,6 +169,21 @@
       "pack_id": "tobkiri_side_chat_pack",
       "role": "provider",
       "artifact_digest": null
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_kanban_state_store_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_sandbox_runtime_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_workspace_mount_pack",
+      "role": "provider"
     }
   ],
   "intent_api_version": "io.tobkiri.profile-intent.v1",
@@ -3994,6 +4009,320 @@
           ],
           "operation": [
             "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+      "contract_id": "tobkiri.resource.kanban.v1",
+      "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.kanban.v1"
+          ],
+          "operation": [
+            "rumi_kanban_state_store_pack.kanban-state-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+      "contract_id": "tobkiri.action.kanban.v1",
+      "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.kanban.v1"
+          ],
+          "operation": [
+            "rumi_kanban_state_store_pack.kanban-state-action"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri.managed-desktops.read",
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.managed-desktops.v1"
+          ],
+          "operation": [
+            "rumi_sandbox_runtime_pack.desktops-list"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri.managed-desktops.read",
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.managed-desktops.v1"
+          ],
+          "operation": [
+            "rumi_sandbox_runtime_pack.runtime-providers-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri.managed-desktops.read",
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.managed-desktops.v1"
+          ],
+          "operation": [
+            "rumi_sandbox_runtime_pack.runtime-doctor-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri.managed-desktops.read",
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.managed-desktops.v1"
+          ],
+          "operation": [
+            "rumi_sandbox_runtime_pack.sandbox-templates-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "tobkiri.ui.model-search.read",
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.registry.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_default_tools_pack.file-create-tool",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operation_id": "rumi_default_tools_pack.file-create-operation",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.local.operation.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.file-create-operation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_default_tools_pack.file-create-tool",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "operation_id": "interactive_effect.manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-effect.v1"
+          ],
+          "operation": [
+            "interactive_effect.manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_default_tools_pack.file-create-prepare.service",
+      "contract_id": "tobkiri.service.file.create.v1",
+      "operation_id": "rumi_default_tools_pack.file-create-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.file.create.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.file-create-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_default_tools_pack.file-create.service",
+      "contract_id": "tobkiri.service.file.create.v1",
+      "operation_id": "rumi_default_tools_pack.file-create",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.file.create.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.file-create"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_workspace_mount_pack.project-directory.service",
+      "contract_id": "tobkiri.service.workspace.project.v1",
+      "operation_id": "workspace.directory.acquire",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.workspace.project.v1"
+          ],
+          "operation": [
+            "workspace.directory.acquire"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "contract_id": "tobkiri.service.workspace.project.v1",
+      "operation_id": "workspace.mount.prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.workspace.project.v1"
+          ],
+          "operation": [
+            "workspace.mount.prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "contract_id": "tobkiri.service.workspace.project.v1",
+      "operation_id": "workspace.mount.execute",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.workspace.project.v1"
+          ],
+          "operation": [
+            "workspace.mount.execute"
           ]
         },
         "quotas": {},

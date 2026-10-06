@@ -502,7 +502,7 @@ class ResourceHandleTable:
         operation_parent_fd = os.dup(record.parent_fd)
         temporary_name = f".{record.file_name}.{secrets.token_hex(16)}.tmp"
         temporary_fd: int | None = None
-        published = False
+        temporary_present = False
         try:
             flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
             flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -512,18 +512,23 @@ class ResourceHandleTable:
                 mode,
                 dir_fd=operation_parent_fd,
             )
+            temporary_present = True
             os.fchmod(temporary_fd, mode)
             self._write_all(temporary_fd, data)
             os.fsync(temporary_fd)
             self._revalidate_absence(record)
             lease.revalidate_root()
-            os.replace(
+            # link(2) admits the destination only while it is still absent.
+            # A check followed by replace(2) could overwrite an external file
+            # created after the check. Both names stay in the retained jailed
+            # parent directory; never unlink the destination on failure.
+            os.link(
                 temporary_name,
                 record.file_name,
                 src_dir_fd=operation_parent_fd,
                 dst_dir_fd=operation_parent_fd,
+                follow_symlinks=False,
             )
-            published = True
             path_value = os.stat(
                 record.file_name,
                 dir_fd=operation_parent_fd,
@@ -536,6 +541,18 @@ class ResourceHandleTable:
             ):
                 self._revoke_locked(record)
                 raise ResourceHandleError("created resource identity changed")
+            temporary_value = os.stat(
+                temporary_name,
+                dir_fd=operation_parent_fd,
+                follow_symlinks=False,
+            )
+            if (temporary_value.st_dev, temporary_value.st_ino) != (
+                descriptor_value.st_dev, descriptor_value.st_ino,
+            ):
+                self._revoke_locked(record)
+                raise ResourceHandleError("created staging identity changed")
+            os.unlink(temporary_name, dir_fd=operation_parent_fd)
+            temporary_present = False
             os.fsync(operation_parent_fd)
             self._revoke_locked(record)
             return len(data)
@@ -544,14 +561,25 @@ class ResourceHandleTable:
         except OSError as exc:
             raise ResourceHandleError("resource creation failed") from exc
         finally:
-            if temporary_fd is not None:
-                os.close(temporary_fd)
-            if not published:
-                try:
-                    os.unlink(temporary_name, dir_fd=operation_parent_fd)
-                except FileNotFoundError:
-                    pass
-            os.close(operation_parent_fd)
+            try:
+                if temporary_present and temporary_fd is not None:
+                    try:
+                        temporary_value = os.stat(
+                            temporary_name,
+                            dir_fd=operation_parent_fd,
+                            follow_symlinks=False,
+                        )
+                        descriptor_value = os.fstat(temporary_fd)
+                        if (temporary_value.st_dev, temporary_value.st_ino) == (
+                            descriptor_value.st_dev, descriptor_value.st_ino,
+                        ):
+                            os.unlink(temporary_name, dir_fd=operation_parent_fd)
+                    except FileNotFoundError:
+                        pass
+            finally:
+                if temporary_fd is not None:
+                    os.close(temporary_fd)
+                os.close(operation_parent_fd)
 
     def compare_and_delete_file(
         self,

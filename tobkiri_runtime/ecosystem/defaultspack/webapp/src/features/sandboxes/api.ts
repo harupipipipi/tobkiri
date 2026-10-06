@@ -25,7 +25,9 @@ import type {
 
 type ApiEnvelope<T> =
   | { status: "ok"; data: T }
-  | { status: "error"; error: { code?: string; message?: string } };
+  | { status: "error"; error: { code?: string; message?: string } }
+  | { success: true; data: T; status?: undefined }
+  | { success: false; error: string | null; data?: unknown; status?: undefined };
 
 type DesktopListPayload = { desktops: unknown[] };
 
@@ -48,14 +50,15 @@ async function request<T>(path: DefaultspackContractRoute, init?: RequestInit): 
   } catch {
     throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
   }
-  if (!response.ok || payload.status === "error") {
+  if (!response.ok || payload.status === "error" || ("success" in payload && payload.success === false)) {
     throw new Error(explainDefaultspackApiError(
       response.status,
       payload.status === "error" ? payload.error : undefined,
       response.statusText,
     ));
   }
-  return payload.data;
+  if (!("data" in payload)) throw new Error("Desktop API returned no data.");
+  return payload.data as T;
 }
 
 function numberHeader(response: Response, names: string[], fallback: number): number {
@@ -168,7 +171,7 @@ function normalizeDesktopListPayload(payload: DesktopListPayload): { desktops: D
 
 function unwrapDesktopListPayload(payload: unknown): DesktopListPayload {
   const envelope = payload as Partial<ApiEnvelope<DesktopListPayload>>;
-  const data = envelope.status === "ok" && "data" in envelope
+  const data = (envelope.status === "ok" || ("success" in envelope && envelope.success === true)) && "data" in envelope
     ? envelope.data
     : payload;
   if (!data || typeof data !== "object" || !Array.isArray((data as DesktopListPayload).desktops)) {
@@ -186,7 +189,7 @@ async function requestDesktopList(): Promise<{ desktops: DesktopInstance[] }> {
     throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
   }
   const envelope = payload as Partial<ApiEnvelope<DesktopListPayload>>;
-  if (!response.ok || envelope.status === "error") {
+  if (!response.ok || envelope.status === "error" || ("success" in envelope && envelope.success === false)) {
     throw new Error(explainDefaultspackApiError(
       response.status,
       envelope.status === "error" ? envelope.error : undefined,

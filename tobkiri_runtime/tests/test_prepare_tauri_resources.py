@@ -1036,3 +1036,12 @@ def test_canonical_host_inventory_covers_exact_current_source_files():
     assert inventory["schema"] == "io.tobkiri.host-file-inventory.v1"
     assert inventory["files"] == actual
     assert all(not (host_root / name).is_symlink() for name in actual)
+
+
+def test_canonical_host_inventory_admits_native_project_picker_modules():
+    """Exercise the build gate against the full current Host source inventory."""
+    module = _load_prepare_tauri_resources()
+    source_root = Path(__file__).resolve().parents[1]
+    files = module.canonical_host_files(source_root)
+    assert Path("tobkiri_host/directory_picker.py") in files
+    assert Path("tobkiri_host/directory_selections.py") in files

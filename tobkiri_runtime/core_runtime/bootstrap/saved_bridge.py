@@ -893,9 +893,9 @@ class SavedBridgeCallbacks:
                             "ai_input_digest": payload_digest(payload),
                         },
                     )
-                    value = progress.get("value")
-                    if progress.get("status") == "ok" and isinstance(value, Mapping):
-                        identity = value.get("progress_id")
+                    progress_value = progress.get("value")
+                    if progress.get("status") == "ok" and isinstance(progress_value, Mapping):
+                        identity = progress_value.get("progress_id")
                         if isinstance(identity, str):
                             payload = {**payload, "progress_id": identity}
                 except Exception:

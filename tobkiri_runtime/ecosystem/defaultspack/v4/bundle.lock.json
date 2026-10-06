@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:4a7d551b6dfe82d4b84cf23cad3144476396e994d1f864c7fa2133802ed9f7ef"
+      "digest": "sha256:96eb9cfebe0b30b085cc38cec4c61b7602b8b81039f9bede38c5b2568560722f"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:f752b8bcabfa14eb0fd3d5418ea7953a641c4b59e537a18b08506dd076186eba"
+      "digest": "sha256:decc248fdc62c8ae47caff4d23f02c3f7cf84ba3ff123cb625670211959b8703"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -29,12 +29,12 @@
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:3f9a126e50c5c078261064eab45bda22a05ce7604eb33806b6efe16a90968f3c"
+      "digest": "sha256:36681188ab4e2e047e47c3f8e0f5766b91ee2e2b19b3f332705fcdd34b828fa6"
     },
     {
       "path": "packs/rumi-workspace-mount.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:677cd5139415bbe9580a6994f27c2136f2a72c85c4ef6120731d479f8b9a2b23"
+      "digest": "sha256:294e55178e49ed0a15f8896ef3268ea5f298dfa816cae303b87fdd603dc2a368"
     },
     {
       "path": "packs/rumi_agent_continuity_pack.executables.v4.json",
@@ -299,12 +299,12 @@
     {
       "path": "packs/rumi_command_protocol_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:329091d35b738cc5f1e7ce92a816036fcdc0dc815589501aa40f0433cd4b5073"
+      "digest": "sha256:695bcb5999faed5c56c5b5d973bada3152c43688861d1fa1813157c925402d6e"
     },
     {
       "path": "packs/rumi_command_protocol_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2bf329cce2815e867576cf2c19e13ec23b53eea2bc4a53d39a48536d8e300a32"
+      "digest": "sha256:c6903b0bae4b38f11e00cec5df67cc7fce80e0aed1e91afafb3b01941135ff76"
     },
     {
       "path": "packs/rumi_company_agent_adapter_pack.executables.v4.json",
@@ -519,12 +519,12 @@
     {
       "path": "packs/rumi_default_tools_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:9cfd93489baeb8429b3ab7c6c17179c24a56409dd1837d6abc2e1acb3785e530"
+      "digest": "sha256:01433035d5509c42e1e98fb914c8934db52f3e3752ebef07d0a0b60d45a13e5a"
     },
     {
       "path": "packs/rumi_default_tools_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:3008bf7d9cc3f4e4b24dfe08f2b0008a8ca46bb4f964af666183831cdf8f08a8"
+      "digest": "sha256:2a45d6d55a990e5d1b1baa1f8fd2c202bfb6bef873eca88ba04dc0174a9e8cab"
     },
     {
       "path": "packs/rumi_desktop_host_service_pack.executables.v4.json",
@@ -674,7 +674,7 @@
     {
       "path": "packs/rumi_host_authority_bridge_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:679f04efdbc5366ad9dd4662c972d36954fa1c59f99c46ecd269513e3a87dd7f"
+      "digest": "sha256:1ed761bf0b0dda4e9369234461567acc8415a9e1e45abaea6c4a2eb8de350c06"
     },
     {
       "path": "packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -739,12 +739,12 @@
     {
       "path": "packs/rumi_kanban_state_store_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:36684ae7fb4d75944d253c4f237f2e622bf7ae3aba17d5e9050c114243c398c5"
+      "digest": "sha256:3fa9ae37dca349a87983c9d63d4f1a4246bc13278af63409cb9d64e9c88453c6"
     },
     {
       "path": "packs/rumi_kanban_state_store_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:146529d3e1ed17551f5bcafd50e10fd588538cd908d5ca229deca50675ea8574"
+      "digest": "sha256:7f42fca269df9a53acc48146a0020e81340b3c8c25c7d64026cf5cb298af8151"
     },
     {
       "path": "packs/rumi_kanban_surface_pack.executables.v4.json",
@@ -999,12 +999,12 @@
     {
       "path": "packs/rumi_provider_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:464071627a11d725d163abb796beaaff36a6816241e5922f40b322c26a365674"
+      "digest": "sha256:785c63e24680848bc0f6b9884c6bf63c0017bd2d9520361dee972d12ea179476"
     },
     {
       "path": "packs/rumi_provider_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:52f50a7ffe3ad8bb11deb3fbfed8d0b16550c15f854a4c652f6324410cdc2215"
+      "digest": "sha256:c28633506f41d8305f2a7ad16a1dca7a1b24b5dcca179b29a475ebe2f5c59836"
     },
     {
       "path": "packs/rumi_qr_pairing_connector_pack.executables.v4.json",
@@ -1049,12 +1049,12 @@
     {
       "path": "packs/rumi_sandbox_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:20386c908bb81f6123c0e193dd16b01db76a15acc0700dbf6b6212e2c1e7fb03"
+      "digest": "sha256:e0a80884bde71ed933ba3bd73af077d271b9bf4ca266edf9d2b7da257beedfa7"
     },
     {
       "path": "packs/rumi_sandbox_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:59d9d85abef6a254c825efec9fc0e23fa8488a553a2eab530452cdee4638448b"
+      "digest": "sha256:90fac689a363ea9243ac1fa16d0b25b422930cc77d7d3ed4ba457891094fe6f0"
     },
     {
       "path": "packs/rumi_schedule_store_pack.executables.v4.json",
@@ -1229,12 +1229,12 @@
     {
       "path": "packs/rumi_tool_broker_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:19dcab641f7bddaa23960ffe826a2cff18e0282ca3cf8fbff211977aee240ffc"
+      "digest": "sha256:6c94c2d7217fa9be1a7a78d15a88ab7acb3b1164c16a99bb12b669bd07bbf927"
     },
     {
       "path": "packs/rumi_tool_broker_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:a99fbade992a884b9a22f7fec3dd7e54b676e900251cc4eb32749088275cf463"
+      "digest": "sha256:de3d616148950f8d90f5f4883b6b43b748e27b6089bddea847f2aea7b6dff412"
     },
     {
       "path": "packs/rumi_tool_capability_executor_pack.executables.v4.json",
@@ -1269,12 +1269,12 @@
     {
       "path": "packs/rumi_tool_local_executor_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:5b83f8db3184b659b91ce51ef7f09ab86d4425d36c9df117cb02de3c9953d64b"
+      "digest": "sha256:a477817001c97c77084fb74b7e484a2fd6a127637ef51a7b716fdb88b018a8e2"
     },
     {
       "path": "packs/rumi_tool_local_executor_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:80da38385bebf703e8d0d162927394fd9d1b941adc83a1c8665d00c642e346c3"
+      "digest": "sha256:ef04ac4060aa12c0722e097c2aaf4a62322fb8b46e66c11f8570eb42c2535da2"
     },
     {
       "path": "packs/rumi_tool_mcp_executor_pack.executables.v4.json",
@@ -1379,7 +1379,7 @@
     {
       "path": "packs/rumi_workspace_mount_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:01fef805b7f2e9a2208c6f42df46ce74d2ddc2357d994be1f7d3e2184a75d208"
+      "digest": "sha256:e8dcd2391b47e75e4fa239e8192a0b827f068bf33d26516eec703135500ea1d7"
     },
     {
       "path": "packs/rumi_workspace_pack.executables.v4.json",
@@ -1394,7 +1394,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:dafcd69178eeb5148ce516a0988e49775f1490dc13f5c195e55aef5c06536119"
+      "digest": "sha256:f0bf5efcf2c197651c4a417cab168aef5731c00face52c19fd19718dc4f0df35"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1479,12 +1479,12 @@
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:02b46339b54973bacaac273d0eed57cada10befdbd0136d181afee5519acd847"
+      "digest": "sha256:a3d237f60f9ca75ee05221010311e56f88dd5fa443d8d70826775d37e2b26866"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:8bea5e7a4e33e8f1da9f7af0582985811a814858efee289b0c1dbc51a1b52aae"
+      "digest": "sha256:befe7508b380fb52cf6167d6a7de919428d6ea8d4c2d037c51f472f3f6bfcff9"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
@@ -1514,7 +1514,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:d8ed6644ad1d6771bbd4e2b868b9d08b18821a1e7f3cf08d2a096a9ee3d7b45a"
+      "digest": "sha256:2031276b0119f8089b1e9c89a8c381e0645409512335ae057d046a77c3e46fc5"
     }
   ]
 }

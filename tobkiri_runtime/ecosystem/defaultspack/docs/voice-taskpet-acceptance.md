@@ -32,11 +32,23 @@ change. A `completed` snapshot requires matching turn/request/revision binding
 and a result receipt with outcome digest. A boolean generation flag, UI idle,
 stream end, a timer, or a raw exception cannot produce success.
 
-The approved component uses the panel layer, below approvals/modal surfaces.
-Hide it during all settings/approval/share/spotlight overlays. Import
-`components/TaskPet.css` in the central frontend stylesheet and register the
-component through the trusted UI registry before presenting a Pack contribution.
-The asset under `public/pet/` comes from PR #1326; no remote image request is added.
+Run `/pet` in the composer or select its slash-command candidate to open or
+restore the independent companion window. This frontend command is consumed
+before chat submission, steering, or model API-key checks and never sends the
+command to the AI. `//pet` remains escaped literal chat text. The chat has no
+permanent pet or notification launcher controls. The mounted `TaskPet` publisher
+still synchronizes the bounded task projection and observes authoritative
+completion receipts; the child is a separate native Shell window or browser
+popup. Native hide/reopen retains that window and its position for the current
+Shell lifetime. Closing the main Shell still exits the companion too.
+
+Pet completion/failure notifications are configured in Settings → Features →
+Tobkiri pet, using the current runtime Profile rather than a model Profile. This
+setting is distinct from chat error-banner notifications. Moving the control does
+not change existing opt-in values or request permission. Only explicit enable
+requests notification permission. Import `components/TaskPet.css` in the central
+frontend stylesheet. The asset under `public/pet/` comes from PR #1326; no remote
+image request is added.
 
 Notifications start disabled per Profile. The explicit notification button
 requests OS/browser permission, then saves opt-in; globally granted notification

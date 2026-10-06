@@ -728,6 +728,13 @@ class _PendingController:
         )
         return self._status()
 
+    def operation_for_presentation(self, **kwargs: Any) -> tuple[str, str]:
+        self.owner_calls.append((
+            "operation", kwargs["presentation_owner_principal_id"],
+            kwargs["presentation_owner_session_id"],
+        ))
+        return "tobkiri.service.shell.execute.v1", "rumi_shell_execute_pack.shell-execute"
+
     def resume_for_presentation(self, **kwargs: Any) -> Any:
         self.owner_calls.append(
             (
@@ -880,6 +887,7 @@ def test_host_service_owner_commands_retain_outer_principal_and_session() -> Non
 
     assert controller.owner_calls == [
         ("status", "caller-principal", "session-caller"),
+        ("operation", "caller-principal", "session-caller"),
         ("resume", "caller-principal", "session-caller"),
         ("cancel", "caller-principal", "session-caller"),
     ]

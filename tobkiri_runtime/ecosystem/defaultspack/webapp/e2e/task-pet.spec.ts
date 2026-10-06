@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function openPet(page: Page) {
   const child = page.waitForEvent("popup");
-  await page.getByRole("button", { name: /ペットを(開く|表示)/ }).click();
+  await page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" }).fill("/pe");
+  await page.getByRole("option", { name: "/pet", exact: true }).click();
   const popup = await child;
   await expect(popup.getByRole("main", { name: "Tobkiri ペット" })).toBeVisible();
   return popup;
@@ -34,15 +35,16 @@ test("independent pet receives saved task updates, hides and restores without cl
   expect(await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await hideButton.click();
   await expect.poll(() => popup.isClosed()).toBe(true);
-  await expect(page.getByRole("button", { name: "ペットを表示", exact: true })).toBeVisible();
+  await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
   await page.getByRole("button", { name: "親画面を操作" }).click();
   await expect(page.getByRole("status")).toHaveText("親画面の操作回数: 1");
   const restored = await openPet(page);
   await expect(restored.getByText("タスクが完了しました")).toBeVisible();
   await restored.close();
-  await expect(page.getByRole("button", { name: "ペットを表示", exact: true })).toBeVisible();
+  await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
   expect(page.isClosed()).toBe(false);
   expect(apiRequests).toEqual([]);
+  await expect(page.getByTestId("chat-dispatches")).toHaveText("0");
 });
 
 test("pet rejects foreign sources, origins and malformed state; drag requests move only its own window", async ({ page, context }) => {
@@ -71,6 +73,36 @@ test("pet rejects foreign sources, origins and malformed state; drag requests mo
   await popup.mouse.up();
   await expect.poll(() => popup.evaluate(() => (window as unknown as { __petMoves: number[][] }).__petMoves.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => (window as unknown as { __petMoves: number[][] }).__petMoves)).toEqual([]);
+});
+
+test("typed pet opens locally and escaped pet remains literal chat input", async ({ page }) => {
+  await page.goto("/e2e/fixtures/task-pet.html");
+  const child = page.waitForEvent("popup");
+  await page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" }).fill("/pet");
+  await page.getByRole("button", { name: "/pet を実行", exact: true }).click();
+  const popup = await child;
+  await expect(popup.getByRole("main", { name: "Tobkiri ペット" })).toBeVisible();
+  await expect(page.getByTestId("chat-dispatches")).toHaveText("0");
+  await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
+  await popup.close();
+  await page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" }).fill("//pet");
+  await expect(page.getByRole("option", { name: "/pet", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+  await expect(page.getByTestId("chat-dispatches")).toHaveText("1");
+});
+
+test("pet submission during generation bypasses steering and a missing provider key", async ({ page }) => {
+  await page.goto("/e2e/fixtures/task-pet.html");
+  await page.getByRole("button", { name: "生成中にする", exact: true }).click();
+  await page.getByRole("button", { name: "APIキーなしにする", exact: true }).click();
+  const child = page.waitForEvent("popup");
+  await page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" }).fill("/pet");
+  await page.getByRole("button", { name: "/pet を実行", exact: true }).click();
+  const popup = await child;
+  await expect(popup.getByRole("main", { name: "Tobkiri ペット" })).toBeVisible();
+  await expect(page.getByTestId("chat-dispatches")).toHaveText("0");
+  await expect(page.getByTestId("steer-dispatches")).toHaveText("0");
+  await popup.close();
 });
 
 type NativeCall = { command: string; args: Record<string, unknown> };
@@ -132,14 +164,15 @@ test("native parent listens before opening and does not reopen a hidden pet on c
   await expect.poll(async () => (await nativePet(page)).filter((call) => call.command === "sync_task_pet").length).toBe(2);
   expect((await nativePet(page)).at(-1)?.args.open).toBe(false);
   await page.evaluate(() => (window as unknown as { __nativePet: NativeDouble }).__nativePet.emit("task-pet-hidden", { profileId: "default" }));
-  await expect(page.getByRole("button", { name: "ペットを表示", exact: true })).toBeVisible();
+  await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
   await page.getByRole("button", { name: "タスクを完了" }).click();
   await expect.poll(async () => (await nativePet(page)).filter((call) => call.command === "sync_task_pet" && (call.args.presentation as { view: { mood: string } }).view.mood === "completed").length).toBeGreaterThan(0);
   expect((await nativePet(page)).filter((call) => call.command === "sync_task_pet").slice(1).every((call) => call.args.open === false)).toBe(true);
   const opensBeforeRestore = (await nativePet(page)).filter((call) => call.command === "sync_task_pet" && call.args.open === true).length;
-  await page.getByRole("button", { name: "ペットを表示", exact: true }).click();
+  await page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" }).fill("/pet");
+  await page.getByRole("button", { name: "/pet を実行", exact: true }).click();
   await expect.poll(async () => (await nativePet(page)).filter((call) => call.command === "sync_task_pet" && call.args.open === true).length).toBe(opensBeforeRestore + 1);
-  await expect(page.getByRole("button", { name: "ペットを開く", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Tobkiriにメッセージを送信" })).toHaveValue("");
   expect((await nativePet(page)).filter((call) => call.command === "sync_task_pet" && call.args.open === true).length).toBe(opensBeforeRestore + 1);
 });
 

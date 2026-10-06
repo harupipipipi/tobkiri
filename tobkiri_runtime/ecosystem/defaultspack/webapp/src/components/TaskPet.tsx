@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { Eye } from "lucide-react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { SavedTurnEventSnapshot } from "../lib/api";
 import {
   TaskPetCompletionObserver, loadTaskPetPreference, saveTaskPetPreference,
@@ -10,8 +9,9 @@ import {
   taskPetWindowUrl, type TaskPetPresentation,
 } from "../lib/taskPetWindow";
 import { loadTauriInvoke } from "../lib/desktopTransport";
-import { cn } from "../lib/cn";
-import { LayerPortal } from "../ui/layers/LayerPortal";
+import { taskPetStorage, useTaskPetNotifications } from "../lib/taskPetPreferences";
+
+export type TaskPetHandle = { profileId: string; open: () => Promise<boolean> };
 
 export type TaskPetProps = {
   profileId: string;
@@ -21,24 +21,22 @@ export type TaskPetProps = {
   taskText?: string | null;
   activityText?: string | null;
   hidden?: boolean;
+  controllerRef?: Ref<TaskPetHandle>;
+  onError?: (message: string) => void;
 };
 
 const IMAGE_SRC = `${(import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL || "/static/"}pet/tobkiri-pet.png`;
-
-function storage(): Storage | null {
-  try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; }
-}
 
 /** Publishes the validated task projection and keeps completion notifications in the main app. */
 export function TaskPet(props: TaskPetProps) {
   return <ProfileTaskPet key={props.profileId} {...props} />;
 }
 
-function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskText, activityText, hidden = false }: TaskPetProps) {
-  const [enabled, setEnabled] = useState(() => loadTaskPetPreference(storage(), profileId, "enabled"));
-  const [notifications, setNotifications] = useState(() => loadTaskPetPreference(storage(), profileId, "notifications"));
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(() => typeof window !== "undefined" && "Notification" in window ? window.Notification.permission : "unsupported");
-  const [notice, setNotice] = useState<string | null>(null);
+function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskText, activityText, hidden = false, controllerRef, onError }: TaskPetProps) {
+  const [enabled, setEnabled] = useState(() => loadTaskPetPreference(taskPetStorage(), profileId, "enabled"));
+  const notifications = useTaskPetNotifications(profileId);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const popup = useRef<Window | null>(null);
   const hadBrowserPopup = useRef(false);
   const observer = useRef(new TaskPetCompletionObserver());
@@ -56,6 +54,13 @@ function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskTex
     try { target.postMessage({ type: "task-pet-state", presentation: value }, window.location.origin); } catch { /* Closed popup. */ }
   };
 
+  const recordHidden = () => {
+    setEnabled(false);
+    if (!saveTaskPetPreference(taskPetStorage(), profileId, "enabled", false)) {
+      onErrorRef.current?.("設定を保存できませんでした。");
+    }
+  };
+
   useEffect(() => {
     mounted.current = true;
     let disposed = false;
@@ -67,8 +72,7 @@ function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskTex
         const { listen } = await import("@tauri-apps/api/event");
         const listener = await listen<{ profileId?: string }>("task-pet-hidden", ({ payload }) => {
           if (payload?.profileId !== profileId) return;
-          setEnabled(false);
-          saveTaskPetPreference(storage(), profileId, "enabled", false);
+          recordHidden();
         });
         if (disposed) listener(); else unlisten = listener;
       } catch { /* Native window integration errors are shown on explicit open. */ }
@@ -81,7 +85,7 @@ function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskTex
       if (event.data.type === "task-pet-ready") sendToPopup(target, presentationRef.current);
       if (event.data.type === "task-pet-hidden" && event.data.profileId === profileId) {
         target.close(); popup.current = null; hadBrowserPopup.current = false;
-        save("enabled", false);
+        recordHidden();
       }
     };
     window.addEventListener("message", onMessage);
@@ -89,7 +93,7 @@ function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskTex
       if (popup.current?.closed) { popup.current = null; }
       if (hadBrowserPopup.current && !popup.current) {
         // Manual browser closure is reflected in the launcher preference.
-        if (presentationRef.current.enabled) save("enabled", false);
+        if (presentationRef.current.enabled) recordHidden();
         hadBrowserPopup.current = false;
       }
     }, 500);
@@ -141,55 +145,42 @@ function ProfileTaskPet({ profileId, scope, snapshot, snapshotProfileId, taskTex
     } catch { /* Notifications are a passive convenience. */ }
   }, [enabled, hidden, notifications, view.key, view.revision, view.mood]);
 
-  const save = (name: "enabled" | "notifications", value: boolean) => {
-    if (!saveTaskPetPreference(storage(), profileId, name, value)) {
-      setNotice("設定を保存できませんでした。"); return false;
+  const open = async (): Promise<boolean> => {
+    if (!saveTaskPetPreference(taskPetStorage(), profileId, "enabled", true)) {
+      onErrorRef.current?.("設定を保存できませんでした。");
+      return false;
     }
-    if (name === "enabled") setEnabled(value); else setNotifications(value);
-    setNotice(null);
-    return true;
-  };
-  const open = async () => {
-    if (!save("enabled", true)) return;
-    // This user request owns reopening; the enabling effect only sends state.
+    setEnabled(true);
+    // This explicit request owns reopening; the enabling effect only sends state.
     wasEnabled.current = true;
     try {
       const invoke = await loadTauriInvoke();
+      if (!mounted.current) return false;
       if (invoke) {
         await listenerReady.current;
+        let opened = false;
         syncQueue.current = syncQueue.current.catch(() => undefined).then(async () => {
           if (!mounted.current) return;
           await invoke("sync_task_pet", { presentation: { ...presentationRef.current, enabled: true }, open: true });
           wasEnabled.current = true;
+          opened = true;
         });
         await syncQueue.current;
-      } else {
-        const target = popup.current;
-        if (target && !target.closed) { target.focus(); sendToPopup(target, { ...presentation, enabled: true }); return; }
-        const opened = window.open(taskPetWindowUrl(window.location.href, profileId), taskPetWindowName(profileId), "popup=yes,width=336,height=370,resizable=yes");
-        if (!opened) { setNotice("ポップアップがブロックされました。ブラウザーの設定で許可してください。"); return; }
-        popup.current = opened;
-        hadBrowserPopup.current = true;
-        sendToPopup(opened, { ...presentation, enabled: true });
+        return opened;
       }
-    } catch (cause) {
-      setNotice("ペットウィンドウを開けませんでした。Launcher の状態を確認してください。");
+      const target = popup.current;
+      if (target && !target.closed) { target.focus(); sendToPopup(target, { ...presentationRef.current, enabled: true }); return true; }
+      const opened = window.open(taskPetWindowUrl(window.location.href, profileId), taskPetWindowName(profileId), "popup=yes,width=336,height=370,resizable=yes");
+      if (!opened) { onErrorRef.current?.("ポップアップがブロックされました。ブラウザーの設定で許可してください。"); return false; }
+      popup.current = opened;
+      hadBrowserPopup.current = true;
+      sendToPopup(opened, { ...presentationRef.current, enabled: true });
+      return true;
+    } catch {
+      if (mounted.current) onErrorRef.current?.("ペットウィンドウを開けませんでした。Launcher の状態を確認してください。");
+      return false;
     }
   };
-  const enableNotifications = async () => {
-    if (notificationPermission === "unsupported") return;
-    try {
-      const permission = await window.Notification.requestPermission();
-      if (!mounted.current) return;
-      setNotificationPermission(permission);
-      if (permission === "granted") save("notifications", true);
-    } catch { if (mounted.current) setNotificationPermission(window.Notification.permission); }
-  };
-
-  return <LayerPortal layer="panel"><div className="task-pet-launcher">
-    <button type="button" onClick={() => void open()} className="task-pet-launcher-button"><Eye size={14} />{enabled ? "ペットを開く" : "ペットを表示"}</button>
-    {notificationPermission !== "unsupported" && <button type="button" onClick={() => notifications ? save("notifications", false) : void enableNotifications()} className="task-pet-launcher-notifications">{notifications ? "通知 ON" : "通知 OFF"}</button>}
-    {notificationPermission === "denied" && <p className="task-pet-launcher-notice" role="status">通知が拒否されています。ブラウザー設定で確認してください。</p>}
-    {notice && <p className={cn("task-pet-launcher-notice")} role="alert">{notice}</p>}
-  </div></LayerPortal>;
+  useImperativeHandle(controllerRef, () => ({ profileId, open }));
+  return null;
 }

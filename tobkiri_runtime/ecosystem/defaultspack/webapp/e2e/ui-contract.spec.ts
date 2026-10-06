@@ -686,8 +686,8 @@ function dynamicHostCatalog(applicationChat = false) {
     activation_id: activationId,
     plan_hash: planHash,
     selected_entry_route: "/chat",
-    contributions: [{
-      contribution_id: "defaults.conversation.complete",
+    contributions: (applicationChat ? ["/chat", "/kanban", "/desktops"] : ["/chat"]).map((route) => ({
+      contribution_id: route === "/chat" ? "defaults.conversation.complete" : `defaults.frontend.${route.slice(1)}`,
       kind: "route" as const,
       mode: applicationChat ? "application_builtin" as const : "declarative" as const,
       ...(applicationChat ? { implementation: "defaultspack.chat" } : {}),
@@ -702,12 +702,12 @@ function dynamicHostCatalog(applicationChat = false) {
       resolved_activation_id: activationId,
       resolved_plan_hash: planHash,
       descriptor_hash: `sha256:${"d".repeat(64)}`,
-      route: "/chat",
+      route,
       action_contract: "conversation.turn.v1",
       view: { type: "conversation_v4" },
       localization: {},
       accessibility: { name: "Tobkiri Conversation", keyboard: true },
-    }],
+    })),
     diagnostics: [],
     quarantined_pack_ids: [],
     catalog_hash: `sha256:${"e".repeat(64)}`,
@@ -4018,3 +4018,83 @@ test("actual ChatApp sends the selected finite tool and displays authenticated l
     expect(starts).toBe(1);
   } finally { release(); }
 });
+
+
+for (const tabsEnabled of [true, false]) {
+  test(`Kanban and Desktops sidebar routes stay synchronized with tabs enabled=${tabsEnabled}`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true,
+      initialSettingsValues: { general: { workspace_tabs_enabled: tabsEnabled } } });
+    const requests: string[] = [];
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const target = requestTarget(new URL(route.request().url()));
+      if (target.startsWith("/api/kanban")) {
+        requests.push(target);
+        return route.fulfill({ status: 404, json: { status: "error", error: { code: "CONTRACT_OPERATION_UNKNOWN", message: "Kanban endpoint unavailable" } } });
+      }
+      if (target === "/api/desktops") {
+        requests.push(target);
+        return fulfill(route, { desktops: [] });
+      }
+      if (target === "/api/runtime/providers") return fulfill(route, { providers: [] });
+      if (target === "/api/sandbox/templates") return fulfill(route, { templates: [] });
+      return route.fallback();
+    });
+    await page.goto("/p/defaults/chat");
+    await page.getByRole("button", { name: "Kanban", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/kanban$/);
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Desktops", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Kanban", exact: true }).click();
+    await page.getByRole("button", { name: "Desktops", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    if (tabsEnabled) {
+      await expect(page.getByRole("tab", { name: "Desktops", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Desktops", exact: true })).toHaveCount(1);
+    }
+    await page.goBack();
+    await expect(page).toHaveURL(/\/p\/defaults\/kanban$/);
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    expect(requests).toContain("/api/desktops");
+    expect(requests.some((target) => target.includes("bootstrap"))).toBe(false);
+  });
+}
+
+for (const status of [401, 404, 503]) {
+  test(`Kanban distinguishes endpoint ${status} from empty data and recovers on Retry`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    let available = false;
+    let bootstrapCalls = 0;
+    const board = { revision: 1,
+      board: { board_id: "local-board", title: "All Tobkiri Runs", scope_type: "global", scope_id: "default" },
+      columns: [{ column_id: "todo", board_id: "local-board", title: "Backlog", position: 0 }], cards: [], events: [] };
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const target = requestTarget(new URL(route.request().url()));
+      if (target === "/api/kanban/boards") return available
+        ? fulfill(route, { revision: 0, boards: [] })
+        : route.fulfill({ status, json: { status: "error", error: { message: `Kanban HTTP ${status}` } } });
+      if (target === "/api/kanban/boards/bootstrap") {
+        bootstrapCalls += 1;
+        expect(route.request().postDataJSON()).toMatchObject({ expected_revision: 0, scope_type: "global", scope_id: "default" });
+        return fulfill(route, board);
+      }
+      return route.fallback();
+    });
+    await page.goto("/p/defaults/kanban");
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    expect(bootstrapCalls).toBe(0);
+    available = true;
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("listitem", { name: "Backlog, 0 cards" })).toBeVisible();
+    expect(bootstrapCalls).toBe(1);
+    await page.reload();
+    await expect(page.getByRole("listitem", { name: "Backlog, 0 cards" })).toBeVisible();
+  });
+}

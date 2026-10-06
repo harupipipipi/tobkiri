@@ -19,6 +19,8 @@ import {
   X,
 } from "lucide-react";
 
+import type { ModelPropertiesRequest } from "../../features/search/modelPropertiesNavigation";
+import { matchesModelPropertiesProfile } from "./modelPropertiesAcknowledgement";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { cn } from "../../lib/cn";
 import { normalizeLocale, type LocaleSetting } from "../../lib/i18n";
@@ -43,6 +45,8 @@ type ProfileSettingsPanelProps = {
   saveState?: SettingsSaveState;
   requestedProfileId?: string;
   selectionRequestVersion?: number;
+  modelPropertiesRequest?: ModelPropertiesRequest | null;
+  onModelPropertiesAcknowledged?: (request: ModelPropertiesRequest) => void;
   onSettingChange: SettingChangeHandler;
   onOpenSection?: (sectionId: string) => void;
   onRetryLoad?: () => void;
@@ -104,6 +108,8 @@ export function ProfileSettingsPanel({
   saveState = { status: "idle", dirtyKeys: [] },
   requestedProfileId,
   selectionRequestVersion = 0,
+  modelPropertiesRequest,
+  onModelPropertiesAcknowledged,
   onSettingChange,
   onOpenSection,
   onRetryLoad,
@@ -167,15 +173,31 @@ export function ProfileSettingsPanel({
     setSelectedId(profiles[0].id);
   }, [profiles, selectedId]);
 
+  const appliedSelectionRequest = useRef("");
   useEffect(() => {
-    if (!requestedProfileId || !profiles.some((profile) => profile.id === requestedProfileId)) return;
+    const requestKey = `${requestedProfileId ?? ""}:${selectionRequestVersion}`;
+    if (!requestedProfileId || appliedSelectionRequest.current === requestKey
+      || !workspace.profiles.some((profile) => profile.id === requestedProfileId)) return;
+    appliedSelectionRequest.current = requestKey;
+    setQuery("");
+    setFilter("all");
     setSelectedId(requestedProfileId);
     requestAnimationFrame(() => {
       const button = profileButtonRefs.current.get(requestedProfileId);
       button?.scrollIntoView({ block: "nearest" });
       button?.focus();
     });
-  }, [profiles, requestedProfileId, selectionRequestVersion]);
+  }, [workspace.profiles, requestedProfileId, selectionRequestVersion]);
+
+  useEffect(() => {
+    if (!modelPropertiesRequest || selectionRequestVersion !== modelPropertiesRequest.requestId
+      || selectedId !== requestedProfileId || query || filter !== "all") return;
+    const selected = workspace.profiles.find((profile) => profile.id === selectedId);
+    if (selected && matchesModelPropertiesProfile(modelPropertiesRequest, selected)) {
+      onModelPropertiesAcknowledged?.(modelPropertiesRequest);
+    }
+  }, [modelPropertiesRequest, selectionRequestVersion, selectedId, requestedProfileId,
+    query, filter, workspace.profiles, onModelPropertiesAcknowledged]);
 
   const resetEditor = (restoreFocus = false) => {
     setEditMode(null);

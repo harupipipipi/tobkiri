@@ -20,6 +20,8 @@
     "continuation_session.py",
     "contracts.py",
     "credential_store.py",
+    "directory_picker.py",
+    "directory_selections.py",
     "effects.py",
     "errors.py",
     "extension_sdk.py",

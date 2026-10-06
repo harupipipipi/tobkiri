@@ -35,7 +35,9 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
-      ui: item.ui,
+      ui: item.tool_info?.service_id
+        ? { ...item.ui, service_id: item.tool_info.service_id } : item.ui,
+      ...(item.tool_info?.setup_state?.status === "missing" ? { disabled: true } : {}),
       presentation: item.presentation,
     }));
 }
@@ -388,7 +390,7 @@ export function composerMentionToolIdsFromWidgets(widgets: DroppedWidget[]): str
   const seen = new Set<string>();
   for (const widget of widgets) {
     const mention = composerMentionRecord(widget);
-    if (!mention) continue;
+    if (!mention || mention.intent === "exclude") continue;
     const kind = String(mention.kind ?? widget.type);
     const service = widget.metadata?.service;
     const serviceRecord = service && typeof service === "object" && !Array.isArray(service)
@@ -492,6 +494,7 @@ function semanticMentionWidgetIsActive({
   if (widget.enabled === false || !hasUnescapedMentionSyntax(text, composerMentionSyntax(widget))) {
     return false;
   }
+  if (composerMentionRecord(widget)?.intent === "exclude") return true;
   const kind = composerMentionKind(widget);
   const toolIds = composerMentionToolIdsFromWidgets([widget]);
   if (kind === "tool") return toolIds.some((toolId) => selectedToolIds.has(toolId));

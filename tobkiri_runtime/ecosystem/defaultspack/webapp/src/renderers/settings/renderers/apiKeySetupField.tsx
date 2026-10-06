@@ -46,7 +46,7 @@ export function apiKeySetupSaveErrorMessage(error: unknown): string {
   return detail ? `${prefix} 詳細: ${detail}` : prefix;
 }
 
-export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionValues, onChange }: SettingsFieldRendererProps) {
+export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionValues, onChange, displayMode, modelPropertiesRequest, onModelPropertiesAcknowledged }: SettingsFieldRendererProps) {
   const targetFieldId = apiKeySetupTargetFieldId(field);
   const providers = fieldProviderRows(field, sectionValues);
   const providerScope = normalizeApiProviderScope((field as unknown as Record<string, unknown>).provider_scope);
@@ -354,7 +354,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             message={saveError}
           />
         )}
-        {!savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} />}
+        {!savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} displayMode={displayMode} requestedModel={modelPropertiesRequest} onModelPropertiesAcknowledged={onModelPropertiesAcknowledged} />}
         {credentialTransfer && (
           <CredentialTransferModal
             providerId={credentialTransfer.providerId}

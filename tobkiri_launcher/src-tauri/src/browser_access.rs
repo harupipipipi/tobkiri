@@ -13,7 +13,9 @@ use std::{
 };
 use tauri::Manager;
 
-const LABEL: &str = "browser-access-approval";
+use crate::browser_access_lifecycle::{
+    generation_label, remaining_ttl, take_generation, take_window_generation,
+};
 const PAGE: &str = "browser-access-approval.html";
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct Context {
@@ -28,6 +30,7 @@ struct Pending {
     context: Context,
     port: u16,
     nonce: String,
+    label: String,
     deadline: Instant,
     settling: bool,
 }
@@ -207,14 +210,17 @@ pub(crate) fn open(
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let label = generation_label(&nonce);
+    let deadline = Instant::now() + Duration::from_secs(context.expires_in);
     records.insert(
         request_id.into(),
         Pending {
             settling: false,
-            deadline: Instant::now() + Duration::from_secs(context.expires_in),
+            deadline,
             context,
             port,
             nonce: nonce.clone(),
+            label: label.clone(),
         },
     );
     drop(records);
@@ -222,7 +228,7 @@ pub(crate) fn open(
     let uri = format!("{PAGE}?request_id={request_id}&nonce={nonce}");
     let opened = crate::run_ui_work_on_main_thread(app, "browser approval", move || {
         crate::activate_app_for_authority_approval();
-        tauri::WebviewWindowBuilder::new(&app_ui, LABEL, tauri::WebviewUrl::App(uri.into()))
+        tauri::WebviewWindowBuilder::new(&app_ui, &label, tauri::WebviewUrl::App(uri.into()))
             .title("Tobkiri ブラウザーアクセス許可")
             .inner_size(480.0, 420.0)
             .incognito(true)
@@ -232,30 +238,15 @@ pub(crate) fn open(
             .map_err(|_| "approval window unavailable".into())
     });
     if opened.is_err() {
-        close(app, config);
+        close_generation(app, config, request_id, &nonce);
+        return opened;
     }
-    let expiration_nonce = nonce.clone();
     let app_expiry = app.clone();
     let config_expiry = config.clone();
-    let expires = app
-        .state::<Coordinator>()
-        .0
-        .lock()
-        .ok()
-        .and_then(|r| r.get(request_id).map(|p| p.context.expires_in))
-        .unwrap_or(0);
+    let expiration_request_id = request_id.to_owned();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(expires));
-        let expired = app_expiry
-            .state::<Coordinator>()
-            .0
-            .lock()
-            .ok()
-            .map(|r| r.values().any(|p| p.nonce == expiration_nonce))
-            .unwrap_or(false);
-        if expired {
-            close(&app_expiry, &config_expiry);
-        }
+        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+        close_generation(&app_expiry, &config_expiry, &expiration_request_id, &nonce);
     });
     opened
 }
@@ -272,7 +263,7 @@ fn caller_matches(
             && url.host_str() == Some("tauri.localhost")
             && url.port_or_known_default() == Some(80));
     bundled
-        && label == LABEL
+        && label == pending.label
         && focused
         && url.path() == format!("/{PAGE}")
         && url
@@ -319,7 +310,11 @@ pub(crate) async fn browser_access_context(
     request_id: String,
     nonce: String,
 ) -> Result<Context, String> {
-    Ok(inspect(&app, &window, &request_id, &nonce)?.context)
+    let pending = inspect(&app, &window, &request_id, &nonce)?;
+    let remaining = remaining_ttl(pending.deadline, Instant::now()).ok_or("request expired")?;
+    let mut context = pending.context;
+    context.expires_in = remaining;
+    Ok(context)
 }
 #[tauri::command]
 pub(crate) async fn browser_access_decide(
@@ -348,10 +343,11 @@ pub(crate) async fn browser_access_decide(
     }
     let config_owned = config.inner().clone();
     let id = request_id.clone();
+    let decision_port = pending.port;
     let result = tauri::async_runtime::spawn_blocking(move || {
         host_call(
             &config_owned,
-            pending.port,
+            decision_port,
             "decision",
             json!({"request_id": id, "decision": decision}),
         )
@@ -359,33 +355,55 @@ pub(crate) async fn browser_access_decide(
     .await;
     match result {
         Ok(Ok(_)) => {
-            app.state::<Coordinator>()
+            let coordinator = app.state::<Coordinator>();
+            let mut records = coordinator
                 .0
                 .lock()
-                .map_err(|_| "coordinator unavailable")?
-                .remove(&request_id);
+                .map_err(|_| "coordinator unavailable")?;
+            take_generation(&mut records, &request_id, &nonce, |p| &p.nonce);
         }
         _ => {
-            close(&app, config.inner());
+            close_generation(&app, config.inner(), &request_id, &nonce);
             return Err("decision unavailable".into());
         }
     }
-    let window_ui = window.clone();
+    let app_ui = app.clone();
+    let label = pending.label;
     crate::run_ui_work_on_main_thread(&app, "close browser approval", move || {
-        window_ui.close().map_err(|_| "close failed".into())
+        if let Some(window) = app_ui.get_webview_window(&label) {
+            window.close().map_err(|_| "close failed".into())
+        } else {
+            Ok(())
+        }
     })
 }
-pub(crate) fn close(app: &tauri::AppHandle, config: &AppConfig) {
+/// Resolve a close event only for the exact controlled window generation.
+pub(crate) fn close_window(app: &tauri::AppHandle, config: &AppConfig, label: &str) {
     let pending = app
         .state::<Coordinator>()
         .0
         .lock()
         .ok()
-        .and_then(|mut r| r.drain().next().map(|(_, p)| p));
+        .and_then(|mut r| take_window_generation(&mut r, label, |p| &p.label));
+    cleanup_pending(app, config, pending);
+}
+
+fn close_generation(app: &tauri::AppHandle, config: &AppConfig, request_id: &str, nonce: &str) {
+    let pending = app
+        .state::<Coordinator>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|mut r| take_generation(&mut r, request_id, nonce, |p| &p.nonce));
+    cleanup_pending(app, config, pending);
+}
+
+fn cleanup_pending(app: &tauri::AppHandle, config: &AppConfig, pending: Option<Pending>) {
     if let Some(pending) = pending {
         let app_ui = app.clone();
+        let label = pending.label.clone();
         let _ = app.run_on_main_thread(move || {
-            if let Some(window) = app_ui.get_webview_window(LABEL) {
+            if let Some(window) = app_ui.get_webview_window(&label) {
                 let _ = window.close();
             }
         });
@@ -518,6 +536,7 @@ mod tests {
             context: context(),
             port: 8766,
             nonce: "nonce".into(),
+            label: generation_label("nonce"),
             settling: false,
             deadline: Instant::now() + Duration::from_secs(60),
         };
@@ -525,14 +544,24 @@ mod tests {
             "tauri://localhost/browser-access-approval.html?request_id=req_1&nonce=nonce",
         )
         .unwrap();
-        assert!(caller_matches(LABEL, &url, true, &p, "req_1", "nonce"));
+        assert!(caller_matches(&p.label, &url, true, &p, "req_1", "nonce"));
         assert!(!caller_matches("main", &url, true, &p, "req_1", "nonce"));
-        assert!(!caller_matches(LABEL, &url, false, &p, "req_1", "nonce"));
-        assert!(!caller_matches(LABEL, &url, true, &p, "req_1", "wrong"));
+        assert!(!caller_matches(
+            &generation_label("other"),
+            &url,
+            true,
+            &p,
+            "req_1",
+            "nonce"
+        ));
+        assert!(!caller_matches(&p.label, &url, false, &p, "req_1", "nonce"));
+        assert!(!caller_matches(&p.label, &url, true, &p, "req_1", "wrong"));
         let remote = tauri::Url::parse(
             "http://127.0.0.1:8766/browser-access-approval.html?request_id=req_1&nonce=nonce",
         )
         .unwrap();
-        assert!(!caller_matches(LABEL, &remote, true, &p, "req_1", "nonce"));
+        assert!(!caller_matches(
+            &p.label, &remote, true, &p, "req_1", "nonce"
+        ));
     }
 }

@@ -36,6 +36,20 @@ _HARD_TIMEOUT_MAX_MS = 300_000
 # identity-specific; unrelated direct gateway operations retain their 120-second
 # default.
 _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
+    (
+        "rumi_workspace_mount_pack",
+        "rumi_workspace_mount_pack.project-directory.service",
+        "workspace.directory.acquire",
+    ): 300_000,
+    # A finite file tool retains its authenticated saved invocation while the
+    # operator decides in the native window; enclosing tool owners must outlive
+    # its 90-second wait. This grants no execution or approval authority.
+    ("rumi_tool_broker_pack", "rumi_tool_broker_pack.tool-broker.invoke",
+     "rumi_tool_broker_pack.tool-invoke"): 120_000,
+    ("rumi_tool_local_executor_pack", "rumi_tool_local_executor_pack.tool-executor.local",
+     "rumi_tool_local_executor_pack.tool-local-execute"): 120_000,
+    ("rumi_default_tools_pack", "rumi_default_tools_pack.file-create-tool",
+     "rumi_default_tools_pack.file-create-operation"): 120_000,
     # These startup reads can enter the selected presentation Pack through a
     # Host-owned nested call.  A first native launch includes the authenticated
     # PackVM cold start, which is bounded separately from steady-state reads.

@@ -50,8 +50,8 @@ def test_resolved_catalog_projects_all_legacy_commands_to_v1(tmp_path: Path) -> 
     catalog = _owner_bound_protocol(tmp_path).catalog()
 
     assert catalog["api_version"] == "tobkiri.commands/v1"
-    assert len(catalog["commands"]) == 54
-    assert len({item["canonical_id"] for item in catalog["commands"]}) == 54
+    assert len(catalog["commands"]) == 55
+    assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
 
 
 def test_command_state_binding_does_not_resolve_settings_path(tmp_path, monkeypatch):
@@ -131,7 +131,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
         }
     )
 
-    assert len(matrix) == 54
+    assert len(matrix) == 55
     assert all(item["verified_handler"] is True for item in matrix)
     assert all(item["concrete_binding"] for item in matrix)
     assert fast["status"] == "succeeded", fast
@@ -224,11 +224,11 @@ def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter(tmp_pat
     assert not any(item["code"] == "handler_missing" for item in catalog["diagnostics"])
 
 
-def test_all_54_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
+def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
     matrix = _owner_bound_protocol(tmp_path).conformance_matrix()
 
-    assert len(matrix) == 54
-    assert len({item["command_id"] for item in matrix}) == 54
+    assert len(matrix) == 55
+    assert len({item["command_id"] for item in matrix}) == 55
     assert all(item["operation_ref"] for item in matrix)
     assert all(item["completion_semantics"] != "noop" for item in matrix)
     high_risk = [item for item in matrix if item["authority"]["approval_required"]]
@@ -270,6 +270,26 @@ def test_removed_deepthink_command_cannot_mutate_strategy_state(
     assert removed["status"] == "failed"
     assert removed["error"]["code"] == "COMMAND_NOT_FOUND"
     assert protocol.query_states()["states"] == initial
+
+
+@pytest.mark.parametrize("mode", ["chat", "coding", "agent"])
+def test_pet_invocation_returns_only_local_frontend_action(
+    tmp_path: Path, mode: str,
+) -> None:
+    """Expose the pet through the canonical catalogue without any chat execution."""
+    protocol = _owner_bound_protocol(tmp_path)
+    command = next(
+        item for item in protocol.catalog()["commands"]
+        if item["canonical_id"] == "defaultspack:pet"
+    )
+    assert command["availability"] == {"status": "available"}
+    assert command["presentation"]["input"]["kind"] == "action"
+    assert command["execution"]["operation_ref"] == "host:open_task_pet"
+    result = protocol.invoke({"command_ref": "defaultspack:pet", "mode": mode})
+    assert result["status"] == "succeeded"
+    assert result["legacy_result"]["action"] == "open_task_pet"
+    assert result["legacy_result"]["args"] == {}
+    assert result["state_changes"] == []
 
 
 def test_home_title_invocation_returns_frontend_action(tmp_path: Path) -> None:

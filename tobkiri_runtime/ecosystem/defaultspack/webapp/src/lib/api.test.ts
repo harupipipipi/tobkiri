@@ -8,7 +8,7 @@ import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
 import { mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./registeredSlashCommands";
-import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateComposerWidgetsForInput, templateFeatureFlagEnabled, templateToolPolicySettings } from "./templateAiInput";
+import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateFeatureFlagEnabled, templateToolPolicySettings } from "./templateAiInput";
 import {
   MIMO_CODING_DEFAULT_FAST_MODEL,
   MIMO_CODING_DEFAULT_MODEL,
@@ -1354,6 +1354,18 @@ test("slash command parsing supports rule actions without free-form rule text", 
   });
 });
 
+test("mentions and prose cannot execute slash operations", () => {
+  const commands: ComposerCommandItem[] = [{
+    id: "yes", name: "yes", label: "Yes", category: "tools",
+    visibility: "default", risk: "low",
+    execution: { type: "frontend", action: "open_settings" },
+  }];
+  for (const input of ["@yes", "@Settings @web_search", "@model @openrouter", "period=week status=active", "普通の文章", "//yes"]) {
+    assert.equal(parseSlashCommandInput(input, commands), null);
+  }
+  assert.equal(parseSlashCommandInput("/yes", commands)?.command.id, "yes");
+});
+
 test("slash command parsing can be disabled by template feature flags", () => {
   const commands: ComposerCommandItem[] = [
     {
@@ -1703,61 +1715,6 @@ test("template ai input composes multiple active inputs and policies determinist
   assert.equal(settings.toolChoice, "auto");
   assert.deepEqual(settings.diagnostics.map((item) => item.code), ["template.tool_policy.conflicting_tool_choice"]);
   assert.equal(settings.parallelToolCalls, false);
-});
-
-test("template composer widgets become safe tool toggle widgets", () => {
-  const catalog = {
-    composer_widgets: [
-      {
-        id: "web_search_toggle",
-        widget: {
-          tool_id: "web_search",
-          label: "Web",
-          widget_kind: "tool_toggle",
-        },
-      },
-      {
-        id: "unsafe_endpoint",
-        widget: {
-          label: "Unsafe",
-          widget_kind: "button",
-          action: { type: "call_endpoint", endpoint: routeKey("api/anything") },
-        },
-      },
-    ],
-  };
-
-  const widgets = templateComposerWidgetsForInput(
-    catalog as any,
-    null,
-    null,
-    [{ id: "web_search", label: "Web Search", category: "tool" }],
-  );
-
-  assert.equal(widgets.length, 1);
-  assert.deepEqual(widgets[0], {
-    id: "web_search_toggle",
-    type: "tool",
-    label: "Web",
-    description: undefined,
-    enabled: true,
-    widgetKind: "tool_toggle",
-    action: { type: "toggle_tool", tool_id: "web_search" },
-    sourceItemId: "web_search",
-    icon: undefined,
-    metadata: {
-      source: "template_catalog_widget",
-      template_id: null,
-      piece_id: null,
-      widget_id: "web_search_toggle",
-      tool: {
-        id: "web_search",
-        label: "Web Search",
-        category: "tool",
-        tags: [],
-      },
-    },
-  });
 });
 
 test("yolo full access always toggles back to ask instead of restoring agent approval", () => {
@@ -4901,7 +4858,7 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   });
 });
 
-test("directory and group storage helpers target native selection routes", async () => {
+test("directory selection sends no browser path or authority to the native ticket route", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -4913,7 +4870,7 @@ test("directory and group storage helpers target native selection routes", async
     return new Response(JSON.stringify({
       status: "ok",
       data: requestTarget(input).includes("/select-directory")
-        ? { path: "/repo", cancelled: false }
+        ? { selection_id: "opaque-ticket", display_name: "repo", expires_in_ms: 60000, cancelled: false }
         : { root_path: "/repo", rumi_data_path: "/repo/.rumiDP", chat_store_path: "/repo/.rumiDP/chat/conversations.json" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
@@ -4928,7 +4885,7 @@ test("directory and group storage helpers target native selection routes", async
   assert.deepEqual(seen[0], {
     input: routeKey("api/ui/select-directory"),
     method: "POST",
-    body: { prompt: "保存先" },
+    body: {},
   });
   assert.deepEqual(seen[1], {
     input: routeKey("api/chat/group-storage"),

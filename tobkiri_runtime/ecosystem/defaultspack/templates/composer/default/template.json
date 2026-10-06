@@ -218,23 +218,7 @@
         "composer_input": "default_composer",
         "context_policy": "materialize_txt",
         "tool_policy": "default_tools",
-        "widgets": [
-          "web_search_toggle"
-        ],
         "params": {}
-      }
-    },
-    {
-      "id": "web_search_toggle",
-      "kind": "composer_widget",
-      "order": 57,
-      "widget": {
-        "id": "web_search_toggle",
-        "tool_id": "web_search",
-        "label": "Web Search",
-        "description": "Toggle web search for this AI input.",
-        "widget_kind": "tool_toggle",
-        "enabled": true
       }
     },
     {

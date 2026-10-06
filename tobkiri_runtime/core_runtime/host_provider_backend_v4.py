@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from core_runtime.project_directory_port import ProjectDirectoryPort
+from core_runtime.workspace_mount_effect import ProjectMountPersistenceUncertain
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
@@ -10,7 +13,7 @@ from tobkiri_host.artifact_materialization import MaterializedArtifactFile
 from tobkiri_host.backends import BackendStatus, REQUIRED_PRODUCTION_GATES
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import ResolvedOperationBinding
-from tobkiri_host.effects import ProviderOutcome
+from tobkiri_host.effects import ProviderOutcome, EffectDisposition
 from tobkiri_host.errors import AuthorizationError
 from tobkiri_host.models import (
     ExecutionKind,
@@ -131,6 +134,8 @@ class HostProviderCaptureContextV4:
     # has built the single Broker for the active Profile.
     interactive_effect_port: InteractiveEffectPort | None = None
     workspace_mutation_port: WorkspaceMutationPort | None = None
+    # Activation-owned native selections, supplied only to exact verified hooks.
+    directory_selection_port: ProjectDirectoryPort | None = None
     declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
     # Supplied only to a verified factory declaring one fixed wake target.
     # It cannot reuse an invocation, choose a caller/target or mint a Grant.
@@ -159,6 +164,13 @@ class HostProviderFactoryV4(Protocol):
 
 class ExactHostProviderBackendV4:
     """Route a shared Host substrate by exact resolved Function principal."""
+
+    # A completed canonical metadata write can outlive deadline/capture fencing.
+    cancellation_may_leave_effect_operations = frozenset(
+        {
+            ("tobkiri.service.workspace.project.v1", "workspace.mount.execute"),
+        }
+    )
 
     def __init__(
         self,
@@ -249,16 +261,34 @@ class ExactHostProviderBackendV4:
             raise AuthorizationError("Host Provider envelope binding is invalid")
         invocation = self._invocation_context(request)
         invocation.assert_current()
-        outcome = ProviderOutcome(
-            dict(
-                contribution.invoke(
-                    request.operation_id,
-                    request.payload,
-                    invocation,
+        try:
+            outcome = ProviderOutcome(
+                dict(
+                    contribution.invoke(
+                        request.operation_id,
+                        request.payload,
+                        invocation,
+                    )
                 )
             )
-        )
-        invocation.assert_current()
+        except ProjectMountPersistenceUncertain:
+            if (
+                request.contract_id,
+                request.operation_id,
+            ) not in self.cancellation_may_leave_effect_operations:
+                raise
+            return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
+        try:
+            invocation.assert_current()
+        except Exception:
+            if (
+                request.contract_id,
+                request.operation_id,
+            ) not in self.cancellation_may_leave_effect_operations:
+                raise
+            # Report uncertainty through the existing Broker audit/reconciliation
+            # path rather than claiming a completed write safely failed.
+            return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
         return outcome
 
     def cancel(self, request_id: str) -> None:

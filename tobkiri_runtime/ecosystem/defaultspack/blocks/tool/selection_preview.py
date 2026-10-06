@@ -26,6 +26,7 @@ class _PreviewSelection:
     exclude: list[Any] = field(default_factory=list)
     must_use: bool = False
     preview_id: str | None = None
+    source: str = "default"
 
 
 def run(
@@ -49,6 +50,11 @@ def run(
         include=[target.to_dict() for target in normalize_tool_targets(raw.get("include"))],
         exclude=[target.to_dict() for target in normalize_tool_targets(raw.get("exclude"))],
         must_use=bool(raw.get("must_use", False)),
+        source=(
+            "tool_selection"
+            if isinstance(input_data.get("tool_selection"), dict)
+            else "default"
+        ),
     )
     base_context = dict(context) if isinstance(context, dict) else {}
     input_context = input_data.get("context") if isinstance(input_data.get("context"), dict) else {}
@@ -151,6 +157,7 @@ def _apply_inferred_preview_tools(selection, raw, user_text, context):
         exclude=selection.exclude,
         must_use=selection.must_use,
         preview_id=selection.preview_id,
+        source=selection.source,
     )
     updated_context = _apply_computer_use_context_preferences(
         {**context, "user_requested_computer_use": True},

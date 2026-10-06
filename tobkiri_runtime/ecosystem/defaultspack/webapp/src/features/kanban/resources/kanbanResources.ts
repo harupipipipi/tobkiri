@@ -8,6 +8,7 @@ import {
   type KanbanMovePayload,
   type DefaultspackContractRoute,
 } from "../../../lib/api";
+import { parseProfileScreenPath } from "../../../lib/profileRoute";
 
 export class KanbanApiError extends Error {
   readonly status: number;
@@ -19,6 +20,32 @@ export class KanbanApiError extends Error {
   }
 }
 
+/** Only a successful scoped list can establish that a board is missing. */
+export class KanbanBoardMissingError extends KanbanApiError {
+  constructor() {
+    super(404, "Kanban board was not found.");
+    this.name = "KanbanBoardMissingError";
+  }
+}
+
+const revisions = new Map<string, number>();
+const scopeRevisions = new Map<string, number>();
+
+function currentProfile(): string {
+  return typeof window === "undefined" ? ""
+    : parseProfileScreenPath(window.location.pathname)?.profileId ?? "";
+}
+
+function revisionKey(boardId: string, profile = currentProfile()): string {
+  return `${profile}:${boardId}`;
+}
+
+function capturedRevision(boardId: string): number {
+  const revision = revisions.get(revisionKey(boardId));
+  if (revision === undefined) throw new Error("Reload the Kanban board before changing it.");
+  return revision;
+}
+
 type RequestCandidate = {
   path: DefaultspackContractRoute;
   method?: string;
@@ -27,6 +54,7 @@ type RequestCandidate = {
 
 type ApiEnvelope<T> = {
   status?: string;
+  success?: boolean;
   data?: T;
   error?: { code?: string; message?: string };
 };
@@ -47,11 +75,20 @@ function unwrapPayload<T>(payload: unknown): T {
   return payload as T;
 }
 
-function normalizeBoardResponse(value: unknown): KanbanBoardResponse {
+function normalizeBoardResponse(value: unknown, profile: string, scope?: KanbanBoardScope, expectedId?: string): KanbanBoardResponse {
   const payload = unwrapPayload<Partial<KanbanBoardResponse>>(value);
   if (!payload || typeof payload !== "object" || !payload.board || typeof payload.board !== "object") {
     throw new Error("Kanban API returned an invalid board response.");
   }
+  if ((scope && !boardMatchesScope(payload.board, scope))
+    || (expectedId && boardId(payload.board) !== expectedId)) {
+    throw new Error("Kanban API returned a different board.");
+  }
+  const revision = (payload as Partial<KanbanBoardResponse> & { revision?: unknown }).revision;
+  if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error("Kanban API returned an invalid board revision.");
+  }
+  revisions.set(revisionKey(boardId(payload.board), profile), revision);
   return {
     board: payload.board,
     columns: Array.isArray(payload.columns) ? payload.columns : [],
@@ -78,12 +115,12 @@ function boardMatchesScope(value: unknown, scope: KanbanBoardScope): boolean {
     && String(board.scope_id ?? nested.id ?? "").trim() === scope.id;
 }
 
-function snapshotForScope(value: unknown, scope: KanbanBoardScope): KanbanBoardResponse | null {
+function snapshotForScope(value: unknown, scope: KanbanBoardScope, profile: string): KanbanBoardResponse | null {
   const payload = unwrapPayload<Record<string, unknown>>(value);
   if (!payload || typeof payload !== "object") return null;
   if (payload.board && typeof payload.board === "object") {
     const board = payload.board as Record<string, unknown>;
-    if (boardMatchesScope(board, scope)) return normalizeBoardResponse(payload);
+    if (boardMatchesScope(board, scope)) return normalizeBoardResponse(payload, profile, scope);
   }
   const boards = Array.isArray(payload.boards) ? payload.boards : [];
   for (const candidate of boards) {
@@ -91,7 +128,7 @@ function snapshotForScope(value: unknown, scope: KanbanBoardScope): KanbanBoardR
     const snapshot = candidate as Record<string, unknown>;
     const board = snapshot.board;
     if (board && typeof board === "object" && boardMatchesScope(board, scope)) {
-      return normalizeBoardResponse(snapshot);
+      return normalizeBoardResponse(snapshot, profile, scope);
     }
   }
   return null;
@@ -113,7 +150,7 @@ function boardSummaryForScope(value: unknown, scope: KanbanBoardScope): Record<s
   return null;
 }
 
-async function requestCandidates<T>(candidates: RequestCandidate[]): Promise<T> {
+async function requestCandidates<T>(candidates: RequestCandidate[], profile = currentProfile()): Promise<T> {
   let lastError: KanbanApiError | null = null;
   for (const candidate of candidates) {
     const method = candidate.method ?? "GET";
@@ -130,15 +167,23 @@ async function requestCandidates<T>(candidates: RequestCandidate[]): Promise<T> 
       payload = null;
     }
 
+    if (currentProfile() !== profile) {
+      throw new Error("Kanban Profile changed while the request was loading.");
+    }
+
     if (response.ok) {
       const envelope = payload as ApiEnvelope<T> | null;
-      if (envelope?.status === "error") {
+      if (envelope?.status === "error" || envelope?.success === false) {
         throw new KanbanApiError(
           response.status,
           explainDefaultspackApiError(response.status, envelope.error, response.statusText),
         );
       }
-      return unwrapPayload<T>(payload);
+      const value = unwrapPayload<T>(payload);
+      if (value && typeof value === "object" && "state" in value && value.state === "error") {
+        throw new KanbanApiError(response.status, "Kanban operation failed. Reload before retrying.");
+      }
+      return value;
     }
 
     const envelope = payload as ApiEnvelope<T> | null;
@@ -171,66 +216,68 @@ export type KanbanDataSource = {
 
 export const kanbanResources: KanbanDataSource = {
   async loadBoard(scope) {
+    const profile = currentProfile();
     const payload = await requestCandidates<unknown>([
       { path: defaultspackContractRoute(`api/kanban/boards?${boardQuery(scope)}`) },
-      { path: defaultspackContractRoute(`api/kanban/board?${boardQuery(scope)}`) },
-      { path: defaultspackContractRoute(`api/kanban?${boardQuery(scope)}`) },
-    ]);
-    const snapshot = snapshotForScope(payload, scope);
+    ], profile);
+    if (!payload || typeof payload !== "object" || !Array.isArray((payload as { boards?: unknown }).boards)) {
+      throw new Error("Kanban API returned an invalid board list.");
+    }
+    const revision = (payload as { revision?: unknown }).revision;
+    if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+      throw new Error("Kanban API returned an invalid list revision.");
+    }
+    scopeRevisions.set(`${profile}:${boardQuery(scope)}`, revision);
+    const snapshot = snapshotForScope(payload, scope, profile);
     if (snapshot) return snapshot;
 
     const summary = boardSummaryForScope(payload, scope);
     const id = boardId(summary);
-    if (!id) throw new KanbanApiError(404, "Kanban board was not found.");
+    if (!id) throw new KanbanBoardMissingError();
     const board = await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/boards/${encode(id)}`) },
-    ]);
-    return normalizeBoardResponse(board);
+      { path: defaultspackContractRoute(`api/kanban/board?board_id=${encode(id)}`) },
+    ], profile);
+    return normalizeBoardResponse(board, profile, scope, id);
   },
 
   async ensureBoard(scope, title) {
-    const body = { scope_type: scope.type, scope_id: scope.id, title };
+    const profile = currentProfile();
+    const expectedRevision = scopeRevisions.get(`${profile}:${boardQuery(scope)}`);
+    if (expectedRevision === undefined) throw new Error("Load the Kanban board list before creating a board.");
     const payload = await requestCandidates<unknown>([
-      { path: defaultspackContractRoute("api/kanban/boards/bootstrap"), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban/boards"), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban/board"), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "ensure", ...body } },
-    ]);
-    return normalizeBoardResponse(payload);
+      { path: defaultspackContractRoute("api/kanban/boards/bootstrap"), method: "POST",
+        body: { scope_type: scope.type, scope_id: scope.id, title, expected_revision: expectedRevision } },
+    ], profile);
+    return normalizeBoardResponse(payload, profile, scope);
   },
 
   async createCard(boardId, columnId, input) {
-    const body = { board_id: boardId, column_id: columnId, ...input };
     await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards`), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban/cards"), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "create_card", ...body } },
+      { path: defaultspackContractRoute("api/kanban/cards"), method: "POST",
+        body: { board_id: boardId, column_id: columnId, ...input,
+          expected_revision: capturedRevision(boardId) } },
     ]);
   },
 
   async moveCard(boardId, cardId, payload) {
-    const body = { board_id: boardId, card_id: cardId, ...payload };
     await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/cards/${encode(cardId)}/move`), method: "POST", body },
-      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}/move`), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "move_card", ...body } },
+      { path: defaultspackContractRoute("api/kanban/cards/move"), method: "POST",
+        body: { board_id: boardId, card_id: cardId, ...payload,
+          expected_revision: capturedRevision(boardId) } },
     ]);
   },
 
   async deleteCard(boardId, cardId) {
     await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/cards/${encode(cardId)}?board_id=${encode(boardId)}`), method: "DELETE" },
-      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}`), method: "DELETE" },
-      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "delete_card", board_id: boardId, card_id: cardId } },
+      { path: defaultspackContractRoute("api/kanban/cards"), method: "DELETE",
+        body: { board_id: boardId, card_id: cardId, expected_revision: capturedRevision(boardId) } },
     ]);
   },
 
   async importConversation(boardId, payload) {
-    const body = { board_id: boardId, ...payload };
     await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/import-conversation`), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban/import-conversation"), method: "POST", body },
-      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "import_conversation", ...body } },
+      { path: defaultspackContractRoute("api/kanban/import-conversation"), method: "POST",
+        body: { board_id: boardId, ...payload, expected_revision: capturedRevision(boardId) } },
     ]);
   },
 };

@@ -7,12 +7,15 @@ import {
   getRailFloatingMenuPosition,
   iconForItem,
   RightSidebar,
+  persistConversationToolPreferences,
   shouldShowToolManagerEmptyState,
   sidebarActionDisabledReason,
   toolGroupRailIcon,
   toolManagerBaseItemsForNameSearch,
 } from "./RightSidebar";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
+
+import { toolResources } from "../features/tools/resources/toolResources";
 
 const noop = () => undefined;
 
@@ -482,4 +485,47 @@ test("right sidebar floating menus clamp to the viewport", () => {
     ),
     { top: 8, right: 88 },
   );
+});
+
+test("tool selection scopes describe draft versus saved defaults and expose focus state", () => {
+  const render = (activeConversationId?: string) => renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "web_search", label: "Web Search", category: "tool", ui: { group_id: "web" } }],
+    activeItemId: "__tool_manager__", activeConversationId,
+    settingsValues: {
+      sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+      tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+    },
+    settingsSections: [], selectedToolIds: [], onSettingChange: noop, onOpenSettings: noop,
+  }));
+  const html = render("chat-1");
+  assert.match(html, /機能の状態/);
+  assert.match(html, /件数には重複があります/);
+  assert.match(html, /aria-pressed="true"[^>]*>今回の入力<\/button>/);
+  assert.match(html, /aria-pressed="false"[^>]*>会話の既定<\/button>/);
+  assert.match(html, /focus-visible:outline/);
+  assert.match(render(), /disabled="" aria-pressed="false"[^>]*>会話の既定<\/button>/);
+});
+
+
+test("conversation scope notifies its draft owner only after persistence succeeds", async () => {
+  const original = toolResources.updateConversationToolPreferences;
+  const saved = { mode: "manual", include: [{ kind: "service", id: "web" }] };
+  let resolve!: (value: { conversation_id: string; preferences: Record<string, unknown> }) => void;
+  const pending = new Promise<{ conversation_id: string; preferences: Record<string, unknown> }>((done) => { resolve = done; });
+  const calls: unknown[][] = [];
+  try {
+    toolResources.updateConversationToolPreferences = () => pending;
+    const completion = persistConversationToolPreferences("chat-1", {}, ["web_search"], true, (...args) => { calls.push(args); });
+    assert.equal(calls.length, 0);
+    resolve({ conversation_id: "chat-1", preferences: saved });
+    await completion;
+    assert.deepEqual(calls, [["chat-1", saved, ["web_search"], true]]);
+    toolResources.updateConversationToolPreferences = async () => { throw new Error("save failed"); };
+    const rejectedCalls: unknown[][] = [];
+    await assert.rejects(persistConversationToolPreferences("chat-2", {}, ["other"], false, (...args) => { rejectedCalls.push(args); }), /save failed/);
+    assert.deepEqual(rejectedCalls, []);
+    assert.equal(calls.length, 1);
+  } finally {
+    toolResources.updateConversationToolPreferences = original;
+  }
 });

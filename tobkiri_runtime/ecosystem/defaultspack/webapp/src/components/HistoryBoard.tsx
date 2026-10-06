@@ -1,5 +1,7 @@
+import type { ProjectDirectorySelection } from "../lib/projectWorkspaceMount";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ErrorNotice } from './ErrorNotice';
+import { ProjectFolderSelection } from '../lib/projectFolderSelection';
 import {
   DndContext,
   DragOverlay,
@@ -28,7 +30,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   Calendar, Globe, MessageSquare, Settings, Shield, Terminal,
   Plus, ChevronRight,
-  AlertTriangle, Check, Download, GripVertical, FolderOpen, Folder, RotateCcw, Undo2, X,
+  AlertTriangle, Download, GripVertical, FolderOpen, Folder, RotateCcw, Undo2, X,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -1255,8 +1257,8 @@ interface HistoryBoardProps {
   isCompact?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
-  onCodingWorkspaceCreate?: (rootPath: string) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onDirectorySelect?: () => Promise<string | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
   onGroupDataPathPrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
   onCodingWorkspacesRefresh?: () => void | Promise<void>;
   selectionMode?: boolean;
@@ -1475,7 +1477,6 @@ export function HistoryBoard({
   selectedCodingWorkspaceId = null,
   onCodingWorkspaceCreate,
   onDirectorySelect,
-  onGroupDataPathPrepare,
   onCodingWorkspacesRefresh,
   selectionMode = false,
   selectedChatId = null,
@@ -1515,9 +1516,25 @@ export function HistoryBoard({
   const [newGroupTitle, setNewGroupTitle] = useState("");
   const [newGroupWorkspaceChoice, setNewGroupWorkspaceChoice] = useState<GroupWorkspaceChoice>("none");
   const [newGroupCustomPath, setNewGroupCustomPath] = useState("");
+  const [newGroupDirectorySelection, setNewGroupDirectorySelection] = useState<ProjectDirectorySelection | null>(null);
   const [newGroupError, setNewGroupError] = useState<string | null>(null);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isSelectingGroupDirectory, setIsSelectingGroupDirectory] = useState(false);
+  const projectOperationRef = useRef(new ProjectFolderSelection());
+  const projectProfileRef = useRef(profileId);
+  projectProfileRef.current = profileId;
+
+  useEffect(() => {
+    projectOperationRef.current.invalidate();
+    setIsCreateGroupOpen(false);
+    setIsSelectingGroupDirectory(false);
+    setIsCreatingGroup(false);
+    setNewGroupCustomPath("");
+    setNewGroupDirectorySelection(null);
+    setNewGroupWorkspaceChoice("none");
+    setNewGroupError(null);
+    return () => projectOperationRef.current.invalidate();
+  }, [profileId]);
 
   useEffect(() => {
     const refreshProjects = () => setCustomGroups(loadProjects());
@@ -1592,7 +1609,7 @@ export function HistoryBoard({
       organizationRevisionRef.current = result.organization.revision;
       pendingGroupsRef.current = null;
       setSaveState({ kind: "saved", message: "Saved locally" });
-      setHistoryAnnouncement(`${message} Saved locally. Undo is available.`);
+      setHistoryAnnouncement(`${message} Saved locally.`);
       return;
     }
     pendingGroupsRef.current = next;
@@ -1682,7 +1699,7 @@ export function HistoryBoard({
     replaceGroups(next);
     setResetArmed(false);
     setSaveState({ kind: "saved", message: "Arrangement reset locally" });
-    setHistoryAnnouncement("History organization reset. Undo is available.");
+    setHistoryAnnouncement("History organization reset.");
   };
 
   const [activeColumnDrag, setActiveColumnDrag] = useState<ChatGroup | null>(null);
@@ -1958,15 +1975,21 @@ export function HistoryBoard({
   };
 
   const openCreateGroup = () => {
+    if (projectOperationRef.current.creating) return;
+    projectOperationRef.current.invalidate();
+    setIsSelectingGroupDirectory(false);
     setNewGroupTitle(`Project ${customGroups.length + 1}`);
     setNewGroupWorkspaceChoice("none");
     setNewGroupCustomPath("");
+    setNewGroupDirectorySelection(null);
     setNewGroupError(null);
     setIsCreateGroupOpen((value) => !value);
   };
 
   const closeCreateGroup = () => {
-    if (isCreatingGroup) return;
+    if (projectOperationRef.current.creating) return;
+    projectOperationRef.current.invalidate();
+    setIsSelectingGroupDirectory(false);
     setIsCreateGroupOpen(false);
     setNewGroupError(null);
   };
@@ -1975,9 +1998,11 @@ export function HistoryBoard({
     onMinimize?.();
   };
 
-  const createCustomGroup = async (customGroup: CustomGroupInfo) => {
+  const createCustomGroup = async (customGroup: CustomGroupInfo, ticket: number) => {
+    if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
     const nextCustomGroups = [...customGroups, customGroup];
     const saved = await saveCustomGroups(nextCustomGroups);
+    if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
     setCustomGroups(saved);
     const newGroup: ChatGroup = {
       ...customGroup,
@@ -1992,34 +2017,38 @@ export function HistoryBoard({
   };
 
   const handleSelectGroupDirectory = async () => {
-    if (isSelectingGroupDirectory) return;
     if (!onDirectorySelect) {
       setNewGroupError("Folder selection is unavailable.");
       return;
     }
+    const ticket = projectOperationRef.current.begin("selection");
+    if (ticket === null) return;
     setIsSelectingGroupDirectory(true);
     setNewGroupError(null);
     try {
       const selected = await onDirectorySelect();
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       if (selected) {
         setNewGroupWorkspaceChoice("custom");
-        setNewGroupCustomPath(selected);
+        setNewGroupDirectorySelection(selected);
+        setNewGroupCustomPath(selected.display_name);
       }
     } catch (error) {
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       setNewGroupError(error instanceof Error ? error.message : "Failed to select folder.");
     } finally {
-      setIsSelectingGroupDirectory(false);
+      if (projectOperationRef.current.finish(ticket)) setIsSelectingGroupDirectory(false);
     }
   };
 
   const handleCreateGroup = async (event?: React.FormEvent) => {
     event?.preventDefault();
-    if (isCreatingGroup) return;
+    const ticket = projectOperationRef.current.begin("creation");
+    if (ticket === null) return;
     setIsCreatingGroup(true);
     setNewGroupError(null);
     const title = newGroupTitle.trim() || `Project ${customGroups.length + 1}`;
     let workspace: Pick<CodingWorkspaceRecord, "workspace_id" | "label" | "root_path"> | null = null;
-    let rumiDataPath: string | null = null;
     try {
       if (newGroupWorkspaceChoice === "current") {
         if (!selectedCodingWorkspaceId) {
@@ -2036,38 +2065,21 @@ export function HistoryBoard({
           return;
         }
       } else if (newGroupWorkspaceChoice === "custom") {
-        const rootPath = newGroupCustomPath.trim();
-        if (!rootPath) {
+        if (!newGroupDirectorySelection) {
           setNewGroupError("保存先フォルダを選択してください。");
           return;
         }
-        workspace = codingWorkspaces.find((candidate) => candidate.root_path === rootPath) ?? null;
-        if (!workspace && !onCodingWorkspaceCreate) {
-          setNewGroupError("Workspace creation is unavailable.");
-          return;
-        }
-        if (!workspace) {
-          const created = await onCodingWorkspaceCreate?.(rootPath);
-          if (!created?.workspace_id) {
-            setNewGroupError("Workspace creation did not return a workspace.");
-            return;
-          }
-          workspace = created;
-          await onCodingWorkspacesRefresh?.();
-        }
+        if (!onCodingWorkspaceCreate) throw new Error("Workspace creation is unavailable.");
+        const created = await onCodingWorkspaceCreate(newGroupDirectorySelection,
+          () => projectOperationRef.current.matches(ticket) && projectProfileRef.current === profileId);
+        if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
+        if (!created?.workspace_id) throw new Error("Workspace creation did not return a workspace.");
+        workspace = created;
       }
 
-      if (workspace?.root_path) {
-        if (!onGroupDataPathPrepare) {
-          setNewGroupError(".rumiDP storage preparation is unavailable.");
-          return;
-        }
-        const prepared = await onGroupDataPathPrepare(workspace.root_path);
-        if (!prepared?.rumiDataPath) {
-          setNewGroupError(".rumiDP storage preparation did not return a path.");
-          return;
-        }
-        rumiDataPath = prepared.rumiDataPath;
+      if (workspace && !workspace.root_path?.trim()) {
+        setNewGroupError("Workspace creation did not return a folder path.");
+        return;
       }
 
       const customGroup: CustomGroupInfo = {
@@ -2076,14 +2088,16 @@ export function HistoryBoard({
         workspaceId: workspace?.workspace_id ?? null,
         workspaceLabel: workspace?.label ?? null,
         workspaceRoot: workspace?.root_path ?? null,
-        rumiDataPath,
+        rumiDataPath: null,
       };
-      await createCustomGroup(customGroup);
+      await createCustomGroup(customGroup, ticket);
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       setIsCreateGroupOpen(false);
     } catch (error) {
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       setNewGroupError(error instanceof Error ? error.message : "Failed to create project.");
     } finally {
-      setIsCreatingGroup(false);
+      if (projectOperationRef.current.finish(ticket)) setIsCreatingGroup(false);
     }
   };
 
@@ -2189,7 +2203,7 @@ export function HistoryBoard({
           ["current", "Current workspace", currentWorkspaceText || "No coding workspace selected"],
           ["custom", "Choose a folder", "Create or reuse a coding workspace"],
         ] as const).map(([value, label, description]) => {
-          const disabled = value === "current" && !selectedCodingWorkspaceId;
+          const disabled = isCreatingGroup || (value === "current" && !selectedCodingWorkspaceId);
           const selected = newGroupWorkspaceChoice === value;
           return (
             <button
@@ -2199,6 +2213,9 @@ export function HistoryBoard({
               aria-checked={selected}
               disabled={disabled}
               onClick={() => {
+                if (projectOperationRef.current.creating) return;
+                projectOperationRef.current.invalidate();
+                setIsSelectingGroupDirectory(false);
                 setNewGroupError(null);
                 setNewGroupWorkspaceChoice(value);
               }}
@@ -2232,11 +2249,11 @@ export function HistoryBoard({
           <button
             type="button"
             onClick={() => void handleSelectGroupDirectory()}
-            disabled={isSelectingGroupDirectory}
+            disabled={isSelectingGroupDirectory || isCreatingGroup}
             className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60"
           >
             <FolderOpen size={12} />
-            {isSelectingGroupDirectory ? "選択中..." : "ファイルを設定"}
+            {isSelectingGroupDirectory ? "選択中..." : "フォルダを選択"}
           </button>
           <p
             className={cn(
@@ -2260,7 +2277,7 @@ export function HistoryBoard({
 
       <button
         type="submit"
-        disabled={isCreatingGroup}
+        disabled={isCreatingGroup || isSelectingGroupDirectory}
         className="h-9 rounded-lg bg-zinc-100 px-2.5 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:cursor-wait disabled:opacity-60"
       >
         {isCreatingGroup ? "Creating..." : "Create Project"}
@@ -2376,27 +2393,20 @@ export function HistoryBoard({
         )}
       >
         {navigation}
-        <div className="px-3 py-1">
-          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-            {historyAnnouncement}
-          </span>
-          {saveState.kind !== "idle" && (
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {historyAnnouncement}
+        </span>
+        {(saveState.kind === "unsaved" || saveState.kind === "corrupt") && (
+          <div className="px-3 py-1">
             <div
-              className={cn(
-                "mt-1 rounded-lg border px-2 py-2 text-[10px]",
-                saveState.kind === "saved"
-                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-100",
-              )}
+              className="mt-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-[10px] text-amber-100"
               data-history-save-state={saveState.kind}
             >
               <div className="flex items-start gap-2">
-                {saveState.kind === "saved"
-                  ? <Check size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  : <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{saveState.kind === "saved" ? saveState.message : "History changes are not saved"}</p>
-                  {saveState.kind !== "saved" && <p className="mt-0.5 text-amber-200/75">{saveState.message}</p>}
+                  <p className="font-semibold">History changes are not saved</p>
+                  <p className="mt-0.5 text-amber-200/75">{saveState.message}</p>
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1.5">
@@ -2418,28 +2428,24 @@ export function HistoryBoard({
                     <RotateCcw size={12} aria-hidden="true" /> Retry
                   </button>
                 )}
-                {saveState.kind !== "saved" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={exportHistoryOrganization}
-                      className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
-                    >
-                      <Download size={12} aria-hidden="true" /> Export
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetHistoryArrangement}
-                      className="min-h-11 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
-                    >
-                      {resetArmed ? "Confirm reset" : "Reset"}
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  onClick={exportHistoryOrganization}
+                  className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                >
+                  <Download size={12} aria-hidden="true" /> Export
+                </button>
+                <button
+                  type="button"
+                  onClick={resetHistoryArrangement}
+                  className="min-h-11 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                >
+                  {resetArmed ? "Confirm reset" : "Reset"}
+                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Columns */}
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>

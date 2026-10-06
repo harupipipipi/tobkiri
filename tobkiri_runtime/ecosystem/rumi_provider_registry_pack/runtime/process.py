@@ -224,6 +224,7 @@ def _provider_connection_snapshot(
             "provider_instance_id": provider_instance_id,
             "display_name": display_name,
             "enabled": enabled,
+            "adapter_id": adapter_id,
             "credential_status": (
                 "not_required"
                 if adapter_id == "local-openai-compatible"

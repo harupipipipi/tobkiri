@@ -1,44 +1,68 @@
+import type { ProjectDirectorySelection } from "../../lib/projectWorkspaceMount";
 import { Check, ChevronDown, FolderOpen, Link2, Loader2, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { CodingWorkspaceRecord } from "../../lib/api";
+import { ProjectFolderSelection } from "../../lib/projectFolderSelection";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { addProject, filterProjects, newProjectId, type ProjectInfo } from "./projectStorage";
 
 type ProjectPickerProps = {
   projects: ProjectInfo[];
+  profileId?: string;
   selectedProjectId?: string | null;
   disabled?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   onSelect: (project: ProjectInfo | null) => void;
-  onDirectorySelect?: () => Promise<string | null | undefined>;
-  onCodingWorkspaceCreate?: (rootPath?: string) => Promise<CodingWorkspaceRecord | null | undefined> | void;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
   onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
-function folderName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() || path;
-}
-
 export function ProjectPicker({
   projects,
+  profileId = "unavailable",
   selectedProjectId = null,
   disabled = false,
-  codingWorkspaces = [],
   onSelect,
   onDirectorySelect,
   onCodingWorkspaceCreate,
-  onProjectStoragePrepare,
 }: ProjectPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [folderPath, setFolderPath] = useState("");
+  const [folderSelection, setFolderSelection] = useState<ProjectDirectorySelection | null>(null);
+  const [folderSelectionFailed, setFolderSelectionFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const operationRef = useRef(new ProjectFolderSelection());
+
+  useEffect(() => () => operationRef.current.invalidate(), []);
+  const profileRef = useRef(profileId);
+  profileRef.current = profileId;
+  const currentProfile = () => profileRef.current;
+  useEffect(() => {
+    operationRef.current.invalidate();
+    setOpen(false);
+    setCreating(false);
+    setTitle("");
+    setBusy(false);
+    setFolderPath("");
+    setFolderSelection(null);
+    setFolderSelectionFailed(false);
+    setError(null);
+  }, [profileId]);
+
+  const closeMenu = () => {
+    if (operationRef.current.creating) return;
+    operationRef.current.invalidate();
+    setBusy(false);
+    setOpen(false);
+  };
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const visibleProjects = useMemo(() => filterProjects(projects, query), [projects, query]);
 
@@ -62,76 +86,94 @@ export function ProjectPicker({
   useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
     };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
 
   const resetCreate = () => {
+    if (operationRef.current.creating) return;
+    operationRef.current.invalidate();
+    setBusy(false);
     setCreating(false);
     setTitle("");
     setFolderPath("");
+    setFolderSelection(null);
+    setFolderSelectionFailed(false);
     setError(null);
   };
 
   const pickFolder = async () => {
-    if (!onDirectorySelect || busy) return;
+    if (!onDirectorySelect) return;
+    const ticket = operationRef.current.begin("selection");
+    if (ticket === null) return;
     setBusy(true);
-    setError(null);
+    if (!folderSelectionFailed) setError(null);
     try {
       const selected = await onDirectorySelect();
+      if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       if (selected) {
-        setFolderPath(selected);
-        if (!title.trim()) setTitle(folderName(selected));
+        setError(null);
+        setFolderSelectionFailed(false);
+        setFolderSelection(selected);
+        setFolderPath(selected.display_name);
+        setTitle((current) => current.trim() ? current : selected.display_name);
       }
     } catch (reason) {
+      if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
+      setFolderSelectionFailed(!folderSelection);
       setError(reason instanceof Error ? reason.message : "Folder selection failed.");
     } finally {
-      setBusy(false);
+      if (operationRef.current.finish(ticket)) setBusy(false);
     }
   };
 
   const createProject = async () => {
-    if (busy) return;
+    if (folderSelectionFailed) return;
     const projectTitle = title.trim();
     if (!projectTitle) {
       setError("Project name is required.");
       return;
     }
+    const ticket = operationRef.current.begin("creation");
+    if (ticket === null) return;
     setBusy(true);
     setError(null);
     try {
-      let workspace = folderPath
-        ? codingWorkspaces.find((candidate) => candidate.root_path === folderPath) ?? null
-        : null;
-      if (folderPath && !workspace) {
-        const created = await onCodingWorkspaceCreate?.(folderPath);
+      let workspace: CodingWorkspaceRecord | null = null;
+      if (folderSelection) {
+        const created = await onCodingWorkspaceCreate?.(folderSelection,
+          () => operationRef.current.matches(ticket) && currentProfile() === profileId);
+        if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
         if (!created?.workspace_id) throw new Error("Workspace creation did not return a workspace.");
         workspace = created;
       }
-      let rumiDataPath: string | null = null;
-      if (folderPath) {
-        const prepared = await onProjectStoragePrepare?.(folderPath);
-        if (!prepared?.rumiDataPath) throw new Error("Project storage preparation did not return a path.");
-        rumiDataPath = prepared.rumiDataPath;
+      // Canonical Project and conversation owners store this binding. New
+      // projects do not require the retired per-folder .rumiDP storage path.
+      if (folderPath && !workspace?.root_path.trim()) {
+        throw new Error("Workspace creation did not return a folder.");
       }
       const project: ProjectInfo = {
         id: newProjectId(),
         title: projectTitle,
         workspaceId: workspace?.workspace_id ?? null,
         workspaceLabel: workspace?.label ?? null,
-        workspaceRoot: workspace?.root_path ?? (folderPath || null),
-        rumiDataPath,
+        workspaceRoot: workspace?.root_path ?? null,
+        rumiDataPath: null,
       };
+      if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       await addProject(project);
+      if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       onSelect(project);
+      operationRef.current.finish(ticket);
       resetCreate();
       setOpen(false);
     } catch (reason) {
+      if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       setError(reason instanceof Error ? reason.message : "Project creation failed.");
     } finally {
-      setBusy(false);
+      if (operationRef.current.finish(ticket)) setBusy(false);
     }
   };
 
@@ -140,7 +182,7 @@ export function ProjectPicker({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => open ? closeMenu() : setOpen(true)}
         aria-label={`Project: ${selectedProject?.title ?? "Select project"}`}
         aria-expanded={open}
         className="flex h-11 min-h-11 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-zinc-100 disabled:opacity-50"
@@ -159,7 +201,7 @@ export function ProjectPicker({
                   <p className="text-xs font-semibold text-zinc-100">New Project</p>
                   <p className="text-[10px] text-zinc-500">Optionally link an existing folder.</p>
                 </div>
-                <button type="button" onClick={resetCreate} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100" aria-label="Back to projects">
+                <button type="button" onClick={resetCreate} disabled={operationRef.current.creating} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100" aria-label="Back to projects">
                   <X size={14} />
                 </button>
               </div>
@@ -192,7 +234,7 @@ export function ProjectPicker({
               <button
                 type="button"
                 onClick={() => void createProject()}
-                disabled={busy}
+                disabled={busy || folderSelectionFailed}
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 text-xs font-semibold text-zinc-950 hover:bg-white disabled:opacity-60"
               >
                 {busy && <Loader2 size={14} className="animate-spin" />}

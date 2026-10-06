@@ -89,6 +89,23 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Notify the draft owner only after conversation defaults are saved. */
+export async function persistConversationToolPreferences(
+  conversationId: string,
+  preferences: Record<string, unknown>,
+  toolIds: string[],
+  enabled: boolean,
+  onSaved?: (
+    conversationId: string,
+    preferences: Record<string, unknown>,
+    toolIds: string[],
+    enabled: boolean,
+  ) => void,
+): Promise<void> {
+  const response = await toolResources.updateConversationToolPreferences(conversationId, preferences);
+  onSaved?.(conversationId, response.preferences ?? preferences, toolIds, enabled);
+}
+
 // Keep the persistent rail on a stable compositing layer. WKWebView can drop an
 // inline SVG for a frame when a transformed rail button opens a fixed portal or
 // when currentColor is interpolated while that portal is mounted. Keep feedback
@@ -1002,6 +1019,7 @@ export function RightSidebar({
   onToggleChatPromptUsage,
   onToolToggle,
   onToolBatchSet,
+  onConversationToolPreferencesChange,
   onPanelAction,
 }: {
   items: SidebarItem[];
@@ -1039,6 +1057,12 @@ export function RightSidebar({
   onToggleChatPromptUsage?: (visible: boolean) => void;
   onToolToggle?: (item: SidebarItem) => void;
   onToolBatchSet?: (toolIds: string[], enabled: boolean) => void;
+  onConversationToolPreferencesChange?: (
+    conversationId: string,
+    preferences: Record<string, unknown>,
+    toolIds: string[],
+    enabled: boolean,
+  ) => void;
   onPanelAction?: (item: SidebarItem, action: SidebarAction) => void;
 }) {
   const [activePanel, setActivePanel] = useState<string | null>(() => requestedPanelIdFromActiveItemId(activeItemId));
@@ -1191,6 +1215,11 @@ export function RightSidebar({
       "__prompt_usage__",
     ]);
     if (requestedId && (items.some((item) => item.id === requestedId) || (requestedId !== "__prompt_usage__" && specialPanelIds.has(requestedId)) || (requestedId === "__prompt_usage__" && hasPromptWidget))) {
+      const requestedItem = items.find((item) => item.id === requestedId);
+      if (requestedItem) {
+        setCategoryFilter(requestedItem.category);
+        setSearchQuery("");
+      }
       setActivePanel(requestedId);
     }
   }, [activeItemId, hasPromptWidget, items]);
@@ -1644,7 +1673,12 @@ export function RightSidebar({
       include: enabled ? [...include, { kind: "service", id: service.id }] : include,
     };
     setConversationToolPreferences(nextPreferences);
-    void toolResources.updateConversationToolPreferences(activeConversationId, nextPreferences).catch(() => {
+    const conversationId = activeConversationId;
+    const toolIds = service.items.map((item) => item.id);
+    void persistConversationToolPreferences(
+      conversationId, nextPreferences, toolIds, enabled,
+      onConversationToolPreferencesChange,
+    ).catch(() => {
       setConversationToolPreferences(conversationToolPreferences);
     });
   };
@@ -2020,8 +2054,8 @@ export function RightSidebar({
                         ) : (
                           <div className="space-y-3">
                             <div className="px-1">
-                              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">今回のおすすめ</p>
-                              <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">自動選定、承認待ち、利用不可の状態をまとめます。</p>
+                              <p className="text-[10px] font-medium tracking-wider text-zinc-600">機能の状態</p>
+                              <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">権限・実行結果・承認・設定の状態を表示します。件数には重複があります。</p>
                             </div>
                             {!showToolManagerEmptyState && (
                               <ToolManagerWidget
@@ -2166,13 +2200,15 @@ export function RightSidebar({
                                       key={scope}
                                       type="button"
                                       disabled={scope === "conversation" && !activeConversationId}
+                                      aria-pressed={toolSelectionScope === scope}
+                                      title={scope === "turn" ? "入力欄の機能指定を変更します" : "この会話の機能の既定値を保存します"}
                                       onClick={() => setToolSelectionScope(scope)}
                                       className={cn(
-                                        "rounded px-2 py-1 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                                        "whitespace-nowrap rounded px-2 py-1 text-[10px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 disabled:cursor-not-allowed disabled:opacity-40",
                                         toolSelectionScope === scope ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-200",
                                       )}
                                     >
-                                      {scope === "turn" ? "今回" : "この会話で使う"}
+                                      {scope === "turn" ? "今回の入力" : "会話の既定"}
                                     </button>
                                   ))}
                                 </div>

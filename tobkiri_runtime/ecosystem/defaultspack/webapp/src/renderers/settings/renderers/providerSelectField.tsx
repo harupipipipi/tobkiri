@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
+import { ViewportPopover } from "../../../ui/layers/ViewportPopover";
 import { cn } from "../../../lib/cn";
 import {
   DEFAULT_MODEL_SELECTOR_SCHEMA,
@@ -34,6 +35,7 @@ export function SearchableProviderField({
   placeholder?: string;
   selectorSchema?: ModelSelectorSchema;
 }) {
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -70,6 +72,8 @@ export function SearchableProviderField({
   return (
     <div className="relative" data-settings-renderer="provider_select">
       <button
+        ref={anchorRef}
+        aria-expanded={open}
         type="button"
         onClick={() => setOpen((current) => !current)}
         className="flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-left text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700"
@@ -83,9 +87,7 @@ export function SearchableProviderField({
         <ChevronDown size={14} className={cn("shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <>
-          <button type="button" aria-label="close provider select" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={closeAll} />
-          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover w-[min(520px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl">
+        <ViewportPopover anchorRef={anchorRef} onClose={closeAll} className="rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl">
             <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
               <Search size={14} />
               <input
@@ -211,8 +213,7 @@ export function SearchableProviderField({
                 </button>
               )
             )}
-          </div>
-        </>
+        </ViewportPopover>
       )}
     </div>
   );

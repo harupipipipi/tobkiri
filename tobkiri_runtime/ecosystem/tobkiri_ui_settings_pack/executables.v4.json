@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:f84144d199ad1ec019494c9a45fa924e1784ae5a94a22c0350a1b86bf3260914",
+  "catalog_digest": "sha256:7487901b99fdb472c64b1a410f2846e0d618b3802fc3ad6ab5a76220282ca8aa",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:7bcfa15938006205f76bdc66c61adc5914a950653c548b84cc97163ca16408f0",
+  "source_identity": "sha256:4ebb68b9046a4a6a621bdb8cdc4da087ae6291f350f43d87c05fb3635a915785",
   "variants": [
     {
       "architecture": "any",
@@ -155,7 +155,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:c3696f36b017f8fbd47401a90d697185442e5f862812725fe1d83cc3b48f9095",
+      "implementation_digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
       "implementation_path": "runtime/model_search.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -172,6 +172,11 @@
             "properties": {
               "configured_only": {
                 "type": "boolean"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
               },
               "local_only": {
                 "type": "boolean"
@@ -260,7 +265,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:303e77d4e704f1cf8edf8b4524cd1b386088c72643e24eb81f2e97cb2781cbc2",
+          "revision_digest": "sha256:ffff3d094eb89e7ce42a67a600c717036d20f2b2bb3fabeab19a79574a16369a",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

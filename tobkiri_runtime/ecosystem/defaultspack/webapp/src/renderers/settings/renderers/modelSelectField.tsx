@@ -1,23 +1,18 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Info } from "lucide-react";
 
-import type { ModelSearchItem } from "../../../lib/api";
 import {
   enrichModelSelectOptions,
   mergeRegisteredModelProfileOptions,
   ModelSearchPicker,
   findSelectedModelOption,
-  modelProviderOptions,
   modelFieldOptionToModelSelectOption,
   modelOptionNeedsVisionRecommendation,
   modelOptionThinkingLevels,
-  modelSearchItemToModelSelectOption,
-  parseModelProviderQuery,
   parseModelSelectorSchema,
   type ModelSelectorSchema,
   type ModelSelectOption,
 } from "../../../features/models";
-import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
 import type { SettingsFieldRendererProps } from "../fieldRendererRegistry";
 import { fieldOptions, modelSelectTargetFieldId, SettingsFieldShell } from "./settingsFieldRendererUtils";
 
@@ -59,19 +54,7 @@ export function SettingsModelSearchField({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
   const [rememberedSelectedOption, setRememberedSelectedOption] = useState<ModelSelectOption | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const searchRequestSeq = useRef(0);
-  const trimmedQuery = query.trim();
-  const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
-  const providerQueryState = parseModelProviderQuery(
-    query,
-    modelProviderOptions(options),
-    resolvedSelectorSchema.layout.provider_trigger,
-  );
-  const remoteOptions = remoteResults.map(modelSearchItemToModelSelectOption);
   const rememberedOptions = rememberedSelectedOption?.value === value
     && !options.some((option) => (
       option.value === value || option.qualified_model_id === value
@@ -81,7 +64,7 @@ export function SettingsModelSearchField({
   const pickerOptions = rememberedOptions.length > 0
     ? [...options, ...rememberedOptions]
     : options;
-  const selectedOption = findSelectedModelOption(pickerOptions, value, remoteOptions);
+  const selectedOption = findSelectedModelOption(pickerOptions, value);
   const supportedThinkingLevels = modelOptionThinkingLevels(selectedOption);
   const storedThinkingLevel = String(thinkingLevelsByProfile?.[value] ?? "").trim().toLowerCase();
   const defaultThinkingLevel = String(selectedOption?.default_thinking_level ?? "").trim().toLowerCase();
@@ -95,59 +78,13 @@ export function SettingsModelSearchField({
   const needsVisionRecommendation = recommendVision
     && modelOptionNeedsVisionRecommendation(selectedOption, value);
 
-  useEffect(() => {
-    if (!open) return;
-    searchRequestSeq.current += 1;
-    const requestSeq = searchRequestSeq.current;
-    if (!trimmedQuery || providerQueryState.active) {
-      setRemoteResults([]);
-      setBusy(false);
-      setError("");
-      return;
-    }
-    let disposed = false;
-    const timer = window.setTimeout(() => {
-      setBusy(true);
-      setError("");
-      settingsApiResources.searchModels({
-        query: providerQueryState.providerId ? providerQueryState.modelQuery : trimmedQuery,
-        max_results: 30,
-        ...(providerQueryState.providerId ? { provider_id: providerQueryState.providerId } : {}),
-      })
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults(result.models ?? []);
-        })
-        .catch((searchError: unknown) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults([]);
-          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
-        })
-        .finally(() => {
-          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
-        });
-    }, 160);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    open,
-    providerQueryState.active,
-    providerQueryState.modelQuery,
-    providerQueryState.providerId,
-    trimmedQuery,
-  ]);
 
   return (
     <div data-settings-renderer="model_select">
       <ModelSearchPicker
         value={value}
         options={pickerOptions}
-        remoteResults={remoteResults}
         query={query}
-        loading={busy}
-        error={error}
         placeholder={placeholder}
         selectorSchema={selectorSchema}
         surface="settings"

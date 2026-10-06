@@ -7,6 +7,7 @@ import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicke
 import { installKeyboardOnlyFocusRings } from "../lib/focusModality";
 import { useToolSelectionController } from "../features/tools/useToolSelectionController";
 import type { ConversationToolPreferences } from "../features/tools/types";
+import { composerToolMentionGroups } from "../lib/composerToolMentions";
 import {
   composerMenuCommands,
   composerMentionSkills,
@@ -45,6 +46,7 @@ import {
   profileNeedsApiKey,
   ComposerRenderer,
   composerToolMentionWidget,
+  composerAtMentionCandidateWidget,
   filterComposerSkillMentions,
   filterComposerToolMentions,
   filterModelProfilesBySearch,
@@ -620,7 +622,7 @@ test("composer runtime state hides persistent toggle indicators while they are o
   assert.doesNotMatch(html, /data-state="off"/);
 });
 
-test("composer chips render allowlisted notification icon aliases in every widget state", () => {
+test("custom composer chips retain notification icons while tool chips stay hidden", () => {
   const html = renderToStaticMarkup(createElement(ComposerRenderer, {
     input: "",
     placeholder: "Message Tobkiri...",
@@ -650,11 +652,13 @@ test("composer chips render allowlisted notification icon aliases in every widge
     onThinkingLevelChange: () => undefined,
   }));
 
-  assert.equal((html.match(/lucide-bell-ring/g) ?? []).length, 5);
-  assert.match(html, /Enabled/);
-  assert.match(html, /Disabled/);
-  assert.match(html, /border-sky-400\/25/);
-  assert.match(html, /border-white\/\[0\.07\]/);
+  assert.equal((html.match(/lucide-bell-ring/g) ?? []).length, 3);
+  assert.doesNotMatch(html, /Enabled/);
+  assert.doesNotMatch(html, /Disabled/);
+  assert.match(html, /Button/);
+  assert.match(html, /Panel/);
+  assert.match(html, /Selector/);
+  assert.match(html, /border-white\/\[0\.08\]/);
 });
 
 test("composer runtime state renders enabled Pack toggle icons from presentation metadata", () => {
@@ -736,7 +740,7 @@ test("composer hides runtime mode state until manual selection is explicitly ena
   assert.doesNotMatch(html, /aria-label="現在の実行オプション"/);
 });
 
-test("selected mentions render inline while explicit tool toggles own their selected state", () => {
+test("selected mentions render inline while tool and service chip rows remain hidden", () => {
   const baseProps = {
     input: "Use @web_search then review",
     placeholder: "Message Rumi...",
@@ -763,7 +767,6 @@ test("selected mentions render inline while explicit tool toggles own their sele
     entityReferences: [{ kind: "tool", id: "web_search", syntax: "@Web Search" }],
     droppedWidgets: [composerToolMentionWidget({ id: "web_search", label: "Web Search", category: "tool" })],
     selectedToolIds: ["web_search"],
-    toolSelectionTargets: [{ kind: "tool", id: "web_search", scope: "turn", intent: "include" }],
   }));
 
   assert.match(referenceHtml, /data-composer-inline-mentions="true"/);
@@ -777,14 +780,88 @@ test("selected mentions render inline while explicit tool toggles own their sele
   const droppedHtml = renderToStaticMarkup(createElement(ComposerRenderer, {
     ...baseProps,
     entityReferences: [],
-    droppedWidgets: [{ id: "web_search", type: "tool", label: "Web Search", enabled: true }],
+    droppedWidgets: [
+      { id: "web_search", type: "tool", label: "Web Search", enabled: true },
+      { id: "service:web", type: "service", label: "Web Service", enabled: true },
+      { id: "custom-context", type: "setting", label: "Custom Context", enabled: true },
+    ],
+    attachedFiles: [{ id: "retained-image", name: "retained.png", type: "image/png", size: 16, dataUrl: "data:image/png;base64,AAAA" }],
     selectedToolIds: ["web_search"],
-    toolSelectionTargets: [{ kind: "tool", id: "web_search", scope: "turn", intent: "include" }],
   }));
   assert.doesNotMatch(droppedHtml, /data-composer-inline-reference/);
-  assert.match(droppedHtml, /rumi-composer-context-strip[\s\S]*border-sky-400\/25[\s\S]*Web Search/);
+  assert.match(droppedHtml, /rumi-composer-context-strip[\s\S]*Custom Context/);
+  assert.doesNotMatch(droppedHtml, /rumi-composer-context-strip[\s\S]*Web Search/);
+  assert.doesNotMatch(droppedHtml, /Web Service/);
+  assert.match(droppedHtml, /retained.png/);
+  assert.match(droppedHtml, /data-composer-attachment-region/);
   assert.doesNotMatch(droppedHtml, /今回指定を解除/);
   assert.doesNotMatch(droppedHtml, />今回</);
+});
+
+test("service mention candidates retain authenticated ids independently of UI grouping", () => {
+  const items = [
+    { id: "files_read", label: "Read", ui: { group_id: "coding/read", service_id: "files" } },
+    { id: "files_write", label: "Write", ui: { group_id: "coding/write", service_id: "files" } },
+    { id: "files_disabled", label: "Disabled", disabled: true, ui: { group_id: "coding/read", service_id: "files" } },
+  ];
+  const services = composerToolMentionGroups(items);
+  const service = services.find((group) => group.id === "files");
+  assert.ok(service);
+  assert.deepEqual(service.items.map((item) => item.id), ["files_read", "files_write"]);
+  assert.ok(services.some((group) => group.id === "coding/read"));
+  const candidate: ComposerAtMentionCandidate = {
+    kind: "service", id: `service:${service.id}`, label: service.label, service,
+    section: composerMentionSectionForToolGroup(service.items),
+  };
+  assert.deepEqual(composerAtMentionCandidateWidget(candidate).metadata?.service, {
+    id: "files", label: service.label, tool_ids: ["files_read", "files_write"],
+  });
+});
+
+test("negative tool and service candidates retain semantic intent and enabled member ids", () => {
+  const item = { id: "web_search", label: "Web Search" };
+  const tool: ComposerAtMentionCandidate = {
+    kind: "tool", id: "tool:web_search", label: item.label, item,
+    section: composerMentionSectionForTool(item),
+  };
+  assert.deepEqual(insertAtMentionText("Use @-web now", 9, "-Web Search", ["Web Search"]), {
+    value: "Use @-Web Search  now", cursor: 17,
+  });
+  const toolWidget = composerAtMentionCandidateWidget(tool, true);
+  assert.equal(toolWidget.enabled, true);
+  assert.deepEqual(toolWidget.metadata?.mention, {
+    id: "web_search", kind: "tool", label: "Web Search", syntax: "@-Web Search",
+    tool_id: "web_search", intent: "exclude",
+  });
+  assert.deepEqual(composerInlineMentionParts("Use @-Web Search now", [toolWidget]), [
+    { mention: false, text: "Use " }, { mention: true, text: "@-Web Search" }, { mention: false, text: " now" },
+  ]);
+  assert.deepEqual(atomicComposerMentionEdit("Use @-Web Search now", 15, 15, "Backspace", [toolWidget]), {
+    value: "Use  now", cursor: 4,
+  });
+  const service: ComposerAtMentionCandidate = {
+    kind: "service", id: "service:web", label: "Web",
+    service: { id: "web", label: "Web", description: "Web tools", items: [item, { id: "disabled", label: "Disabled", disabled: true }] },
+    section: composerMentionSectionForToolGroup([item]),
+  };
+  const serviceWidget = composerAtMentionCandidateWidget(service, true);
+  assert.equal(serviceWidget.enabled, true);
+  assert.deepEqual(serviceWidget.metadata?.mention, {
+    id: "web", kind: "service", label: "Web", syntax: "@-Web", intent: "exclude",
+  });
+  assert.deepEqual(serviceWidget.metadata?.service, { id: "web", label: "Web", tool_ids: ["web_search"] });
+  assert.deepEqual(composerAtMentionCandidateWidget(service).metadata?.service, serviceWidget.metadata?.service);
+  const skill = { id: "settings_assistant", label: "Settings" };
+  const skillCandidate: ComposerAtMentionCandidate = {
+    kind: "skill", id: "skill:settings_assistant", label: "Settings", skill,
+    section: tool.section,
+  };
+  const fileCandidate: ComposerAtMentionCandidate = {
+    kind: "file", id: "file:README.md", label: "README.md", file: "README.md", section: tool.section,
+  };
+  for (const candidate of [skillCandidate, fileCandidate]) {
+    assert.deepEqual(composerAtMentionCandidateWidget(candidate, true), composerAtMentionCandidateWidget(candidate));
+  }
 });
 
 test("inline mention parts color only active exact semantic mentions", () => {
@@ -1523,6 +1600,7 @@ function renderToolModeComposer(overrides: Partial<ComposerRendererProps> = {}):
     onModelProfileSelect: () => undefined,
     onThinkingLevelChange: () => undefined,
     onToolSelectionModeChange: () => undefined,
+    onActionApprovalModeChange: () => undefined,
     ...overrides,
   }));
 }
@@ -1708,6 +1786,7 @@ test("full access uses only the approval control without a duplicate YOLO chip",
         execution: { type: "frontend", action: "toggle_ultra_yolo" },
       }],
       actionApprovalMode: "full",
+      onActionApprovalModeChange: () => undefined,
       thinkingLevel: null,
       contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
       onInputChange: () => undefined,
@@ -2406,4 +2485,75 @@ test("captured thread composer keeps text/send while hiding model, grant, tool a
   assert.doesNotMatch(pending, /aria-label="追加指示を送る"/);
   const disabled = renderToolModeComposer({ surfaceMode: "thread", submissionDisabled: true, voiceInputEnabled: false });
   assert.match(disabled, /aria-label="メッセージを送信" disabled=""/);
+});
+
+
+test("composer exposes fixed policy explanation when approval mutation is unavailable", () => {
+  const html = renderToolModeComposer({ actionApprovalMode: "full", onActionApprovalModeChange: undefined });
+  assert.match(html, />ポリシー</);
+  assert.match(html, /aria-description="この会話の承認は設定された権限に従います。ここで代理承認やフルアクセスに変更する機能は未対応です。"/);
+  assert.doesNotMatch(html, />フル</);
+});
+
+test("ordinary and resolved pet remain enabled action suggestions in the command palette", () => {
+  const pet: ComposerCommandItem = {
+    id: "pet", name: "pet", label: "Pet", category: "chat", visibility: "default",
+    risk: "low", modes: ["chat", "coding", "agent"],
+    execution: { type: "frontend", action: "open_task_pet" },
+  };
+  for (const command of [pet, { ...pet, canonical_id: "defaultspack:pet", availability: { status: "available" as const } }]) {
+    const menu = composerMenuCommands([command], false, true);
+    assert.deepEqual(menu, [command]);
+    const payload = commandPalettePayload(menu);
+    assert.equal(payload.items[0].title, "pet");
+    assert.equal(payload.items[0].disabled, false);
+    assert.equal(commandShowsToggleState(command), false);
+    assert.equal(commandArgumentEntryPrefix(command), null);
+  }
+});
+
+test("pet contextual send stays available through chat gates without enabling normal submissions", () => {
+  const render = (input: string, localHandler = true) => renderToStaticMarkup(createElement(ComposerRenderer, {
+    input, placeholder: "メッセージを入力...", isGenerating: true,
+    steerControlsReady: false, submissionDisabled: true,
+    pendingMentionAttachmentPaths: ["waiting.txt"],
+    selectedProfile: { profile_id: "missing", display_name: "Missing key", provider_id: "openai" },
+    favoriteProfiles: [], inlineExtensions: [], belowExtensions: [], thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined, onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined, onThinkingLevelChange: () => undefined,
+    ...(localHandler ? { onLocalCommandSubmit: () => true } : {}),
+  }));
+  const petHtml = render("/pet");
+  const sendTag = petHtml.match(/<button[^>]*aria-label="\/pet を実行"[^>]*>/)?.[0];
+  assert.ok(sendTag);
+  assert.doesNotMatch(sendTag, /disabled=/);
+  assert.match(sendTag, /title="ペットを表示"/);
+  for (const html of [render("other text"), render("//pet"), render("/pet", false)]) {
+    assert.doesNotMatch(html, /aria-label="\/pet を実行"/);
+    const ordinarySendTag = html.match(/<button[^>]*aria-label="会話を準備中"[^>]*>/)?.[0];
+    assert.ok(ordinarySendTag);
+    assert.match(ordinarySendTag, /disabled=""/);
+  }
+});
+
+
+test("unimplemented slash commands remain unavailable while references use @", () => {
+  const command: ComposerCommandItem = {
+    id: "missing", name: "missing", label: "Missing", category: "tools",
+    visibility: "default", risk: "low",
+    execution: { type: "frontend", action: "missing_handler" },
+    availability: { status: "unavailable", reason: "Handler unavailable" },
+  };
+  const operation = commandPalettePayload([command]);
+  assert.equal(operation.item?.prefix, "/");
+  assert.equal(operation.items[0].disabled, true);
+  assert.equal(operation.items[0].description, "Handler unavailable");
+  const reference = atMentionPalettePayload([{
+    kind: "tool", id: "tool:web_search", label: "Web Search",
+    item: { id: "web_search", label: "Web Search" },
+    section: composerMentionSectionForTool({ id: "web_search", label: "Web Search" }),
+  }]);
+  assert.equal(reference.item?.prefix, "@");
+  assert.equal(reference.items[0].id, "tool:web_search");
 });

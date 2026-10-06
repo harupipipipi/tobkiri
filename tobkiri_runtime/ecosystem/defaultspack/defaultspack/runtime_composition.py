@@ -144,16 +144,22 @@ def _model_search(
         for key, value in runtime_settings.items()
         if isinstance(key, str)
     }
-    catalog = get_profile_catalog(
-        settings=settings,
-        registry_profiles=[
-            dict(profile) for profile in profiles if isinstance(profile, Mapping)
-        ],
-        catalog_models=[
-            dict(model) for model in catalog_models if isinstance(model, Mapping)
-        ],
-    )
-    result = search_models(dict(filters), profiles=catalog, settings=settings)
+    if "connection_id" in filters:
+        from ecosystem.defaultspack.domain.ai_client.connection_model_search import (
+            search_connection_catalog,
+        )
+        result = search_connection_catalog(filters, profiles, catalog_models)
+    else:
+        catalog = get_profile_catalog(
+            settings=settings,
+            registry_profiles=[
+                dict(profile) for profile in profiles if isinstance(profile, Mapping)
+            ],
+            catalog_models=[
+                dict(model) for model in catalog_models if isinstance(model, Mapping)
+            ],
+        )
+        result = search_models(dict(filters), profiles=catalog, settings=settings)
     if not isinstance(result, Mapping):
         raise PermissionError("model search is unavailable")
     projected = _canonical_result_projection(result)

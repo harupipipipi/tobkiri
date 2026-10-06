@@ -1,16 +1,478 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:5515806c8f7829ea0bdb155336a5119ff7192bfc09a8a7369627296be6fe0f73",
+  "catalog_digest": "sha256:4a2fb0f269cb069d6118de56b5f4fbfc5fe57e7cbf9fd11ef0426223f97a5edd",
   "pack_id": "rumi_workspace_mount_pack",
-  "source_identity": "sha256:faac005ba2cc13061652f19ab8f022ba9417a8cdb516d2678be4332d13a48bcc",
+  "source_identity": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
   "variants": [
     {
       "architecture": "any",
       "backend": "tobkiri.python-host-v4",
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
+      "function_id": "rumi_workspace_mount_pack.project-directory.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_path": "runtime/mounts.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "selection_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "selection_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "operation_id": "workspace.directory.acquire",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "timeout_default_ms": 300000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_workspace_mount_pack.project-directory.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_path": "runtime/mounts.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "selection_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "selection_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "operation_id": "workspace.mount.execute",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-execute.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_path": "runtime/mounts.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "selection_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "selection_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "operation_id": "workspace.mount.prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-prepare.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
-      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
       "implementation_path": "runtime/mounts.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +506,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
       "implementation_path": "runtime/mounts.py",
       "materialization_mode": "on_demand",
       "operations": [

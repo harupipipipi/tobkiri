@@ -286,6 +286,9 @@ def test_workspace_resource_factory_hook_resolves_exact_requested_mount(
     assert set(HOST_PROVIDER_FACTORY) == {
         "rumi_workspace_mount_pack.workspace-mount.resource",
         "rumi_workspace_mount_pack.workspace-mount.manage",
+        "rumi_workspace_mount_pack.project-directory.service",
+        "rumi_workspace_mount_pack.project-workspace-prepare.service",
+        "rumi_workspace_mount_pack.project-workspace-execute.service",
     }
 
 
@@ -1049,3 +1052,167 @@ def test_batch_rejects_duplicate_and_cross_lease_handles(tmp_path: Path) -> None
             (WorkspaceBatchMutation("delete", fake),),
         )
     port.close()
+
+
+@pytest.mark.parametrize("competitor", ["file", "symlink"])
+def test_host_create_preserves_competitor_at_atomic_publish_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, competitor: str,
+) -> None:
+    """The final syscall must reject a destination appearing after validation."""
+    import tobkiri_host.resources as resource_module
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside untouched")
+    binding = _binding(root)
+    identity = _identity()
+    port = HostWorkspaceMutationPort(
+        WorkspaceMutationCoordinator(tmp_path / "host-locks"),
+        binding_resolver=lambda _profile, _workspace: binding,
+    )
+    lease = port.acquire_lease(WorkspaceMutationLeaseRequest(identity, binding))
+    handle = port.bind_absent(
+        lease, identity, relative_path="created.txt", ttl_seconds=30,
+        max_uses=1, max_bytes=100,
+    )
+    original = resource_module.os.link
+    intercepted = []
+
+    def publish(source: str, destination: str, **kwargs: Any) -> None:
+        intercepted.append((source, destination, kwargs))
+        assert kwargs["src_dir_fd"] == kwargs["dst_dir_fd"]
+        assert kwargs["follow_symlinks"] is False
+        assert destination == "created.txt"
+        if competitor == "file":
+            (root / destination).write_bytes(b"external file")
+        else:
+            (root / destination).symlink_to(outside)
+        original(source, destination, **kwargs)
+
+    monkeypatch.setattr(resource_module.os, "link", publish)
+    try:
+        with pytest.raises(ResourceHandleError, match="creation failed"):
+            port.create_file(lease, identity, handle, b"approved", mode=0o600)
+        assert len(intercepted) == 1
+        if competitor == "file":
+            assert (root / "created.txt").read_bytes() == b"external file"
+        else:
+            assert (root / "created.txt").is_symlink()
+            assert (root / "created.txt").readlink() == outside
+        assert outside.read_bytes() == b"outside untouched"
+        assert list(root.glob(".*.tmp")) == []
+        with pytest.raises(ResourceHandleError):
+            port.create_file(lease, identity, handle, b"approved", mode=0o600)
+        assert len(intercepted) == 1
+    finally:
+        port.close()
+
+
+def test_host_create_atomic_publish_preserves_exact_bytes_mode_and_cleans_stage(
+    tmp_path: Path,
+) -> None:
+    """A successful publish retains only the approved file and consumes its handle."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    binding = _binding(root)
+    identity = _identity()
+    data = "日本語\n<html>approved</html>".encode("utf-8")
+    port = HostWorkspaceMutationPort(
+        WorkspaceMutationCoordinator(tmp_path / "host-locks"),
+        binding_resolver=lambda _profile, _workspace: binding,
+    )
+    lease = port.acquire_lease(WorkspaceMutationLeaseRequest(identity, binding))
+    handle = port.bind_absent(
+        lease, identity, relative_path="created.txt", ttl_seconds=30,
+        max_uses=1, max_bytes=len(data),
+    )
+    try:
+        assert port.create_file(lease, identity, handle, data, mode=0o600) == len(data)
+        destination = root / "created.txt"
+        assert destination.read_bytes() == data
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+        assert destination.stat().st_nlink == 1
+        assert list(root.iterdir()) == [destination]
+        with pytest.raises(ResourceHandleError):
+            port.create_file(lease, identity, handle, data, mode=0o600)
+        assert destination.read_bytes() == data
+    finally:
+        port.close()
+
+
+def test_host_create_does_not_unlink_destination_changed_after_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-publication identity failure preserves a foreign replacement."""
+    import tobkiri_host.resources as resource_module
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    binding = _binding(root)
+    identity = _identity()
+    port = HostWorkspaceMutationPort(
+        WorkspaceMutationCoordinator(tmp_path / "host-locks"),
+        binding_resolver=lambda _profile, _workspace: binding,
+    )
+    lease = port.acquire_lease(WorkspaceMutationLeaseRequest(identity, binding))
+    handle = port.bind_absent(
+        lease, identity, relative_path="created.txt", ttl_seconds=30,
+        max_uses=1, max_bytes=100,
+    )
+    original = resource_module.os.link
+
+    def publish(source: str, destination: str, **kwargs: Any) -> None:
+        original(source, destination, **kwargs)
+        replacement = root / "external-stage"
+        replacement.write_bytes(b"external replacement")
+        os.replace(replacement, root / destination)
+
+    monkeypatch.setattr(resource_module.os, "link", publish)
+    try:
+        with pytest.raises(ResourceHandleError, match="identity changed"):
+            port.create_file(lease, identity, handle, b"approved", mode=0o600)
+        assert (root / "created.txt").read_bytes() == b"external replacement"
+        assert list(root.glob(".*.tmp")) == []
+    finally:
+        port.close()
+
+
+def test_host_create_preserves_foreign_stage_replacement_before_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup must not unlink a staging name changed after publication."""
+    import tobkiri_host.resources as resource_module
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    binding = _binding(root)
+    identity = _identity()
+    port = HostWorkspaceMutationPort(
+        WorkspaceMutationCoordinator(tmp_path / "host-locks"),
+        binding_resolver=lambda _profile, _workspace: binding,
+    )
+    lease = port.acquire_lease(WorkspaceMutationLeaseRequest(identity, binding))
+    handle = port.bind_absent(
+        lease, identity, relative_path="created.txt", ttl_seconds=30,
+        max_uses=1, max_bytes=100,
+    )
+    original = resource_module.os.link
+    staged = []
+
+    def publish(source: str, destination: str, **kwargs: Any) -> None:
+        original(source, destination, **kwargs)
+        replacement = root / "external-stage"
+        replacement.write_bytes(b"foreign staging file")
+        os.replace(replacement, root / source)
+        staged.append(root / source)
+
+    monkeypatch.setattr(resource_module.os, "link", publish)
+    try:
+        with pytest.raises(ResourceHandleError, match="staging identity changed"):
+            port.create_file(lease, identity, handle, b"approved", mode=0o600)
+        assert (root / "created.txt").read_bytes() == b"approved"
+        assert len(staged) == 1
+        assert staged[0].read_bytes() == b"foreign staging file"
+    finally:
+        port.close()

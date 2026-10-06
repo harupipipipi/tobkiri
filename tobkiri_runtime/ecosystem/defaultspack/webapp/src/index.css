@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./features/search/InlineSearchInput.css";
 
 @import "./styles/chat-notifications.css";
 @import "./ui/layers/layers.css";
@@ -609,7 +610,7 @@ body {
 
 .rumi-composer-inline-mention {
   color: #7dd3fc;
-  font-weight: 600;
+  font-weight: inherit;
 }
 
 .rumi-composer-textarea-highlighted {

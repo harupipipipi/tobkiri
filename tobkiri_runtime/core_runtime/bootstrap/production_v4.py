@@ -2881,6 +2881,24 @@ def capture_production_dispatch(
     except (OSError, SecurePersistenceError) as exc:
         raise AuthorityDenied("Host Provider state root is unavailable") from exc
 
+    from core_runtime.host_contract import ExecutionProfileIdentity
+    from core_runtime.project_directory_launcher import LauncherDirectoryPickerPort
+    from tobkiri_host.directory_picker import CapturedDirectoryPicker
+    from tobkiri_host.directory_selections import DirectorySelections
+
+    directory_selections = DirectorySelections()
+    directory_picker = CapturedDirectoryPicker(
+        LauncherDirectoryPickerPort(ExecutionProfileIdentity(
+            profile_id=str(profile["profile_id"]),
+            profile_revision=str(plan["profile_revision"]),
+            activation_id=str(active.activation["activation_id"]),
+            plan_digest=str(plan["plan_digest"]),
+        )), directory_selections,
+    )
+    from core_runtime.project_directory_port import ProjectDirectoryPort
+    directory_selection_port = ProjectDirectoryPort(directory_picker, directory_selections)
+    close_callbacks.append(directory_selection_port.close)
+
     def host_provider_capture_context(
         provider_bindings: tuple[ResolvedOperationBinding, ...],
         *,
@@ -2888,6 +2906,7 @@ def capture_production_dispatch(
         interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
         declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
         wake_port: LateBoundWakePortV4 | None = None,
+        directory_port: ProjectDirectoryPort | None = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2907,6 +2926,7 @@ def capture_production_dispatch(
             model_search_port=model_search_controller,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
+            directory_selection_port=directory_port,
             declared_pack_data=declared_pack_data,
             wake_port=wake_port,
         )
@@ -3017,6 +3037,11 @@ def capture_production_dispatch(
                     else None
                 ),
                 wake_port=wake_port,
+                directory_port=(directory_selection_port if
+                    factory.function_id in {
+                        "rumi_workspace_mount_pack.project-directory.service",
+                        "rumi_workspace_mount_pack.project-workspace-prepare.service",
+                    } else None),
             )
         )
         expected_keys = {

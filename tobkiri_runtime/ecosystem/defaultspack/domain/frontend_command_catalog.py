@@ -34,6 +34,7 @@ LEGACY_FRONTEND_HANDLERS = {
     "open_permissions",
     "open_plugins",
     "open_settings",
+    "open_task_pet",
     "open_skills",
     "open_theme_settings",
     "open_tool_picker",

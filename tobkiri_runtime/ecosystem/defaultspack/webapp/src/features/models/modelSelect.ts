@@ -1,3 +1,4 @@
+import { connectionCatalogProviderId } from "../../lib/providerCatalog";
 import type { ModelProfile, ModelSearchItem, SettingsSection } from "../../lib/api";
 
 export const MODEL_PICKER_QUERY_RESULT_LIMIT = 60;
@@ -5,9 +6,14 @@ export const MODEL_PICKER_QUERY_RESULT_LIMIT = 60;
 export type ModelSelectOption = {
   value: string;
   label: string;
+  /** Set only by a caller adapting an actual saved profile, never catalogue data. */
+  registered_profile_id?: string;
+  connection_id?: string;
   /** Legacy aliases are accepted while older catalogs migrate to provider_id. */
   provider?: string;
   provider_id?: string;
+  /** UI catalogue family only; never an execution or credential identity. */
+  catalog_provider_id?: string;
   provider_display_name?: string;
   model_id?: string;
   qualified_model_id?: string;
@@ -133,6 +139,7 @@ export function enrichModelSelectOptions(
     return {
       ...option,
       provider_id: option.provider_id ?? profile.provider_id,
+      catalog_provider_id: option.catalog_provider_id ?? (typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined),
       provider_display_name: option.provider_display_name ?? profile.provider_display_name,
       model_id: option.model_id ?? profile.model_id,
       qualified_model_id: option.qualified_model_id ?? profile.qualified_model_id,
@@ -167,6 +174,7 @@ function registeredModelProfileOption(profile: ModelProfile): ModelSelectOption 
     value,
     label: String(profile.display_name ?? value).trim() || value,
     provider_id: providerId,
+    catalog_provider_id: typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined,
     provider_display_name: String(profile.provider_display_name ?? providerId).trim() || providerId,
     model_id: modelId,
     qualified_model_id: String(profile.qualified_model_id ?? "").trim() || undefined,
@@ -240,6 +248,7 @@ export function modelSearchItemToModelSelectOption(item: ModelSearchItem): Model
   return {
     value,
     label: String(item.label ?? item.display_name ?? value).trim() || value,
+    connection_id: item.connection_id,
     provider_id: item.provider_id,
     provider_display_name: item.provider_display_name,
     model_id: item.model_id,
@@ -273,9 +282,19 @@ export function modelOptionProviderId(option: ModelSelectOption): string {
   return value.includes("/") ? value.split("/", 1)[0] : "";
 }
 
+/** Resolve provider filters from explicit metadata or known saved-instance IDs. */
+export function modelOptionCatalogProviderId(option: ModelSelectOption): string {
+  const providerId = String(option.provider_id ?? option.provider ?? "").trim();
+  return option.catalog_provider_id || connectionCatalogProviderId({
+    provider_instance_id: providerId, display_name: "", credential_status: "missing",
+    health_status: "unverified", reachability: "unknown", observed_at: null,
+  }) || providerId;
+}
+
 export function modelOptionProviderIds(option: ModelSelectOption): string[] {
   return Array.from(new Set([
     modelOptionProviderId(option),
+    modelOptionCatalogProviderId(option),
     String(option.provider_display_name ?? "").trim(),
   ].filter(Boolean)));
 }
@@ -302,6 +321,10 @@ export function modelOptionNeedsVisionRecommendation(
 }
 
 export function modelSelectOptionSearchText(option: ModelSelectOption): string {
+  const modelId = String(option.model_id ?? "").trim().toLowerCase();
+  const legacyAliases = modelOptionCatalogProviderId(option).toLowerCase() === "openrouter"
+    && /^tencent\/hy3(?:-preview)?(?::free)?$/.test(modelId)
+    ? ["hy3 free", "tencent hy3 free", modelId.includes("preview") ? "hy3 preview free" : "hy3 free current"] : [];
   return [
     option.value,
     option.label,
@@ -313,6 +336,7 @@ export function modelSelectOptionSearchText(option: ModelSelectOption): string {
     option.quality_tier,
     option.cost_tier,
     option.notes,
+    ...legacyAliases,
     ...(option.capability_tags ?? []),
     ...(option.recommended_roles ?? []),
   ].filter(Boolean).join(" ").toLowerCase();

@@ -13,10 +13,10 @@ type ToolSettings = Record<string, unknown>;
 type SettingsValues = Record<string, Record<string, unknown>>;
 
 const MODE_OPTIONS: Array<{ value: ToolSelectionMode; label: string; note: string; badge?: string }> = [
-  { value: "auto", label: "自動で選ぶ", note: "依頼に必要な機能だけをTobkiriが選びます", badge: "推奨" },
-  { value: "review", label: "使う前に確認", note: "候補を確認してから回答を開始します" },
-  { value: "manual", label: "自分で選ぶ", note: "選んだ機能だけを候補にします" },
-  { value: "none", label: "機能を使わない", note: "このメッセージでは外部機能を使いません" },
+  { value: "auto", label: "Tobkiriが自動で選ぶ", note: "依頼に応じて使えるツールを選びます。入力欄で@指定した場合は、そのツールを選びます。", badge: "推奨" },
+  { value: "review", label: "選ばれたツールを確認", note: "送信時にTobkiriが選んだツールを表示します。あなたが確認してから回答を開始します。" },
+  { value: "manual", label: "@で使うツールを指定", note: "あなたが入力欄で@指定したツールだけを選びます。指定がなければツールを使いません。" },
+  { value: "none", label: "ツールを使わずに回答", note: "ツールを使わずに回答します。入力欄に@指定があっても、このモードの間は使いません。" },
 ];
 
 const STRATEGY_OPTIONS: Array<{ value: ToolSelectionStrategy; label: string; note: string; warning?: boolean }> = [
@@ -461,8 +461,9 @@ export function ToolExperienceSettingsPanel({
     <div className="space-y-5">
       <section className="space-y-3">
         <div>
-          <h4 className="text-sm font-medium text-zinc-100">既定の使い方</h4>
-          <p className="mt-1 text-xs leading-5 text-zinc-500">Composerでは毎回触らず、ここで普段の機能選定を決めます。</p>
+          <h4 className="text-sm font-medium text-zinc-100">普段のツールの選び方</h4>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">今後のメッセージで、回答に使えるツールをどう選ぶか決めます。会話の既定値や入力欄のモード指定がある場合は、そちらを優先します。</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">選ばれたツールが必ず実行されるとは限りません。ツール選択の確認と、ファイル変更などの操作の承認は別です。</p>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {MODE_OPTIONS.map((option) => (
@@ -482,7 +483,7 @@ export function ToolExperienceSettingsPanel({
         <ToggleRow
           checked={boolValue(toolSettings.show_selected_tools_in_answer ?? toolSettings.show_selection_summary, true)}
           title="選んだ機能を回答内に表示"
-          note="どの機能を使ったかを、必要な場面で回答に含めます。"
+          note="回答の候補に選んだ機能を表示します。実際に実行した機能とは異なる場合があります。"
           onChange={(value) => updateToolSetting("show_selected_tools_in_answer", value)}
         />
         <ToggleRow

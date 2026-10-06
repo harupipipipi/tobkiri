@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
+import { ModelSearchPicker } from "./ModelSearchPicker";
+import { DEFAULT_MODEL_SELECTOR_SCHEMA } from "./modelSelectorSchema";
 import {
   ModelRouteErrorNotices,
   ModelRouteSetup,
@@ -19,6 +21,7 @@ import {
   filterModelOptionsByProvider,
   filterModelProviderOptions,
   modelOptionBadges,
+  modelSelectOptionMatchesSearch,
   modelOptionNeedsVisionRecommendation,
   modelOptionThinkingLevels,
   modelProviderOptions,
@@ -50,8 +53,8 @@ test("saved canonical routes remain selectable without claiming Provider health"
 test("model route setup never offers a free-form provider connection ID", () => {
   const html = renderToStaticMarkup(createElement(ModelRouteSetup));
 
-  assert.match(html, /API接続/);
-  assert.match(html, /aria-label="Provider connection ID"/);
+  assert.match(html, /使用するAPI/);
+  assert.match(html, /aria-label="使用するAPI"/);
   assert.match(html, /<select/);
   assert.match(html, /登録済みの接続がありません/);
   assert.doesNotMatch(html, /provider\.deepseek\.main/);
@@ -66,10 +69,12 @@ test("catalog picker searches the complete list and retains the selected model",
     models, value: "vendor/model-70", query: "Model 79",
     onChange: () => {}, onQueryChange: () => {},
   }));
-  assert.match(html, /モデル一覧（80件）/);
+  assert.equal((html.match(/<input\b/g) ?? []).length, 1);
+  assert.match(html, /role="combobox"/);
+  assert.doesNotMatch(html, /<select/);
   assert.match(html, /vendor\/model-79/);
-  assert.match(html, /value="vendor\/model-70" selected/);
-  assert.doesNotMatch(html, /value="vendor\/model-1"/);
+  assert.match(html, /選択中:.*vendor\/model-70/);
+  assert.doesNotMatch(html, /Model 1<\/span>/);
 });
 
 test("catalog model queries disable linguistic input rewriting", () => {
@@ -454,4 +459,38 @@ test("@provider query offers providers and scopes the following model search", (
       "openrouter/google/gemini-2.5-pro",
     ],
   );
+});
+
+
+test("provider filters preserve saved route identity and distinguish transport from maker", () => {
+  const saved: ModelSelectOption = { value: "saved-route", label: "Gemini via my API", provider_id: "provider.openrouter.main", model_id: "google/gemini-2.5-pro" };
+  assert.deepEqual(filterModelOptionsByProvider([saved], "openrouter"), [saved]);
+  assert.deepEqual(filterModelOptionsByProvider([saved], "google"), []);
+  assert.equal(saved.value, "saved-route");
+  const opaque = { ...saved, provider_id: "private-api-01", catalog_provider_id: "openrouter" };
+  assert.deepEqual(filterModelOptionsByProvider([opaque], "openrouter"), [opaque]);
+});
+
+test("the shared model search retains OpenRouter HY3 legacy aliases", () => {
+  const option = { value: "hy3-saved", label: "Tencent", provider_id: "provider.openrouter.main", model_id: "tencent/hy3" };
+  assert.equal(modelSelectOptionMatchesSearch(option, "hy3 free current"), true);
+  assert.equal(modelSelectOptionMatchesSearch({ ...option, model_id: "tencent/hy3-preview" }, "hy3 preview free"), true);
+  assert.equal(modelSelectOptionMatchesSearch({ ...option, provider_id: "provider.google.main" }, "hy3 free"), false);
+});
+
+
+test("shared caller preserves the explicit result limit and catalogue ordering policy", () => {
+  const options = ["Alpha", "Beta", "Gamma"].map((label) => ({ value: label, label, provider_id: "openai" }));
+  const render = (position: "first" | "natural") => renderToStaticMarkup(createElement(ModelSearchPicker, {
+    value: "Gamma", options, query: "", open: true, showTrigger: false, maxVisibleOptions: 2,
+    selectorSchema: { ...DEFAULT_MODEL_SELECTOR_SCHEMA, layout: { ...DEFAULT_MODEL_SELECTOR_SCHEMA.layout, selected_position: position } },
+    onChange: () => {}, onQueryChange: () => {},
+  }));
+  const selectedFirst = render("first");
+  assert.equal((selectedFirst.match(/role="option"/g) ?? []).length, 2);
+  assert.ok(selectedFirst.indexOf(">Gamma</span>") < selectedFirst.indexOf(">Alpha</span>"));
+  const catalogOrder = render("natural");
+  assert.match(catalogOrder, />Alpha<\/span>/);
+  assert.match(catalogOrder, />Beta<\/span>/);
+  assert.doesNotMatch(catalogOrder, />Gamma<\/span>/);
 });

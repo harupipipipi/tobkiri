@@ -1,1 +1,1 @@
-{"identifier":"browser-access-approval","description":"Dedicated bundled browser admission surface","local":true,"windows":["browser-access-approval"],"permissions":["allow-browser-access-context","allow-browser-access-decide"]}
+{"identifier":"browser-access-approval","description":"Dedicated bundled browser admission surface","local":true,"windows":["browser-access-approval-*"],"permissions":["allow-browser-access-context","allow-browser-access-decide"]}

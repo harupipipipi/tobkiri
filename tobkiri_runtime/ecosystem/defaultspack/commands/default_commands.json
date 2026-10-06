@@ -11,6 +11,17 @@
     "execution": { "type": "frontend", "action": "open_command_help" }
   },
   {
+    "id": "pet",
+    "name": "pet",
+    "label": "Pet",
+    "description": "Open the Tobkiri pet window locally.",
+    "category": "chat",
+    "visibility": "default",
+    "risk": "low",
+    "modes": ["chat", "coding", "agent"],
+    "execution": { "type": "frontend", "action": "open_task_pet" }
+  },
+  {
     "id": "model",
     "name": "model",
     "aliases": ["models"],

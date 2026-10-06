@@ -206,8 +206,33 @@ def _field_renderer_component_bindings(
     return [by_part[part_id] for part_id in order]
 
 
+def _is_retired_composer_chip(piece: TemplatePiece) -> bool:
+    """Keep legacy tool/service chip templates out of selectable UI metadata."""
+    nested = piece.data.get("widget")
+    payload = nested if isinstance(nested, dict) else piece.data
+    sources = (payload, piece.data)
+    widget_kinds = [
+        source[key].strip()
+        for source in sources
+        for key in ("widgetKind", "widget_kind")
+        if isinstance(source.get(key), str) and source[key].strip()
+    ]
+    if any(kind in {"tool_toggle", "service_reference"} for kind in widget_kinds):
+        return True
+    if any(source.get("type") in ("tool", "service") for source in sources):
+        return True
+    # Older templates implicitly meant tool_toggle when their kind was omitted.
+    return not widget_kinds and any(
+        source.get(key)
+        for source in sources
+        for key in ("tool_id", "sourceItemId", "source_item_id")
+    )
+
+
 def _project_piece(catalog: dict[str, Any], template: RumiTemplate, piece: TemplatePiece) -> None:
     kind = _value(piece.kind)
+    if kind == "composer_widget" and _is_retired_composer_chip(piece):
+        return
     role = str(piece.data.get("role") or piece.data.get("template_piece_type") or "").strip()
 
     if kind == "settings_section":

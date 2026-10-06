@@ -1,3 +1,4 @@
+import { mountProjectDirectory, type ProjectDirectorySelection, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { toolSidebarReadiness } from "./toolCatalogReadiness";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
 import type { ToolPreviewItem } from "../components/ToolPreview";
@@ -1746,6 +1747,11 @@ export type ModelCommandCandidate = {
 };
 
 export type ModelSearchItem = ModelCommandCandidate & {
+  /** Saved route presence is separate from credentials and reachability. */
+  route_configured?: boolean;
+  connection_id?: string;
+  provenance?: "provider_public_catalog";
+  reachability?: "unverified" | "unknown";
   label?: string;
   supports_vision?: boolean;
   supports_image_input?: boolean;
@@ -6373,11 +6379,31 @@ export const api = {
     });
   },
 
-  selectDirectory(prompt?: string) {
-    return request<DirectorySelectionResponse>(defaultspackContractRoute("api/ui/select-directory"), {
+  selectDirectory(_prompt?: string) {
+    return request<(ProjectDirectorySelection & { cancelled: false }) | { cancelled: true; selection_id: null }>(defaultspackContractRoute("api/ui/select-directory"), {
       method: "POST",
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({}),
     });
+  },
+
+  async mountProjectWorkspace(selection: ProjectDirectorySelection, assertCurrent: () => void) {
+    const post = (body: object) => request<ProjectMountStatus>(defaultspackContractRoute("api/projects/workspace"), {
+      method: "POST", body: JSON.stringify(body),
+    });
+    const workspaceId = await mountProjectDirectory(selection, {
+      assertCurrent,
+      prepare: (selection_id, correlation_id) => post({ phase: "prepare", effect_kind: "workspace_mount", request: { selection_id }, correlation_id }),
+      lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "workspace_mount", correlation_id }),
+      status: (effect_id) => post({ phase: "status", effect_id }),
+      resume: (effect_id) => post({ phase: "resume", effect_id }),
+      cancel: (effect_id) => post({ phase: "cancel", effect_id }),
+      approval: (id) => api.getInteractiveApproval(id), openApproval: openAuthorityApprovalWindow,
+      pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
+    });
+    assertCurrent();
+    const result = await api.getCodingWorkspace(workspaceId);
+    assertCurrent();
+    return result.workspace;
   },
 
   prepareChatGroupStorage(rootPath: string) {

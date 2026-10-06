@@ -27,6 +27,13 @@ _APPROVAL_COMMANDS = {
     "host:request_terminal_approval", "host:request_patch_approval",
     "host:request_restore_approval",
 }
+_APPROVAL_COMMAND_BINDINGS = {
+    "defaultspack:commit": "host:request_commit_approval",
+    "defaultspack:push": "host:request_push_approval",
+    "defaultspack:terminal": "host:request_terminal_approval",
+    "defaultspack:patch": "host:request_patch_approval",
+    "defaultspack:restore": "host:request_restore_approval",
+}
 _HIGH_RISK_TARGET = (
     "rumi_command_protocol_pack.high-risk-command.service",
     "tobkiri.service.command.high-risk.v1",
@@ -47,30 +54,27 @@ _DATASOURCE_TARGET = (
     "tobkiri.resource.command.datasource.v1",
     "command.datasource.query",
 )
-_ORDINARY_COMMANDS = frozenset(
-    {
-        "host:open_command_help",
-        "host:new_conversation",
-        "host:clear_composer_state",
-        "host:open_tool_picker",
-        "host:show_status",
-        "host:open_settings",
-        "host:open_history",
-        "host:open_context_viewer",
-        "host:open_permissions",
-        "host:open_approvals",
-        "host:show_usage",
-        "host:open_theme_settings",
-        "host:open_keymap_settings",
-        "host:open_plugins",
-        "host:open_mcp",
-        "host:open_skills",
-        "host:open_hooks",
-        "host:open_diff_preview",
-        "host:open_file_search",
-    }
-)
-
+_ORDINARY_COMMANDS = {
+    "defaultspack:help": "host:open_command_help",
+    "defaultspack:new": "host:new_conversation",
+    "defaultspack:clear": "host:clear_composer_state",
+    "defaultspack:tools": "host:open_tool_picker",
+    "defaultspack:status": "host:show_status",
+    "defaultspack:settings": "host:open_settings",
+    "defaultspack:history": "host:open_history",
+    "defaultspack:context": "host:open_context_viewer",
+    "defaultspack:permissions": "host:open_permissions",
+    "defaultspack:approvals": "host:open_approvals",
+    "defaultspack:usage": "host:show_usage",
+    "defaultspack:theme": "host:open_theme_settings",
+    "defaultspack:keymap": "host:open_keymap_settings",
+    "defaultspack:plugins": "host:open_plugins",
+    "defaultspack:mcp": "host:open_mcp",
+    "defaultspack:skills": "host:open_skills",
+    "defaultspack:hooks": "host:open_hooks",
+    "defaultspack:diff": "host:open_diff_preview",
+    "defaultspack:files": "host:open_file_search",
+}
 
 def _catalog(
     definitions: Mapping[str, Any],
@@ -99,9 +103,16 @@ def _catalog(
                 "approval_required": True, "approval_policy": "required",
                 "executor_policy_ref": "tobkiri.command.human_approved",
             }
+        command_ref = command.get("canonical_id")
         available = (
-            high_risk_available and operation_ref in _APPROVAL_COMMANDS
-        ) or (invoke_available and operation_ref in _ORDINARY_COMMANDS)
+            high_risk_available
+            and _APPROVAL_COMMAND_BINDINGS.get(command_ref) == operation_ref
+            and operation_ref in _APPROVAL_COMMANDS
+        ) or (
+            invoke_available
+            and _ORDINARY_COMMANDS.get(command_ref) == operation_ref
+            and operation_ref is not None
+        )
         command["availability"] = (
             {"status": "available"}
             if available else {

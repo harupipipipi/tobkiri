@@ -22,7 +22,7 @@ import type {
   KanbanColumn,
 } from "../../lib/api";
 import {
-  KanbanApiError,
+  KanbanBoardMissingError,
   kanbanResources,
   type KanbanDataSource,
 } from "../../features/kanban/resources/kanbanResources";
@@ -101,7 +101,7 @@ export function KanbanWorkspacePanel({
       try {
         next = await dataSource.loadBoard(stableScope);
       } catch (reason) {
-        if (!(reason instanceof KanbanApiError) || reason.status !== 404) throw reason;
+        if (!(reason instanceof KanbanBoardMissingError)) throw reason;
         next = await dataSource.ensureBoard(stableScope, scopeLabel?.trim() || "Kanban");
       }
       setBoardData(next);

@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:c467e65ec9e32a8d2b9ebd6652dc9b0c3df9e6fe44ef06764324eec8507ab79f",
+      "digest": "sha256:842db0054e44da9179d3245812fd096d8ad16ad84ed41d52fa10e5d98d2b8376",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -33,7 +33,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:6b215235ee684abfa5befd56759ef5685be77e33dfba8cb0277307405048016a",
+    "artifact_set_digest": "sha256:42a551e79b7b971c7b2584c936baea01f8504f7f9ad0c698b9ba419aa85fef75",
     "contract_catalog_digest": "sha256:4a2b063776ea265cefff752392e3b50a5c26741bd85c0619617d630a6da73a02",
     "source_identity": "sha256:6a34e77baf096d63880fcf03b25d0d763073f229da9ae4b301e20aacf69e9adb"
   },
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6b215235ee684abfa5befd56759ef5685be77e33dfba8cb0277307405048016a",
+    "artifact_digest": "sha256:42a551e79b7b971c7b2584c936baea01f8504f7f9ad0c698b9ba419aa85fef75",
     "display_name": "Tobkiri Tool Local Executor",
     "id": "rumi_tool_local_executor_pack",
     "kind": "host_extension",

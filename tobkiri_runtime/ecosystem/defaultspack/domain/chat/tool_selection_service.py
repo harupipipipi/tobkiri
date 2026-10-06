@@ -26,6 +26,7 @@ from domain.tool.service_catalog import (
     requires_explicit_intent,
 )
 from domain.tool.schema_adapter import tool_name_from_definition
+from domain.tool.service_mentions import explicit_service_member_ids
 
 
 DEFAULT_SEMANTIC_CANDIDATE_LIMIT = 32
@@ -60,9 +61,21 @@ class ToolSelectionService:
         selection_has_turn_targets = bool(selection_include or selection_exclude)
         selection_scope = str(getattr(selection, "scope", "turn") or "turn").strip().lower()
         selection_source = str(getattr(selection, "source", "default") or "default").strip()
-        if conversation_mode in {"auto", "review", "manual", "none"} and (
-            selection_source == "default"
-            or (selection_scope == "turn" and not selection_has_turn_targets and mode in {"auto", "review"})
+        authoritative_turn_selection = (
+            selection_source in {"tool_selection", "tool_selection_preview"}
+            and selection_scope == "turn"
+        )
+        if (
+            not authoritative_turn_selection
+            and conversation_mode in {"auto", "review", "manual", "none"}
+            and (
+                selection_source == "default"
+                or (
+                    selection_scope == "turn"
+                    and not selection_has_turn_targets
+                    and mode in {"auto", "review"}
+                )
+            )
         ):
             mode = conversation_mode
         if mode not in {"auto", "review", "manual", "none"}:
@@ -88,13 +101,26 @@ class ToolSelectionService:
             )
         conversation_include = normalize_tool_targets(conversation_preferences.get("include"))
         conversation_exclude = normalize_tool_targets(conversation_preferences.get("exclude"))
-        include = _merge_targets(conversation_include, selection_include)
-        exclude = _merge_targets(conversation_exclude, selection_exclude)
+        # An explicit turn request already reflects the Composer's visible draft.
+        # Re-merging saved preferences would restore tools the user removed.
+        include = (
+            selection_include if authoritative_turn_selection
+            else _merge_targets(conversation_include, selection_include)
+        )
+        exclude = (
+            selection_exclude if authoritative_turn_selection
+            else _merge_targets(conversation_exclude, selection_exclude)
+        )
         verified_explicit_tool_ids = {
             str(item).strip()
             for item in context.get("verified_explicit_tool_ids", [])
             if str(item or "").strip()
         }
+        verified_explicit_tool_ids.update(explicit_service_member_ids(
+            user_text,
+            tools,
+            {target.id for target in selection_include if target.kind == "tool"},
+        ))
         unverified_low_level_targets = [
             target
             for target in [*include, *exclude]

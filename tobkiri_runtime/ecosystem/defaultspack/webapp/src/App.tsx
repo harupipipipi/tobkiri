@@ -1,3 +1,4 @@
+import type { ProjectDirectorySelection } from "./lib/projectWorkspaceMount";
 import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
 import { savedTurnStoreIdentity, useScopedPendingChat, type PendingRecoveryEntry } from "./lib/scopedPendingChat";
@@ -14,7 +15,8 @@ import {
   resolveCompanyWorkspaceHint,
   resolveCompanyWorkspaceHintFromGroup,
 } from "./components/company/CompanyWorkspacePanel";
-import { TaskPet } from "./components/TaskPet";
+import { TaskPet, type TaskPetHandle } from "./components/TaskPet";
+import { completeLocalTaskPetSubmission, consumeLocalTaskPetInput, executeLocalTaskPetCommand, isLocalTaskPetCommand } from "./lib/taskPetCommand";
 import { AmbientTriggerPanel } from "./ambient/AmbientTriggerPanel";
 import { DefaultsConsoleWindow } from "./ambient/DefaultsConsoleWindow";
 import { AdaptiveRuntimePage } from "./adaptive";
@@ -24,6 +26,7 @@ import { AuthorityApprovalNotice } from "./components/AuthorityApprovalNotice";
 import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
 import { ErrorNotice } from "./components/ErrorNotice";
+import { ChatNotifications } from "./components/ChatNotifications";
 import { CodingCockpit } from "./components/coding/CodingCockpit";
 import { HostPermissionsPage } from "./hostPermissions/HostPermissionsPage";
 import { ConversationSpotlight } from "./components/ConversationSpotlight";
@@ -110,7 +113,6 @@ import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleD
 import {
   canExecuteComposerEndpointAction,
   composerMentionMetadataFromWidgets,
-  composerMentionSyntaxesForToolId,
   composerMentionToolIdsFromWidgets,
   composerSkillMentionWidget,
   composerToolMentionWidget,
@@ -118,7 +120,6 @@ import {
   publicComposerWidgetMetadata,
   reconcileComposerSemanticDraft,
   skillMentionIdsFromText,
-  toolMentionIdsFromText,
   trustedComposerActionForWidget,
   withComposerMentionSelectionOwnership,
 } from "./lib/composerWidgets";
@@ -130,13 +131,20 @@ import {
   releaseHighRiskAttempt,
 } from "./lib/highRiskCommand";
 import { fileToAttachment } from "./lib/attachments";
-import { toolGroupFor } from "./lib/toolUi";
-import type { ComposerEntityReference } from "./lib/composerReferences";
+import { composerMentionSelectionRequest, consumeLegacyToolMentionSnapshot, isSavedTurnToolMentionWidget, materializeLegacyToolMentions, replaceComposerToolMentions, resolveComposerToolMentions } from "./lib/composerToolMentions";
+import { mergeComposerReferences, type ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
+import { spotlightSidebarResults, spotlightShortcutLabel as formatSpotlightShortcutLabel, type SpotlightResult } from "./lib/spotlightNavigation";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
-import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutDisposition } from "./lib/keyboardShortcuts";
+import { parseSearchQuery } from "./features/search/searchQuery";
+import { useSpotlightShortcut } from "./features/search/useSpotlightShortcut";
+import { useModelCatalogSearch } from "./features/search/useModelCatalogSearch";
+import { modelCatalogItemIdentity } from "./features/search/modelCatalogSearch";
+import { requestModelProperties, invalidateModelPropertiesScope } from "./features/search/modelPropertiesNavigation";
+import { useSearchCaptureScope } from "./features/search/useSearchCaptureScope";
+import { workspaceTabShortcutDisposition } from "./lib/keyboardShortcuts";
 import {
   PENDING_CHAT_REQUEST_TTL_MS,
   canClearSavedTurnStopFailureError,
@@ -173,6 +181,7 @@ import {
   type OptimisticSavedTurnOverlay,
   type SavedTurnViewTicket,
 } from "./lib/optimisticSavedTurn";
+import { chatRetryEligible, type ChatRetryOwnership } from "./lib/chatRetry";
 import {
   passiveSteerRefreshStatus,
   SteerRefreshFence,
@@ -189,7 +198,7 @@ import {
   withSettingsAssistantSkill,
 } from "./lib/settingsMode";
 import { isRegisteredSlashCommand, mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./lib/registeredSlashCommands";
-import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateComposerWidgetsForInput, templateFeatureFlagEnabled, templateToolPolicyReferencePayload, templateToolPolicySettings } from "./lib/templateAiInput";
+import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateFeatureFlagEnabled, templateToolPolicyReferencePayload, templateToolPolicySettings } from "./lib/templateAiInput";
 import { initialComposerFieldValues, normalizeComposerFields, structuredComposerPayload } from "./lib/structuredComposer";
 import { isHumanOperatorCanvasPreview, isRecord, toolPreviewsFromMessages, upsertStreamActivityEvent } from "./lib/toolPreviews";
 import { extractLatestToolFilterContext } from "./lib/toolStatus";
@@ -287,9 +296,7 @@ type SubmitOverride = {
   skipReview?: boolean;
 };
 
-type RetryableSubmission = SubmitOverride & {
-  errorMessage: string;
-};
+type RetryableSubmission = SubmitOverride & ChatRetryOwnership;
 
 type InterruptedSavedTurnDraft = {
   attachments: AttachedFile[];
@@ -2966,6 +2973,7 @@ export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
   const verifiedHost = useVerifiedFrontendHost();
   const runtimeProfileId = verifiedHost?.catalog.profile_id ?? parseProfileScreenPath(window.location.pathname)?.profileId ?? "unavailable";
+  const modelPropertiesScope = useSearchCaptureScope(runtimeProfileId);
   const viewNavigationGuardsRef = useRef(new Map<string, () => boolean>());
   const registerViewNavigationGuard = useCallback((ownerId: string, guard: (() => boolean) | null) => {
     if (guard) viewNavigationGuardsRef.current.set(ownerId, guard);
@@ -3005,6 +3013,8 @@ export function ChatApp() {
   const [settingsSections, setSettingsSections] = useState<SettingsSection[]>([]);
   const [settingsValues, setSettingsValues] = useState<Record<string, Record<string, unknown>>>({});
   const settingsValuesRef = useRef(settingsValues);
+  // Shortcut drafts use the Settings retry flow; only owner-confirmed values bind keys.
+  const [confirmedSpotlightSettings, setConfirmedSpotlightSettings] = useState<Record<string, unknown>>({});
   const pinnedPlacementSaveRevisionRef = useRef(0);
   const settingsSaveRevisionRef = useRef(0);
   const settingsDocumentMutationRevisionRef = useRef(0);
@@ -3024,8 +3034,12 @@ export function ChatApp() {
   const [commandProtocolInfo, setCommandProtocolInfo] = useState<ResolvedCommandCatalog | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  useEffect(() => {
+    invalidateModelPropertiesScope(modelPropertiesScope);
+  }, [modelPropertiesScope]);
   const liveTaskContextRef = useRef({ profileId: runtimeProfileId, conversationId: activeConversationId });
   liveTaskContextRef.current = { profileId: runtimeProfileId, conversationId: activeConversationId };
+  const taskPetRef = useRef<TaskPetHandle | null>(null);
   const [taskPetSnapshot, setTaskPetSnapshot] = useState<{ profileId: string; snapshot: SavedTurnEventSnapshot } | null>(null);
   const widgetContext = useMemo(
     () => createWidgetConversationContext(activeConversationId),
@@ -3035,6 +3049,10 @@ export function ChatApp() {
   const loadedConversationViewsRef = useRef(new Map<string, Conversation>());
   const [activeHistoryCompanyId, setActiveHistoryCompanyId] = useState<string | null>(null);
   const [input, setInput] = useLocalStorage("rumi-input", "");
+  const taskPetDraftRef = useRef({ input, generation: 0 });
+  if (taskPetDraftRef.current.input !== input) {
+    taskPetDraftRef.current = { input, generation: taskPetDraftRef.current.generation + 1 };
+  }
   const [customHomeTitle, setCustomHomeTitle] = useLocalStorage(
     "rumi-home-title",
     DEFAULT_COMPOSER_HOME_TITLE,
@@ -3045,7 +3063,9 @@ export function ChatApp() {
   const [spotlightQuery, setSpotlightQuery] = useState("");
   const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>("all");
   const [spotlightResults, setSpotlightResults] = useState<ConversationSearchResult[]>([]);
-  const [spotlightSelectedIndex, setSpotlightSelectedIndex] = useState(0);
+  const [spotlightResultsScope, setSpotlightResultsScope] = useState("");
+  const [spotlightSearchError, setSpotlightSearchError] = useState<string | null>(null);
+  const [spotlightSearchRetry, setSpotlightSearchRetry] = useState(0);
   const [spotlightLoading, setSpotlightLoading] = useState(false);
   const [modelPickerRequestId, setModelPickerRequestId] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -3127,6 +3147,8 @@ export function ChatApp() {
   const recoveryDraftStateRef = useRef({ input, attachedFiles, droppedWidgets, composerEntityReferences });
   recoveryDraftStateRef.current = { input, attachedFiles, droppedWidgets, composerEntityReferences };
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
+  const legacySelectedToolIdsRef = useRef(storedSelectedToolIds);
+  const [toolMentionMigrations, setToolMentionMigrations] = useLocalStorage<string[]>("rumi-composer-tool-mention-migrations-v1", []);
   const savedTurnStoreId = savedTurnStoreIdentity(health?.saved_turn_store_id);
   const conversationMutationBarrierRef = useRef(new ConversationMutationBarrier());
   const savedTurnStoreIdRef = useRef(savedTurnStoreId);
@@ -3304,7 +3326,14 @@ export function ChatApp() {
     [conversations, spotlightFilter],
   );
   const hiddenConversationIds = new Set(conversations.filter((conversation) => !conversationVisibleInHistory(conversation)).map((conversation) => conversation.id));
-  const visibleSpotlightResults = (spotlightQuery.trim() ? spotlightResults : recentSpotlightResults)
+  const parsedSpotlightQuery = parseSearchQuery(spotlightQuery);
+  const spotlightModels = useModelCatalogSearch({
+    text: parsedSpotlightQuery.text, providerIds: parsedSpotlightQuery.providerIds, scopeId: runtimeProfileId,
+    enabled: isSpotlightOpen && parsedSpotlightQuery.kinds.includes("model") && !parsedSpotlightQuery.conflict,
+  });
+  const spotlightChatScope = `${spotlightFilter}:${parsedSpotlightQuery.text}`;
+  const visibleSpotlightChats = (parsedSpotlightQuery.text
+    ? spotlightResultsScope === spotlightChatScope ? spotlightResults : [] : recentSpotlightResults)
     .filter((result) => !hiddenConversationIds.has(result.conversation_id));
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
@@ -3463,10 +3492,12 @@ export function ChatApp() {
     ],
     [subagentTeamsEnabled, registeredWorkspaceViews],
   );
-  const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
-  const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
-  const spotlightShortcutTextInput = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_text_input, true);
-  const spotlightShortcutLabel = spotlightShortcutEnabled ? shortcutLabel(spotlightShortcut) : "Off";
+  const spotlightShortcut = String(confirmedSpotlightSettings.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
+  const spotlightShortcutEnabled = parseCommandBoolean(confirmedSpotlightSettings.spotlight_shortcut_enabled, true);
+  const spotlightShortcutTextInput = parseCommandBoolean(confirmedSpotlightSettings.spotlight_shortcut_text_input, true);
+  const spotlightIsMac = /Mac|iPhone|iPad/.test(navigator.platform);
+  const spotlightShortcutLabel = spotlightShortcutEnabled
+    ? formatSpotlightShortcutLabel(spotlightShortcut, spotlightIsMac) : "Off";
   const composerMode = mode as ComposerCommandMode;
   const templateAiInputMetadata = useMemo(
     () => selectTemplateAiInput(catalog, composerMode),
@@ -3527,6 +3558,20 @@ export function ChatApp() {
     () => rawSidebarItems.filter((item) => item.category !== "tool" || !hiddenToolIdSet.has(item.id)),
     [hiddenToolIdSet, rawSidebarItems],
   );
+  const spotlightSidebarEnabled = !catalog?.shell || hasShellRegion(catalog, "right_sidebar");
+  const visibleSpotlightResults: SpotlightResult[] = parsedSpotlightQuery.conflict ? [] : [
+    ...(parsedSpotlightQuery.kinds.includes("chat") && !parsedSpotlightQuery.providerIds.length
+      ? visibleSpotlightChats.map((conversation): SpotlightResult => ({
+        kind: "chat", id: conversation.conversation_id, title: conversation.title, conversation,
+      })) : []),
+    ...(["widget", "tool"] as const).flatMap((kind) => parsedSpotlightQuery.kinds.includes(kind) && !parsedSpotlightQuery.providerIds.length
+      ? spotlightSidebarResults(sidebarItems, kind, parsedSpotlightQuery.text, {
+        enabled: spotlightSidebarEnabled, disabledToolIds: disabledToolIdSet,
+      }) : []),
+    ...(parsedSpotlightQuery.kinds.includes("model") ? spotlightModels.models.map((model): SpotlightResult => ({
+      kind: "model", id: modelCatalogItemIdentity(model), title: model.label || model.display_name, model,
+    })) : []),
+  ];
   const preferredModel = activeModelId;
   const modelSelectorSchema = useMemo(() => modelSelectorSchemaFromCatalog(catalog), [catalog]);
   const userFacingProfiles = userFacingModelProfiles(modelProfiles, preferredModel);
@@ -3571,16 +3616,11 @@ export function ChatApp() {
       .filter((item) => !templateHasToolAllowlist || templateAllowedToolIdSet.has(item.id)),
     [disabledToolIdSet, sidebarItems, templateAllowedToolIdSet, templateHasToolAllowlist],
   );
-  const templateComposerWidgets = useMemo(
-    () => templateComposerWidgetsForInput(catalog, templateAiInputMetadata, composerInputMetadata, composerExtensions),
-    [catalog, templateAiInputMetadata, composerInputMetadata, composerExtensions],
-  );
   const activeDroppedWidgets = useMemo(() => {
     const byId = new Map<string, DroppedWidget>();
-    for (const widget of templateComposerWidgets) byId.set(widget.id, widget);
     for (const widget of droppedWidgets) byId.set(widget.id, widget);
     return Array.from(byId.values());
-  }, [droppedWidgets, templateComposerWidgets]);
+  }, [droppedWidgets]);
   const composerSkills = useMemo<ComposerSkillItem[]>(() => (
     withSettingsAssistantSkill((catalog?.skills ?? []).map((skill) => ({
       id: skill.id,
@@ -3607,10 +3647,14 @@ export function ChatApp() {
     ),
     [composerSkills, customHomeTitle, input],
   );
-  const selectedTools = useMemo(() => storedSelectedToolIds
+  const composerToolMentionDraft = useMemo(
+    () => resolveComposerToolMentions(input, droppedWidgets, composerExtensions),
+    [composerExtensions, droppedWidgets, input],
+  );
+  const selectedToolIds = composerToolMentionDraft.toolIds;
+  const selectedTools = useMemo(() => selectedToolIds
     .map((toolId) => composerExtensions.find((tool) => tool.id === toolId))
-    .filter((tool): tool is ComposerExtensionItem => Boolean(tool)), [composerExtensions, storedSelectedToolIds]);
-  const selectedToolIds = useMemo(() => selectedTools.map((tool) => tool.id), [selectedTools]);
+    .filter((tool): tool is ComposerExtensionItem => Boolean(tool)), [composerExtensions, selectedToolIds]);
   const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
   const activeConversationToolPreferences = useMemo(
     () => parseConversationToolPreferences(activeConversation?.metadata),
@@ -3620,28 +3664,45 @@ export function ChatApp() {
     settingsValues,
     selectedToolIds,
     setSelectedToolIds: setStoredSelectedToolIds,
-    conversationPreferences: activeConversationToolPreferences,
+    conversationPreferences: { mode: activeConversationToolPreferences.mode },
   });
+  useEffect(() => {
+    if (!catalog || isGeneratingForActiveView
+      || (activeConversationId && activeConversation?.id !== activeConversationId)) return;
+    const migrationKey = `${runtimeProfileId}:${activeConversationId ?? "draft"}`;
+    const legacySelectedIds = consumeLegacyToolMentionSnapshot(
+      legacySelectedToolIdsRef, migrationKey, toolMentionMigrations,
+    );
+    if (toolMentionMigrations.includes(migrationKey)) return;
+    const legacy = materializeLegacyToolMentions(
+      input, activeConversationToolPreferences,
+      [...legacySelectedIds, ...activeTemplateToolPolicy.defaultEnabledToolIds],
+      composerExtensions,
+    );
+    if (legacy.value !== input) setInput(legacy.value);
+    if (legacy.widgets.length) setDroppedWidgets((current) => {
+      const existingIds = new Set(current.map((widget) => widget.id));
+      return [...current, ...legacy.widgets.filter((widget) => !existingIds.has(widget.id))];
+    });
+    setToolMentionMigrations((current) => current.includes(migrationKey) ? current : [...current, migrationKey]);
+  }, [activeConversation?.id, activeConversationId, activeConversationToolPreferences,
+    activeTemplateToolPolicy.defaultEnabledToolIds, catalog, composerExtensions, input,
+    isGeneratingForActiveView, runtimeProfileId, setInput, setToolMentionMigrations, toolMentionMigrations]);
   useEffect(() => {
     if (isGeneratingForActiveView) return;
     const reconciled = reconcileComposerSemanticDraft({
       droppedWidgets,
-      selectedToolIds,
+      selectedToolIds: composerMentionToolIdsFromWidgets(composerToolMentionDraft.widgets),
       text: input,
     });
-    if (
-      reconciled.droppedWidgets.length !== droppedWidgets.length
-      || reconciled.droppedWidgets.some((widget, index) => widget !== droppedWidgets[index])
-    ) {
+    if (reconciled.droppedWidgets.length !== droppedWidgets.length) {
       setDroppedWidgets(reconciled.droppedWidgets);
     }
-    if (
-      reconciled.selectedToolIds.length !== selectedToolIds.length
-      || reconciled.selectedToolIds.some((toolId, index) => toolId !== selectedToolIds[index])
-    ) {
-      setStoredSelectedToolIds(reconciled.selectedToolIds);
+    if (storedSelectedToolIds.length !== selectedToolIds.length
+      || storedSelectedToolIds.some((id, index) => id !== selectedToolIds[index])) {
+      setStoredSelectedToolIds(selectedToolIds);
     }
-  }, [droppedWidgets, input, isGeneratingForActiveView, selectedToolIds, setStoredSelectedToolIds]);
+  }, [composerToolMentionDraft.widgets, droppedWidgets, input, isGeneratingForActiveView, selectedToolIds, storedSelectedToolIds, setStoredSelectedToolIds]);
   useEffect(() => {
     setTaskPetSnapshot(null);
   }, [runtimeProfileId, activeConversationId]);
@@ -3690,6 +3751,7 @@ export function ChatApp() {
     if (previousSavedStoreIdRef.current === savedTurnStoreId) return;
     const previousStoreId = previousSavedStoreIdRef.current;
     previousSavedStoreIdRef.current = savedTurnStoreId;
+    setRetryableSubmission(null);
     // Initial discovery precedes any permitted submission and must not fence bootstrap reads.
     if (previousStoreId === null) return;
     // This invalidates local presentation only; canonical execution is not cancelled.
@@ -3710,12 +3772,15 @@ export function ChatApp() {
     if (viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) {
       setSavedTurnViewEpoch(viewFence.capture().epoch);
     }
+    setRetryableSubmission((current) => current
+      && (current.profileId !== runtimeProfileId || !viewFence.matches(current.viewTicket))
+      ? null : current);
     const activeSubmission = activeSavedTurnSubmissionRef.current;
     if (!activeSubmission || viewFence.matches(activeSubmission.ticket)) return;
     activeSavedTurnSubmissionRef.current = null;
     setIsGenerating(false);
     setIsNewChatLaunching(false);
-  }, [activeConversationId, activeWorkspaceTabId]);
+  }, [activeConversationId, activeWorkspaceTabId, runtimeProfileId, savedTurnViewEpoch]);
   useLayoutEffect(() => {
     const interruptedDraft = interruptedSavedTurnDrafts.find((draft) => (
       draft.workspaceTabId === activeWorkspaceTabId
@@ -3822,8 +3887,8 @@ export function ChatApp() {
   const runtimeApproval = rawRuntimeApproval && !settledRuntimeApprovalIdSet.has(rawRuntimeApproval.requestId)
     ? rawRuntimeApproval
     : null;
-  const staleRuntimeApprovalNotice = !ultraYoloMode && !rawRuntimeApproval ? staleRuntimeApproval(messages) : null;
-  const visibleBrowserApproval = !ultraYoloMode ? browserApproval : null;
+  const staleRuntimeApprovalNotice = !rawRuntimeApproval ? staleRuntimeApproval(messages) : null;
+  const visibleBrowserApproval = browserApproval;
   const latestAssistantFinal = useMemo(() => {
     if (isGeneratingForActiveView) return null;
     for (const message of [...messages].reverse()) {
@@ -4197,31 +4262,6 @@ export function ChatApp() {
     return () => media.removeEventListener("change", applyMobileHistoryLayout);
   }, [setIsHistoryMinimized]);
 
-  useEffect(() => {
-    if (!catalog) return;
-    const validIds = new Set(composerExtensions.map((tool) => tool.id));
-    setStoredSelectedToolIds((current) => {
-      const next = current.filter((toolId) => validIds.has(toolId));
-      return next.length === current.length ? current : next;
-    });
-  }, [catalog, composerExtensions, setStoredSelectedToolIds]);
-
-  useEffect(() => {
-    const validIds = new Set(composerExtensions.map((tool) => tool.id));
-    const defaults = activeTemplateToolPolicy.defaultEnabledToolIds.filter((toolId) => validIds.has(toolId));
-    if (defaults.length === 0) return;
-    setStoredSelectedToolIds((current) => {
-      let changed = false;
-      const next = [...current];
-      for (const toolId of defaults) {
-        if (next.includes(toolId)) continue;
-        next.push(toolId);
-        changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [activeTemplateToolPolicy.defaultEnabledToolIds, composerExtensions, setStoredSelectedToolIds]);
-
   const updatePendingRequests = (updater: (current: Record<string, PendingChatRequest>) => Record<string, PendingChatRequest>) => {
     setPendingRequests((current) => {
       const next = updater(current);
@@ -4502,6 +4542,7 @@ export function ChatApp() {
           settingsDocumentRevisionRef.current = settings.document_revision;
           settingsValuesRef.current = nextValues;
           setSettingsValues(nextValues);
+          setConfirmedSpotlightSettings(nextValues.general ?? {});
         }
         setSettingsLoadState({ status: "ready" });
       })
@@ -4684,6 +4725,7 @@ export function ChatApp() {
         settingsDocumentRevisionRef.current = nextSettings.document_revision;
         settingsValuesRef.current = nextValues;
         setSettingsValues(nextValues);
+        setConfirmedSpotlightSettings(nextValues.general ?? {});
       }
       setSettingsLoadState({ status: "ready" });
     } else {
@@ -4993,27 +5035,26 @@ export function ChatApp() {
     void refreshPreview(activeConversationId);
   }, [settingsValues.preview?.max_items, settingsValues.preview?.auto_open, activeConversationId]);
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (!spotlightShortcutEnabled) return;
-      if (!shortcutSpecMatchesEvent(spotlightShortcut, event, { allowTextInput: spotlightShortcutTextInput })) return;
-      event.preventDefault();
-      setIsSpotlightOpen(true);
-      setSpotlightSelectedIndex(0);
-    };
-    document.addEventListener("keydown", handleGlobalKeyDown);
-    return () => document.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [spotlightShortcut, spotlightShortcutEnabled, spotlightShortcutTextInput]);
+  useSpotlightShortcut({
+    shortcut: spotlightShortcut, enabled: spotlightShortcutEnabled,
+    allowTextInput: spotlightShortcutTextInput, isMac: spotlightIsMac,
+    blocked: isSettingsOpen || shareDialogOpen || (hasVisibleModal && !isSpotlightOpen),
+    onOpen: () => { setIsSpotlightOpen(true); },
+  });
 
   useEffect(() => {
     if (!isSpotlightOpen) return;
-    const query = spotlightQuery.trim();
-    if (!query) {
+    const query = parsedSpotlightQuery.text;
+    if (!parsedSpotlightQuery.kinds.includes("chat") || parsedSpotlightQuery.providerIds.length > 0 || parsedSpotlightQuery.conflict || !query) {
       setSpotlightResults([]);
+      setSpotlightSearchError(null);
       setSpotlightLoading(false);
       return;
     }
     let cancelled = false;
+    setSpotlightResultsScope(`${spotlightFilter}:${query}`);
+    setSpotlightSearchError(null);
+    setSpotlightResults([]);
     setSpotlightLoading(true);
     const timeout = window.setTimeout(() => {
       void api.searchConversations(query, {
@@ -5024,9 +5065,9 @@ export function ChatApp() {
       }).then((result) => {
         if (cancelled) return;
         setSpotlightResults(result.results);
-      }).catch((searchError) => {
+      }).catch(() => {
         if (cancelled) return;
-        console.error(searchError);
+        setSpotlightSearchError("チャット検索に失敗しました。再試行してください。");
         setSpotlightResults([]);
       }).finally(() => {
         if (!cancelled) setSpotlightLoading(false);
@@ -5036,11 +5077,7 @@ export function ChatApp() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [isSpotlightOpen, spotlightFilter, spotlightQuery]);
-
-  useEffect(() => {
-    setSpotlightSelectedIndex(0);
-  }, [spotlightFilter, spotlightQuery, spotlightResults.length]);
+  }, [isSpotlightOpen, spotlightFilter, spotlightQuery, spotlightSearchRetry]);
 
   useEffect(() => {
     if (!activeConversationId || !isConversationPending || !savedTurnStoreId) return;
@@ -5642,37 +5679,38 @@ export function ChatApp() {
     setIsSpotlightOpen(false);
     setSpotlightQuery("");
     setSpotlightResults([]);
-    setSpotlightSelectedIndex(0);
+    setSpotlightSearchError(null);
+
   };
 
-  const openSpotlightResult = (result: ConversationSearchResult | undefined) => {
-    if (!result?.conversation_id) return;
+  const openSpotlightResult = (result: SpotlightResult | undefined) => {
+    if (!result) return;
+    if (result.kind === "model") {
+      if (!showRegion("settings_modal")) return;
+      const registeredProfile = modelProfiles.find((profile) => profile.profile_id === result.model.profile_id
+        && profile.model_id === result.model.model_id);
+      const profileConnection = registeredProfile?.metadata?.provider_connection_id;
+      const connectionId = result.model.connection_id
+        || (typeof profileConnection === "string" ? profileConnection : undefined);
+      if (!requestModelProperties(result.model, Boolean(registeredProfile), connectionId, modelPropertiesScope)) return;
+      closeSpotlight();
+      openSettingsSection("models");
+      return;
+    }
+    if (result.kind !== "chat") {
+      // Opening a catalog screen never selects or executes the tool.
+      if (!showRegion("right_sidebar") || !sidebarItems.some((item) => item.id === result.id && item.category === result.kind)) return;
+      closeSpotlight();
+      setActiveSidebarItemId(result.id);
+      setSidebarSelectionTick((value) => value + 1);
+      return;
+    }
     closeSpotlight();
     setError(null);
-    void loadConversation(result.conversation_id);
+    void loadConversation(result.conversation.conversation_id);
   };
 
-  const handleSpotlightKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeSpotlight();
-      return;
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setSpotlightSelectedIndex((index) => Math.min(index + 1, Math.max(visibleSpotlightResults.length - 1, 0)));
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSpotlightSelectedIndex((index) => Math.max(index - 1, 0));
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      openSpotlightResult(visibleSpotlightResults[spotlightSelectedIndex] ?? visibleSpotlightResults[0]);
-    }
-  };
+
 
   const applySettingsValues = (next: Record<string, Record<string, unknown>>) => {
     settingsValuesRef.current = next;
@@ -5724,6 +5762,7 @@ export function ChatApp() {
           settingsDocumentMutationRevisionRef.current,
         );
         settingsDocumentRevisionRef.current = result.document_revision;
+        setConfirmedSpotlightSettings(result.values.general ?? {});
         if (revision !== settingsSaveRevisionRef.current) return result;
         const persisted = withCalendarSettingsValues({
           ...settingsValuesRef.current,
@@ -6096,7 +6135,7 @@ export function ChatApp() {
     setIsSettingsOpen(true);
   }, []);
 
-  const actionApprovalMode: ActionApprovalMode = ultraYoloMode ? "full" : yoloMode ? "agent" : "ask";
+  const actionApprovalMode: ActionApprovalMode = "ask";
 
   const setFullAccessEnabled = useCallback((enabled: boolean) => {
     const nextState = resolveUltraYoloModeState(
@@ -6111,16 +6150,6 @@ export function ChatApp() {
     setUltraYoloMode(nextState.ultraYoloMode);
     setUltraYoloRestoreYoloMode(nextState.restoreYoloMode);
   }, [setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode, ultraYoloMode, ultraYoloRestoreYoloMode, yoloMode]);
-
-  const handleActionApprovalModeChange = useCallback((nextMode: ActionApprovalMode) => {
-    if (nextMode === "full") {
-      setFullAccessEnabled(true);
-      return;
-    }
-    setUltraYoloMode(false);
-    setUltraYoloRestoreYoloMode(false);
-    setYoloMode(nextMode === "agent");
-  }, [setFullAccessEnabled, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode]);
 
   const handleSwitchToVisionModel = useCallback(() => {
     if (preferredVisionCandidate) {
@@ -6261,29 +6290,21 @@ export function ChatApp() {
     toggleSelectedTool(item);
   };
 
+  const setComposerSelectedTools = (toolIds: string[], text = input, widgets = droppedWidgets) => {
+    const next = replaceComposerToolMentions(text, widgets, composerExtensions, toolIds);
+    handleComposerInputChange(next.value);
+    setComposerEntityReferences((current) => mergeComposerReferences(current, [], next.value));
+    setDroppedWidgets(next.widgets);
+  };
+
   const toggleSelectedTool = (item: ComposerExtensionItem) => {
-    if (disabledToolIdSet.has(item.id)) {
+    if (disabledToolIdSet.has(item.id) || item.disabled) {
       setError(`${item.label || item.id} は機能と接続の権限設定でブロックされています。`);
       return;
     }
-    const semanticMentionToolIds = new Set(
-      composerMentionToolIdsFromWidgets(droppedWidgets),
-    );
-    if (selectedToolIdSet.has(item.id) && semanticMentionToolIds.has(item.id)) {
-      dismissedComposerMentionToolsRef.current.set(
-        item.id,
-        composerMentionSyntaxesForToolId(droppedWidgets, item.id),
-      );
-    } else if (!selectedToolIdSet.has(item.id)) {
-      dismissedComposerMentionToolsRef.current.delete(item.id);
-    }
-    toolSelectionController.setTurnMode("manual");
-    setStoredSelectedToolIds((current) => {
-      if (current.includes(item.id)) {
-        return current.filter((selectedId) => selectedId !== item.id);
-      }
-      return [...current, item.id];
-    });
+    setComposerSelectedTools(selectedToolIds.includes(item.id)
+      ? selectedToolIds.filter((id) => id !== item.id)
+      : [...selectedToolIds, item.id]);
   };
 
   const runFrontendCommandAction = (
@@ -6295,6 +6316,8 @@ export function ChatApp() {
     if (!conversationViewLoaderRef.current.matches(ticket)
       && action !== "fork_conversation" && action !== "rename_conversation") return;
     switch (action) {
+      case "open_task_pet":
+        return executeLocalTaskPetCommand(command, runtimeProfileId, taskPetRef.current, setError);
       case "open_model_picker": {
         const query = String(args.query ?? "").trim().toLowerCase();
         setComposerCandidateMenu(null);
@@ -6646,6 +6669,9 @@ export function ChatApp() {
     }
     try {
       setError(null);
+      if (isLocalTaskPetCommand(parsed.command)) {
+        return await runFrontendCommandAction("open_task_pet", parsed.command, parsed.args, ticket);
+      }
       const highRiskRef = highRiskCommandRef(parsed.command);
       if (highRiskRef) {
         if (highRiskPrepareInFlightRef.current || pendingHighRiskCommand) {
@@ -6796,6 +6822,28 @@ export function ChatApp() {
     }
     if (!commandUiIsCurrent()) return false;
   };
+
+  const handleLocalComposerCommand = (rawInput: string): boolean => consumeLocalTaskPetInput(
+    rawInput,
+    slashCommandsEnabled,
+    (raw) => parseSlashCommandInput(raw, effectiveCommandCatalog),
+    (command, raw) => {
+      const commandTicket = conversationViewLoaderRef.current.capture();
+      const submittedDraftGeneration = taskPetDraftRef.current.generation;
+      const submittedProfileId = runtimeProfileId;
+      void completeLocalTaskPetSubmission(
+        () => executeComposerCommand(command.id, raw),
+        () => conversationViewLoaderRef.current.matches(commandTicket)
+          && taskPetDraftRef.current.generation === submittedDraftGeneration
+          && liveTaskContextRef.current.profileId === submittedProfileId,
+        () => setInput(""),
+        taskPetDraftRef.current.input,
+      );
+    },
+    () => setError(slashCommandsEnabled
+      ? "ペットの準備ができていません。もう一度 /pet を実行してください。"
+      : "/pet を利用するにはスラッシュコマンドを有効にしてください。"),
+  );
 
   const handleComposerCommand = (commandId: string, rawInput?: string) => {
     if (!slashCommandsEnabled) return;
@@ -7122,15 +7170,36 @@ export function ChatApp() {
     }
   };
 
+  const projectRuntimeProfileRef = useRef(runtimeProfileId);
+  projectRuntimeProfileRef.current = runtimeProfileId;
   const handleDirectorySelect = async () => {
-    const selected = await api.selectDirectory("Project に紐づける既存フォルダを選択");
-    return selected.cancelled ? null : selected.path;
+    const profile = runtimeProfileId;
+    const selected = await api.selectDirectory();
+    if (projectRuntimeProfileRef.current !== profile) return null;
+    return selected.cancelled ? null : selected;
+  };
+
+  const handleProjectWorkspaceCreate = async (selection: ProjectDirectorySelection, isCurrent: () => boolean = () => true) => {
+    const profile = runtimeProfileId;
+    const assertCurrent = () => {
+      if (projectRuntimeProfileRef.current !== profile || !isCurrent()) {
+        throw new Error("Project form changed. Your draft has not been saved.");
+      }
+    };
+    assertCurrent();
+    const created = await api.mountProjectWorkspace(selection, assertCurrent);
+    assertCurrent();
+    const listed = await api.listCodingWorkspaces();
+    assertCurrent();
+    setCodingWorkspaces(listed.workspaces);
+    setSelectedCodingWorkspaceId(created.workspace_id);
+    return created;
   };
 
   const handleCodingWorkspacePickCreate = async () => {
     const selected = await handleDirectorySelect();
     if (!selected) return null;
-    return handleCodingWorkspaceCreate(selected);
+    return handleProjectWorkspaceCreate(selected);
   };
 
   const handlePrepareChatGroupStorage = async (rootPath: string) => {
@@ -7156,32 +7225,18 @@ export function ChatApp() {
   };
 
   const handleDropWidget = (widget: DroppedWidget) => {
-    const ownedWidget = withComposerMentionSelectionOwnership(widget, selectedToolIds);
-    for (const toolId of composerMentionToolIdsFromWidgets([ownedWidget])) {
-      dismissedComposerMentionToolsRef.current.delete(toolId);
+    const isToolSelection = widget.type === "tool" || widget.widgetKind === "tool_toggle";
+    if (isToolSelection && widget.metadata?.source !== "composer_at_mention") {
+      const toolId = widget.sourceItemId || widget.id;
+      const item = composerExtensions.find((candidate) => candidate.id === toolId && !candidate.disabled);
+      if (item) setComposerSelectedTools([...new Set([...selectedToolIds, item.id])]);
+      return;
     }
+    const ownedWidget = withComposerMentionSelectionOwnership(widget, []);
     setDroppedWidgets((prev) => {
       if (prev.some((w) => w.id === ownedWidget.id)) return prev;
       return [...prev, { ...ownedWidget, enabled: ownedWidget.enabled ?? true }];
     });
-    if ((ownedWidget.widgetKind === "tool_toggle" || ownedWidget.type === "tool") && ownedWidget.enabled !== false) {
-      const toolId = ownedWidget.sourceItemId || ownedWidget.id;
-      const item = composerExtensions.find((candidate) => candidate.id === toolId);
-      if (item) {
-        toolSelectionController.setTurnMode("manual");
-        setStoredSelectedToolIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-      }
-    }
-    if (ownedWidget.type === "service" && ownedWidget.metadata?.source === "composer_at_mention") {
-      const serviceId = ownedWidget.sourceItemId || ownedWidget.id.replace(/^mention-service:/, "");
-      const serviceToolIds = composerExtensions
-        .filter((item) => !item.disabled && toolGroupFor(item).id === serviceId)
-        .map((item) => item.id);
-      if (serviceToolIds.length > 0) {
-        toolSelectionController.setTurnMode("manual");
-        setStoredSelectedToolIds((current) => [...new Set([...current, ...serviceToolIds])]);
-      }
-    }
   };
 
   const handleWidgetToggle = (widgetId: string) => {
@@ -7198,40 +7253,10 @@ export function ChatApp() {
   };
 
   const handleToolBatchSet = (toolIds: string[], enabled: boolean) => {
-    const validIds = new Set(composerExtensions.map((tool) => tool.id));
-    const requestedIds = [...new Set(toolIds.filter((toolId) => validIds.has(toolId)))];
-    if (requestedIds.length === 0) return;
-    const semanticMentionToolIds = new Set(
-      composerMentionToolIdsFromWidgets(droppedWidgets),
-    );
-    for (const toolId of requestedIds) {
-      if (enabled) dismissedComposerMentionToolsRef.current.delete(toolId);
-      else if (semanticMentionToolIds.has(toolId)) {
-        dismissedComposerMentionToolsRef.current.set(
-          toolId,
-          composerMentionSyntaxesForToolId(droppedWidgets, toolId),
-        );
-      }
-    }
-    toolSelectionController.setTurnMode("manual");
-    setStoredSelectedToolIds((current) => {
-      if (enabled) return [...new Set([...current, ...requestedIds])];
-      const requestedIdSet = new Set(requestedIds);
-      return current.filter((toolId) => !requestedIdSet.has(toolId));
-    });
-  };
-
-  const handleToolSelectionTargetRemove = (target: ToolTarget) => {
-    if (
-      target.kind === "tool"
-      && composerMentionToolIdsFromWidgets(droppedWidgets).includes(target.id)
-    ) {
-      dismissedComposerMentionToolsRef.current.set(
-        target.id,
-        composerMentionSyntaxesForToolId(droppedWidgets, target.id),
-      );
-    }
-    toolSelectionController.removeTarget(target);
+    const validIds = new Set(composerExtensions.filter((tool) => !tool.disabled).map((tool) => tool.id));
+    const requestedIds = toolIds.filter((id) => validIds.has(id));
+    setComposerSelectedTools(enabled ? [...new Set([...selectedToolIds, ...requestedIds])]
+      : selectedToolIds.filter((id) => !requestedIds.includes(id)));
   };
 
   const handleComposerEndpointAction = async (widget: DroppedWidget, action: Extract<ComposerWidgetAction, { type: "call_endpoint" }>) => {
@@ -7923,6 +7948,7 @@ export function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    if (!override && handleLocalComposerCommand(input)) return;
     if (!conversationOwnsSelectedView(
       savedTurnViewFenceRef.current.capture(), activeWorkspaceTabId,
       activeConversationId, activeConversation?.id ?? null,
@@ -7976,33 +8002,28 @@ export function ChatApp() {
     const submittedAttachments = attachmentsForSubmit;
     const wasNewConversation = isNewConversation;
     const startsWithoutConversation = !activeConversation;
-    const selectionToolIdsForReconciliation = override?.toolSelectionRequest
-      ? toolIdsFromSelectionRequest(override.toolSelectionRequest)
-      : selectedToolIds;
+    const requestedMentionDraft = resolveComposerToolMentions(userText, requestedDroppedWidgets, composerExtensions);
+    const selectionToolIdsForReconciliation = composerMentionToolIdsFromWidgets(requestedMentionDraft.widgets);
     const reconciledDraft = reconcileComposerSemanticDraft({
       attachmentPaths: semanticAttachmentPaths(submittedAttachments),
-      droppedWidgets: requestedDroppedWidgets,
+      droppedWidgets: [
+        ...requestedDroppedWidgets.filter((widget) => widget.type !== "tool" && widget.type !== "service"),
+        ...requestedMentionDraft.widgets,
+      ],
       requireFileAttachment: true,
       selectedToolIds: selectionToolIdsForReconciliation,
       text: userText,
     });
     const droppedWidgetsForSubmit = reconciledDraft.droppedWidgets;
-    const selectedToolIdsForSubmit = reconciledDraft.selectedToolIds;
-    const semanticMentionToolIds = new Set(composerMentionToolIdsFromWidgets(requestedDroppedWidgets));
-    const explicitToolReferenceIds = composerEntityReferences
-      .filter((reference) => reference.kind === "tool")
-      .map((reference) => reference.id);
+    const mentionDraft = resolveComposerToolMentions(userText, droppedWidgetsForSubmit, composerExtensions);
+    const mentionedToolIds = mentionDraft.toolIds;
     const explicitSkillReferenceIds = composerEntityReferences
-      .filter((reference) => reference.kind === "skill")
+      .filter((reference) => reference.kind === "skill" && hasUnescapedMentionSyntax(userText, reference.syntax))
       .map((reference) => reference.id);
-    const mentionedToolIds = [...new Set([...explicitToolReferenceIds, ...toolMentionIdsFromText(userText, composerExtensions)
-      .filter((toolId) => !semanticMentionToolIds.has(toolId))
-      .filter((toolId) => !dismissedComposerMentionToolsRef.current.has(toolId))])];
     const mentionedSkillIdsFromText = [...new Set([...explicitSkillReferenceIds, ...skillMentionIdsFromText(userText, composerSkills)])];
-    const toolSelectionRequest = override?.toolSelectionRequest ?? toolSelectionController.buildRequest({
-      toolIds: selectedToolIdsForSubmit,
-      mentionedToolIds,
-    });
+    const toolSelectionRequest = override?.toolSelectionRequest ?? composerMentionSelectionRequest(
+      mentionDraft, toolSelectionController.state.effectiveMode,
+    );
     if (!override?.skipReview && toolSelectionRequest.mode === "review") {
       setError(null);
       try {
@@ -8041,12 +8062,14 @@ export function ChatApp() {
     setAttachedFiles([]);
     let submittedConversationId: string | null = null;
     const shouldKeepSelectedToolsAfterSend = keepSelectedToolsAfterSend(settingsValues);
-    const requestedToolIds = [...new Set([...selectedToolIdsForSubmit, ...mentionedToolIds, ...toolIdsFromSelectionRequest(toolSelectionRequest)])];
+    const requestedToolIds = override?.toolSelectionRequest
+      ? toolIdsFromSelectionRequest(toolSelectionRequest).filter((id) => composerExtensions.some((tool) => tool.id === id && !tool.disabled))
+      : mentionedToolIds;
     const submittedToolIds = toolSelectionRequest.mode === "none" ? [] : requestedToolIds;
     const submittedToolIdSet = new Set(submittedToolIds);
     const composerToolById = new Map(composerExtensions.map((item) => [item.id, item]));
     const composerSkillById = new Map(composerSkills.map((item) => [item.id, item]));
-    const droppedWidgetToolIds = new Set(droppedWidgetsForSubmit.map((widget) => widget.sourceItemId || widget.id));
+    const droppedWidgetToolIds = new Set(composerMentionToolIdsFromWidgets(droppedWidgetsForSubmit));
     const droppedWidgetSkillIds = new Set(
       droppedWidgetsForSubmit
         .filter((widget) => widget.type === "skill" || widget.widgetKind === "skill_prompt")
@@ -8103,6 +8126,7 @@ export function ChatApp() {
       ticket: submissionViewTicket,
     };
     const submissionStoreId = savedTurnStoreId;
+    const submissionProfileId = runtimeProfileId;
     const submissionUiIsCurrent = () => (
       savedTurnStoreIdRef.current === submissionStoreId
       && activeSavedTurnSubmissionRef.current?.clientId === optimisticOverlayClientId
@@ -8123,7 +8147,7 @@ export function ChatApp() {
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
       if (submittedSkillIds.length
-        || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
+        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget)) || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
@@ -8376,7 +8400,11 @@ export function ChatApp() {
         setDroppedWidgets([]);
         setRetryableSubmission(null);
         dismissedComposerMentionToolsRef.current.clear();
-        toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
+        toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: false });
+        setInput((current) => current.trim() ? current : materializeLegacyToolMentions(
+          current, parseConversationToolPreferences(snapshot.metadata),
+          shouldKeepSelectedToolsAfterSend ? submittedToolIds : [], composerExtensions,
+        ).value);
       }
     } catch (submitError) {
       console.error("Chat error:", submitError);
@@ -8489,7 +8517,12 @@ export function ChatApp() {
       setInput(inputForSubmit);
       setAttachedFiles(submittedAttachments);
       setDroppedWidgets(droppedWidgetsForSubmit);
+      setError(submitErrorMessage);
       setRetryableSubmission({
+        storeId: submissionStoreId,
+        profileId: submissionProfileId,
+        viewTicket: { ...submissionViewTicket },
+        errorGeneration: errorGenerationRef.current,
         input: inputForSubmit,
         attachments: submittedAttachments,
         droppedWidgets: droppedWidgetsForSubmit,
@@ -8497,7 +8530,6 @@ export function ChatApp() {
         skipReview: true,
         errorMessage: submitErrorMessage,
       });
-      setError(submitErrorMessage);
       setIsNewChatLaunching(false);
     } finally {
       if (streamingConversationIdRef.current === submittedConversationId) {
@@ -8512,9 +8544,25 @@ export function ChatApp() {
     }
   };
 
+  const retryIsEligible = () => {
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    return chatRetryEligible(retryableSubmission, {
+      error,
+      errorGeneration: errorGenerationRef.current,
+      storeId: savedTurnStoreIdRef.current,
+      profileId: liveTaskContextRef.current.profileId,
+      conversationId: liveTaskContextRef.current.conversationId,
+      viewTicket,
+      isGenerating: isGeneratingForActiveView,
+      hasPendingSavedTurn: Boolean(viewTicket.conversationId
+        && pendingRequestsRef.current[viewTicket.conversationId]?.savedTurn),
+      hasActiveSubmission: activeSavedTurnSubmissionRef.current !== null,
+    });
+  };
   const handleRetryLastFailedSubmission = () => {
     const retry = retryableSubmission;
-    if (!retry || isGeneratingForActiveView) return;
+    if (!retry || !retryIsEligible()) return;
+    // Error generation changes synchronously, consuming even a stale click handler.
     setError(null);
     setRetryableSubmission(null);
     void handleSubmit(undefined, {
@@ -8570,7 +8618,9 @@ export function ChatApp() {
     const pending = toolSelectionController.state.pendingReview;
     if (!pending) return;
     const selectedIds = pending.decision.selected_tools.filter((toolId) => composerExtensions.some((tool) => tool.id === toolId));
-    setStoredSelectedToolIds(selectedIds);
+    toolSelectionController.cancelReview();
+    setAttachedFiles(pending.draft.attachments as AttachedFile[]);
+    setComposerSelectedTools(selectedIds, pending.draft.input, pending.draft.droppedWidgets as DroppedWidget[]);
     toolSelectionController.setTurnMode("manual");
   };
 
@@ -8628,7 +8678,7 @@ export function ChatApp() {
 
   const openKanbanScope = (
     scope: KanbanBoardScope = { type: "global", id: "default" },
-    label = "All Rumi Runs",
+    label = "All Tobkiri Runs",
   ) => {
     if (!canLeavePackViews()) return;
     if (!workspaceTabsEnabled) {
@@ -8734,12 +8784,11 @@ export function ChatApp() {
       selectedProjectId={effectiveGroupId}
       attachedFiles={attachedFiles}
       pendingMentionAttachmentPaths={pendingMentionAttachmentPaths}
-      droppedWidgets={activeDroppedWidgets}
+      droppedWidgets={[...activeDroppedWidgets.filter((widget) => widget.type !== "tool" && widget.type !== "service"), ...composerToolMentionDraft.widgets]}
       entityReferences={composerEntityReferences}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
       toolSelectionMode={toolSelectionController.state.effectiveMode}
-      toolSelectionTargets={toolSelectionController.state.overrideChips}
       toolSelectionReview={toolSelectionController.state.pendingReview}
       keyboardButtonNavigation={keyboardButtonNavigation}
       steerStatus={modelSteerStatus}
@@ -8785,15 +8834,15 @@ export function ChatApp() {
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
-      onActionApprovalModeChange={handleActionApprovalModeChange}
+      onActionApprovalModeChange={undefined}
       onToolSelectionModeChange={toolSelectionController.setTurnMode}
-      onToolSelectionTargetRemove={handleToolSelectionTargetRemove}
       onToolSelectionReviewApprove={handleToolReviewApprove}
       onToolSelectionReviewEdit={handleToolReviewEdit}
       onToolSelectionReviewNoTools={handleToolReviewNoTools}
       onToolSelectionReviewCancel={handleToolReviewCancel}
       onSwitchToVisionModel={handleSwitchToVisionModel}
       onExtensionSelect={handleComposerExtensionSelect}
+      onLocalCommandSubmit={handleLocalComposerCommand}
       onCommandSelect={handleComposerCommand}
       onModelCommandCandidateSelect={handleModelCommandCandidateSelect}
       onModelCommandCandidatesClose={() => setComposerCandidateMenu(null)}
@@ -8823,6 +8872,8 @@ export function ChatApp() {
       onCodingContextRefresh={() => void loadCodingContext().catch(reportCodingLoadError)}
       onProjectSelect={handleComposerProjectSelect}
       onProjectDirectorySelect={handleDirectorySelect}
+      onProjectWorkspaceCreate={handleProjectWorkspaceCreate}
+      projectProfileId={runtimeProfileId}
       onProjectStoragePrepare={handlePrepareChatGroupStorage}
     />
     {renderViewSlot("composer_below")}
@@ -8860,7 +8911,7 @@ export function ChatApp() {
               onNewTask={handleNewTask}
               codingWorkspaces={codingWorkspaces}
               selectedCodingWorkspaceId={effectiveWorkspaceId}
-              onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
+              onCodingWorkspaceCreate={handleProjectWorkspaceCreate}
               onDirectorySelect={handleDirectorySelect}
               onGroupDataPathPrepare={handlePrepareChatGroupStorage}
               onCodingWorkspacesRefresh={async () => {
@@ -8876,7 +8927,7 @@ export function ChatApp() {
               isDesktopsActive={isDesktopsWorkspace}
               onSettingsClick={openSettingsHome}
               onChatMetadataChange={handleHistoryMetadataChange}
-              onSearchOpen={() => { setIsSpotlightOpen(true); setSpotlightSelectedIndex(0); }}
+              onSearchOpen={() => { setIsSpotlightOpen(true); }}
               onMinimize={() => setIsHistoryMinimized(true)}
               onRestore={() => setIsHistoryMinimized(false)}
               isCompact={isHistoryMinimized}
@@ -8977,8 +9028,9 @@ export function ChatApp() {
               <DesktopMonitorWorkspace />
             ) : isKanbanMode ? (
               <KanbanWorkspacePanel
+                key={`${runtimeProfileId}:${activeWorkspaceTab?.kanbanScope?.type ?? "global"}:${activeWorkspaceTab?.kanbanScope?.id ?? "default"}`}
                 scope={activeWorkspaceTab?.kanbanScope ?? { type: "global", id: "default" }}
-                scopeLabel={activeWorkspaceTab?.kanbanScopeLabel ?? (activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : "All Rumi Runs")}
+                scopeLabel={activeWorkspaceTab?.kanbanScopeLabel ?? (activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : "All Tobkiri Runs")}
                 activeConversationId={activeConversationId}
                 workspaceId={effectiveWorkspaceId}
                 companyId={activeCompanyWorkspaceHint}
@@ -9047,12 +9099,16 @@ export function ChatApp() {
               />
             ) : showNewConversationStage && !isLoading ? (
               <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
+                <ChatNotifications
+                  completionNotice={savedTurnCompletionNotice?.conversationId === activeConversationId
+                    ? savedTurnCompletionNotice
+                    : null}
+                  error={error}
+                  onRetry={retryIsEligible() ? handleRetryLastFailedSubmission : undefined}
+                  onDismissCompletionNotice={() => setSavedTurnCompletionNotice(null)}
+                  onDismissError={error ? dismissChatError : undefined}
+                />
                 <div className="w-full">
-                  {error && (
-                    <div className="mx-auto mb-4 max-w-[720px] rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm leading-relaxed text-red-100" role="alert">
-                      {error}
-                    </div>
-                  )}
                   <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
                     {composerHomeTitle}
                   </h1>
@@ -9087,7 +9143,7 @@ export function ChatApp() {
                   setShowPreview(!(effectiveShowPreview && activePreviewId === previewId));
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
-                onRetry={retryableSubmission && error === retryableSubmission.errorMessage ? handleRetryLastFailedSubmission : undefined}
+                onRetry={retryIsEligible() ? handleRetryLastFailedSubmission : undefined}
                 onDismissCompletionNotice={() => setSavedTurnCompletionNotice(null)}
                 onDismissError={error ? dismissChatError : undefined}
               />
@@ -9278,6 +9334,13 @@ export function ChatApp() {
               ui: item.ui,
             })}
             onToolBatchSet={handleToolBatchSet}
+            onConversationToolPreferencesChange={(conversationId, preferences, toolIds, enabled) => {
+              if (conversationViewLoaderRef.current.capture().conversationId !== conversationId) return;
+              setActiveConversation((current) => current?.id === conversationId ? {
+                ...current, metadata: { ...current.metadata, tool_preferences: preferences },
+              } : current);
+              handleToolBatchSet(toolIds, enabled);
+            }}
             onPanelAction={handlePanelAction}
           />
           </div>
@@ -9289,13 +9352,14 @@ export function ChatApp() {
         query={spotlightQuery}
         filter={spotlightFilter}
         results={visibleSpotlightResults}
-        selectedIndex={spotlightSelectedIndex}
-        loading={spotlightLoading}
+        loading={(parsedSpotlightQuery.kinds.includes("chat") && !parsedSpotlightQuery.providerIds.length && spotlightLoading) || spotlightModels.loading}
+        error={spotlightModels.error || (spotlightResultsScope === spotlightChatScope ? spotlightSearchError : null)}
+        onRetry={() => { spotlightModels.retry(); setSpotlightSearchRetry((value) => value + 1); }}
+        modelsComplete={spotlightModels.complete}
         locale={locale}
         shortcutLabel={spotlightShortcutLabel}
         onQueryChange={setSpotlightQuery}
         onFilterChange={setSpotlightFilter}
-        onKeyDown={handleSpotlightKeyDown}
         onClose={closeSpotlight}
         onOpenResult={openSpotlightResult}
       />
@@ -9312,6 +9376,7 @@ export function ChatApp() {
           settingsValues={settingsValues}
           desktopSystemInfo={desktopSystemInfo}
           modelProfiles={settingsModelProfiles}
+          runtimeProfileId={runtimeProfileId}
           activeModelProfileId={activeProfile?.profile_id ?? activeModelId}
           backendConnectionState={backendConnectionState}
           backendConnectionNote={backendConnectionNote}
@@ -9329,6 +9394,8 @@ export function ChatApp() {
       )}
 
       <TaskPet
+        controllerRef={taskPetRef}
+        onError={setError}
         profileId={runtimeProfileId}
         snapshotProfileId={taskPetSnapshot?.profileId ?? null}
         snapshot={taskPetSnapshot?.snapshot ?? null}

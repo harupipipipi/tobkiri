@@ -6,7 +6,7 @@
       "path": "domain/tool/calculator.py"
     },
     {
-      "digest": "sha256:382a8c280cd0b5f0961e2ac81f776c3031b80b0c327a58b78ff276ca46797a8b",
+      "digest": "sha256:952e52009df1cd2d4a52af532723bfbfdd10d2f10c368c51fb039a436590b4cb",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -19,6 +19,11 @@
       "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
       "kind": "executable",
       "path": "runtime/calculator.py"
+    },
+    {
+      "digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "kind": "executable",
+      "path": "runtime/file_create.py"
     },
     {
       "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
@@ -46,7 +51,7 @@
       "path": "tools/calculator/manifest.json"
     },
     {
-      "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+      "digest": "sha256:96ed5072ee1d229d70b5e631cf078156148ac5528dbe2c1a25deb04bf960669c",
       "kind": "sidecar",
       "path": "tools/coding_file_create/manifest.json"
     },
@@ -181,14 +186,23 @@
       "contract_id": "tobkiri.service.tool.local.operation.v1",
       "operations": [
         "rumi_default_tools_pack.calculator-evaluate",
-        "rumi_default_tools_pack.files-read-operation"
+        "rumi_default_tools_pack.files-read-operation",
+        "rumi_default_tools_pack.file-create-operation"
       ],
-      "revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c"
+      "revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1"
+    },
+    {
+      "contract_id": "tobkiri.service.file.create.v1",
+      "operations": [
+        "rumi_default_tools_pack.file-create-prepare",
+        "rumi_default_tools_pack.file-create"
+      ],
+      "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c",
+      "contract_revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
       "id": "rumi_default_tools_pack.calculator",
       "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
       "isolation": "dedicated_process",
@@ -198,7 +212,37 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c",
+      "contract_revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+      "id": "rumi_default_tools_pack.file-create-prepare.service",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_default_tools_pack.file-create-prepare"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
+      "id": "rumi_default_tools_pack.file-create-tool",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_default_tools_pack.file-create-operation"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+      "id": "rumi_default_tools_pack.file-create.service",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_default_tools_pack.file-create"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
       "id": "rumi_default_tools_pack.files-read",
       "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
       "isolation": "dedicated_process",
@@ -209,9 +253,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:a181f942ff614655042b1facd5194b9ee4719c5169d1d18b42b01e6d880ef69e",
-    "contract_catalog_digest": "sha256:8526f30dad82d10b766ffad5ec07cfb5e829bcd11262c52e56a234bb8745ee78",
-    "source_identity": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d"
+    "artifact_set_digest": "sha256:6db4739b606539a37b7fe26885cc8be2d8eb29b8601669b66058f5a94628d697",
+    "contract_catalog_digest": "sha256:c817d561b17bd05a7955ded8e4f3d789e0c076545f4612a7c920199fb6c32425",
+    "source_identity": "sha256:7e291e52101555f1040d2321fcc39c38f2c59b8ce8d81f8f119f561349e9fee4"
   },
   "migration": {
     "compatibility": "read_only",
@@ -235,6 +279,39 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.service.file.create.v1",
+      "effect_ceiling": [
+        "capability:file.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_default_tools_pack.file-create",
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create.service",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "effect_ceiling": [
+        "capability:tool.local.operation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_default_tools_pack.file-create-operation",
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create-tool",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.file.create.v1",
+      "effect_ceiling": [
+        "capability:file.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_default_tools_pack.file-create-prepare",
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create-prepare.service",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.service.tool.local.operation.v1",
       "effect_ceiling": [
         "capability:tool.local.operation",
@@ -247,7 +324,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:a181f942ff614655042b1facd5194b9ee4719c5169d1d18b42b01e6d880ef69e",
+    "artifact_digest": "sha256:6db4739b606539a37b7fe26885cc8be2d8eb29b8601669b66058f5a94628d697",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
     "kind": "host_extension",
@@ -257,7 +334,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d",
+        "digest": "sha256:7e291e52101555f1040d2321fcc39c38f2c59b8ce8d81f8f119f561349e9fee4",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -268,7 +345,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d",
+    "source_digest": "sha256:7e291e52101555f1040d2321fcc39c38f2c59b8ce8d81f8f119f561349e9fee4",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
   },
@@ -282,6 +359,30 @@
       "provider_id": "rumi_default_tools_pack.calculator"
     },
     {
+      "contract_reference": "tobkiri.service.file.create.v1",
+      "operations": [
+        "rumi_default_tools_pack.file-create-prepare"
+      ],
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create-prepare.service"
+    },
+    {
+      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "operations": [
+        "rumi_default_tools_pack.file-create-operation"
+      ],
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create-tool"
+    },
+    {
+      "contract_reference": "tobkiri.service.file.create.v1",
+      "operations": [
+        "rumi_default_tools_pack.file-create"
+      ],
+      "owner": "rumi_default_tools_pack",
+      "provider_id": "rumi_default_tools_pack.file-create.service"
+    },
+    {
       "contract_reference": "tobkiri.service.tool.local.operation.v1",
       "operations": [
         "rumi_default_tools_pack.files-read-operation"
@@ -293,7 +394,8 @@
   "requirements": {
     "approval_policy": "none",
     "capabilities": [
-      "tool.local.operation"
+      "tool.local.operation",
+      "file.write"
     ],
     "contract_dependencies": [
       {
@@ -307,6 +409,12 @@
         "contract_id": "tobkiri.resource.workspace.v1",
         "optional": false,
         "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
       }
     ],
     "execution_boundary": "host_brokered",
@@ -317,7 +425,8 @@
     "pack_dependencies": {
       "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
       "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
-      "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0"
+      "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
     },
     "secrets": [],
     "workspace_boundary": "pack_local"

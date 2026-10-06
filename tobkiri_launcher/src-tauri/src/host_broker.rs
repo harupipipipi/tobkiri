@@ -98,6 +98,8 @@ struct HostBrokerShared {
     used_approval_tokens: Mutex<HashMap<String, u64>>,
     attestation: BrokerAttestationIdentity,
     browser_access_opener: Arc<dyn Fn(&str, u16) -> Result<(), String> + Send + Sync>,
+    project_directory_picker: Arc<dyn Fn() -> Result<Option<PathBuf>, String> + Send + Sync>,
+    project_directory_lock: Mutex<()>,
     authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
 
@@ -186,6 +188,23 @@ impl HostBrokerRuntime {
             Arc::new(move |id, port| {
                 crate::browser_access::open(&browser_app, &browser_config, id, port)
             });
+        let directory_app = app.clone();
+        let project_directory_picker: Arc<
+            dyn Fn() -> Result<Option<PathBuf>, String> + Send + Sync,
+        > = Arc::new(move || {
+            use tauri_plugin_dialog::DialogExt;
+            directory_app
+                .dialog()
+                .file()
+                .set_title("Choose a Tobkiri project folder")
+                .blocking_pick_folder()
+                .map(|selected| {
+                    selected
+                        .into_path()
+                        .map_err(|_| "Project folder picker returned an invalid path".to_string())
+                })
+                .transpose()
+        });
         let authority_approval_window_opener = Self::authority_approval_window_opener(app, config);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
@@ -200,6 +219,8 @@ impl HostBrokerRuntime {
                     used_approval_tokens: Mutex::new(HashMap::new()),
                     attestation,
                     browser_access_opener,
+                    project_directory_picker,
+                    project_directory_lock: Mutex::new(()),
                     authority_approval_window_opener,
                 }),
             });
@@ -261,6 +282,8 @@ impl HostBrokerRuntime {
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
                     browser_access_opener,
+                    project_directory_picker,
+                    project_directory_lock: Mutex::new(()),
                     authority_approval_window_opener,
                     attestation,
                 }),
@@ -758,6 +781,40 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                         "consumed": false,
                         "error": {"code": "DEBUG_EXECUTION_INVALID", "message": error}
                     }),
+                }
+            })
+        }
+        ("POST", "/api/host/project-directory/pick") => {
+            handle_authorized_json(request, shared, |payload: serde_json::Value| {
+                let identity = serde_json::from_value::<
+                    crate::host_contract::ExecutionProfileIdentity,
+                >(payload.clone())
+                .ok();
+                if payload.as_object().map(|v| v.len()) != Some(4)
+                    || identity.is_none()
+                    || identity != crate::host_contract::read_identity(&shared.config)
+                {
+                    return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_INVALID"}});
+                }
+                let Ok(_dialog) = shared.project_directory_lock.try_lock() else {
+                    return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_BUSY"}});
+                };
+                let selected = (shared.project_directory_picker)();
+                // A result from a retired execution Profile cannot cross into the new one.
+                if identity != crate::host_contract::read_identity(&shared.config) {
+                    return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_STALE"}});
+                }
+                match selected {
+                    Ok(None) => json!({"ok":true,"identity":identity,"cancelled":true,"path":null}),
+                    Ok(Some(path)) if path.is_absolute() && path.is_dir() => match path.to_str() {
+                        Some(value)
+                            if value.len() <= 32768 && !value.chars().any(char::is_control) =>
+                        {
+                            json!({"ok":true,"identity":identity,"cancelled":false,"path":value})
+                        }
+                        _ => json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}}),
+                    },
+                    _ => json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}}),
                 }
             })
         }
@@ -3709,6 +3766,8 @@ mod tests {
             active_host_streams: Mutex::new(HashMap::new()),
             used_approval_tokens: Mutex::new(HashMap::new()),
             browser_access_opener: Arc::new(|_, _| Ok(())),
+            project_directory_picker: Arc::new(|| Ok(None)),
+            project_directory_lock: Mutex::new(()),
             authority_approval_window_opener: Arc::new(|_| Ok(())),
             attestation: BrokerAttestationIdentity::generate(),
         }
@@ -3770,6 +3829,89 @@ mod tests {
         runtime.inner.status.lock().unwrap().available = false;
         assert!(runtime.host_contract_values().is_err());
         fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn project_directory_route_requires_token_exact_identity_and_no_browser_path() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let identity = crate::host_contract::ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:directory-test",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap();
+        crate::host_contract::write_contract(&config, &identity, []).unwrap();
+        let shared = Arc::new(test_shared(config));
+        let body = serde_json::to_value(&identity).unwrap();
+        let mut request = authority_approval_open_request(None, body.clone());
+        request.path = "/api/host/project-directory/pick".into();
+        assert_eq!(route_request(&request, &shared).0, 401);
+        request
+            .headers
+            .insert("authorization".into(), "Bearer broker-token".into());
+        let response = route_request(&request, &shared).1;
+        assert_eq!(
+            response.get("cancelled").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(response.get("identity"), Some(&body));
+        let mut forbidden = body.clone();
+        forbidden["path"] = json!("/arbitrary/browser/path");
+        request.body = serde_json::to_vec(&forbidden).unwrap();
+        assert_eq!(
+            route_request(&request, &shared)
+                .1
+                .get("ok")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let mut foreign = body;
+        foreign["activation_id"] = json!("activation:foreign");
+        request.body = serde_json::to_vec(&foreign).unwrap();
+        assert_eq!(
+            route_request(&request, &shared)
+                .1
+                .get("ok")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn project_directory_result_from_retired_profile_is_discarded() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let identity = crate::host_contract::ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:directory-test",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap();
+        crate::host_contract::write_contract(&config, &identity, []).unwrap();
+        let next_config = config.clone();
+        let mut next_identity = identity.clone();
+        next_identity.activation_id = "activation:directory-next".into();
+        let mut shared = test_shared(config);
+        shared.project_directory_picker = Arc::new(move || {
+            crate::host_contract::write_contract(&next_config, &next_identity, [])
+                .map_err(|_| "unavailable".to_string())?;
+            Ok(None)
+        });
+        let shared = Arc::new(shared);
+        let mut request = authority_approval_open_request(
+            Some("broker-token"),
+            serde_json::to_value(identity).unwrap(),
+        );
+        request.path = "/api/host/project-directory/pick".into();
+        let response = route_request(&request, &shared).1;
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_str),
+            Some("PROJECT_DIRECTORY_STALE")
+        );
+        assert!(response.get("path").is_none());
+        let _ = fs::remove_dir_all(temp_dir);
     }
 
     #[test]

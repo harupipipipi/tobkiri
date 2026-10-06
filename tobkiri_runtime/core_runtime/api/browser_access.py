@@ -146,13 +146,29 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
         def _parse_object_body(self) -> dict[str, object] | None: ...
         def _discard_request_body(self) -> None: ...
         def _parse_cookie_header(self) -> dict[str, str]: ...
-        def _build_set_cookie(self, name: str, value: str, **kwargs: object) -> str: ...
+        @staticmethod
+        def _build_set_cookie(
+            name: str,
+            value: str,
+            *,
+            path: str,
+            max_age: int,
+            http_only: bool,
+            same_site: str = "Strict",
+        ) -> str: ...
         def _send_response(
             self,
             response: APIResponse,
             status: int = 200,
             extra_headers: list[tuple[str, str]] | None = None,
         ) -> None: ...
+
+    @staticmethod
+    def _browser_access_expiry(value: object) -> int:
+        """Accept only the Host manager's positive integer cookie lifetime."""
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise BrowserAccessError("invalid_request")
+        return value
 
     @staticmethod
     def _browser_access_target(target: object, binding: PanelAuthBinding) -> str | None:
@@ -230,8 +246,7 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
             not content_length.isascii()
             or not content_length.isdecimal()
             or not 0 < int(content_length) <= 4096
-            or self.headers.get("Content-Type", "").split(";", 1)[0].strip()
-            != "application/json"
+            or self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json"
         ):
             self.close_connection = True
             self._browser_access_error("invalid_request", 400)
@@ -253,7 +268,9 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
         expected_keys = (
             {"target"}
             if action == "request"
-            else {"request_id", "decision"} if action == "decision" else {"request_id"}
+            else {"request_id", "decision"}
+            if action == "decision"
+            else {"request_id"}
         )
         if set(body) != expected_keys:
             self._browser_access_error("invalid_request", 400)
@@ -275,9 +292,7 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
                 request_id = str(result["request_id"])
                 if result.get("created", True):
                     try:
-                        open_browser_access_window(
-                            binding, request_id, self._runtime_port
-                        )
+                        open_browser_access_window(binding, request_id, self._runtime_port)
                     except RuntimeError:
                         manager.decide(request_id, binding, "denied")
                         self._browser_access_error("launcher_unavailable", 503)
@@ -289,31 +304,29 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
                             BROWSER_ACCESS_COOKIE,
                             str(result["proof"]),
                             path=BROWSER_ACCESS_PREFIX,
-                            max_age=int(result["expires_in"]),
+                            max_age=self._browser_access_expiry(result["expires_in"]),
                             http_only=True,
                         ),
                     )
                 )
                 data = {
-                    key: value
-                    for key, value in result.items()
-                    if key not in {"proof", "created"}
+                    key: value for key, value in result.items() if key not in {"proof", "created"}
                 }
             else:
-                request_id = body["request_id"]
-                if not isinstance(request_id, str) or len(request_id) > 64:
+                requested_id = body["request_id"]
+                if not isinstance(requested_id, str) or len(requested_id) > 64:
                     raise BrowserAccessError("invalid_request")
                 if action == "context":
-                    data = manager.context(request_id, binding)
+                    data = manager.context(requested_id, binding)
                 elif action == "decision":
                     decision = body["decision"]
                     if not isinstance(decision, str):
                         raise BrowserAccessError("invalid_request")
-                    data = manager.decide(request_id, binding, decision)
+                    data = manager.decide(requested_id, binding, decision)
                 elif action == "status":
-                    data = manager.status(request_id, proof, binding, origin)
+                    data = manager.status(requested_id, proof, binding, origin)
                 else:
-                    result = manager.claim(request_id, proof, binding, origin)
+                    result = manager.claim(requested_id, proof, binding, origin)
                     response_headers.extend(
                         [
                             (
@@ -322,7 +335,7 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
                                     PANEL_SESSION_COOKIE,
                                     str(result["session_id"]),
                                     path="/",
-                                    max_age=int(result["expires_in"]),
+                                    max_age=self._browser_access_expiry(result["expires_in"]),
                                     http_only=True,
                                 ),
                             ),
@@ -351,7 +364,5 @@ class BrowserAccessHTTPMixin(_HTTPHandlerBase):
             status = 429 if error.code in {"rate_limited", "queue_full"} else 409
             self._browser_access_error(error.code, status)
             return True
-        self._browser_access_response(
-            APIResponse(True, data=data), extra_headers=response_headers
-        )
+        self._browser_access_response(APIResponse(True, data=data), extra_headers=response_headers)
         return True

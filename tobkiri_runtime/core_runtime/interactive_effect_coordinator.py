@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityScope
+from core_runtime.workspace_mount_effect import validate_project_plan
 from core_runtime.workspace_task_effect import (
     workspace_task_payload,
     workspace_task_snapshot,
@@ -59,6 +60,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "file_create": InteractiveEffectSpec(
+        kind="file_create",
+        prepare_contract_id="tobkiri.service.file.create.v1",
+        prepare_operation_id="rumi_default_tools_pack.file-create-prepare",
+        execute_contract_id="tobkiri.service.file.create.v1",
+        execute_operation_id="rumi_default_tools_pack.file-create",
+    ),
     "workspace_task": InteractiveEffectSpec(
         kind="workspace_task",
         prepare_contract_id=TASK_CONTRACT,
@@ -72,6 +80,11 @@ INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
         prepare_operation_id="mcp.connection.prepare",
         execute_contract_id="tobkiri.service.mcp.connection.v1",
         execute_operation_id="mcp.connection.connect",
+    ),
+    "workspace_mount": InteractiveEffectSpec(
+        kind="workspace_mount", prepare_contract_id="tobkiri.service.workspace.project.v1",
+        prepare_operation_id="workspace.mount.prepare", execute_contract_id="tobkiri.service.workspace.project.v1",
+        execute_operation_id="workspace.mount.execute",
     ),
     "provider_configure": InteractiveEffectSpec(
         kind="provider_configure",
@@ -275,6 +288,9 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 caller_session_id=execute_context.caller_session_id,
                 plan_digest=execute_context.plan_digest,
             )
+            if route.spec.kind == "file_create":
+                from core_runtime.owned_file_approval_v4 import assert_file_request_live
+                assert_file_request_live(request, command.context)
             pending = self._controller.prepare(
                 prepared=prepared,
                 context=execute_context,
@@ -293,6 +309,15 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 typed_confirmation_phrase="EXECUTE",
                 correlation_id=command.correlation_id,
             )
+            if route.spec.kind == "file_create":
+                from core_runtime.owned_file_approval_v4 import bind_file_effect
+                def cancel_file_effect() -> None:
+                    self._controller.cancel_for_presentation(
+                        effect_id=pending.effect_id,
+                        presentation_owner_principal_id=command.presentation_owner_principal_id,
+                        presentation_owner_session_id=command.presentation_owner_session_id,
+                    )
+                bind_file_effect(pending.effect_id, request, execute_context, cancel_file_effect)
             return _port_status(pending)
         except InteractiveEffectUnavailable:
             raise
@@ -363,6 +388,15 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 query.presentation_owner_principal_id,
                 query.presentation_owner_session_id,
             )
+            execution_guard = None
+            operation = self._controller.operation_for_presentation(
+                effect_id=_effect_id(query.effect_id),
+                presentation_owner_principal_id=query.presentation_owner_principal_id,
+                presentation_owner_session_id=query.presentation_owner_session_id,
+            )
+            if operation == ("tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create"):
+                from core_runtime.owned_file_approval_v4 import file_effect_execution_guard
+                execution_guard = file_effect_execution_guard(query.effect_id, query.context)
             return _port_status(
                 self._controller.resume_for_presentation(
                     effect_id=_effect_id(query.effect_id),
@@ -371,6 +405,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                     ),
                     presentation_owner_session_id=query.presentation_owner_session_id,
                     broker=self._broker,
+                    execution_guard=execution_guard,
                 )
             )
         except Exception as exc:
@@ -455,6 +490,12 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "file_create":
+        from tobkiri_protocol.file_create_v1 import validate_execute_payload
+        try:
+            return validate_execute_payload(request, prepared_result)
+        except (TypeError, ValueError, KeyError, PermissionError) as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
     if spec.kind == "workspace_task":
         try:
             return workspace_task_payload(
@@ -467,6 +508,13 @@ def _execute_payload(
             raise InteractiveEffectUnavailable(
                 "interactive effect is unavailable"
             ) from exc
+    if spec.kind == "workspace_mount":
+        workspace_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        try:
+            validate_project_plan(request, workspace_plan)
+        except (TypeError, ValueError, KeyError, PermissionError) as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
+        return {"request": dict(request), "plan": workspace_plan}
     if spec.kind == "mcp_connect":
         mcp_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
@@ -664,6 +712,17 @@ def _presentation_metadata(
                 f"Timeout: {task_plan['timeout_seconds']} seconds"
             ),
         )
+    if spec.kind == "workspace_mount":
+        plan, request = payload.get("plan"), payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        metadata = dict(_presentation(
+            action="Mount project folder", summary="Register and select this folder as an untrusted project workspace.",
+            detail=f"Folder: {_display_text(_required_text(plan.get('display_name')))}\nWorkspace: {_display_text(_required_text(plan.get('workspace_id')))}",
+        ))
+        metadata["workspace_id"] = _required_text(plan.get("workspace_id"))
+        return metadata
     if spec.kind == "mcp_connect":
         plan, request = payload.get("plan"), payload.get("request")
         if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
@@ -712,6 +771,22 @@ def _presentation_metadata(
                 f"Protocol: {plan['adapter_id']}\n"
                 f"Endpoint: {plan['endpoint']}\n"
                 f"{key_detail}"
+            ),
+        )
+    if spec.kind == "file_create":
+        from tobkiri_protocol.file_create_v1 import validate_execute_payload
+        request, plan = payload.get("request"), payload.get("plan")
+        if not isinstance(request, Mapping) or not isinstance(plan, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        validate_execute_payload(request, plan)
+        return _presentation(
+            action="Create workspace file",
+            summary="Create one new file in the selected workspace.",
+            detail=(
+                f"Workspace root: {_display_text(str(plan['canonical_root']))}\n"
+                f"Path: {_display_text(str(plan['path']))}\n"
+                f"Content: {plan['content_digest']}\n"
+                f"Size: {plan['byte_count']} bytes; existing files are preserved."
             ),
         )
     if spec.kind == "shell_execute":

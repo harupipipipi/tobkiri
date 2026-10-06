@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:fb6e96a7100b0d80de9934e681de4403a8667bb9f4fc008525b02c033069c4f9",
+  "catalog_digest": "sha256:ea218e7bce4e85fc721c99a5b0527bd60eeb9f68ca8af475ebe60888052e1fc4",
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d",
+  "source_identity": "sha256:7e291e52101555f1040d2321fcc39c38f2c59b8ce8d81f8f119f561349e9fee4",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c",
+          "revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -37,6 +37,108 @@
       "platform": "any",
       "runtime_abi": "python3.13",
       "variant_id": "rumi_default_tools_pack.calculator.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_default_tools_pack.file-create-prepare.service",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "implementation_path": "runtime/file_create.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_default_tools_pack.file-create-prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_default_tools_pack.file-create-prepare.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_default_tools_pack.file-create-tool",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "implementation_path": "runtime/file_create.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_default_tools_pack.file-create-operation",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_default_tools_pack.file-create-tool.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_default_tools_pack.file-create.service",
+      "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "implementation_path": "runtime/file_create.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_default_tools_pack.file-create",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_default_tools_pack.file-create.service.python"
     },
     {
       "architecture": "any",
@@ -63,7 +165,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c",
+          "revision_digest": "sha256:5adccb78694a18caecb3aa607ebc3f052379ab75aa406f483b1b55668e6c81e1",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

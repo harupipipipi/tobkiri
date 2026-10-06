@@ -1,5 +1,38 @@
 <!doctype html><html lang="ja"><meta charset="utf-8"><title>Tobkiri ブラウザーアクセス</title><style>body{font:15px system-ui;background:#f5f5f7;color:#202124;padding:26px}h1{font-size:22px}dl{background:white;border-radius:16px;padding:20px}dt{color:#666;margin-top:12px}dd{margin:4px 0;overflow-wrap:anywhere}button{padding:12px 24px;border:0;border-radius:12px;margin:12px 6px 0 0;font:inherit}#allow{background:#007aff;color:white}#status{color:#555}</style><h1>ブラウザーからのアクセス</h1><p>このブラウザーに Tobkiri の画面と会話へのアクセスを許可します。</p><dl><dt>接続元</dt><dd id="origin"></dd><dt>プロファイル</dt><dd id="profile"></dd><dt>画面</dt><dd id="target"></dd></dl><p id="status">リクエストを確認しています…</p><button id="allow" disabled>許可</button><button id="deny" disabled>拒否</button><script>
 const params=new URL(location.href).searchParams;const requestId=params.get('request_id');const nonce=params.get('nonce');const status=document.getElementById('status');const allow=document.getElementById('allow');const deny=document.getElementById('deny');const invoke=(name,args)=>window.__TAURI_INTERNALS__.invoke(name,args);
-invoke('browser_access_context',{requestId,nonce}).then(c=>{document.getElementById('origin').textContent=c.origin;document.getElementById('profile').textContent=c.profile_id;document.getElementById('target').textContent=c.target;status.textContent=`有効期限: ${c.expires_in} 秒`;allow.disabled=deny.disabled=false;setTimeout(()=>{allow.disabled=deny.disabled=true;status.textContent='有効期限が切れました。ブラウザーから再度リクエストしてください。';},c.expires_in*1000);}).catch(()=>{status.textContent='リクエストを確認できませんでした。';});
-function decide(decision){allow.disabled=deny.disabled=true;invoke('browser_access_decide',{requestId,nonce,decision}).catch(()=>{status.textContent='許可を完了できませんでした。ブラウザーから再度リクエストしてください。';});}allow.onclick=()=>decide('approved');deny.onclick=()=>decide('denied');
+// Focus is verified by the native command; retry only the read, never a decision.
+const maxAttempts=6;let attempts=0;let inFlight=false;let retryRequested=false;let loaded=false;let deciding=false;let expired=false;let generation=0;let deadline=performance.now()+300000;
+function disable(){allow.disabled=deny.disabled=true;}
+function expire(){expired=true;generation++;disable();status.textContent='有効期限が切れました。ブラウザーから再度リクエストしてください。';}
+function tick(){if(expired)return;if(performance.now()>=deadline){expire();return;}if(loaded&&!deciding)status.textContent=`有効期限: ${Math.ceil((deadline-performance.now())/1000)} 秒`;}
+setInterval(tick,250);
+async function loadContext(){
+  tick();if(loaded||deciding||expired||attempts>=maxAttempts)return;
+  if(inFlight){retryRequested=true;return;}
+  inFlight=true;attempts++;const token=++generation;const started=performance.now();let rejected=false;
+  try{
+    const c=await invoke('browser_access_context',{requestId,nonce});
+    if(token!==generation||loaded||deciding||expired)return;
+    const ttl=c.expires_in;
+    if(typeof ttl!=='number'||!Number.isInteger(ttl)||ttl<=0||ttl>300){expire();return;}
+    deadline=Math.min(deadline,started+ttl*1000);tick();if(expired)return;
+    document.getElementById('origin').textContent=c.origin;document.getElementById('profile').textContent=c.profile_id;document.getElementById('target').textContent=c.target;
+    loaded=true;tick();allow.disabled=deny.disabled=false;
+  }catch{
+    rejected=true;
+    if(token===generation&&!deciding&&!expired){tick();if(!expired)status.textContent='リクエストを確認できませんでした。画面を選択して再度確認してください。';}
+  }finally{
+    inFlight=false;const retry=retryRequested;retryRequested=false;
+    if(rejected&&retry&&!loaded&&!deciding&&!expired&&attempts<maxAttempts)queueMicrotask(()=>{void loadContext();});
+  }
+}
+window.addEventListener('focus',loadContext);
+void loadContext();
+async function decide(decision){
+  tick();if(!loaded||deciding||expired)return;
+  deciding=true;generation++;disable();
+  try{await invoke('browser_access_decide',{requestId,nonce,decision});}
+  catch{if(!expired)status.textContent='許可を完了できませんでした。ブラウザーから再度リクエストしてください。';}
+}
+allow.onclick=()=>{void decide('approved');};deny.onclick=()=>{void decide('denied');};
 </script></html>

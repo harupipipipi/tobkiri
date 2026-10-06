@@ -250,6 +250,8 @@ test("HistoryBoard exposes recovery controls when organization storage is corrup
     }));
     assert.match(html, /data-history-save-state="corrupt"/);
     assert.match(html, /History changes are not saved/);
+    assert.match(html, /border-amber-500\/30/);
+    assert.match(html, /class="px-3 py-1"/);
     assert.match(html, /Export<\/button>/);
     assert.match(html, />Reset</);
   } finally {
@@ -365,18 +367,35 @@ test("HistoryBoard places Desktops directly below Kanban in full layout", () => 
 });
 
 test("HistoryBoard exposes project creation alongside the main navigation", () => {
-  const html = renderToStaticMarkup(createElement(HistoryBoard, {
-    activeChatId: null,
-    chatItems: [],
-    onChatSelect: () => undefined,
-    onNewTask: () => undefined,
-    onSettingsClick: () => undefined,
-  }));
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  });
+  try {
+    const html = renderToStaticMarkup(createElement(HistoryBoard, {
+      activeChatId: null,
+      chatItems: [],
+      onChatSelect: () => undefined,
+      onNewTask: () => undefined,
+      onSettingsClick: () => undefined,
+    }));
 
-  assert.match(html, />Projects</);
-  assert.match(html, /aria-label="New Project"/);
-  assert.ok(html.indexOf('aria-label="New Project"') < html.indexOf('aria-label="Calendar"'));
-  assert.doesNotMatch(html, /New Group/);
+    assert.match(html, />Projects</);
+    assert.doesNotMatch(html, /data-history-save-state="saved"|Saved locally|> Undo</);
+    assert.doesNotMatch(html, /class="px-3 py-1"/);
+    assert.match(html, /role="status" aria-live="polite"/);
+    assert.match(html, /aria-label="New Project"/);
+    assert.ok(html.indexOf('aria-label="New Project"') < html.indexOf('aria-label="Calendar"'));
+    assert.doesNotMatch(html, /New Group/);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });
 
 test("HistoryBoard places Settings after the account identity in the full sidebar", () => {

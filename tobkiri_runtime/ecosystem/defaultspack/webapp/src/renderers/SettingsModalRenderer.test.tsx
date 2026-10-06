@@ -6,8 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { buildVisibleModelOptions, SettingsModalRenderer, sectionPreludeIsVisible, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
+import { TaskPetNotificationSettings } from "../components/TaskPetNotificationSettings";
 import { PromptProfileField } from "./settings/renderers/promptProfileField";
-import { buildControlCenterSections } from "../settings/controlCenter";
+import { buildControlCenterSections, filterControlCenterSections, taskPetNotificationSettingsSearchResult } from "../settings/controlCenter";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
 import {
@@ -24,6 +25,73 @@ import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
 import { ModelSearchPicker } from "../features/models/ModelSearchPicker";
 import type { TemplateSettingsField } from "./template/settingsFieldMetadata";
 import type { SettingsSection } from "../lib/api";
+
+test("pet notification settings remain available with empty backend Features and use the runtime Profile", () => {
+  const render = (settingsSections: SettingsSection[], runtimeProfileId: string | undefined) => renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "features",
+    runtimeProfileId,
+    activeModelProfileId: "model-profile-b",
+    catalog: null,
+    health: null,
+    previewsCount: 0,
+    settingsSections,
+    settingsValues: {},
+    locale: "en",
+    onClose: () => undefined,
+    onSettingChange: () => assert.fail("local notification settings must not write backend settings"),
+  }));
+  for (const settingsSections of [[], [{ id: "features", label: "Features", fields: [] }]]) {
+    const html = render(settingsSections, "runtime-profile-a");
+    assert.match(html, /data-task-pet-profile="runtime-profile-a"/);
+    assert.doesNotMatch(html, /data-task-pet-profile="model-profile-b"/);
+    assert.match(html, /role="switch"/);
+    assert.match(html, /Pet task completion notifications/);
+    assert.doesNotMatch(html, /Loading built-in settings|Pack or provider contributions for this section/);
+  }
+  assert.doesNotMatch(render([], undefined), /data-task-pet-profile/);
+  assert.doesNotMatch(render([], "unavailable"), /data-task-pet-profile/);
+});
+
+test("pet notification searches return a local Features result in either language without backend fields", () => {
+  const sections = buildControlCenterSections([], "en");
+  assert.equal(sections.find((section) => section.id === "features")?.fields.length, 0);
+  for (const query of ["pet", "completion notifications", "ペット", "完了通知"]) {
+    assert.equal(filterControlCenterSections(sections, query).some((section) => section.id === "features"), true);
+    assert.deepEqual(taskPetNotificationSettingsSearchResult("runtime-profile-a", query, "en"), {
+      sectionId: "features",
+      label: "Tobkiri pet completion notifications",
+    });
+    assert.deepEqual(taskPetNotificationSettingsSearchResult("runtime-profile-a", query, "ja"), {
+      sectionId: "features",
+      label: "Tobkiri ペットの完了通知",
+    });
+  }
+  assert.equal(taskPetNotificationSettingsSearchResult(undefined, "pet"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("unavailable", "pet"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("runtime-profile-a", "model"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("runtime-profile-a", ""), null);
+});
+
+test("rendering pet notification settings never requests desktop notification permission", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let permissionRequests = 0;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { Notification: { permission: "default", requestPermission: () => { permissionRequests++; return Promise.resolve("granted"); } } },
+  });
+  try {
+    const html = renderToStaticMarkup(createElement(TaskPetNotificationSettings, {
+      profileId: "runtime-profile-a",
+      locale: "ja",
+    }));
+    assert.match(html, /ペットのタスク完了通知/);
+    assert.equal(permissionRequests, 0);
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
 
 function makeModelOption(index: number) {
   return {
@@ -61,6 +129,7 @@ test("settings error surfaces keep severity glyphs separate from stable copy con
   }));
   const modelHtml = renderToStaticMarkup(createElement(ModelSearchPicker, {
     error: "Model search failed.",
+    showTrigger: false,
     onChange: () => undefined,
     onOpenChange: () => undefined,
     onQueryChange: () => undefined,
@@ -74,7 +143,7 @@ test("settings error surfaces keep severity glyphs separate from stable copy con
   assert.match(profileHtml, /aria-label="Copy profile load error"/);
   assert.match(profileHtml, /data-copy-action=""/);
   assert.match(modelHtml, /aria-label="モデル検索エラーをコピー"/);
-  assert.match(modelHtml, /data-error-icon="error"/);
+  assert.match(modelHtml, /data-error-icon="warning"/);
   assert.match(modelHtml, /data-copy-action=""/);
 });
 
@@ -938,7 +1007,7 @@ test("Connections API credential template excludes AI provider keys", () => {
   assert.doesNotMatch(html, /Provider HTTPS base URL/);
 });
 
-test("Models places AI API registration before model API connections", () => {
+test("Models shows one API registration route and hides legacy overrides in standard", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
@@ -1037,10 +1106,9 @@ test("Models places AI API registration before model API connections", () => {
   assert.match(html, /data-provider-scope="llm"/);
   assert.match(html, /openai:main:\*\*\*/);
   assert.doesNotMatch(html, /line:channel:\*\*\*/);
-  assert.ok(
-    html.indexOf('data-settings-field="apis.api_keys"')
-      < html.indexOf('data-settings-field="models.model_api_routes"'),
-  );
+  assert.match(html, /data-settings-field="apis.api_keys"/);
+  assert.doesNotMatch(html, /data-settings-field="models.model_api_routes"/);
+  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
 });
 
 test("CredentialTransferModal keeps transfer device-bound and credential-free", () => {
@@ -1114,19 +1182,13 @@ test("SettingsModalRenderer renders template model_api_routes through registered
     }),
   );
 
-  assert.match(html, /data-settings-renderer="model_routing"/);
-  assert.match(html, /data-model-search-picker="settings"/);
-  assert.match(html, /Gemini 2\.5 Flash/);
-  assert.match(html, /google\/main/);
-  assert.match(html, /1\. 設定するモデル/);
-  assert.match(html, /2\. 使用するAPIキー/);
-  assert.match(html, /placeholder="API key を検索"/);
-  assert.match(html, /API keyを追加/);
+  assert.doesNotMatch(html, /data-settings-renderer="model_routing"/);
+  assert.doesNotMatch(html, /1\. 設定するモデル|2\. 使用するAPIキー|API keyを追加/);
   assert.match(html, /使いたいモデルを選ぶ/);
-  assert.match(html, /aria-label="Provider connection ID"/);
+  assert.match(html, /aria-label="使用するAPI"/);
   assert.match(html, /登録済みの接続がありません/);
-  assert.doesNotMatch(html, /モデルルート作成/);
-  assert.doesNotMatch(html, /data-settings-routing-overview/);
+  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
+
 });
 
 test("SettingsModalRenderer renders continuity handoff controls", () => {
@@ -1283,11 +1345,11 @@ test("Settings > Tools keeps selector internals out of standard mode", () => {
   assert.match(html, /権限/);
   assert.match(html, /接続/);
   assert.doesNotMatch(html, /高度な設定/);
-  assert.match(html, /既定の使い方/);
+  assert.match(html, /普段のツールの選び方/);
   assert.match(html, /自動で選ぶ/);
-  assert.ok(html.indexOf(">基本<") < html.indexOf("既定の使い方"));
+  assert.ok(html.indexOf(">基本<") < html.indexOf("普段のツールの選び方"));
   assert.doesNotMatch(html, /MCPサーバーを追加/);
-  assert.equal([...html.matchAll(/既定の使い方/g)].length, 1);
+  assert.equal([...html.matchAll(/普段のツールの選び方/g)].length, 1);
   assert.equal([...html.matchAll(/送信後も選んだ機能を保持/g)].length, 1);
 });
 
@@ -1302,7 +1364,7 @@ test("Tools connection tab contains connection controls and keeps the basic edit
 
   assert.ok(html.indexOf(">接続<") < html.indexOf("MCPサーバー管理"));
   assert.match(html, /Codex App Server/);
-  assert.doesNotMatch(html, /既定の使い方/);
+  assert.doesNotMatch(html, /普段のツールの選び方/);
 });
 
 test("Connections groups reply choices and keeps paths and empty sources separate", () => {
@@ -1992,7 +2054,7 @@ test("Settings modal exposes localized dialog semantics and task-oriented Japane
   assert.doesNotMatch(html, /aria-describedby="rumi-settings-dialog-description"/);
   assert.match(html, /aria-label="設定を閉じる"/);
   assert.match(html, />設定<\/h2>/);
-  assert.match(html, /入力欄の案内文/);
+  assert.doesNotMatch(html, /入力欄の案内文/);
   assert.doesNotMatch(html, />Composer Placeholder</);
   assert.doesNotMatch(html, /バックエンド登録情報/);
 });

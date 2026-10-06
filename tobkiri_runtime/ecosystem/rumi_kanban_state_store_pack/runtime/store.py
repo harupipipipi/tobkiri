@@ -15,6 +15,12 @@ from typing import Any, Callable, Mapping
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
 
 AUTHORITY = "rumi.service.host.authorize.v1"
 SERVICE_PACK_ID = "rumi_kanban_state_store_pack"
@@ -85,7 +91,13 @@ class KanbanStateStore:
                 return {"board_id": board_id, "column": _copy(column)}
         return None
 
-    def apply(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+    def apply(
+        self,
+        name: str,
+        arguments: Mapping[str, Any],
+        *,
+        host_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Apply one receipt-bound, revision-checked Kanban state transition."""
 
         with NamedLock(self.lock_root, "kanban"):
@@ -95,6 +107,10 @@ class KanbanStateStore:
             if result.get("deduplicated"):
                 return {**result, "revision": state["revision"]}
             state["revision"] += 1
+            if host_receipt is not None:
+                receipts = state.setdefault("host_mutation_receipts", [])
+                receipts.append({**dict(host_receipt), "revision": state["revision"]})
+                del receipts[:-512]
             self._write(state)
             return {**result, "revision": state["revision"]}
 
@@ -202,6 +218,7 @@ class KanbanStateStore:
             "revision": max(0, int(value.get("revision") or 0)),
             "boards": _copy(value["boards"]),
             "migrations": _copy(value.get("migrations", {})),
+            "host_mutation_receipts": _copy(value.get("host_mutation_receipts", [])),
         }
 
     def _write(self, state: Mapping[str, Any]) -> None:
@@ -661,3 +678,249 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+_READ_FUNCTION = SERVICE_PACK_ID + ".kanban-state.resource"
+_WRITE_FUNCTION = SERVICE_PACK_ID + ".kanban-state.action"
+_READ_OPERATION = SERVICE_PACK_ID + ".kanban-state-resource"
+_WRITE_OPERATION = SERVICE_PACK_ID + ".kanban-state-action"
+
+
+class KanbanStateHostFactoryV4:
+    """Capture the canonical owner behind authenticated Broker invocation leases."""
+
+    def __init__(self, function_id: str) -> None:
+        self.function_id = function_id
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Bind the selected owner, Profile and data root to an exact Function."""
+        from tobkiri_host.broker import RequestEnvelope
+        from tobkiri_host.ports import OpaqueInvocationLease
+        from tobkiri_protocol.canonical import canonical_digest
+
+        expected = {
+            _READ_FUNCTION: ("tobkiri.resource.kanban.v1", _READ_OPERATION),
+            _WRITE_FUNCTION: ("tobkiri.action.kanban.v1", _WRITE_OPERATION),
+        }[self.function_id]
+        if (
+            not context.profile_id
+            or context.user_data_root is None
+            or len(context.provider_bindings) != 1
+        ):
+            raise PermissionError("Kanban owner capture is incomplete")
+        binding = context.provider_bindings[0]
+        operation = binding.operation
+        if (
+            binding.function.function_id != self.function_id
+            or (operation.contract_id, operation.operation_id) != expected
+        ):
+            raise PermissionError("Kanban owner binding is invalid")
+        domain_id = context.domain_ids.get(
+            (operation.contract_id, operation.operation_id, binding.principal_ref.value)
+        )
+        if domain_id is None:
+            raise PermissionError("Kanban owner domain is unavailable")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            invocation.assert_current()
+            envelope = invocation.envelope
+            if (
+                not isinstance(envelope, RequestEnvelope)
+                or not isinstance(envelope.lease, OpaqueInvocationLease)
+                or envelope.contract_id != expected[0]
+                or envelope.operation_id != expected[1]
+                or envelope.context.profile_id != context.profile_id
+                or payload.get("profile_id") != context.profile_id
+                or not invocation.presentation_owner_principal_id
+                or not invocation.presentation_owner_session_id
+            ):
+                raise PermissionError("Kanban caller identity is unavailable")
+            if operation_id != expected[1]:
+                raise PermissionError("Kanban operation is not captured")
+            forbidden = {
+                "approved",
+                "authority_receipt",
+                "caller_id",
+                "caller_pack_id",
+                "caller_function_id",
+                "session_id",
+            }
+            if forbidden.intersection(payload):
+                raise PermissionError("Kanban caller control fields are invalid")
+            store = KanbanStateStore(context.profile_id, root=context.user_data_root)
+            name = payload.get("operation")
+            if self.function_id == _READ_FUNCTION:
+                if set(payload) - {
+                    "profile_id",
+                    "operation",
+                    "board_id",
+                    "_session_id",
+                }:
+                    raise ValueError("Kanban read input is invalid")
+                if name == "list":
+                    return store.snapshot()
+                if name == "get":
+                    with NamedLock(store.lock_root, "kanban"):
+                        state = store._read()
+                        board = state["boards"].get(
+                            _identifier(payload.get("board_id"))
+                        )
+                        if board is None:
+                            raise KeyError("Kanban board is unknown")
+                        return {"board": _copy(board), "revision": state["revision"]}
+                raise ValueError("Kanban resource operation is invalid")
+            if set(payload) - {
+                "profile_id",
+                "operation",
+                "board_id",
+                "expected_revision",
+                "title",
+                "scope",
+                "metadata",
+                "columns",
+                "record",
+                "record_id",
+                "_session_id",
+                "conversation_id",
+                "column_id",
+                "model",
+                "workspace_id",
+                "company_id",
+            }:
+                raise ValueError("Kanban mutation input is invalid")
+            if name not in {
+                "board.create",
+                "card.upsert",
+                "card.move",
+                "card.delete",
+                "conversation.import",
+            }:
+                raise ValueError("Kanban mutation operation is invalid")
+            if type(payload.get("expected_revision")) is not int:
+                raise ValueError("Kanban expected revision is required")
+            imported = None
+            transition_name = str(name)
+            if name == "conversation.import":
+                conversation_id = _identifier(payload.get("conversation_id"))
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset(
+                        {"tobkiri.resource.conversation.v1"}
+                    ),
+                    consumer_pack_id=SERVICE_PACK_ID,
+                    include_credentials=False,
+                )
+                response = client.invoke(
+                    "tobkiri.resource.conversation.v1",
+                    "rumi_conversation_store_pack.conversation-resource",
+                    {
+                        "profile_id": context.profile_id,
+                        "operation": "get",
+                        "conversation_id": conversation_id,
+                    },
+                )
+                conversation = (
+                    response.get("conversation")
+                    if isinstance(response, Mapping)
+                    else None
+                )
+                if not isinstance(conversation, Mapping):
+                    raise ValueError("Kanban conversation owner response is invalid")
+                board_id = _identifier(payload.get("board_id"))
+                board = store.get(board_id)
+                if board is None:
+                    raise KeyError("Kanban board is unknown")
+                columns = sorted(
+                    board["columns"].values(),
+                    key=lambda item: (item["position"], item["id"]),
+                )
+                if not columns:
+                    raise ValueError("Kanban board has no columns")
+                column_id = payload.get("column_id") or columns[0]["id"]
+                card_id = (
+                    "conversation-"
+                    + hashlib.sha256(
+                        f"{board_id}:{conversation_id}".encode()
+                    ).hexdigest()[:40]
+                )
+                record = {
+                    "title": payload.get("title")
+                    or conversation.get("title")
+                    or "Conversation",
+                    "column_id": column_id,
+                    "source_type": "conversation",
+                    "source_id": conversation_id,
+                    "conversation_id": conversation_id,
+                    "workspace_id": payload.get("workspace_id"),
+                    "company_id": payload.get("company_id"),
+                    "metadata": {
+                        "model": payload.get("model") or conversation.get("model")
+                    },
+                }
+                arguments = _arguments(
+                    "card.upsert",
+                    {
+                        "board_id": board_id,
+                        "expected_revision": payload["expected_revision"],
+                        "record_id": card_id,
+                        "record": record,
+                    },
+                )
+                transition_name = "card.upsert"
+                imported = {"conversation_id": conversation_id, "card_ids": [card_id]}
+            else:
+                arguments = _arguments(str(name), payload)
+            # The Broker has dispatched the write Function's authenticated lease.
+            # Persist its digest-bound audit receipt; client receipt/approval
+            # fields above cannot replace the captured invocation.
+            receipt = {
+                "request_digest": envelope.request_digest,
+                "lease_digest": "sha256:"
+                + hashlib.sha256(envelope.lease.token).hexdigest(),
+                "operation": name,
+                "caller_digest": canonical_digest(
+                    {
+                        "principal": invocation.presentation_owner_principal_id,
+                        "session": invocation.presentation_owner_session_id,
+                    }
+                ),
+                "arguments_digest": canonical_digest(arguments),
+            }
+            invocation.assert_current()
+            try:
+                result = store.apply(transition_name, arguments, host_receipt=receipt)
+                return {**result, "imported": imported} if imported else result
+            except KanbanConflict:
+                return {
+                    "state": "error",
+                    "code": "STALE_REVISION",
+                    "message": "Kanban state changed; reload before retrying.",
+                }
+
+        return CapturedHostProviderV4(
+            (
+                HostProviderContributionV4(
+                    contract_id=operation.contract_id,
+                    contract_version=operation.contract_version,
+                    operation_id=operation.operation_id,
+                    principal_id=binding.principal_ref.value,
+                    artifact_digest=binding.artifact.digest,
+                    implementation_digest=binding.function.implementation_digest,
+                    domain_id=domain_id,
+                    invoke=invoke,
+                ),
+            ),
+            lambda: None,
+        )
+
+
+HOST_PROVIDER_FACTORY = {
+    _READ_FUNCTION: KanbanStateHostFactoryV4(_READ_FUNCTION),
+    _WRITE_FUNCTION: KanbanStateHostFactoryV4(_WRITE_FUNCTION),
+}

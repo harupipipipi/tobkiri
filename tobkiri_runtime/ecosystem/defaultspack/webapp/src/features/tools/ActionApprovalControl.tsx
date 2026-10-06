@@ -42,6 +42,7 @@ export const ACTION_APPROVAL_OPTIONS: Array<{
 export function ActionApprovalControl({
   mode,
   disabled = false,
+  disabledReason,
   surfaceClassName,
   tabIndex,
   onModeChange,
@@ -49,6 +50,7 @@ export function ActionApprovalControl({
 }: {
   mode: ActionApprovalMode;
   disabled?: boolean;
+  disabledReason?: string;
   surfaceClassName: string;
   tabIndex?: number;
   onModeChange: (mode: ActionApprovalMode) => void;
@@ -182,13 +184,14 @@ export function ActionApprovalControl({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="アクションの承認方法"
-        title="アクションの承認方法"
+        aria-description={disabledReason}
+        title={disabledReason ?? "アクションの承認方法"}
         onClick={() => setOpen((value) => !value)}
         className={`${surfaceClassName} min-w-[86px] max-w-[132px] gap-1.5 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:opacity-50 max-[760px]:min-w-[64px]`}
       >
         <Icon size={15} className="flex-shrink-0" />
         <span className="min-w-0 truncate text-[12px] font-medium max-[760px]:hidden">
-          {current.shortLabel}
+          {disabledReason ? "ポリシー" : current.shortLabel}
         </span>
         <ChevronDown size={12} className={`flex-shrink-0 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>

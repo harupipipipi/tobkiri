@@ -1,13 +1,10 @@
 import type {
   ComposerCommandMode,
-  ComposerWidgetAction,
   TemplateAiInput,
-  TemplateCatalogMetadataItem,
   TemplateComposerInput,
   TemplateToolPolicy,
   UICatalog,
 } from "./api";
-import type { ComposerExtensionItem, DroppedWidget } from "../renderers/types";
 import {
   mergeTemplateToolPolicies as mergeTemplateToolPoliciesCore,
   templateToolPolicySettings as templateToolPolicySettingsCore,
@@ -287,77 +284,4 @@ export function templateFeatureFlagEnabled(
   const flags = objectRecord(input?.feature_flags);
   const value = flags?.[flagName];
   return typeof value === "boolean" ? value : fallback;
-}
-
-function templateWidgetPayload(item: TemplateCatalogMetadataItem): Record<string, unknown> {
-  return objectRecord(item.widget) ?? item;
-}
-
-function templateWidgetRefIds(input: TemplateAiInput | TemplateComposerInput | null): string[] {
-  const raw = objectRecord(input)?.widgets;
-  return stringList(raw);
-}
-
-function widgetAction(toolId: string): ComposerWidgetAction {
-  return { type: "toggle_tool", tool_id: toolId };
-}
-
-export function templateComposerWidgetsForInput(
-  catalog: UICatalog | null | undefined,
-  aiInput: TemplateAiInput | null,
-  composerInput: TemplateComposerInput | null,
-  tools: ComposerExtensionItem[],
-): DroppedWidget[] {
-  const widgets = catalog?.composer_widgets ?? [];
-  const requestedWidgetIds = new Set([
-    ...templateWidgetRefIds(aiInput),
-    ...templateWidgetRefIds(composerInput),
-  ]);
-  const toolById = new Map(tools.map((tool) => [tool.id, tool]));
-
-  return widgets
-    .filter((item) => item.enabled !== false)
-    .filter((item) => requestedWidgetIds.size === 0 || (item.id && requestedWidgetIds.has(item.id)))
-    .map<DroppedWidget | null>((item) => {
-      const payload = templateWidgetPayload(item);
-      const kind = nonEmptyString(payload.widgetKind) || nonEmptyString(payload.widget_kind) || nonEmptyString(item.widgetKind) || nonEmptyString(item.widget_kind);
-      if (kind && kind !== "tool_toggle") return null;
-      const toolId = (
-        nonEmptyString(payload.tool_id)
-        || nonEmptyString(payload.sourceItemId)
-        || nonEmptyString(payload.source_item_id)
-        || nonEmptyString(item.tool_id)
-        || nonEmptyString(item.sourceItemId)
-        || nonEmptyString(item.source_item_id)
-      );
-      const tool = toolId ? toolById.get(toolId) : null;
-      if (!tool) return null;
-      const label = nonEmptyString(payload.label) || nonEmptyString(item.label) || tool.ui?.composer_label || tool.label || tool.id;
-      const description = nonEmptyString(payload.description) || nonEmptyString(item.description) || tool.ui?.composer_description || tool.description;
-      const widget: DroppedWidget = {
-        id: nonEmptyString(payload.id) || item.id || tool.id,
-        type: "tool",
-        label,
-        description,
-        enabled: payload.enabled !== false,
-        widgetKind: "tool_toggle",
-        action: widgetAction(tool.id),
-        sourceItemId: tool.id,
-        icon: nonEmptyString(payload.icon) || tool.ui?.composer_icon || tool.ui?.item_icon || tool.ui?.group_icon,
-        metadata: {
-          source: "template_catalog_widget",
-          template_id: item.template_id ?? null,
-          piece_id: item.piece_id ?? null,
-          widget_id: item.id ?? null,
-          tool: {
-            id: tool.id,
-            label: tool.label,
-            category: tool.category ?? null,
-            tags: tool.tags ?? [],
-          },
-        },
-      };
-      return widget;
-    })
-    .filter((widget): widget is DroppedWidget => widget !== null);
 }

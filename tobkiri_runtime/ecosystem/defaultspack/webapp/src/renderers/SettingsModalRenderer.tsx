@@ -1,14 +1,17 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
+import { useVerifiedFrontendHost } from "../host/VerifiedFrontendHostContext";
+import { ViewportPopover } from "../ui/layers/ViewportPopover";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
 import { MobilePairingApproval } from "../components/MobilePairingApproval";
+import { TaskPetNotificationSettings } from "../components/TaskPetNotificationSettings";
 import { normalizeLocale, t } from "../lib/i18n";
 import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement, type PlacementManifest } from "../lib/placement";
 import { selectedApisForModel, toggleModelApiRoute, updateModelApiRouteText } from "../lib/modelApiRoutes";
@@ -19,11 +22,14 @@ import { providerBrandAsset } from "../features/connections/providerBrandAssets"
 import { ContinuitySettingsField } from "../features/continuity/ContinuitySettingsField";
 import {
   ModelSearchPicker,
-  modelProviderOptions,
-  parseModelProviderQuery,
+  mergeRegisteredModelProfileOptions,
+  type ModelSelectOption,
   parseModelSelectorSchema,
   type ModelSelectorSchema,
 } from "../features/models";
+import { useSearchCaptureScope } from "../features/search/useSearchCaptureScope";
+import { matchesModelPropertiesProfile } from "./settings/modelPropertiesAcknowledgement";
+import { getModelPropertiesRequest, subscribeModelPropertiesRequest, clearModelPropertiesRequest, type ModelPropertiesRequest } from "../features/search/modelPropertiesNavigation";
 import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import {
@@ -31,6 +37,7 @@ import {
   buildControlCenterSections,
   buildAccountConnectionPrelude,
   filterControlCenterSections,
+  taskPetNotificationSettingsSearchResult,
   mapSettingsSectionId,
   localizedSettingsSourceLabel,
   safeSettingsLabel,
@@ -49,6 +56,7 @@ import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsF
 import { ModelRoutingOverview } from "./settings/ModelRoutingOverview";
 import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
 import { buildSettingsProfileWorkspace } from "./settings/settingsProfileModel";
+import { SpotlightShortcutRecorder } from "./SpotlightShortcutRecorder";
 
 const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   ...builtinSettingsFieldRendererEntries,
@@ -277,10 +285,11 @@ function fieldApiProviderRows(field: SettingsSection["fields"][number]): Array<R
     : [];
 }
 
-function routeProviderForOption(option: SettingsModelOption | NonNullable<SettingsSection["fields"][number]["options"]>[number] | undefined, modelId: string): string {
+export function routeProviderForOption(option: SettingsModelOption | NonNullable<SettingsSection["fields"][number]["options"]>[number] | undefined, modelId: string): string {
   const provider = String(option?.provider_id ?? "").trim();
   if (provider) return provider;
-  return modelId.includes("/") ? modelId.split("/", 1)[0] ?? "" : "";
+  // A slash prefix may identify the model publisher, not its saved API connection.
+  return "";
 }
 
 function apiRefForRoute(api: Record<string, unknown>, fallbackProvider: string): string {
@@ -740,158 +749,59 @@ function SettingsModelSearchSelect({
   value,
   options,
   onChange,
+  onSelectedOptionChange,
   placeholder = "モデルを検索",
   selectorSchema,
 }: {
   value: string;
   options: SettingsModelOption[];
   onChange: (value: string) => void;
+  onSelectedOptionChange?: (option: ModelSelectOption | null) => void;
   placeholder?: string;
   selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const searchRequestSeq = useRef(0);
-  const trimmedQuery = query.trim();
-  const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
-  const providerState = parseModelProviderQuery(
-    query,
-    modelProviderOptions(options),
-    resolvedSelectorSchema.layout.provider_trigger,
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    searchRequestSeq.current += 1;
-    const requestSeq = searchRequestSeq.current;
-    let disposed = false;
-    setRemoteResults([]);
-    if (providerState.active) {
-      setBusy(false);
-      setError("");
-      return;
-    }
-    setBusy(Boolean(trimmedQuery));
-    setError("");
-    const timer = window.setTimeout(() => {
-      if (!trimmedQuery) return;
-      settingsApiResources.searchModels({
-        query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
-        max_results: 30,
-        ...(providerState.providerId ? { provider_id: providerState.providerId } : {}),
-      })
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults(result.models ?? []);
-        })
-        .catch((searchError: unknown) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults([]);
-          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
-        })
-        .finally(() => {
-          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
-        });
-    }, 160);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    open,
-    providerState.active,
-    providerState.modelQuery,
-    providerState.providerId,
-    trimmedQuery,
-  ]);
 
   return (
     <ModelSearchPicker
       value={value}
       options={options}
-      remoteResults={remoteResults}
       query={query}
-      loading={busy}
-      error={error}
       placeholder={placeholder}
-      selectorSchema={resolvedSelectorSchema}
+      selectorSchema={selectorSchema}
       surface="settings"
       open={open}
       onOpenChange={setOpen}
       onChange={onChange}
+      onSelectedOptionChange={onSelectedOptionChange}
       onQueryChange={setQuery}
     />
   );
 }
 
-function ModelAllowlistField({
+export function ModelAllowlistField({
   value,
   fallback,
   options,
   onChange,
+  selectorSchema,
 }: {
   value: unknown;
   fallback: unknown;
   options: SettingsModelOption[];
   onChange: (value: string) => void;
+  selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const searchRequestSeq = useRef(0);
   const selectedModels = parseModelAllowlist(value, fallback);
   const selectedSet = useMemo(() => new Set(selectedModels), [selectedModels]);
   const selectedOptions = useMemo(() => {
-    const byId = new Map(options.flatMap((option) => [option.value, option.qualified_model_id].filter(Boolean).map((id) => [String(id), option] as const)));
+    const byId = new Map(options.flatMap((option) => [option.value, option.qualified_model_id]
+      .filter(Boolean).map((id) => [String(id), option] as const)));
     return selectedModels.map((modelId) => ({ modelId, option: byId.get(modelId) }));
   }, [options, selectedModels]);
-  const trimmedQuery = query.trim();
-
-  useEffect(() => {
-    if (!open) return;
-    searchRequestSeq.current += 1;
-    const requestSeq = searchRequestSeq.current;
-    let disposed = false;
-    setRemoteResults([]);
-    setBusy(true);
-    setError("");
-    const timer = window.setTimeout(() => {
-      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 50 })
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults(result.models ?? []);
-        })
-        .catch((searchError: unknown) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults([]);
-          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
-        })
-        .finally(() => {
-          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
-        });
-    }, trimmedQuery ? 160 : 0);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [open, trimmedQuery]);
-
-  const candidateOptions = useMemo(() => {
-    const localMatches = trimmedQuery
-      ? options.filter((option) => modelOptionMatchesSearch(option, trimmedQuery))
-      : options;
-    return dedupeModelOptions([
-      ...localMatches,
-      ...remoteResults.map(modelSearchItemToOption),
-    ])
-      .filter((option) => !selectedSet.has(option.value))
-      .slice(0, 50);
-  }, [options, remoteResults, selectedSet, trimmedQuery]);
 
   const commit = (items: string[]) => onChange(serializeModelAllowlist(items));
   const addModel = (modelId: string) => {
@@ -935,91 +845,13 @@ function ModelAllowlistField({
         )}
         </div>
       </div>
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className={cn(
-            "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
-            open
-              ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-100"
-              : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:border-zinc-700",
-          )}
-        >
-          <Plus size={14} />
-          モデルを追加
-        </button>
-        {open && (
-          <>
-            <button
-              type="button"
-              aria-label="モデル追加を閉じる"
-              className="fixed inset-0 rumi-layer-panel cursor-default"
-              onClick={() => setOpen(false)}
-            />
-            <div className="absolute left-0 top-[calc(100%+8px)] rumi-layer-local-popover w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl">
-              <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
-                <Search size={14} />
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="モデル名、提供元、用途で検索"
-                  className="min-w-0 flex-1 bg-transparent text-zinc-200 outline-none placeholder:text-zinc-600"
-                />
-                {busy && <Loader2 size={13} className="animate-spin text-zinc-500" />}
-                {query && (
-                  <button
-                    type="button"
-                    onClick={() => setQuery("")}
-                    className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="モデル検索をクリア"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </label>
-              {error && (
-                <ErrorNotice
-                  className="rounded-none border-x-0 border-b-0 px-3 py-2 text-[11px]"
-                  copyLabel="モデル検索エラーをコピー"
-                  message={error}
-                />
-              )}
-              <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
-                {candidateOptions.length > 0 ? candidateOptions.map((option) => {
-                  const badges = modelOptionBadges(option);
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => addModel(option.value)}
-                      className="flex w-full items-start justify-between gap-3 rounded-md px-2.5 py-2 text-left text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-zinc-100">{option.label || option.value}</span>
-                        <span className="block truncate text-[11px] text-zinc-500">{[option.provider_id, option.model_id || option.qualified_model_id].filter(Boolean).join(" · ") || "提供元情報なし"}</span>
-                      </span>
-                      <span className="flex max-w-[170px] flex-wrap justify-end gap-1">
-                        {badges.map((badge) => (
-                          <span key={badge} className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                            {badge}
-                          </span>
-                        ))}
-                        <Plus size={13} className="mt-1 shrink-0 text-emerald-300" />
-                      </span>
-                    </button>
-                  );
-                }) : (
-                  <div className="px-3 py-5 text-xs text-zinc-600">
-                    {busy ? "モデルを読み込んでいます..." : "追加できるモデルがありません。"}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      <ModelSearchPicker
+        value="" options={options} query={query} onQueryChange={setQuery}
+        open={open} onOpenChange={setOpen} onChange={addModel}
+        triggerLabel="モデルを追加" emptyText="追加できるモデルがありません。"
+        excludeValues={selectedModels} selectorSchema={selectorSchema} surface="settings"
+        preset={{ kinds: ["model"] }}
+      />
     </div>
   );
 }
@@ -1799,6 +1631,7 @@ function SearchableProviderSelect({
   showKindControls?: boolean;
   showProviderBadges?: boolean;
 }) {
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -1836,6 +1669,8 @@ function SearchableProviderSelect({
   return (
     <div className={cn("relative", className)}>
       <button
+        ref={anchorRef}
+        aria-expanded={open}
         type="button"
         onClick={() => setOpen((current) => !current)}
         title={selectedLabel || undefined}
@@ -1858,9 +1693,7 @@ function SearchableProviderSelect({
         <ChevronDown size={14} className={cn("shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <>
-          <button type="button" aria-label="close provider select" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={closeAll} />
-          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover w-[min(520px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-hidden rumi-popover">
+        <ViewportPopover anchorRef={anchorRef} onClose={closeAll} className="rumi-popover">
             <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
               <Search size={14} />
               <input
@@ -1988,8 +1821,7 @@ function SearchableProviderSelect({
                 {addCustomLabel}
               </button>
             )}
-          </div>
-        </>
+        </ViewportPopover>
       )}
     </div>
   );
@@ -2149,17 +1981,21 @@ function DeviceLockField({ field }: { field: SettingsSection["fields"][number] }
 }
 
 function SettingsField({
+  displayMode = "standard",
   sectionId,
   field,
   value,
   sectionValues,
+  modelProfiles = [],
   onChange,
 }: {
   sectionId: string;
   field: SettingsSection["fields"][number];
   value: unknown;
   sectionValues?: Record<string, unknown>;
+  modelProfiles?: SettingsFieldRendererProps["modelProfiles"];
   onChange: (sectionId: string, fieldId: string, value: unknown) => void;
+  displayMode?: "standard" | "advanced";
 }) {
   const [secretDraft, setSecretDraft] = useState("");
   const [secretState, setSecretState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -2193,7 +2029,11 @@ function SettingsField({
   const [routeApiSearchQuery, setRouteApiSearchQuery] = useState("");
   const [routeShowAllProviders, setRouteShowAllProviders] = useState(false);
   const [routeInlineAddOpen, setRouteInlineAddOpen] = useState(false);
-  const routeOptions = modelRouteOptions(field);
+  const [rememberedRouteOption, setRememberedRouteOption] = useState<ModelSelectOption | null>(null);
+  const routeOptions = field.type === "model_api_routes"
+    ? mergeRegisteredModelProfileOptions(modelRouteOptions(field).map(modelFieldOptionToOption), modelProfiles)
+    : modelRouteOptions(field);
+  if (rememberedRouteOption && !routeOptions.some((option) => option.value === rememberedRouteOption.value)) routeOptions.push(rememberedRouteOption);
   const routeOptionKey = routeOptions.map((option) => String(option.value ?? "")).join("|");
   const preferredRouteModel = field.type === "model_api_routes" ? String(sectionValues?.preferred_model ?? "").trim() : "";
   const [routeModel, setRouteModel] = useState(() => preferredRouteModel || String(routeOptions[0]?.value ?? ""));
@@ -2290,12 +2130,14 @@ function SettingsField({
       };
       control = (
         <div className="space-y-4" data-settings-renderer="model_routing">
+          <p className="text-xs text-zinc-500">既存モデルに名前付きAPIキーを割り当てる互換設定です。通常は「使用するAPI」からモデルを登録してください。</p>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.42fr)]">
             <label className="space-y-1.5">
               <span className="text-[11px] font-medium text-zinc-500">1. 設定するモデル</span>
               <SettingsModelSearchSelect
                 value={selectedModel}
                 options={routeOptions.map(modelFieldOptionToOption)}
+                onSelectedOptionChange={setRememberedRouteOption}
                 placeholder="model/provider/notes で検索"
                 selectorSchema={parseModelSelectorSchema(field.selector_schema)}
                 onChange={(nextModel) => {
@@ -2306,7 +2148,7 @@ function SettingsField({
             </label>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
               <p className="text-[11px] font-medium text-zinc-500">接続プロバイダー</p>
-              <p className="mt-1 font-mono text-sm text-zinc-300">{selectedProvider || "unknown"}</p>
+              <p className="mt-1 font-mono text-sm text-zinc-300">{selectedProvider || "接続先情報は未確認です"}</p>
             </div>
           </div>
 
@@ -2421,7 +2263,9 @@ function SettingsField({
                     ? "検索条件に一致する API key がありません。"
                     : routeShowAllProviders
                       ? "登録済みの API key がありません。"
-                      : `${selectedProvider || "このprovider"} の API key がありません。+ API key で追加するか、「接続」から登録してください。`}
+                      : selectedProvider
+                        ? `${selectedProvider} の互換設定用 API key がありません。保存済みの接続情報は「使用するAPI」で確認できます。`
+                        : "接続先情報を確認してからAPIキーを割り当ててください。"}
                 </div>
               )}
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-500">
@@ -2437,7 +2281,6 @@ function SettingsField({
             </div>
           )}
 
-          <ModelRouteSetup />
           <details className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <summary className="cursor-pointer text-xs text-zinc-500">Advanced: route text</summary>
             <textarea
@@ -3299,6 +3142,7 @@ function SettingsField({
           value={value}
           fallback={field.default}
           options={(field.options ?? []).map(modelFieldOptionToOption)}
+          selectorSchema={parseModelSelectorSchema(field.selector_schema)}
           onChange={(nextValue) => onChange(sectionId, field.id, nextValue)}
         />
       ) : (
@@ -3353,7 +3197,7 @@ function SettingsFieldFallback(props: SettingsFieldRendererProps) {
   return <SettingsField {...props} field={props.field as SettingsSection["fields"][number]} />;
 }
 
-function ModelApiRoutesSettingsFieldRenderer(props: SettingsFieldRendererProps) {
+export function ModelApiRoutesSettingsFieldRenderer(props: SettingsFieldRendererProps) {
   return <SettingsField {...props} field={props.field as SettingsSection["fields"][number]} />;
 }
 
@@ -3366,6 +3210,7 @@ export function SettingsModalRenderer({
   previewsCount,
   settingsSections,
   settingsValues,
+  runtimeProfileId,
   modelProfiles = [],
   activeModelProfileId,
   backendConnectionState = "online",
@@ -3410,6 +3255,24 @@ export function SettingsModalRenderer({
   const [settingsSearch, setSettingsSearch] = useState("");
   const [toolTabRequest, setToolTabRequest] = useState<{ id: "basic" | "permissions" | "connections" | "advanced"; version: number } | undefined>();
   const [profileSelectionRequest, setProfileSelectionRequest] = useState<{ id: string; version: number } | null>(null);
+  const verifiedHost = useVerifiedFrontendHost();
+  const modelPropertiesScope = useSearchCaptureScope(verifiedHost?.catalog.profile_id);
+  const readModelProperties = useCallback(() => getModelPropertiesRequest(modelPropertiesScope), [modelPropertiesScope]);
+  const pendingModelProperties = useSyncExternalStore(subscribeModelPropertiesRequest, readModelProperties, readModelProperties);
+  const [modelPropertiesDraft, setModelPropertiesDraft] = useState<ModelPropertiesRequest | null>(null);
+  useEffect(() => {
+    setModelPropertiesDraft(null);
+    setProfileSelectionRequest(null);
+  }, [modelPropertiesScope]);
+  const modelPropertiesScopeRef = useRef(modelPropertiesScope);
+  modelPropertiesScopeRef.current = modelPropertiesScope;
+  const acknowledgeModelProperties = useCallback((request: ModelPropertiesRequest) => {
+    if (modelPropertiesScopeRef.current !== modelPropertiesScope) return;
+    const current = getModelPropertiesRequest(modelPropertiesScope);
+    if (current?.requestId !== request.requestId || current.scopeId !== request.scopeId
+      || request.scopeId !== modelPropertiesScope) return;
+    clearModelPropertiesRequest(request.requestId);
+  }, [modelPropertiesScope]);
   const [placementMenuOpen, setPlacementMenuOpen] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState("");
@@ -3431,6 +3294,8 @@ export function SettingsModalRenderer({
     automationEndpointEnabled: false,
   });
   const normalizedSearch = settingsSearch.trim().toLowerCase();
+  const hasTaskPetNotificationSettings = Boolean(runtimeProfileId && runtimeProfileId !== "unavailable");
+  const taskPetSearchResult = taskPetNotificationSettingsSearchResult(runtimeProfileId, settingsSearch, locale);
   const dirtySettingsKeys = saveState.dirtyKeys ?? [];
   const hasUnconfirmedSettingsChanges = settingsCloseRequiresConfirmation(saveState);
   const dismissCloseConfirmation = useCallback(() => {
@@ -3527,15 +3392,17 @@ export function SettingsModalRenderer({
       .filter((section) => settingsDisplayMode !== "standard" || (
         section.id === "quick_setup"
         || section.id === "profiles"
+        || section.id === "models_api"
         || section.id === "accounts_connections"
         || section.id === "tools_mcp"
         || section.id === "computer_automation"
+        || (section.id === "features" && hasTaskPetNotificationSettings)
         || section.fields.some((field) => !field.advanced)
       ));
     if (!normalizedSearch || profileSearchMatches.length === 0 || filtered.some((section) => section.id === "profiles")) return filtered;
     const profilesSection = controlCenterSections.find((section) => section.id === "profiles");
     return profilesSection ? [...filtered, profilesSection].sort((left, right) => left.order - right.order) : filtered;
-  }, [controlCenterSections, normalizedSearch, profileSearchMatches.length, settingsDisplayMode, settingsSearch]);
+  }, [controlCenterSections, hasTaskPetNotificationSettings, normalizedSearch, profileSearchMatches.length, settingsDisplayMode, settingsSearch]);
   const settingsSearchMatches = useMemo(() => {
     if (!normalizedSearch) return [];
     return controlCenterSections.flatMap((section) => section.fields
@@ -3584,6 +3451,19 @@ export function SettingsModalRenderer({
       setActiveSectionId(visibleSections[0]?.id ?? "quick_setup");
     }
   }, [activeSectionId, normalizedSearch, visibleSections]);
+  useEffect(() => {
+    if (!isOpen || !pendingModelProperties) return;
+    setSettingsSearch("");
+    if (pendingModelProperties.registered) {
+      const profile = profileWorkspace.profiles.find((item) => matchesModelPropertiesProfile(pendingModelProperties, item));
+      if (!profile) return;
+      setActiveSectionId("profiles");
+      setProfileSelectionRequest({ id: profile.id, version: pendingModelProperties.requestId });
+    } else {
+      setActiveSectionId("models_api");
+      setModelPropertiesDraft(pendingModelProperties);
+    }
+  }, [isOpen, pendingModelProperties, profileWorkspace.profiles]);
   useEffect(() => {
     if (!isOpen) setCloseConfirmationOpen(false);
   }, [isOpen]);
@@ -3734,6 +3614,9 @@ export function SettingsModalRenderer({
     activeSection?.label ?? "",
     activeSection?.description ?? "",
   ].join(" ").toLowerCase();
+  const hasVisibleTaskPetNotificationPrelude = hasTaskPetNotificationSettings
+    && activeSection?.id === "features"
+    && (!normalizedSearch || Boolean(taskPetSearchResult) || activeSectionOwnText.includes(normalizedSearch));
   const fieldFilter = (field: SettingsSection["fields"][number]) => (
     !normalizedSearch
     || activeSectionOwnText.includes(normalizedSearch)
@@ -4038,6 +3921,15 @@ export function SettingsModalRenderer({
   };
 
   const settingsFieldAnchorId = (field: ControlCenterField) => `settings-field-${field.sourceSectionId}-${field.id}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const openTaskPetNotificationSearchMatch = () => {
+    setActiveSectionId("features");
+    onOpenSection?.("features");
+    requestAnimationFrame(() => {
+      const target = document.getElementById("settings-task-pet-notifications");
+      target?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+      target?.querySelector<HTMLElement>("input, button")?.focus();
+    });
+  };
   const openSearchMatch = (sectionId: ControlCenterSection["id"], field: ControlCenterField) => {
     setActiveSectionId(sectionId);
     if (sectionId === "tools_mcp") {
@@ -4061,7 +3953,12 @@ export function SettingsModalRenderer({
         settingsFieldTakesFullWidth(field) ? (fullWidthAtLg ? "lg:col-span-2" : "2xl:col-span-2") : "",
       )}
     >
-      <SettingsFieldRendererHost
+      {field.sourceSectionId === "general" && field.id === "spotlight_shortcut" ? <SpotlightShortcutRecorder
+        sectionId={field.sourceSectionId}
+        field={field as SettingsFieldRendererProps["field"]}
+        value={settingsValues[field.sourceSectionId]?.[field.id] ?? field.default}
+        onChange={onSettingChange}
+      /> : <SettingsFieldRendererHost
         registry={settingsModalFieldRendererRegistry}
         componentBindings={catalog?.component_bindings ?? []}
         fallbackRenderer={SettingsFieldFallback}
@@ -4074,8 +3971,11 @@ export function SettingsModalRenderer({
         }
         sectionValues={settingsValues[field.sourceSectionId] ?? {}}
         modelProfiles={modelProfiles}
+        displayMode={settingsDisplayMode}
+        modelPropertiesRequest={modelPropertiesDraft?.scopeId === modelPropertiesScope ? modelPropertiesDraft : null}
+        onModelPropertiesAcknowledged={acknowledgeModelProperties}
         onChange={onSettingChange}
-      />
+      />}
     </div>
   );
   const renderGroupedFields = (fields: ControlCenterField[], fullWidthAtLg = false) => fields.map((field, index) => {
@@ -4140,6 +4040,13 @@ export function SettingsModalRenderer({
   };
 
   const renderSectionPrelude = (section: ControlCenterSection): ReactElement | null => {
+    if (section.id === "features" && hasVisibleTaskPetNotificationPrelude && runtimeProfileId) {
+      return (
+        <div id="settings-task-pet-notifications" data-task-pet-profile={runtimeProfileId}>
+          <TaskPetNotificationSettings key={runtimeProfileId} profileId={runtimeProfileId} locale={locale} />
+        </div>
+      );
+    }
     if (section.id === "profiles") {
       return (
         <ProfileSettingsPanel
@@ -4149,11 +4056,16 @@ export function SettingsModalRenderer({
           saveState={saveState}
           requestedProfileId={profileSelectionRequest?.id}
           selectionRequestVersion={profileSelectionRequest?.version}
+          modelPropertiesRequest={pendingModelProperties}
+          onModelPropertiesAcknowledged={acknowledgeModelProperties}
           onSettingChange={onSettingChange}
           onOpenSection={openSection}
           onRetryLoad={onRetryLoad}
         />
       );
+    }
+    if (section.id === "models_api" && !section.fields.some((field) => String(field.type) === "api_key_setup")) {
+      return <ModelRouteSetup displayMode={settingsDisplayMode} requestedModel={modelPropertiesDraft?.scopeId === modelPropertiesScope ? modelPropertiesDraft : null} onModelPropertiesAcknowledged={acknowledgeModelProperties} />;
     }
     if (section.id === "quick_setup") {
       return (
@@ -4934,13 +4846,24 @@ export function SettingsModalRenderer({
                       <div>
                         <h3 id="settings-search-results-title" className="text-sm font-medium text-zinc-100">{localizedCopy("Search results", "検索結果")}</h3>
                         <p className="mt-1 text-[11px] text-zinc-500">{localizedCopy(
-                          `${settingsSearchMatches.length + profileSearchMatches.length} matches across settings and profiles`,
-                          `設定とプロファイルから ${settingsSearchMatches.length + profileSearchMatches.length}件`,
+                          `${settingsSearchMatches.length + profileSearchMatches.length + Number(Boolean(taskPetSearchResult))} matches across settings and profiles`,
+                          `設定とプロファイルから ${settingsSearchMatches.length + profileSearchMatches.length + Number(Boolean(taskPetSearchResult))}件`,
                         )}</p>
                       </div>
                       <button type="button" onClick={() => setSettingsSearch("")} className="text-xs font-medium text-zinc-500 hover:text-zinc-200">{localizedCopy("Clear search", "検索をクリア")}</button>
                     </div>
                     <div className="grid max-h-56 overflow-y-auto sm:grid-cols-2">
+                      {taskPetSearchResult && (
+                        <button
+                          type="button"
+                          onClick={openTaskPetNotificationSearchMatch}
+                          data-settings-local-search-result="task-pet-notifications"
+                          className="min-w-0 border-b border-white/[0.06] px-4 py-3 text-left hover:bg-white/[0.035] sm:odd:border-r"
+                        >
+                          <span className="block truncate text-xs font-medium text-zinc-200">{taskPetSearchResult.label}</span>
+                          <span className="mt-1 block truncate text-[10px] text-zinc-600">{localizedCopy("Features · Current Profile", "機能 · 現在のプロファイル")}</span>
+                        </button>
+                      )}
                       {settingsSearchMatches.slice(0, 16).map(({ section, field }) => (
                         <button
                           key={`${section.id}:${field.sourceSectionId}:${field.id}`}
@@ -4969,7 +4892,7 @@ export function SettingsModalRenderer({
                           <span className="mt-1 block truncate font-mono text-[10px] text-zinc-600">{localizedCopy("Profile", "プロファイル")} · {profile.id}</span>
                         </button>
                       ))}
-                      {settingsSearchMatches.length === 0 && profileSearchMatches.length === 0 ? (
+                      {settingsSearchMatches.length === 0 && profileSearchMatches.length === 0 && !taskPetSearchResult ? (
                         <p className="px-4 py-6 text-xs text-zinc-500 sm:col-span-2">{t(locale, "settings.noFields")}</p>
                       ) : null}
                     </div>
@@ -5041,12 +4964,12 @@ export function SettingsModalRenderer({
                         </div>
                       </section>
                     )}
-                    {normalizedSearch && activeSection.id !== "profiles" && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                    {normalizedSearch && activeSection.id !== "profiles" && !hasVisibleTaskPetNotificationPrelude && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
                       <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {t(locale, "settings.noFields")}
                       </div>
                     )}
-                    {!normalizedSearch && settingsSections.length === 0 && (
+                    {!normalizedSearch && !hasVisibleTaskPetNotificationPrelude && settingsSections.length === 0 && (
                       <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {localizedCopy(
                           "Loading built-in settings and provider information…",
@@ -5054,7 +4977,7 @@ export function SettingsModalRenderer({
                         )}
                       </div>
                     )}
-                    {!normalizedSearch && activeSection.id !== "profiles" && activeSection.id !== "quick_setup" && settingsSections.length > 0 && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                    {!normalizedSearch && !hasVisibleTaskPetNotificationPrelude && activeSection.id !== "profiles" && activeSection.id !== "quick_setup" && settingsSections.length > 0 && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
                       <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {localizedCopy(
                           "Pack or provider contributions for this section will appear here after registry validation.",

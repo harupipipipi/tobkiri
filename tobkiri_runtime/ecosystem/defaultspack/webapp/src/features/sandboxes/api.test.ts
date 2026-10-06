@@ -578,3 +578,23 @@ test("desktop control renew normalizes expiry without requiring a lease token in
   assert.equal(body.lease_token, "secret-token");
   assert.match(body.request_id, /^desktop-control-renew-/);
 });
+
+
+test("managed desktop reads accept the canonical Host success envelope", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => new Response(JSON.stringify({ success: true, data:
+    requestTarget(input) === "/api/desktops" ? { desktops: [desktopResponse("running")] }
+      : requestTarget(input) === "/api/runtime/providers" ? { providers: [] } : { templates: [] }, error: null }));
+  try {
+    assert.equal((await sandboxesApi.listDesktops()).desktops[0].seat_id, "seat-1");
+    assert.deepEqual(await sandboxesApi.listRuntimeProviders(), { providers: [] });
+    assert.deepEqual(await sandboxesApi.listSandboxTemplates(), { templates: [] });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("managed desktop reads reject a canonical Host failure instead of showing empty data", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: false, data: null, error: "Unavailable" }));
+  try { await assert.rejects(sandboxesApi.listDesktops()); }
+  finally { globalThis.fetch = originalFetch; }
+});

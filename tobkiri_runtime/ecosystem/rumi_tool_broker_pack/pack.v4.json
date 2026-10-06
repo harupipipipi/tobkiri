@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:abb704300c67033ff248db40bad52d0e846b2217fbeef3e5c3853fb5f123f906",
+      "digest": "sha256:cece588f84842a0acd3e05939304154f5033fd91fd2e4754014d8a55df80db60",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -33,7 +33,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:b200c29a85df1faf508658aa507518d16f64233e2d899051be8814088dc57a1e",
+    "artifact_set_digest": "sha256:4d8f6360c0cce9271cd519b42374a9ec920a354bcf28f8445e49e29422f7faad",
     "contract_catalog_digest": "sha256:405075015fbd1e6f9dc9ca4827f8776b7bd49e7bc9a200f4ccd0c9771b30eb8b",
     "source_identity": "sha256:fb61355840a21208df69096aa72cb79dba034e270642257b202bdb87be77d771"
   },
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:b200c29a85df1faf508658aa507518d16f64233e2d899051be8814088dc57a1e",
+    "artifact_digest": "sha256:4d8f6360c0cce9271cd519b42374a9ec920a354bcf28f8445e49e29422f7faad",
     "display_name": "Rumi Tool Broker",
     "id": "rumi_tool_broker_pack",
     "kind": "host_extension",

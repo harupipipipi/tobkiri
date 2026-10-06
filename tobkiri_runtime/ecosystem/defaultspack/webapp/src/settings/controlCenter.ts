@@ -174,7 +174,7 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
   {
     id: "features",
     label: "Features",
-    description: "Commands, ambient capture, and other optional product features.",
+    description: "Commands, ambient capture, Tobkiri pet completion notifications, and other optional product features.",
     help: "Feature-specific behavior stays with the feature that owns it.",
     order: 40,
   },
@@ -235,7 +235,7 @@ const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection,
   calendar: { label: "カレンダー", description: "予定とタスクの追加、表示、実行時に使うモデルを設定します。", help: "カレンダーに固有の設定をまとめています。" },
   workspace_ui: { label: "表示と入力", description: "表示言語、入力方法、ショートカット、回答とプレビューの見え方を設定します。", help: "日常的に変更する表示・入力項目だけをまとめています。" },
   accounts_connections: { label: "接続", description: "AIプロバイダー、アカウント、外部サービス、Webhook、デバイスの接続を管理します。", help: "認証情報は専用の安全な保存経路を使用します。" },
-  features: { label: "機能", description: "コマンド、指で録音など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
+  features: { label: "機能", description: "コマンド、指で録音、Tobkiri ペットの完了通知など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
   tools_mcp: { label: "ツール", description: "チャットで使えるツール、MCP、ツール候補、透明性を管理します。", help: "ログインは「接続」、実行承認は「自動化と権限」で管理します。" },
   computer_automation: { label: "自動化と権限", description: "承認ルール、トリガー、継続実行を管理します。", help: "影響の大きい操作は、必要な機能・リスク・適用範囲と一緒に表示します。" },
   privacy_security: { label: "安全とデータ", description: "外部へ送るデータ、保持、ログ、認証情報、管理者ポリシーを管理します。", help: "件数ではなく、原因・影響・解決操作のある問題だけを表示します。" },
@@ -536,6 +536,7 @@ const SOURCE_SECTION_ROUTES: Record<string, ControlCenterSectionId> = {
 };
 
 const FIELD_ROUTE_OVERRIDES: Record<string, ControlCenterSectionId> = {
+  "general.composer_placeholder": "advanced",
   "calendar.agent_model": "calendar",
   "automation.subagent_teams_enabled": "models_api",
   "ambient.agent_model": "models_api",
@@ -597,7 +598,11 @@ export function normalizeSettingsField(field: SettingsField, sourceSectionId = "
       }
     }
   }
-  if (ADVANCED_FIELD_PATTERNS.some((pattern) => pattern.test(String(field.id)))) {
+  if (
+    (sourceSectionId === "general" && field.id === "composer_placeholder")
+    || (sourceSectionId === "models" && field.id === "model_api_routes")
+    || ADVANCED_FIELD_PATTERNS.some((pattern) => pattern.test(String(field.id)))
+  ) {
     normalized.advanced = true;
   }
   if (ADVANCED_SOURCE_SECTIONS.has(sourceSectionId)) {
@@ -758,6 +763,27 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
   return sections;
 }
 
+function taskPetNotificationSettingsMatchesSearch(searchQuery: string): boolean {
+  const query = searchQuery.trim().toLowerCase();
+  const searchText = "Tobkiri pet completion notifications desktop notifications ペット 完了通知 通知".toLowerCase();
+  return Boolean(query) && searchText.includes(query);
+}
+
+/** Finds the Profile-local pet control without inventing a backend setting. */
+export function taskPetNotificationSettingsSearchResult(
+  profileId: string | undefined,
+  searchQuery: string,
+  locale: LocaleSetting = "en",
+): { sectionId: "features"; label: string } | null {
+  if (!profileId || profileId === "unavailable" || !taskPetNotificationSettingsMatchesSearch(searchQuery)) return null;
+  return {
+    sectionId: "features",
+    label: normalizeLocale(locale) === "ja"
+      ? "Tobkiri ペットの完了通知"
+      : "Tobkiri pet completion notifications",
+  };
+}
+
 export function filterControlCenterSections(
   sections: ControlCenterSection[],
   searchQuery: string,
@@ -766,7 +792,9 @@ export function filterControlCenterSections(
   if (!query) return sections;
   return sections.filter((section) => {
     const sectionText = [section.id, section.label, section.description, section.help].join(" ").toLowerCase();
-    return sectionText.includes(query) || section.fields.some((field) => settingsFieldSearchText(field).includes(query));
+    return sectionText.includes(query)
+      || (section.id === "features" && taskPetNotificationSettingsMatchesSearch(query))
+      || section.fields.some((field) => settingsFieldSearchText(field).includes(query));
   });
 }
 

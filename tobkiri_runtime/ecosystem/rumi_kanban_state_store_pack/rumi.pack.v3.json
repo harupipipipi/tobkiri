@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "artifact_hash": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
       "contract_id": "rumi.resource.kanban.v1",
       "id": "kanban-state-resource",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_kanban_resource"
     },
     {
-      "artifact_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "artifact_hash": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
       "contract_id": "rumi.action.kanban.v1",
       "id": "kanban-state-action",
       "loader": "python",
@@ -115,9 +115,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334",
+            "artifact_digest": "sha256:2f73023d03a22e062d24a8f54dbd00f72d2360f0bc7d69e48bfb8e6aebcc7d13",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c"
+            "source_identity": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d"
           },
           "owner_surfaces": [
             "kanban_boards",
@@ -132,7 +132,7 @@
         "pack_identity": "rumi:ecosystem/rumi_kanban_state_store_pack",
         "provenance": {
           "build_identity": "rumi_kanban_state_store_pack:1.0.0",
-          "content_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+          "content_hash": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
           "signature": null,
           "trust_class": "local"
         },
@@ -161,7 +161,7 @@
       "owner": "rumi_kanban_state_store_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c"
+      "source_identity": "sha256:27a2e306077dbd987f6435b5f56dfa08a8aed6c7f12284c10b6dc7e775f2556d"
     }
   },
   "migration": {
@@ -203,7 +203,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_kanban_state_store_pack:1.0.0",
-    "content_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+    "content_hash": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
     "signature": null,
     "trust_class": "local"
   },

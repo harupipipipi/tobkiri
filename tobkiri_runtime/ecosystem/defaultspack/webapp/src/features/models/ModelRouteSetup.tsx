@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ErrorNotice } from "../../components/ErrorNotice";
 import type { RegisteredProviderConnection } from "../../lib/api";
@@ -9,6 +9,10 @@ import {
   providerCatalogModels,
   type ProviderCatalogModel,
 } from "../../lib/providerCatalog";
+import type { ModelPropertiesRequest } from "../search/modelPropertiesNavigation";
+import { ModelSearchPicker } from "./ModelSearchPicker";
+import { modelSearchItemToModelSelectOption, type ModelSelectOption } from "./modelSelect";
+import { modelRouteConnectionLabel } from "./modelRoutePresentation";
 import { settingsApiResources } from "../settings/resources/settingsApiResources";
 
 /** Return a user-visible model route error without exposing connection secrets. */
@@ -79,36 +83,74 @@ export function ProviderReadiness({
 }
 
 /** Catalog choices never attest account access or runtime capabilities. */
-export function CatalogModelPicker({ models, value, query, onChange, onQueryChange }: {
+export function CatalogModelPicker({ models, value, query, providerId = "", connectionId, selectedOption, onChange, onQueryChange, onSelectedOptionChange }: {
   models: readonly ProviderCatalogModel[];
   value: string;
   query: string;
+  providerId?: string;
+  connectionId?: string;
+  selectedOption?: ModelSelectOption | null;
   onChange: (value: string) => void;
   onQueryChange: (query: string) => void;
+  onSelectedOptionChange?: (option: ModelSelectOption | null) => void;
 }) {
-  const search = query.trim().toLowerCase();
-  const choices = models.filter((model) => model.model_id === value
-    || `${model.model_id} ${model.display_name}`.toLowerCase().includes(search));
-  const field = "rounded border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100";
+  const options: ModelSelectOption[] = models.map((model) => ({
+    value: model.model_id, label: model.display_name, model_id: model.model_id,
+    provider_id: providerId || undefined,
+  }));
+  if (selectedOption?.value === value && !options.some((option) => option.value === value)) options.push(selectedOption);
   return <div className="grid gap-2">
-    <label className="grid gap-1 text-xs">モデルを検索
-      <input type="search" className={field} aria-label="モデルを検索" value={query}
-        autoCorrect="off" autoCapitalize="none" spellCheck={false}
-        onChange={(event) => onQueryChange(event.target.value)} placeholder="名前で検索" />
-    </label>
-    <label className="grid gap-1 text-xs">モデル一覧（{models.length}件）
-      <select aria-label="モデル一覧" className={field} value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">使いたいモデルを選択</option>
-        {choices.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name} — {model.model_id}</option>)}
-      </select>
-    </label>
-    {search && choices.length === 0 && <p role="status" className="text-xs text-zinc-400">該当するモデルがありません。</p>}
+    <ModelSearchPicker value={value} options={options} query={query} onChange={onChange}
+      onQueryChange={onQueryChange} onSelectedOptionChange={onSelectedOptionChange}
+      showTrigger={false} open preset={{ kinds: ["model"], ...(providerId ? { providerIds: [providerId] } : {}), connectionId }}
+      catalogOptionAdapter={(item) => {
+        if (!providerId || item.provider_id !== providerId || !item.model_id
+          || (connectionId && item.connection_id !== connectionId)) return null;
+        return { ...modelSearchItemToModelSelectOption(item), value: item.model_id };
+      }} />
+    {value && <p className="text-xs text-zinc-400">選択中: <span className="font-mono text-zinc-200">{value}</span></p>}
+    <p className="text-xs text-zinc-500">Providerのモデルカタログです。このAPIでの利用可否は未確認です。</p>
   </div>;
 }
 
+/** Advanced editing hides controls while keeping the current custom draft visible. */
+export function CustomModelControls({ displayMode, manual, manualModel, hasCatalog, model, onManualChange, onChange }: {
+  displayMode: "standard" | "advanced";
+  manual: boolean;
+  manualModel: boolean;
+  hasCatalog: boolean;
+  model: string;
+  onManualChange: (manual: boolean) => void;
+  onChange: (model: string) => void;
+}) {
+  if (displayMode === "standard") return manualModel ? <p role="status" className="text-xs text-zinc-400">
+    カスタムモデル: <span className="font-mono text-zinc-200">{model || "未入力"}</span>
+    <span className="block">モデルIDを編集するには、表示をAdvancedに切り替えてください。</span>
+  </p> : null;
+  return <details open={manualModel}>
+    <summary className="cursor-pointer text-xs text-zinc-400">カスタムモデル・一覧にないモデル</summary>
+    {hasCatalog && <label className="mt-2 flex items-center gap-2 text-xs">
+      <input type="checkbox" checked={manual} onChange={(event) => onManualChange(event.target.checked)} />モデルIDを指定する
+    </label>}
+    {manualModel && <label className="mt-2 grid gap-1 text-xs">モデルID
+      <input className="rounded border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100" value={model}
+        autoCorrect="off" autoCapitalize="none" spellCheck={false}
+        onChange={(event) => onChange(event.target.value)} placeholder="ProviderのモデルID" />
+    </label>}
+  </details>;
+}
+
 /** Choose a catalog model for the exact saved connection without typing IDs. */
-export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConnectionId?: string }) {
-  const [model, setModel] = useState("");
+export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged }: {
+  preferredConnectionId?: string;
+  displayMode?: "standard" | "advanced";
+  requestedModel?: ModelPropertiesRequest | null;
+  onModelPropertiesAcknowledged?: (request: ModelPropertiesRequest) => void;
+}) {
+  const connectionSelectId = useId();
+  const [catalogModel, setCatalogModel] = useState("");
+  const [selectedCatalogOption, setSelectedCatalogOption] = useState<ModelSelectOption | null>(null);
+  const [customModel, setCustomModel] = useState("");
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("");
   const [manual, setManual] = useState(false);
@@ -119,9 +161,16 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
   const [message, setMessage] = useState("");
   const [saveError, setSaveError] = useState("");
 
+  const lastIncoming = useRef<{ requestId?: number; preferredId: string } | null>(null);
   useEffect(() => {
     let active = true;
     let version = 0;
+    let incomingApplied = false;
+    const newRequest = lastIncoming.current?.requestId !== requestedModel?.requestId;
+    const incomingConnectionId = newRequest
+      ? requestedModel?.identity.connectionId || preferredConnectionId
+      : preferredConnectionId;
+    lastIncoming.current = { requestId: requestedModel?.requestId, preferredId: preferredConnectionId };
     const loadConnections = async () => {
       const currentVersion = ++version;
       try {
@@ -131,9 +180,14 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
         setProviderRegistryRevision(snapshot.registry_revision);
         setConnectionsError("");
         setProvider((current) => {
-          const desired = preferredConnectionId || current;
+          if (!incomingApplied && incomingConnectionId
+            && snapshot.connections.some((connection) => connection.provider_instance_id === incomingConnectionId)) {
+            incomingApplied = true;
+            return incomingConnectionId;
+          }
+          const desired = current;
           if (snapshot.connections.some((connection) => connection.provider_instance_id === desired)) return desired;
-          return snapshot.connections.length === 1 ? snapshot.connections[0].provider_instance_id : "";
+          return !requestedModel && snapshot.connections.length === 1 ? snapshot.connections[0].provider_instance_id : "";
         });
       } catch (error) {
         if (!active || currentVersion !== version) return;
@@ -149,15 +203,8 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
       active = false;
       window.removeEventListener("tobkiri-provider-connections-changed", loadConnections);
     };
-  }, [preferredConnectionId]);
+  }, [preferredConnectionId, requestedModel?.requestId]);
 
-  useEffect(() => {
-    setModel("");
-    setQuery("");
-    setManual(false);
-    setMessage("");
-    setSaveError("");
-  }, [provider]);
 
   const selectedConnection = connections.find(
     (connection) => connection.provider_instance_id === provider,
@@ -165,9 +212,42 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
   const catalogProviderId = selectedConnection ? connectionCatalogProviderId(selectedConnection) : "";
   const catalogModels = useMemo(() => providerCatalogModels(catalogProviderId)
     .filter((item) => ["chat", "reasoning"].includes(item.type)), [catalogProviderId]);
+  useEffect(() => {
+    setSelectedCatalogOption(null);
+    setCatalogModel("");
+    setCustomModel("");
+    setQuery("");
+    setManual(false);
+    setMessage("");
+    setSaveError("");
+  }, [provider, catalogProviderId, requestedModel?.requestId]);
+
+  const manualModel = manual || (Boolean(selectedConnection) && !catalogProviderId);
+  const model = manualModel ? customModel : catalogModel;
   const selectedModel = catalogModels.find((item) => item.model_id === model);
-  const manualModel = manual || (Boolean(selectedConnection) && !catalogModels.length);
-  const validModel = Boolean(model.trim()) && (manualModel || Boolean(selectedModel));
+  useEffect(() => {
+    if (!requestedModel || requestedModel.registered || !selectedConnection) return;
+    const identity = requestedModel.identity;
+    if (identity.providerId !== catalogProviderId
+      || (identity.connectionId && identity.connectionId !== selectedConnection.provider_instance_id)) return;
+    const option = modelSearchItemToModelSelectOption(requestedModel.model);
+    setManual(false);
+    setCatalogModel(identity.modelId);
+    setSelectedCatalogOption({ ...option, value: identity.modelId });
+  }, [requestedModel?.requestId, provider, catalogProviderId]);
+  useEffect(() => {
+    if (!requestedModel || requestedModel.registered || !selectedConnection
+      || providerRegistryRevision === null || manualModel
+      || catalogProviderId !== requestedModel.identity.providerId
+      || (requestedModel.identity.connectionId
+        && requestedModel.identity.connectionId !== selectedConnection.provider_instance_id)
+      || model !== requestedModel.identity.modelId
+      || selectedCatalogOption?.value !== requestedModel.identity.modelId) return;
+    onModelPropertiesAcknowledged?.(requestedModel);
+  }, [requestedModel, selectedConnection, providerRegistryRevision, manualModel,
+    catalogProviderId, model, selectedCatalogOption, onModelPropertiesAcknowledged]);
+  const validModel = Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
+    || selectedCatalogOption?.value === model);
   const save = async () => {
     if (!selectedConnection || providerRegistryRevision === null || !validModel) return;
     setBusy(true);
@@ -179,7 +259,7 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
         model_profile_id: profileId,
         model_id: model.trim(),
         provider_instance_id: selectedConnection.provider_instance_id,
-        display_name: `${selectedModel?.display_name || model.trim()} (${selectedConnection.display_name})`,
+        display_name: `${selectedModel?.display_name || selectedCatalogOption?.label || model.trim()} (${selectedConnection.display_name})`,
         provider_registry_revision: providerRegistryRevision,
       });
       setMessage("モデル設定を保存しました。チャットのモデル一覧から選択できます。");
@@ -193,26 +273,33 @@ export function ModelRouteSetup({ preferredConnectionId = "" }: { preferredConne
   const field = "rounded border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100";
   return <fieldset disabled={busy} className="mt-3 grid gap-2 rounded-lg border border-zinc-700 p-3">
     <legend className="text-sm text-zinc-200">使いたいモデルを選ぶ</legend>
-    <label className="grid gap-1 text-xs">API接続
-      <select aria-label="Provider connection ID" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={!connections.length}>
+    {requestedModel && <div className="rounded border border-zinc-700 p-2 text-xs text-zinc-400" data-model-properties-draft>
+      <p className="font-medium text-zinc-200">{requestedModel.model.display_name}</p>
+      <p>Provider: {requestedModel.identity.providerId}</p>
+      <p className="font-mono">{requestedModel.identity.modelId}</p>
+      <p>保存するには、このProviderの使用するAPIを選んでください。</p>
+    </div>}
+    <label htmlFor={connectionSelectId} className="grid gap-1 text-xs">使用するAPI
+      <select id={connectionSelectId} aria-label="使用するAPI" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={!connections.length}>
         <option value="">{connections.length ? "接続を選択" : "登録済みの接続がありません"}</option>
-        {connections.map((connection) => <option key={connection.provider_instance_id} value={connection.provider_instance_id}>{connection.display_name}</option>)}
+        {connections.map((connection) => <option key={connection.provider_instance_id} value={connection.provider_instance_id}>{modelRouteConnectionLabel(connection, connections)}</option>)}
       </select>
     </label>
     {selectedConnection && <>
       <ProviderReadiness connection={selectedConnection} />
       {!manualModel && <CatalogModelPicker models={catalogModels} value={model} query={query}
-        onChange={(next) => { setModel(next); setMessage(""); }} onQueryChange={setQuery} />}
-      <details>
-        <summary className="cursor-pointer text-xs text-zinc-400">カスタムモデル・一覧にないモデル</summary>
-        {catalogModels.length > 0 && <label className="mt-2 flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={manual} onChange={(event) => { setManual(event.target.checked); setModel(""); }} />モデルIDを指定する
-        </label>}
-        {manualModel && <label className="mt-2 grid gap-1 text-xs">モデルID
-          <input className={field} value={model} autoCorrect="off" autoCapitalize="none" spellCheck={false}
-            onChange={(event) => setModel(event.target.value)} placeholder="ProviderのモデルID" />
-        </label>}
-      </details>
+        providerId={catalogProviderId} connectionId={selectedConnection.provider_instance_id}
+        selectedOption={selectedCatalogOption} onSelectedOptionChange={setSelectedCatalogOption}
+        onChange={(next) => { setCatalogModel(next); setMessage(""); }} onQueryChange={setQuery} />}
+      <CustomModelControls
+        displayMode={displayMode}
+        manual={manual}
+        manualModel={manualModel}
+        hasCatalog={Boolean(catalogProviderId)}
+        model={customModel}
+        onManualChange={setManual}
+        onChange={setCustomModel}
+      />
     </>}
     <ModelRouteErrorNotices
       connectionsError={connectionsError}

@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:2d103eaadc345f9520672396272b51c9777b9d81110419b5e99cb2c1b32a9fb4",
+  "source_identity": "sha256:e49e1a75f4135a5ad4a6b9b38fe85513da1041e31bf90e3457ad4b7f218a5dc5",
   "variants": [
     {
       "variant_id": "rumi_provider_registry_pack.provider-configure.execute.python",
       "function_id": "rumi_provider_registry_pack.provider-configure.execute",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+      "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_provider_registry_pack.provider-configure.prepare.python",
       "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+      "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -147,7 +147,7 @@
       "variant_id": "rumi_provider_registry_pack.provider-registry.manage.python",
       "function_id": "rumi_provider_registry_pack.provider-registry.manage",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+      "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -181,7 +181,7 @@
       "variant_id": "rumi_provider_registry_pack.provider-registry.resource.python",
       "function_id": "rumi_provider_registry_pack.provider-registry.resource",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:1c52edea2e43d02145831a2bc85055ed689847663953eb80637b5a4702c8d79b",
+      "implementation_digest": "sha256:815d4d5e85ea01a12d2aa3c72b4f9c34d1f9d518d933737467ae1e4e6ce1917e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -250,6 +250,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:e8ec7c65958657cd8bba4ce2d070422abb40064ed78fb927bd2df7d353a0bfd6",
-  "catalog_digest": "sha256:5d4875d700de3572fee701d7b5ba9e622f7b8e194343810703e843da233816b8"
+  "materialization_catalog_digest": "sha256:f7851849c224c182708cd915e08f6cef5d5637a95de2c50124e4f6e3f13928c0",
+  "catalog_digest": "sha256:ac5e565b00211e05a711ec7af78b99e5d65090fdc1941f8043a541022931562a"
 }

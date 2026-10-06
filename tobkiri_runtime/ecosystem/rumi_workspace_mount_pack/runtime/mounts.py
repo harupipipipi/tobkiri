@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import tempfile
 import time
 from pathlib import Path
@@ -17,6 +18,9 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.workspace_mount_effect import validate_project_plan, ProjectMountPersistenceUncertain
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_host.directory_selections import DirectorySelectionScope
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
@@ -99,6 +103,65 @@ class WorkspaceMountStore:
             state["revision"] += 1
             self._write(state)
         return {"mount": _copy(record), "revision": state["revision"]}
+
+    def mount_project(
+        self, plan: Mapping[str, Any], *, assert_current: Callable[[], None]
+    ) -> dict[str, Any]:
+        """Atomically mount and select the exact directory approved by the Host."""
+        root = Path(plan["root_path"])
+        root_fd = open_directory_nofollow(root)
+        try:
+            identity = os.fstat(root_fd)
+            if [identity.st_dev, identity.st_ino] != plan["root_identity"]:
+                raise PermissionError("project folder identity changed")
+            with NamedLock(self.lock_root, "mounts"):
+                assert_current()
+                state = self._read()
+                _assert_revision(state, plan["expected_revision"])
+                workspace_id = _identifier(plan["workspace_id"])
+                if workspace_id in state["mounts"]:
+                    raise WorkspaceConflict("project workspace already exists")
+                # Recheck the path while retaining the selected directory descriptor.
+                current_fd = open_directory_nofollow(root)
+                try:
+                    current = os.fstat(current_fd)
+                    if (current.st_dev, current.st_ino) != (
+                        identity.st_dev,
+                        identity.st_ino,
+                    ):
+                        raise PermissionError("project folder identity changed")
+                finally:
+                    os.close(current_fd)
+                assert_current()
+                now = int(time.time() * 1000)
+                record = {
+                    "id": workspace_id,
+                    "root_path": str(root),
+                    "metadata": {
+                        "label": plan["display_name"],
+                        "trusted": False,
+                        "directory_identity": plan["root_identity"],
+                    },
+                    "created_at": now,
+                    "updated_at": now,
+                    "mount_revision": 1,
+                }
+                state["mounts"][workspace_id] = record
+                state["selected_workspace_id"] = workspace_id
+                state["revision"] += 1
+                try:
+                    self._write(state)
+                except Exception as exc:
+                    raise ProjectMountPersistenceUncertain(
+                        "project mount result is unknown"
+                    ) from exc
+            return {
+                "mount": _copy(record),
+                "revision": state["revision"],
+                "selected_workspace_id": workspace_id,
+            }
+        finally:
+            os.close(root_fd)
 
     def unmount(self, workspace_id: str, *, expected_revision: int) -> dict[str, Any]:
         """Remove mount metadata without deleting workspace files."""
@@ -308,6 +371,9 @@ def capture_workspace_binding(
         root_stat = os.fstat(root_fd)
     finally:
         os.close(root_fd)
+    expected_identity = mount.get("metadata", {}).get("directory_identity")
+    if expected_identity is not None and expected_identity != [root_stat.st_dev, root_stat.st_ino]:
+        raise PermissionError("the selected project directory has changed")
     return WorkspaceMutationBinding(
         profile_id=store.profile_id,
         workspace_id=workspace_id,
@@ -503,9 +569,125 @@ def _contributions(
     return contributions
 
 
+_PROJECT_CONTRACT = "tobkiri.service.workspace.project.v1"
+_PROJECT_OPERATIONS = {
+    "rumi_workspace_mount_pack.project-directory.service": "workspace.directory.acquire",
+    "rumi_workspace_mount_pack.project-workspace-prepare.service": "workspace.mount.prepare",
+    "rumi_workspace_mount_pack.project-workspace-execute.service": "workspace.mount.execute",
+}
+
+
+def _project_scope(
+    context: HostProviderCaptureContextV4, invocation: HostProviderInvocationContextV4
+) -> DirectorySelectionScope:
+    invocation.assert_current()
+    _assert_invocation_profile(context, invocation)
+    return DirectorySelectionScope(
+        profile_id=context.profile_id,
+        activation_id=str(context.activation["activation_id"]),
+        plan_digest=context.plan_digest,
+        security_epoch=context.security_epoch,
+        presentation_owner_principal_id=invocation.presentation_owner_principal_id,
+        presentation_owner_session_id=invocation.presentation_owner_session_id,
+    )
+
+
+class ProjectWorkspaceHostFactoryV4:
+    """Finite Host hooks; only the approved exact execute edge can persist a mount."""
+
+    def __init__(self, function_id: str) -> None:
+        self.function_id = function_id
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        """Capture one exact operation and the native selection port where needed."""
+        _validate_factory_context(context, self.function_id)
+        operation = _PROJECT_OPERATIONS[self.function_id]
+        if any(
+            binding.operation.contract_id != _PROJECT_CONTRACT
+            or binding.operation.operation_id != operation
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("project workspace binding is invalid")
+        port = context.directory_selection_port
+        user_data_root = _capture_user_data_root(context)
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            scope = _project_scope(context, invocation)
+            if operation_id != operation:
+                raise PermissionError("project workspace operation changed")
+            if operation == "workspace.directory.acquire":
+                if port is None:
+                    raise PermissionError("native project picker is unavailable")
+                return port.acquire(
+                    payload, scope=scope, assert_current=invocation.assert_current
+                )
+            store = WorkspaceMountStore(
+                context.profile_id, user_data_root=user_data_root
+            )
+            if operation == "workspace.mount.prepare":
+                if (
+                    port is None
+                    or set(payload) != {"selection_id"}
+                    or not isinstance(payload["selection_id"], str)
+                ):
+                    raise PermissionError("project folder selection is required")
+                root, selected_identity = port.consume(payload["selection_id"], scope)
+                descriptor = open_directory_nofollow(root)
+                try:
+                    identity = os.fstat(descriptor)
+                    if (identity.st_dev, identity.st_ino) != selected_identity:
+                        raise PermissionError("project folder identity changed")
+                    invocation.assert_current()
+                    plan = {
+                        "version": "tobkiri.workspace.project-plan.v1",
+                        "profile_id": context.profile_id,
+                        "activation_id": scope.activation_id,
+                        "plan_digest": context.plan_digest,
+                        "security_epoch": context.security_epoch,
+                        "workspace_id": "project-" + secrets.token_hex(16),
+                        "root_path": str(root),
+                        "root_identity": [identity.st_dev, identity.st_ino],
+                        "display_name": root.name or "Project",
+                        "expected_revision": store.snapshot()["revision"],
+                        "request_digest": canonical_digest(dict(payload)),
+                    }
+                finally:
+                    os.close(descriptor)
+                validate_project_plan(payload, plan)
+                return plan
+            if (
+                set(payload) != {"request", "plan"}
+                or not isinstance(payload["request"], Mapping)
+                or not isinstance(payload["plan"], Mapping)
+            ):
+                raise PermissionError("project workspace plan is required")
+            plan = payload["plan"]
+            validate_project_plan(payload["request"], plan)
+            if (
+                plan["profile_id"] != scope.profile_id
+                or plan["activation_id"] != scope.activation_id
+                or plan["plan_digest"] != scope.plan_digest
+                or plan["security_epoch"] != scope.security_epoch
+            ):
+                raise PermissionError("project workspace capture changed")
+            return store.mount_project(plan, assert_current=invocation.assert_current)
+
+        return CapturedHostProviderV4(
+            tuple(_contributions(context, invoke)), lambda: None
+        )
+
+
 HOST_PROVIDER_FACTORY = {
     _RESOURCE_FUNCTION_ID: WorkspaceResourceHostFactoryV4(),
     _ACTION_FUNCTION_ID: WorkspaceActionHostFactoryV4(),
+    **{
+        function_id: ProjectWorkspaceHostFactoryV4(function_id)
+        for function_id in _PROJECT_OPERATIONS
+    },
 }
 
 

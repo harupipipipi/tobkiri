@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:01fef805b7f2e9a2208c6f42df46ce74d2ddc2357d994be1f7d3e2184a75d208",
+      "digest": "sha256:e8dcd2391b47e75e4fa239e8192a0b827f068bf33d26516eec703135500ea1d7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+      "digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
       "kind": "executable",
       "path": "runtime/mounts.py"
     }
@@ -25,13 +25,52 @@
         "rumi_workspace_mount_pack.workspace-resource"
       ],
       "revision_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a"
+    },
+    {
+      "contract_id": "tobkiri.service.workspace.project.v1",
+      "operations": [
+        "workspace.directory.acquire",
+        "workspace.mount.prepare",
+        "workspace.mount.execute"
+      ],
+      "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264"
     }
   ],
   "functions": [
     {
+      "contract_revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+      "id": "rumi_workspace_mount_pack.project-directory.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "isolation": "dedicated_process",
+      "operations": [
+        "workspace.directory.acquire"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+      "id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "isolation": "dedicated_process",
+      "operations": [
+        "workspace.mount.execute"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+      "id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "isolation": "dedicated_process",
+      "operations": [
+        "workspace.mount.prepare"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:5bd8db43405c1c7582f1f00f7e9ea2b897191363c85c2cf15b51ddcd9ccb40f7",
       "id": "rumi_workspace_mount_pack.workspace-mount.manage",
-      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_workspace_mount_pack.workspace-mount"
@@ -41,7 +80,7 @@
     {
       "contract_revision_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
       "id": "rumi_workspace_mount_pack.workspace-mount.resource",
-      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
+      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_workspace_mount_pack.workspace-resource"
@@ -50,9 +89,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:78b610e9995e0d5a2858270f4be9ef2c3d2f2cfc98fac04cb255269b788c1e66",
-    "artifact_set_digest": "sha256:0cc6213ccfa8d696ca3af4fe125010fce46de924cac9daae13cc03d37947e08f",
-    "contract_catalog_digest": "sha256:3ed074a5b3651d4d6ed17e690aeb91a9167a1397aa780e4e9405ae01746373b4"
+    "source_identity": "sha256:e13c549c8ada72f513e85fd5c8b82b826311d3c3364321fdd581b1f8071ead71",
+    "artifact_set_digest": "sha256:e49ed901834fce6d684219a8d3f7c677c194e32a1cfbbdc54095ff4abe13509f",
+    "contract_catalog_digest": "sha256:e81e75144b039d2630aa03f889a506c5e4481584f5680fee7591808b2522ab63"
   },
   "migration": {
     "compatibility": "read_only",
@@ -81,10 +120,34 @@
       "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
+    },
+    {
+      "operation_id": "workspace.directory.acquire",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "provider_id": "rumi_workspace_mount_pack.project-directory.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "workspace.mount.execute",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "provider_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "workspace.mount.prepare",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "provider_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:8cea2c82b3d585d04b5b0adec918a4ecb4a6db957e8593feb423b0b646d918b2",
+    "artifact_digest": "sha256:5c314c6b4beddc6f23f1203cf5e84c2302621a3ad613ea0021882960003a6f5e",
     "display_name": "Rumi Workspace Mount",
     "id": "rumi_workspace_mount_pack",
     "kind": "host_extension",
@@ -95,15 +158,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_workspace_mount_pack/pack.v4.json",
-    "source_digest": "sha256:78b610e9995e0d5a2858270f4be9ef2c3d2f2cfc98fac04cb255269b788c1e66",
+    "source_digest": "sha256:e13c549c8ada72f513e85fd5c8b82b826311d3c3364321fdd581b1f8071ead71",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:3b0dfb865e4d661c7d3f2575b91c0638c5c6e3d68e20c349a3b14841a637d8a9",
+    "content_root_digest": "sha256:b161009acdace0262177e627746a5d521243b2558b93b092357de9ef7eb06c7f",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:12c59b2b5916737191cd3d2b9d43851801268d323de099c1554cb9ac82164d18",
+    "input_inventory_digest": "sha256:54ef7048b1ce31b361471837da4edb5d310fe2c784b5daf781949ecb309a1835",
     "normative": true,
     "evidence": [
       {
@@ -114,11 +177,35 @@
       {
         "path": "ecosystem/rumi_workspace_mount_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:78b610e9995e0d5a2858270f4be9ef2c3d2f2cfc98fac04cb255269b788c1e66"
+        "digest": "sha256:e13c549c8ada72f513e85fd5c8b82b826311d3c3364321fdd581b1f8071ead71"
       }
     ]
   },
   "provider_catalog": [
+    {
+      "provider_id": "rumi_workspace_mount_pack.project-directory.service",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "operations": [
+        "workspace.directory.acquire"
+      ]
+    },
+    {
+      "provider_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "operations": [
+        "workspace.mount.execute"
+      ]
+    },
+    {
+      "provider_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "owner": "rumi_workspace_mount_pack",
+      "contract_reference": "tobkiri.service.workspace.project.v1",
+      "operations": [
+        "workspace.mount.prepare"
+      ]
+    },
     {
       "provider_id": "rumi_workspace_mount_pack.workspace-mount.manage",
       "owner": "rumi_workspace_mount_pack",
