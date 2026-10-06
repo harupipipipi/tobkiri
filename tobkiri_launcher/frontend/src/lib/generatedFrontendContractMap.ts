@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619
+// Raw source digest: sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:d2e4a6bf302dbf1e2e23e34583f15bbdf34412f92dc7b21d714c999e54597619",
+  "artifact_digest": "sha256:01ef93b9a3f934c39869f03edaf6e154a07080275babdcade8ebd755df6a4216",
   "routes": [
     {
       "method": "GET",
@@ -341,6 +341,26 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": [
             "turn_id",
             "conversation_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/turn/progress",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.progress",
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+          "allowed_payload_keys": [
+            "turn_id",
+            "conversation_id",
+            "cursor",
+            "progress_id"
           ]
         }
       ]
@@ -1560,6 +1580,24 @@ const EXPECTED_ROUTES = {
         "allowed_payload_keys": [
           "turn_id",
           "conversation_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/chat/turn/progress": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.progress",
+        "contract_id": "tobkiri.resource.turn.progress.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+        "allowed_payload_keys": [
+          "turn_id",
+          "conversation_id",
+          "cursor",
+          "progress_id"
         ]
       }
     ]
