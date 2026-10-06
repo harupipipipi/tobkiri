@@ -200,6 +200,7 @@ def _check_artifact_index(
         }.get(relative_path) or {
             "sidecar": "sidecar",
             "executable": "runtime",
+            "asset": "asset",
         }.get(artifact_kind)
         if expected_role is None:
             errors.append(f"v4 Pack artifact has an unsupported kind: {relative_path}")

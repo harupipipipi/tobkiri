@@ -10308,6 +10308,57 @@
       ],
       "variant_id": "rumi_default_tools_pack.file-create.service.python"
     },
+    "rumi_default_tools_pack.files-read": {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_default_tools_pack.files-read",
+      "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+      "implementation_path": "runtime/files.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_default_tools_pack.files-read-operation",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_default_tools_pack.files-read-operation",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+          "implementation_path": "runtime/files.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_default_tools_pack.files-read-operation",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_default_tools_pack",
+      "pack_id": "rumi_default_tools_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_default_tools_pack.files-read-operation",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_default_tools_pack.files-read.python"
+    },
     "rumi_desktop_host_service_pack.desktop-host.control": {
       "contract_id": "tobkiri.action.desktop.host.v1",
       "contract_version": "1.0.0",
@@ -10520,41 +10571,21 @@
       ],
       "variant_id": "rumi_email_connector_pack.connector.email.python"
     },
-    "rumi_file_inspect_pack.file-inspect.service": {
+    "rumi_file_inspect_pack.file-inspect.media": {
       "contract_id": "tobkiri.service.file.inspect.v1",
       "contract_version": "1.0.0",
       "error_schema": {
         "type": "object"
       },
       "execution_kind": "source-verified",
-      "function_id": "rumi_file_inspect_pack.file-inspect.service",
+      "function_id": "rumi_file_inspect_pack.file-inspect.media",
       "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
       "implementation_path": "runtime/inspect.py",
       "input_schema": {
         "type": "object"
       },
+      "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
       "operations": [
-        {
-          "contract_id": "tobkiri.service.file.inspect.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "file-inspect",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
-          "implementation_path": "runtime/inspect.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
-          "operation_id": "rumi_file_inspect_pack.file-inspect",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
-          "symbol": "create_file_inspect_operation"
-        },
         {
           "contract_id": "tobkiri.service.file.inspect.v1",
           "contract_version": "1.0.0",
@@ -10583,17 +10614,63 @@
       "pack_id": "rumi_file_inspect_pack",
       "source": [
         {
+          "entrypoint_id": "rumi_file_inspect_pack.file-inspect.for-media",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_file_inspect_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_file_inspect_pack.file-inspect.media.python"
+    },
+    "rumi_file_inspect_pack.file-inspect.service": {
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_file_inspect_pack.file-inspect.service",
+      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_path": "runtime/inspect.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "file-inspect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+          "implementation_path": "runtime/inspect.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
+          "operation_id": "rumi_file_inspect_pack.file-inspect",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
+          "symbol": "create_file_inspect_operation"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_file_inspect_pack",
+      "pack_id": "rumi_file_inspect_pack",
+      "source": [
+        {
           "entrypoint_id": "file-inspect",
           "kind": "legacy-v3-entrypoint",
           "module": "ecosystem.rumi_file_inspect_pack.runtime.inspect",
           "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
           "symbol": "create_file_inspect_operation"
-        },
-        {
-          "entrypoint_id": "rumi_file_inspect_pack.file-inspect.for-media",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "rumi_file_inspect_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_file_inspect_pack.file-inspect.service.python"
@@ -28475,7 +28552,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:307b7c13306037cf3fc7a5cf727268a2f25dc4c394a850e8edb9650d24798d6b",
+    "input_digest": "sha256:bcbb4172164891c776955cde08eeca8f2c8704309e73d0c3da1ed511ad05a964",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -29226,7 +29303,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:7bc4ee2bcebffb243fb09fd4b86f352703ed7d324510e0635893daed90e60792",
+        "digest": "sha256:3df6101d8a105eb21b3efd1850924e5f1573eddad41e306ff7851d393cabf0af",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

@@ -1,4 +1,4 @@
-"""Candidate-only tests for captured Kanban owner and native presentation."""
+"""Tests for the captured Kanban owner and native presentation."""
 
 import importlib.util
 import json
@@ -284,9 +284,8 @@ def test_candidate_catalog_has_exact_host_owner_and_read_effect() -> None:
     """Source declarations select the captured Host owner with a read-only resource."""
     import hashlib
 
-    primary = Path(__file__).resolve().parents[5] / "tobkiri_runtime"
     spec = importlib.util.spec_from_file_location(
-        "candidate_catalog_validator", primary / "scripts/migrate_pack_artifacts_v4.py"
+        "canonical_catalog_validator", ROOT / "scripts/migrate_pack_artifacts_v4.py"
     )
     compiler = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(compiler)

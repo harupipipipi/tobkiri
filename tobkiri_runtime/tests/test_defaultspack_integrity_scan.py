@@ -36,8 +36,8 @@ def _copy_v4_pack(tmp_path: Path) -> Path:
     manifest = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text())
     for artifact in manifest["artifacts"]:
         relative = artifact["path"]
-        if relative.startswith(("tools/", "extensions/tools/")):
-            target = pack_root / relative
+        target = pack_root / relative
+        if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(DEFAULTSPACK_ROOT / relative, target)
     return pack_root
@@ -271,3 +271,106 @@ def test_v4_integrity_rejects_symlinked_runtime_artifact(tmp_path):
     errors = _v4_errors(pack_root)
 
     assert any("symlink" in error for error in errors)
+
+
+def _declared_asset_index(tmp_path: Path):
+    """Build a sealed finite index without invoking any artifact generator."""
+    from tobkiri_protocol.canonical import canonical_digest
+    from ecosystem.defaultspack.quality.scan_integrity import _sha256_file
+
+    root = tmp_path / "asset-pack"
+    root.mkdir()
+    relative = "defaultspack/frontend_contract_map.v4.json"
+    asset = root / relative
+    asset.parent.mkdir()
+    asset.write_text('{"routes": []}\n', encoding="utf-8")
+    artifacts = [{"path": relative, "kind": "asset", "digest": _sha256_file(asset)}]
+    artifact_set_digest = canonical_digest(artifacts)
+    pack = {
+        "artifacts": artifacts,
+        "integrity": {"artifact_set_digest": artifact_set_digest},
+    }
+    (root / "pack.v4.json").write_text(json.dumps(pack), encoding="utf-8")
+    contracts_path = root / "contracts.v4.json"
+    contracts_path.write_text("{}\n", encoding="utf-8")
+    index = {
+        "artifacts": [
+            {
+                "path": "pack.v4.json",
+                "role": "canonical_manifest",
+                "digest": _sha256_file(root / "pack.v4.json"),
+            },
+            {
+                "path": "contracts.v4.json",
+                "role": "contract_catalog",
+                "digest": _sha256_file(contracts_path),
+            },
+            {"path": relative, "role": "asset", "digest": artifacts[0]["digest"]},
+        ],
+        "artifact_set_digest": artifact_set_digest,
+    }
+    _reseal_asset_index(index)
+    return root, pack, index, contracts_path
+
+
+def _reseal_asset_index(index):
+    """Keep the index seal valid so a negative test targets its actual defect."""
+    from tobkiri_protocol.canonical import canonical_digest
+
+    unsigned = {key: value for key, value in index.items() if key != "integrity_seal"}
+    index["integrity_seal"] = {
+        "algorithm": "sha256-canonical-v1",
+        "signed_digest": canonical_digest(unsigned),
+    }
+
+
+def _asset_index_errors(values):
+    from ecosystem.defaultspack.quality.scan_integrity import _check_artifact_index
+
+    root, pack, index, contracts_path = values
+    errors = []
+    _check_artifact_index(errors, root, pack, index, contracts_path)
+    return errors
+
+
+def test_declared_frontend_map_asset_remains_digest_verified(tmp_path: Path) -> None:
+    """A declared frontend map is data, with its exact asset role and hash."""
+    assert _asset_index_errors(_declared_asset_index(tmp_path)) == []
+
+
+def test_declared_asset_index_rejects_wrong_role_even_with_valid_seal(
+    tmp_path: Path,
+) -> None:
+    values = _declared_asset_index(tmp_path)
+    values[2]["artifacts"][2]["role"] = "sidecar"
+    _reseal_asset_index(values[2])
+    errors = _asset_index_errors(values)
+    assert (
+        "artifact index role mismatch: defaultspack/frontend_contract_map.v4.json"
+        in errors
+    )
+    assert "artifact index integrity seal is invalid" not in errors
+
+
+def test_declared_asset_index_rejects_changed_asset_bytes(tmp_path: Path) -> None:
+    values = _declared_asset_index(tmp_path)
+    (values[0] / "defaultspack/frontend_contract_map.v4.json").write_text("tampered\n")
+    assert (
+        "artifact hash mismatch: defaultspack/frontend_contract_map.v4.json"
+        in _asset_index_errors(values)
+    )
+
+
+def test_asset_support_does_not_admit_extra_index_artifact(tmp_path: Path) -> None:
+    from ecosystem.defaultspack.quality.scan_integrity import _sha256_file
+
+    values = _declared_asset_index(tmp_path)
+    extra = values[0] / "extra.json"
+    extra.write_text("{}\n", encoding="utf-8")
+    values[2]["artifacts"].append(
+        {"path": "extra.json", "role": "asset", "digest": _sha256_file(extra)}
+    )
+    _reseal_asset_index(values[2])
+    errors = _asset_index_errors(values)
+    assert "artifact index contains an extra artifact: extra.json" in errors
+    assert "artifact index integrity seal is invalid" not in errors

@@ -1973,7 +1973,7 @@
       "entries": [
         {
           "contract_id": "rumi.service.file.inspect.v1",
-          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "function_id": "rumi_file_inspect_pack.file-inspect.media",
           "implementation_path": "runtime/inspect.py",
           "operation_ids": [
             "rumi_file_inspect_pack.file-inspect.for-media"
@@ -7802,6 +7802,26 @@
     },
     "rumi_default_tools_pack": {
       "entries": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_default_tools_pack.files-read",
+          "implementation_path": "runtime/files.py",
+          "operation_ids": [
+            "rumi_default_tools_pack.files-read-operation"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
         {
           "function_id": "rumi_default_tools_pack.file-create-tool",
           "operation_ids": [
