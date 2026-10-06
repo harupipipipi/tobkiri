@@ -73,9 +73,9 @@ def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(dispatched
         ("envelope", "operation_id", "foreign"),
         ("context", "profile_id", "foreign"),
         ("context", "activation_id", "foreign"),
-        ("context", "activation_digest", "foreign"),
-        ("context", "plan_digest", "foreign"),
-        ("context", "profile_authority_digest", "foreign"),
+        ("context", "activation_digest", "sha256:" + "a" * 64),
+        ("context", "plan_digest", "sha256:" + "b" * 64),
+        ("context", "profile_authority_digest", "sha256:" + "c" * 64),
         ("context", "fencing_token", 99),
         ("context", "caller_domain_id", "foreign"),
         ("context", "caller_boot_epoch", 99),
@@ -83,7 +83,7 @@ def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(dispatched
         ("context", "target_domain_id", "foreign"),
         ("context", "target_boot_epoch", 99),
         ("context", "request_id", "foreign"),
-        ("envelope", "request_digest", "foreign"),
+        ("envelope", "request_digest", "sha256:" + "d" * 64),
     ],
 )
 def test_all_existing_envelope_identity_comparisons_still_deny(dispatched, place, field, value):
