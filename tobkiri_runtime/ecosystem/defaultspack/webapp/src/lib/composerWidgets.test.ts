@@ -1,3 +1,4 @@
+import { composerExtensionNeedsSetup } from "./composerWidgets";
 function routeKey(path: string): string {
   return `/${path}`;
 }
@@ -462,4 +463,11 @@ test("structured composer keeps field JSON separate and omits empty values", () 
     structuredComposerPayload(fields, { output: "summary", detail: "" }),
     { output: "summary" },
   );
+});
+
+test("missing setup remains unavailable in ordinary Composer catalog items", () => {
+  const item = { id: "custom_read", label: "Read", category: "tool" as const, tool_info: { setup_state: { status: "missing" } } };
+  assert.equal(composerExtensionNeedsSetup(item), true);
+  assert.equal(composerExtensionItems([item])[0].disabled, true);
+  assert.equal(composerExtensionNeedsSetup({ ...item, tool_info: { setup_state: { status: "ok" } } }), false);
 });

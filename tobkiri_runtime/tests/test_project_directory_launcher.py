@@ -187,3 +187,46 @@ def test_verified_native_cancellation_is_returned_without_path(transport):
     state.payload.update(cancelled=True, path=None)
     with bind_host_contract(contract):
         assert launcher.pick_project_directory(BINDING) is None
+
+
+def test_attested_multiple_paths_and_legacy_adapter(transport):
+    contract, state = transport
+    state.payload.pop("path")
+    state.payload["paths"] = ["/native/project", "/native/second"]
+    with bind_host_contract(contract):
+        picker = launcher.LauncherDirectoryPickerPort(BINDING)
+        assert [str(path) for path in picker.pick_directories()] == state.payload["paths"]
+        assert str(picker.pick_directory()) == "/native/project"
+
+
+def test_legacy_path_is_wrapped_for_multiple_selection(transport):
+    contract, state = transport
+    with bind_host_contract(contract):
+        assert [str(path) for path in launcher.pick_project_directories(BINDING)] == [
+            "/native/project"
+        ]
+
+
+@pytest.mark.parametrize("paths", [[], None, "/native/project", ["/native/ok", "relative"],
+                                  ["/native/ok", 123], ["/native/ok", "/bad\x7f"]])
+def test_malformed_array_fails_without_partial_results(transport, paths):
+    contract, state = transport
+    state.payload["paths"] = paths
+    with bind_host_contract(contract), pytest.raises(RuntimeError):
+        launcher.pick_project_directories(BINDING)
+
+
+def test_multiple_selection_cancellation(transport):
+    contract, state = transport
+    state.payload.pop("path")
+    state.payload.update(cancelled=True, paths=None)
+    with bind_host_contract(contract):
+        assert launcher.pick_project_directories(BINDING) is None
+
+
+def test_cancelled_selection_with_paths_is_rejected(transport):
+    contract, state = transport
+    state.payload.pop("path")
+    state.payload.update(cancelled=True, paths=["/native/project"])
+    with bind_host_contract(contract), pytest.raises(RuntimeError):
+        launcher.pick_project_directories(BINDING)

@@ -1,14 +1,23 @@
+import type { CodingWorkspaceRecord } from "./api";
 /** A folder choice is a one-use Host ticket, never a browser-provided path. */
 export type ProjectDirectorySelection = {
   selection_id: string;
   display_name: string;
   expires_in_ms: number;
 };
+export type ProjectDirectorySelectionSet = {
+  selections: ProjectDirectorySelection[];
+  primary_selection_id: string;
+};
+export type ProjectWorkspaceSet = {
+  workspace: CodingWorkspaceRecord;
+  workspaces: CodingWorkspaceRecord[];
+};
 export type ProjectMountStatus = {
   effect_id: string;
   approval_request_id: string | null;
   state: string;
-  redacted_metadata?: { workspace_id?: string };
+  redacted_metadata?: { workspace_id?: string; workspace_ids?: string[] };
 };
 type Ports = {
   prepare: (selection: string, correlation: string) => Promise<ProjectMountStatus>;
@@ -23,12 +32,12 @@ type Ports = {
 };
 
 /** Complete exactly one immutable Host effect; response loss never replays prepare. */
-export async function mountProjectDirectory(selection: ProjectDirectorySelection, ports: Ports): Promise<string> {
+async function completeProjectMount(ports: Omit<Ports, "prepare"> & {prepare: (correlation: string) => Promise<ProjectMountStatus>}, expectedCount: number): Promise<{workspaceId: string; workspaceIds: string[]}> {
   ports.assertCurrent();
   const correlation = crypto.randomUUID();
   let status: ProjectMountStatus;
   try {
-    status = await ports.prepare(selection.selection_id, correlation);
+    status = await ports.prepare(correlation);
   } catch {
     ports.assertCurrent();
     status = await ports.lookup(correlation);
@@ -44,7 +53,12 @@ export async function mountProjectDirectory(selection: ProjectDirectorySelection
     if (status.state === "succeeded") {
       const workspace = status.redacted_metadata?.workspace_id;
       if (!workspace) throw new Error("Project workspace did not return an identity.");
-      return workspace;
+      const identities = status.redacted_metadata?.workspace_ids ?? (expectedCount === 1 ? [workspace] : []);
+      if (identities.length !== expectedCount || new Set(identities).size !== expectedCount ||
+          identities.some((id) => typeof id !== "string" || !id.trim()) || !identities.includes(workspace)) {
+        throw new Error("Project workspace did not confirm every selected folder.");
+      }
+      return { workspaceId: workspace, workspaceIds: [...identities] };
     }
     if (["failed", "ambiguous", "stale", "cancelled"].includes(status.state)) {
       throw new Error(`Project workspace is incomplete (${status.state}). Choose the folder again after inspecting operation ${effect}.`);
@@ -80,4 +94,23 @@ export async function mountProjectDirectory(selection: ProjectDirectorySelection
     status = await ports.status(effect);
   }
   throw new Error(`Project workspace is awaiting confirmation. Check operation ${effect} in Tobkiri Launcher.`);
+}
+
+/** Preserve the legacy one-folder API while completing the same Host effect. */
+export async function mountProjectDirectory(selection: ProjectDirectorySelection, ports: Ports): Promise<string> {
+  const result = await completeProjectMount({...ports, prepare: (correlation) => ports.prepare(selection.selection_id, correlation)}, 1);
+  return result.workspaceId;
+}
+
+/** Mount the complete immutable folder set after its aggregate Host approval. */
+export async function mountProjectDirectories(selection: ProjectDirectorySelectionSet, ports: Omit<Ports, "prepare"> & {
+  prepare: (request: {selection_ids: string[]; primary_selection_id: string}, correlation: string) => Promise<ProjectMountStatus>;
+}): Promise<{workspaceId: string; workspaceIds: string[]}> {
+  const ids = selection.selections.map((item) => item.selection_id);
+  if (!ids.length || ids.length > 32 || ids.some((id) => typeof id !== "string" || !id.trim()) ||
+      new Set(ids).size !== ids.length || !ids.includes(selection.primary_selection_id)) {
+    throw new Error("Project folder selection is invalid.");
+  }
+  const request = { selection_ids: [...ids], primary_selection_id: selection.primary_selection_id };
+  return completeProjectMount({...ports, prepare: (correlation) => ports.prepare(request, correlation)}, ids.length);
 }

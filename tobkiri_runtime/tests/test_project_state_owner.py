@@ -149,3 +149,113 @@ def test_project_provider_uses_host_caller_and_rejects_client_authority(tmp_path
                 {**payload, "expected_revision": 1, "mutation_id": "next", **forbidden},
                 _Invocation(),
             )
+
+
+def _multiroot() -> dict[str, object]:
+    project = _project()
+    project["workspace_bindings"] = [
+        {
+            "workspace_id": "workspace-one",
+            "workspace_label": "Workspace One",
+            "workspace_root": "/repo/one",
+        },
+        {
+            "workspace_id": "workspace-two",
+            "workspace_label": "Workspace Two",
+            "workspace_root": "/repo/two",
+        },
+    ]
+    return project
+
+
+def test_multiple_workspaces_survive_owner_reload_and_exact_retry(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path, "defaults", "shell.one")
+    request = dict(
+        projects=[_multiroot()],
+        expected_revision=0,
+        mutation_id="multi-one",
+        migration_digest=None,
+    )
+    receipt = store.replace(**request)
+    reloaded = ProjectStateStore(tmp_path, "defaults", "shell.one")
+    assert reloaded.read()["projects"] == [_multiroot()]
+    assert reloaded.replace(**request) == receipt
+    assert reloaded.read()["revision"] == 1
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "empty",
+        "duplicate",
+        "mismatch",
+        "unknown",
+        "relative",
+        "dot",
+        "null",
+        "too_many",
+    ],
+)
+def test_invalid_multiroot_does_not_mutate_owner(tmp_path: Path, variant: str) -> None:
+    project = _multiroot()
+    bindings = project["workspace_bindings"]
+    if variant == "empty":
+        bindings.clear()
+    elif variant == "duplicate":
+        bindings.append(dict(bindings[0]))
+    elif variant == "mismatch":
+        project["workspace_label"] = "Different"
+    elif variant == "unknown":
+        bindings[0]["trusted"] = True
+    elif variant == "relative":
+        bindings[0]["workspace_root"] = "relative"
+    elif variant == "dot":
+        bindings[0]["workspace_root"] = "/repo/../one"
+    elif variant == "null":
+        bindings[0]["workspace_id"] = None
+    elif variant == "too_many":
+        bindings.extend(dict(bindings[0]) for _ in range(31))
+    store = ProjectStateStore(tmp_path, "defaults", "shell.one")
+    with pytest.raises(ValueError):
+        store.replace(
+            projects=[project],
+            expected_revision=0,
+            mutation_id="bad-one",
+            migration_digest=None,
+        )
+    assert store.read()["revision"] == 0
+    assert store.read()["projects"] == []
+
+
+@pytest.mark.parametrize(
+    ("root", "valid"),
+    [
+        ("C:\\repos\\one", True),
+        ("\\\\server\\share\\one", True),
+        ("C:relative", False),
+        ("\\\\server", False),
+        ("\\\\server\\", False),
+        ("\\\\server\\share\\..\\one", False),
+    ],
+)
+def test_cross_platform_workspace_metadata(
+    tmp_path: Path, root: str, valid: bool,
+) -> None:
+    """Absolute metadata roots never grant filesystem access."""
+    project = _multiroot()
+    project["workspace_root"] = root
+    project["workspace_bindings"][0]["workspace_root"] = root
+    store = ProjectStateStore(tmp_path, "defaults", "shell.one")
+    request = {
+        "projects": [project], "expected_revision": 0,
+        "mutation_id": "platform-one", "migration_digest": None,
+    }
+    if valid:
+        store.replace(**request)
+        assert store.read()["projects"] == [project]
+    else:
+        with pytest.raises(ValueError):
+            store.replace(**request)
+        assert store.read()["revision"] == 0

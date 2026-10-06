@@ -56,7 +56,9 @@ def _projects(value: Any) -> list[dict[str, Any]]:
         "rumi_data_path",
     }
     for item in value:
-        if not isinstance(item, dict) or set(item) != expected:
+        if not isinstance(item, dict) or set(item) not in (
+            expected, expected | {"workspace_bindings"},
+        ):
             raise ValueError("Project record fields are invalid")
         identifier = item.get("id")
         if not isinstance(identifier, str) or _ID.fullmatch(identifier) is None:
@@ -67,7 +69,7 @@ def _projects(value: Any) -> list[dict[str, Any]]:
         title = _optional_text(item.get("title"), limit=256)
         if title is None:
             raise ValueError("Project title is required")
-        result.append({
+        record = {
             "id": identifier,
             "title": title,
             "workspace_id": _optional_text(item.get("workspace_id"), limit=256),
@@ -76,7 +78,48 @@ def _projects(value: Any) -> list[dict[str, Any]]:
             # through the workspace handle/jail; this Provider never opens them.
             "workspace_root": _optional_text(item.get("workspace_root"), limit=4096),
             "rumi_data_path": _optional_text(item.get("rumi_data_path"), limit=4096),
-        })
+        }
+        if "workspace_bindings" in item:
+            record["workspace_bindings"] = _workspace_bindings(
+                item["workspace_bindings"], record,
+            )
+        result.append(record)
+    return result
+
+
+def _workspace_bindings(
+    value: Any, primary: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Validate inert multi-workspace metadata without authorizing access."""
+    if not isinstance(value, list) or not 1 <= len(value) <= 32:
+        raise ValueError("Project workspace bindings must contain 1 to 32 records")
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    fields = {"workspace_id", "workspace_label", "workspace_root"}
+    for binding in value:
+        if not isinstance(binding, dict) or set(binding) != fields:
+            raise ValueError("Project workspace binding fields are invalid")
+        identifier = _optional_text(binding["workspace_id"], limit=256)
+        label = _optional_text(binding["workspace_label"], limit=512)
+        root = _optional_text(binding["workspace_root"], limit=4096)
+        if identifier is None or _ID.fullmatch(identifier) is None:
+            raise ValueError("Project workspace binding identity is invalid")
+        if identifier in seen:
+            raise ValueError("Project workspace binding identities must be unique")
+        if label is None or root is None or re.match(
+            r"^(?:/(?!/)|[A-Za-z]:/|//[^/]+/[^/]+(?:/|$))",
+            root.replace("\\", "/"),
+        ) is None:
+            raise ValueError("Project workspace binding metadata is invalid")
+        # Canonical roots are owner-provided metadata, not filesystem authority.
+        if any(part in {".", ".."} for part in root.replace("\\", "/").split("/")):
+            raise ValueError("Project workspace binding root is not canonical")
+        seen.add(identifier)
+        result.append({"workspace_id": identifier, "workspace_label": label,
+                       "workspace_root": root})
+    if not any(all(primary[field] == binding[field] for field in fields)
+               for binding in result):
+        raise ValueError("Project primary workspace must match an exact binding")
     return result
 
 

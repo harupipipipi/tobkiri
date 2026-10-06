@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:1a5616517c7a78c21324cc5cc0547bbd3d3cb2f9f649c9c88f0cefd19b43f610",
+  "artifact_set_digest": "sha256:f1bab57a0356f379d5fccd208f972f4a7005228647f6dd394e896e5d7cea9f7f",
   "artifacts": [
     {
-      "digest": "sha256:71eb26c01f7159f2af4c9086733e80a05fd72aec68f6364510d0f2768f5f0350",
+      "digest": "sha256:b9d94fda656771d13f4e794b9cdf82e9f739b7d35ca64093823c425244c4b567",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "asset"
     },
     {
-      "digest": "sha256:c74bf3d2abad75eaa515e7382eb32544ee4351895267885bcd2a96bc13f3be9c",
+      "digest": "sha256:8ad54215c56c0503a6636bfe2895d56d8e348bdbc891bcf3dcf1c366a3d52687",
       "path": "defaultspack/http_surface_presentation.py",
       "role": "runtime"
     },
@@ -37,7 +37,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:a42c8883a6e87e4e067c8526c8d1e7c28c1de7e2dd9869ccc61c4c4c138c7ea4",
+      "digest": "sha256:596dcfd479488453d89bfc8b8b9ececc8c12731f2b33486958a005eced991454",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -57,7 +57,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:44e0be421b5f8aacb668f838c82aa3b14f997dee5d6889d8b07654074f1da863",
+      "digest": "sha256:5deb5c704dab4fddfbfacfc1a23edac5f1d3bc5c2c77cb0eec74aa64e6a6df22",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -670,8 +670,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:6b53c4212c41d03afb55d366714fa4b508565b23b548d255fd0d19f247d7f8d3"
+    "signed_digest": "sha256:99e92f737738b186466ba7263e580f3ce979cc10c5596676be1ea2afb3c65359"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:0f5ca68048e9fa44e13c1b6e71b4c13fdb5f5e718975b0371feb4d6644db9c0b"
+  "source_identity": "sha256:6a12173d720ff803773ad2df74c804f8cd29584db9b2c5b6301bc75b217aa9f8"
 }

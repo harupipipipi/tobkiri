@@ -180,7 +180,7 @@ test("buildGroupsFromChats keeps reserved bucket ids unique when custom metadata
     },
   ];
 
-  const groups = buildGroupsFromChats(chats);
+  const groups = buildGroupsFromChats(chats, [{ id: "group-coding", title: "Canonical Repo Coding" }]);
   const groupIds = groups.map((group) => group.id);
 
   assert.equal(new Set(groupIds).size, groupIds.length);
@@ -474,4 +474,71 @@ test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
     assert.doesNotMatch(html, /onload=/);
     assert.doesNotMatch(html, /globalThis\.pwned/);
   }
+});
+
+test("localized date labels retain canonical date group membership", () => {
+  const chats: ChatItem[] = [
+    { id: "jp-today", title: "Today", date: "今日", type: "chat" },
+    { id: "jp-yesterday", title: "Yesterday", date: "昨日", type: "chat" },
+    { id: "jp-week", title: "Week", date: "過去7日", type: "chat" },
+  ];
+  const groups = buildGroupsFromChats(chats);
+  assert.deepEqual(groups.find((group) => group.id === "group-today")?.chats.map((chat) => chat.id), ["jp-today"]);
+  assert.deepEqual(groups.find((group) => group.id === "group-recent")?.chats.map((chat) => chat.id), ["jp-yesterday", "jp-week"]);
+  assert.deepEqual(buildHistoryCalendarSummary(chats), { total: 3, today: 1, recent: 2, older: 0, pinned: 0, starred: 0 });
+});
+
+test("compact sidebar offers native drag sources for chat and date group", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    profileId: "default", isCompact: true, activeChatId: null,
+    chatItems: [{ id: "drag-chat", title: "Drag chat", date: "今日", type: "chat" }],
+    onChatSelect: () => undefined, onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+  assert.ok((html.match(/draggable="true"/g) ?? []).length >= 2);
+  assert.match(html, /aria-label="Drag chat"/);
+});
+
+
+test("tag group references encode every normalized tag with Unicode codepoint bounds", () => {
+  const unicode = "😀".repeat(41);
+  const groups = buildGroupsFromChats([
+    { id: "tag-a", title: "A", date: "今日", type: "chat", tags: ["a"] },
+    { id: "tag-yq", title: "YQ", date: "今日", type: "chat", tags: ["YQ"] },
+    { id: "tag-space", title: "Whitespace", date: "今日", type: "chat", tags: ["  多 言語  "] },
+    { id: "tag-unicode", title: "Unicode", date: "今日", type: "chat", tags: [unicode] },
+  ]);
+  const tags = groups.find((group) => group.id === "group-tags")!.subGroups;
+  const byChat = (id: string) => tags.find((group) => group.chats.some((chat) => chat.id === id))!;
+  const encoded = (tag: string) => `group-tag-${Buffer.from(tag, "utf8").toString("base64url")}`;
+  assert.equal(byChat("tag-a").id, "group-tag-a");
+  assert.equal(byChat("tag-a").sourceGroupId, encoded("a"));
+  assert.equal(byChat("tag-yq").sourceGroupId, encoded("yq"));
+  assert.notEqual(byChat("tag-a").sourceGroupId, byChat("tag-yq").sourceGroupId);
+  assert.equal(byChat("tag-space").sourceGroupId, encoded("多-言語"));
+  assert.equal(byChat("tag-unicode").sourceGroupId, encoded("😀".repeat(40)));
+});
+
+
+test("unknown membership hints never manufacture canonical Projects", () => {
+  const company = buildGroupsFromChats([
+    { id: "unknown-company", title: "Company", date: "今日", type: "chat", metadata: { group_id: "company:unknown", group_title: "Forged Project" } },
+  ]);
+  assert.deepEqual(company.find((group) => group.id === "group-company")!.chats.map((chat) => chat.id), ["unknown-company"]);
+  assert.equal(company.some((group) => group.custom), false);
+  const plain = buildGroupsFromChats([
+    { id: "unknown-plain", title: "Plain", date: "今日", type: "chat", metadata: { group_id: "unknown-hint" } },
+  ]);
+  assert.deepEqual(plain.find((group) => group.id === "group-today")!.chats.map((chat) => chat.id), ["unknown-plain"]);
+  assert.equal(plain.some((group) => group.custom), false);
+});
+
+test("canonical company-prefixed Project retains owner label and membership", () => {
+  const groups = buildGroupsFromChats([
+    { id: "canonical-company", title: "Company", date: "今日", type: "chat", metadata: { group_id: "company:project", group_title: "Untrusted hint" } },
+  ], [{ id: "company:project", title: "Owner Project" }]);
+  const project = groups.find((group) => group.id === "company:project")!;
+  assert.equal(project.custom, true);
+  assert.equal(project.title, "Owner Project");
+  assert.deepEqual(project.chats.map((chat) => chat.id), ["canonical-company"]);
 });

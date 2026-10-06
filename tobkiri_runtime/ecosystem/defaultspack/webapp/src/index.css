@@ -1866,3 +1866,65 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 @media (prefers-reduced-motion: reduce) {
   .rumi-loading-pixels.is-animated > span { animation: none; opacity: 0.7; }
 }
+
+/* Compact Composer controls without changing the editor or floating menus. */
+.rumi-composer-frame {
+  --rumi-composer-control-height: 38px;
+  --rumi-composer-send-size: 28px;
+}
+
+.rumi-composer-frame .rumi-composer-control-surface,
+.rumi-composer-frame .rumi-model-control button,
+.rumi-composer-frame [data-composer-widget="project-picker"] > div > button {
+  height: var(--rumi-composer-control-height);
+  min-height: var(--rumi-composer-control-height);
+  padding-inline: 8px;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.rumi-composer-frame .rumi-model-control button {
+  padding-inline: 0;
+  font-size: 11px;
+}
+
+.rumi-composer-frame .rumi-composer-control-surface > span {
+  font-size: 11px;
+}
+
+.rumi-composer-frame .rumi-composer-control-surface > svg[width="15"],
+.rumi-composer-frame [data-composer-widget="project-picker"] > div > button > svg[width="14"] {
+  width: 13px;
+  height: 13px;
+}
+
+.rumi-composer-frame [data-composer-widget="voice-input"] > button {
+  width: var(--rumi-composer-control-height);
+  min-width: var(--rumi-composer-control-height);
+  height: var(--rumi-composer-control-height);
+  min-height: var(--rumi-composer-control-height);
+}
+
+.rumi-composer-frame [data-composer-widget="voice-input"] svg {
+  width: 13px;
+  height: 13px;
+}
+
+.rumi-composer-frame .rumi-send-button {
+  width: var(--rumi-composer-send-size);
+  min-width: var(--rumi-composer-send-size);
+  height: var(--rumi-composer-send-size);
+  min-height: var(--rumi-composer-send-size);
+}
+
+.rumi-composer-frame .rumi-send-button > svg[width="18"] {
+  width: 16px;
+  height: 16px;
+}
+
+@media (pointer: coarse) {
+  .rumi-composer-frame {
+    --rumi-composer-control-height: 44px;
+    --rumi-composer-send-size: 44px;
+  }
+}

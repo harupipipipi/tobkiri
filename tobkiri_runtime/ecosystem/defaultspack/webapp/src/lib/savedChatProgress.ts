@@ -2,6 +2,7 @@ import type { ChatActivityEvent, ChatMessage, Conversation, SavedTurnEventSnapsh
 import type { PendingChatRequest } from "./pendingChat";
 import { mergeThreadProgress, type ThreadProgressState, type ThreadProgressWitness } from "../host/threadProgressState";
 import { parseThreadProgressPage, progressDigest, progressId } from "../host/threadProgressContract";
+import { parseFileEditReceiptFromToolResult } from "./fileEditTimeline";
 
 export type SavedChatProgressWitness = ThreadProgressWitness & { requestId: string };
 export type SavedChatProgressState = {
@@ -58,8 +59,12 @@ export function mergeSavedChatProgress(
     } else {
       if (started[key] !== event.tool_id) return null;
       delete started[key];
+      const result: unknown = JSON.parse(event.content);
+      const receipt = event.status === "success"
+        ? parseFileEditReceiptFromToolResult(event.tool_id, result) : null;
       activity.push({ type: "tool_call_completed", phase: "tool_call_completed", tool_name: event.tool_id,
-        tool_call_id: event.tool_call_id, result: JSON.parse(event.content), is_error: event.status === "error",
+        tool_call_id: event.tool_call_id, result, is_error: event.status === "error",
+        ...(receipt ? { file_edit_receipt: receipt } : {}),
         seq: cursor, provider_attempt_generation: page.progress_id });
     }
   }

@@ -1,7 +1,8 @@
 import type { ComposerExtensionItem, DroppedWidget, ToolGroup } from "../renderers/types";
 import type { ConversationToolPreferences, ToolSelectionMode, ToolSelectionRequest, ToolTarget } from "../features/tools/types";
 import { composerMentionMetadataFromWidgets, composerServiceMentionWidget, composerToolMentionWidget } from "./composerWidgets";
-import { codePointIndexToUtf16Offset, extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
+import { hasUnescapedMentionSyntax } from "./mentionContract";
+import { anchorComposerMentionWidget, confirmedComposerMentionRange, updateConfirmedComposerWidgets } from "./composerMentionAnchors";
 import { toolGroupFor } from "./toolUi";
 
 export type ComposerToolMentionDraft = {
@@ -82,9 +83,21 @@ export function resolveComposerToolMentions(text: string, widgets: DroppedWidget
     if (widget) activeWidgets.push(widget);
   };
   for (const widget of widgets) {
+    const record = widget.metadata?.mention as Record<string, unknown> | undefined;
+    if (widget.metadata?.source === "composer_at_mention" && record?.kind === "mcp") {
+      if (widget.enabled === false || !confirmedComposerMentionRange(widget, text)) continue;
+      const service = widget.metadata?.service as Record<string, unknown> | undefined;
+      const admitted = new Set(available.map((item) => item.id));
+      const ids = Array.isArray(service?.tool_ids)
+        ? [...new Set(service.tool_ids.filter((id): id is string => typeof id === "string" && admitted.has(id)))] : [];
+      const negative = record.intent === "exclude" || String(record.syntax).startsWith("@-");
+      for (const id of ids) add({ kind: "tool", id }, negative);
+      activeWidgets.push(widget);
+      continue;
+    }
     for (const mention of composerMentionMetadataFromWidgets([widget])) {
       if ((mention.kind !== "tool" && mention.kind !== "service") || widget.enabled === false
-        || !hasUnescapedMentionSyntax(text, mention.syntax)) continue;
+        || !confirmedComposerMentionRange(widget, text)) continue;
       const target = { kind: mention.kind, id: mention.id };
       if (!targetWidget(target, available)) continue;
       const record = widget.metadata?.mention as Record<string, unknown>;
@@ -95,7 +108,7 @@ export function resolveComposerToolMentions(text: string, widgets: DroppedWidget
     : services.find((service) => service.id === target.id)?.toolIds ?? []));
   const toolIds = [...new Set([...include.values()].flatMap((target) => target.kind === "tool" ? [target.id]
     : services.find((service) => service.id === target.id)?.toolIds ?? []))].filter((id) => !excludedIds.has(id));
-  // Semantic widgets take precedence over synthesized spelling widgets with the same id.
+  // Preserve confirmed widget identity and frontend occurrence anchors.
   const byId = new Map<string, DroppedWidget>();
   for (const widget of activeWidgets) if (!byId.has(widget.id)) byId.set(widget.id, widget);
   const wireTargets = (targets: ToolTarget[], negative = false) => {
@@ -140,7 +153,10 @@ export function materializeLegacyToolMentions(text: string, preferences: Convers
     if (!hasUnescapedMentionSyntax(value, syntax)) value = `${value}${value && !/\s$/.test(value) ? " " : ""}${syntax} `;
     widgets.push(widget);
   }
-  return { value, widgets };
+  return { value, widgets: widgets.map((widget) => {
+    const range = confirmedComposerMentionRange(widget, value);
+    return range ? anchorComposerMentionWidget(widget, value, range.start) : widget;
+  }) };
 }
 
 /** Sidebar/batch selection edits the same input source of truth as the @ picker. */
@@ -151,27 +167,30 @@ export function replaceComposerToolMentions(text: string, widgets: DroppedWidget
     const record = widget.metadata?.mention as Record<string, unknown>;
     if (record.intent === "exclude") {
       const affected = record.kind === "tool" ? [String(record.id)]
+        : record.kind === "mcp" ? ((widget.metadata?.service as { tool_ids?: string[] })?.tool_ids ?? [])
         : servicesFor(items).find((service) => service.id === record.id)?.toolIds ?? [];
       if (!affected.some((id) => selectedIds.includes(id))) continue;
     }
-    const syntax = String(record.syntax);
-    for (let start = text.indexOf(syntax); start >= 0; start = text.indexOf(syntax, start + 1)) {
-      // Checking a suffix alone would incorrectly match emails and escaped @ signs.
-      if (!extractMentionTokens(text, [syntax.slice(1)]).some((token) => codePointIndexToUtf16Offset(text, token.start) === start)) continue;
-      const next = text.slice(start + syntax.length, start + syntax.length + 1);
-      if (next && /[\p{L}\p{M}\p{N}_/:-]/u.test(next)) continue;
-      ranges.push({ start, end: start + syntax.length });
-    }
+    const range = confirmedComposerMentionRange(widget, text);
+    if (range) ranges.push(range);
   }
   let value = text;
+  let retained = widgets;
   const uniqueRanges = [...new Map(ranges.map((range) => [`${range.start}:${range.end}`, range])).values()];
-  for (const range of uniqueRanges.sort((a, b) => b.start - a.start)) value = value.slice(0, range.start) + value.slice(range.end);
-  const remaining = widgets.filter((widget) => !composerMentionMetadataFromWidgets([widget]).some((mention) => mention.kind === "tool" || mention.kind === "service"));
+  for (const range of uniqueRanges.sort((a, b) => b.start - a.start)) {
+    const updated = value.slice(0, range.start) + value.slice(range.end);
+    retained = updateConfirmedComposerWidgets(value, updated, retained, range);
+    value = updated;
+  }
+  const remaining = retained.filter((widget) => !composerMentionMetadataFromWidgets([widget]).some((mention) => mention.kind === "tool" || mention.kind === "service" || String(mention.kind) === "mcp"));
   const next = materializeLegacyToolMentions(value, {}, selectedIds, items);
-  return { value: next.value, widgets: [...remaining, ...draft.widgets.filter((widget) => {
-    const record = widget.metadata?.mention as Record<string, unknown>;
-    return record.intent === "exclude" && hasUnescapedMentionSyntax(next.value, String(record.syntax));
-  }), ...next.widgets] };
+  const preserved = [...remaining, ...retained.filter((widget) => {
+    const record = widget.metadata?.mention as Record<string, unknown> | undefined;
+    return record?.intent === "exclude" && confirmedComposerMentionRange(widget, value);
+  })];
+  const moved = updateConfirmedComposerWidgets(value, next.value, preserved,
+    { start: value.length, end: value.length });
+  return { value: next.value, widgets: [...moved, ...next.widgets] };
 }
 
 /** Service references carry only selection, not unsupported custom context. */

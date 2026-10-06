@@ -746,7 +746,9 @@ class DefaultspackHTTPPresentation:
         if binding.presentation == "conversation_created":
             return present_conversation_created(result)
         if binding.presentation == "conversation_record":
-            return present_conversation_record(result)
+            return present_conversation_record(
+                result, profile_id=str(getattr(session, "profile_id", ""))
+            )
         if binding.presentation == "conversation_deleted":
             return present_conversation_deleted(result)
         if binding.presentation in {"kanban_list", "kanban_board"}:

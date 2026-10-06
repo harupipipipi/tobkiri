@@ -323,3 +323,124 @@ def test_exact_backend_preserves_uncertainty_after_mount_or_capture_failure():
             "workspace.mount.execute",
         ) in backend.cancellation_may_leave_effect_operations
     assert writes == ["mounted"]
+
+
+def test_multiple_roots_explicit_second_primary_and_atomic_mount(tmp_path):
+    root = tmp_path / "first"
+    other = tmp_path / "second"
+    root.mkdir()
+    other.mkdir()
+    _, _, acquire, prepare, execute = workflow(
+        tmp_path, picker=SimpleNamespace(pick_directories=lambda: [root, other])
+    )
+    inv = Invocation()
+    choice = acquire("workspace.directory.acquire", {}, inv)
+    tokens = [item["selection_id"] for item in choice["selections"]]
+    request = {"selection_ids": tokens, "primary_selection_id": tokens[1]}
+    plan = prepare("workspace.mount.prepare", request, inv)
+    assert plan["root_path"] == str(other)
+    assert len(plan["roots"]) == 2
+    assert plan["roots"][0]["root_path"] == str(root)
+    metadata = _presentation_metadata(
+        INTERACTIVE_EFFECT_SPECS["workspace_mount"],
+        SimpleNamespace(
+            normalized_payload={"request": request, "plan": plan},
+            request_digest=canonical_digest(plan),
+        ),
+    )
+    assert metadata["workspace_ids"] == [r["workspace_id"] for r in plan["roots"]]
+    result = execute("workspace.mount.execute", {"request": request, "plan": plan}, inv)
+    assert len(result["mounts"]) == 2
+    assert result["mount"]["root_path"] == str(other)
+    snapshot = WorkspaceMountStore(PROFILE, user_data_root=tmp_path).snapshot()
+    assert snapshot["revision"] == 1
+    assert len(snapshot["mounts"]) == 2
+    assert all(item["metadata"]["trusted"] is False for item in snapshot["mounts"])
+
+
+def test_second_root_rename_rejects_all_mounts(tmp_path):
+    root = tmp_path / "first"
+    other = tmp_path / "second"
+    root.mkdir()
+    other.mkdir()
+    _, _, acquire, prepare, execute = workflow(
+        tmp_path, picker=SimpleNamespace(pick_directories=lambda: [root, other])
+    )
+    inv = Invocation()
+    choice = acquire("workspace.directory.acquire", {}, inv)
+    tokens = [item["selection_id"] for item in choice["selections"]]
+    request = {"selection_ids": tokens, "primary_selection_id": tokens[0]}
+    plan = prepare("workspace.mount.prepare", request, inv)
+    other.rename(tmp_path / "old-second")
+    other.mkdir()
+    with pytest.raises(PermissionError):
+        execute("workspace.mount.execute", {"request": request, "plan": plan}, inv)
+    store = WorkspaceMountStore(PROFILE, user_data_root=tmp_path)
+    assert store.snapshot()["mounts"] == []
+    assert not store.path.exists()
+
+
+def test_duplicate_roots_fail_without_publishing_tickets(tmp_path):
+    root = tmp_path / "same"
+    root.mkdir()
+    selections = DirectorySelections()
+    port = ProjectDirectoryPort(
+        CapturedDirectoryPicker(
+            SimpleNamespace(pick_directories=lambda: [root, root]), selections
+        ),
+        selections,
+    )
+    acquire = hook(
+        tmp_path, port, "project-directory.service", "workspace.directory.acquire"
+    )
+    with pytest.raises(ValueError):
+        acquire("workspace.directory.acquire", {}, Invocation())
+    assert selections._entries == {}
+
+
+def test_primary_substitution_and_denied_prepare_have_zero_mounts(tmp_path):
+    from copy import deepcopy
+    from core_runtime.workspace_mount_effect import validate_project_plan
+
+    first = tmp_path / "one"
+    second = tmp_path / "two"
+    first.mkdir()
+    second.mkdir()
+    _, _, acquire, prepare, _ = workflow(
+        tmp_path, picker=SimpleNamespace(pick_directories=lambda: [first, second])
+    )
+    choice = acquire("workspace.directory.acquire", {}, Invocation())
+    tokens = [item["selection_id"] for item in choice["selections"]]
+    request = {"selection_ids": tokens, "primary_selection_id": tokens[1]}
+    plan = prepare("workspace.mount.prepare", request, Invocation())
+    changed = deepcopy(plan)
+    changed.update(changed["roots"][0])
+    changed["primary_workspace_id"] = changed["workspace_id"]
+    with pytest.raises(PermissionError):
+        validate_project_plan(request, changed)
+    # Preparing every root grants no mount; denial can discard the prepared plan.
+    assert (
+        WorkspaceMountStore(PROFILE, user_data_root=tmp_path).snapshot()["mounts"] == []
+    )
+
+
+def test_existing_second_root_collision_preserves_entire_mount_snapshot(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    _, _, acquire, prepare, execute = workflow(
+        tmp_path, picker=SimpleNamespace(pick_directories=lambda: [first, second])
+    )
+    store = WorkspaceMountStore(PROFILE, user_data_root=tmp_path)
+    store.mount("already", str(second), expected_revision=0)
+    before = store.snapshot()
+    choice = acquire("workspace.directory.acquire", {}, Invocation())
+    tokens = [item["selection_id"] for item in choice["selections"]]
+    request = {"selection_ids": tokens, "primary_selection_id": tokens[0]}
+    plan = prepare("workspace.mount.prepare", request, Invocation())
+    with pytest.raises(WorkspaceConflict):
+        execute(
+            "workspace.mount.execute", {"request": request, "plan": plan}, Invocation()
+        )
+    assert store.snapshot() == before

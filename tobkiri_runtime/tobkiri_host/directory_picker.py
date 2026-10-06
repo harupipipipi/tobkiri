@@ -42,7 +42,14 @@ class CapturedDirectoryPicker:
         if not self._dialog_lock.acquire(blocking=False):
             raise RuntimeError("directory picker is busy")
         try:
-            root = self._port.pick_directory()
+            batch_picker = getattr(self._port, "pick_directories", None)
+            roots = (
+                batch_picker()
+                if callable(batch_picker)
+                else self._port.pick_directory()
+            )
+            if isinstance(roots, Path):
+                roots = [roots]
         except PermissionError:
             raise PermissionError("directory picker access denied") from None
         except TimeoutError:
@@ -54,9 +61,10 @@ class CapturedDirectoryPicker:
         finally:
             self._dialog_lock.release()
         assert_current()
-        if root is None:
+        if roots is None:
             return {"cancelled": True, "selection_id": None}
-        return self._selections.capture(root, scope)
+        selections = self._selections.capture_many(roots, scope)
+        return {**selections[0], "selections": selections}
 
     def close(self) -> None:
         """Retire all selections together with their captured Provider."""

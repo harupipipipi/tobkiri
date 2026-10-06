@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:6db4739b606539a37b7fe26885cc8be2d8eb29b8601669b66058f5a94628d697",
+  "artifact_set_digest": "sha256:e1a56ff9d533bef69dbdd030e157585b6603144dc53e96cc06c2f80ff9852238",
   "artifacts": [
     {
-      "digest": "sha256:c817d561b17bd05a7955ded8e4f3d789e0c076545f4612a7c920199fb6c32425",
+      "digest": "sha256:b5640b34dcfd868e291f20e7225570938f8de6c7a23ff32e2c96362ecb1feabf",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:952e52009df1cd2d4a52af532723bfbfdd10d2f10c368c51fb039a436590b4cb",
+      "digest": "sha256:6fc6779d3cd75bdd450c42ffd4baecbf95c707e667e5ceb01142f64c6d8c9ffb",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:327e0d656523eaee6a7aaea0fd9a67aee98a50d3044b7253df6d7593981872e3",
+      "digest": "sha256:787a8e7014ec5eaf09f4595caaba79931c362c2a801b36eef6052aa703dbe5da",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -32,7 +32,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+      "digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
       "path": "runtime/file_create.py",
       "role": "runtime"
     },
@@ -195,8 +195,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:9f30d1c9a405b7214f6b428574b93e246d2b285ee6461f4a465849ea278627b7"
+    "signed_digest": "sha256:03206c299e456f3563126cd4c8f9b9f0235d25659bec58ffd435e5c5fc1686db"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:7e291e52101555f1040d2321fcc39c38f2c59b8ce8d81f8f119f561349e9fee4"
+  "source_identity": "sha256:3e8b8b26e286eddb7442dc6c2c65993d39881657b9877d3c2a945c6cee2d94bb"
 }

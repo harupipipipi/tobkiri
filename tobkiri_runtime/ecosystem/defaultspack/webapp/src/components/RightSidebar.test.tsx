@@ -543,3 +543,69 @@ test("legacy hidden tools do not reappear as pinned rail buttons", () => {
   assert.doesNotMatch(html, /title="Hidden Tool"/);
   assert.match(html, /aria-label="カスタマイズ"/);
 });
+
+const widgetSidebar = (activeItemId?: string) => renderToStaticMarkup(createElement(RightSidebar, {
+  items: [], settingsValues: {}, settingsSections: [], onSettingChange: noop,
+  onOpenSettings: noop, activeItemId,
+  canvasPanel: createElement("div", { "data-testid": "canvas-content" }, "Canvas content"),
+  timelinePanel: createElement("div", { "data-testid": "timeline-content" }, "Timeline content"),
+}));
+
+test("Canvas remains mounted and hidden when another widget is selected", () => {
+  const html = widgetSidebar("__timeline_widget__:1");
+  assert.match(html, /data-testid="canvas-widget-panel" hidden="" inert="" aria-hidden="true"/);
+  assert.match(html, /data-testid="canvas-content"/);
+  assert.match(html, /data-testid="timeline-content"/);
+  assert.match(html, /aria-label="Timeline" aria-pressed="true"/);
+  assert.match(html, /lucide-list-ordered/);
+});
+
+test("requested Canvas widget opens independently of catalogue entries", () => {
+  const html = widgetSidebar("__canvas_widget__:1");
+  assert.match(html, /data-testid="canvas-widget-panel" aria-hidden="false"/);
+  assert.match(html, /aria-label="Canvas" aria-pressed="true"/);
+  assert.match(html, /lucide-panels-top-left/);
+  assert.doesNotMatch(html, /data-testid="timeline-content"/);
+  assert.doesNotMatch(html, /<h3[^>]*>Canvas<\/h3>/);
+});
+
+test("closed Canvas retains its mounted content without creating a Timeline panel", () => {
+  const html = widgetSidebar();
+  assert.match(html, /data-testid="canvas-widget-panel" hidden=""/);
+  assert.match(html, /data-testid="canvas-content"/);
+  assert.doesNotMatch(html, /data-testid="timeline-content"/);
+});
+
+
+test("catalogue entries for independent widgets do not duplicate their rail actions", () => {
+  const html = renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "canvas", label: "Canvas", category: "widget" }, { id: "timeline", label: "Timeline", category: "widget" }],
+    settingsValues: { sidebar: { pinned_item_ids: ["canvas", "timeline"] } }, settingsSections: [],
+    onSettingChange: noop, onOpenSettings: noop, activeItemId: "__canvas_widget__:1",
+    canvasPanel: createElement("div", null, "Canvas content"),
+    timelinePanel: createElement("div", null, "Timeline content"),
+  }));
+  assert.equal((html.match(/aria-label="Canvas"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-rail-slot-id="item:canvas"/g) ?? []).length, 0);
+  assert.equal((html.match(/data-rail-slot-id="item:timeline"/g) ?? []).length, 0);
+});
+
+
+test("Canvas render callback receives current visibility without losing its wrapper", () => {
+  for (const activeItemId of [undefined, "__timeline_widget__:1", "__canvas_widget__:1"]) {
+    const visibility: boolean[] = [];
+    const html = renderToStaticMarkup(createElement(RightSidebar, {
+      items: [], settingsValues: {}, settingsSections: [], onSettingChange: noop,
+      onOpenSettings: noop, activeItemId,
+      canvasPanel: (visible: boolean) => {
+        visibility.push(visible);
+        return createElement("div", { "data-canvas-visible": visible });
+      },
+      timelinePanel: createElement("div", null, "Timeline content"),
+    }));
+    const expected = activeItemId === "__canvas_widget__:1";
+    assert.deepEqual(visibility, [expected]);
+    assert.match(html, /data-testid="canvas-widget-panel"/);
+    assert.match(html, new RegExp(`data-canvas-visible="${expected}"`));
+  }
+});

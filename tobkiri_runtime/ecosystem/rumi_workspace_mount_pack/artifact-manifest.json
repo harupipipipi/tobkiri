@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/mounts.py",
-      "sha256": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "sha256": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "role": "runtime"
     }
   ]

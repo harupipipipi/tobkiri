@@ -431,7 +431,7 @@ test("company workspace resolves selected history company groups", () => {
   }), null);
 });
 
-test("compact history company group keeps the selectable source group", () => {
+test("compact history Team bucket retains company workspace selection", () => {
   const groups = buildGroupsFromChats([
     {
       id: "mimo-company-chat",
@@ -445,11 +445,36 @@ test("compact history company group keeps the selectable source group", () => {
     },
   ]);
   const railGroup = buildCompactHistoryRailItems(groups)
-    .find((item) => item.type === "group" && item.id === "company:mimo-coding-company");
+    .find((item) => item.type === "group" && item.id === "group-company");
 
   if (!railGroup || railGroup.type !== "group") {
-    assert.fail("Expected compact rail to include the company group.");
+    assert.fail("Expected compact rail to include the automatic Team bucket.");
   }
+  assert.equal(railGroup.title, "Team");
+  assert.notEqual(railGroup.group.custom, true);
+  assert.deepEqual(railGroup.group.chats.map((chat) => chat.id), ["mimo-company-chat"]);
+  assert.equal(groups.some((group) => group.id === "company:mimo-coding-company"), false);
+  assert.equal(resolveCompanyWorkspaceHintFromGroup(railGroup.group), "mimo-coding-company");
+});
+
+test("compact history preserves a company-prefixed canonical Project source", () => {
+  const projectId = "company:mimo-coding-company";
+  const groups = buildGroupsFromChats([{
+    id: "canonical-company-chat",
+    title: "MiMo Project conversation",
+    date: "Today",
+    type: "chat",
+    metadata: { group_id: projectId, group_title: "Stale hint" },
+  }], [{ id: projectId, title: "Canonical MiMo Project" }]);
+  const railGroup = buildCompactHistoryRailItems(groups)
+    .find((item) => item.type === "group" && item.id === projectId);
+  if (!railGroup || railGroup.type !== "group") {
+    assert.fail("Expected compact rail to retain the canonical Project.");
+  }
+  assert.equal(railGroup.title, "Canonical MiMo Project");
+  assert.equal(railGroup.group.custom, true);
+  assert.equal(railGroup.group.sourceGroupId, projectId);
+  assert.deepEqual(railGroup.group.chats.map((chat) => chat.id), ["canonical-company-chat"]);
   assert.equal(resolveCompanyWorkspaceHintFromGroup(railGroup.group), "mimo-coding-company");
 });
 

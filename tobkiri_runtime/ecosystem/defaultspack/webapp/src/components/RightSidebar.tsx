@@ -18,6 +18,8 @@ import {
   KeyRound,
   Languages,
   LayoutGrid,
+  PanelsTopLeft,
+  ListOrdered,
   Layers,
   ListTodo,
   Music,
@@ -993,6 +995,10 @@ export function RightSidebar({
   selectedToolIds = [],
   companyPanel,
   codingPanel,
+  canvasPanel,
+  timelinePanel,
+  onCanvasOpen,
+  onCanvasClose,
   keyboardButtonNavigation = true,
   selectedProfile = null,
   runtimeProfileId,
@@ -1031,6 +1037,10 @@ export function RightSidebar({
   selectedToolIds?: string[];
   companyPanel?: ReactNode;
   codingPanel?: ReactNode;
+  canvasPanel?: ReactNode | ((visible: boolean) => ReactNode);
+  timelinePanel?: ReactNode;
+  onCanvasOpen?: () => void;
+  onCanvasClose?: () => void;
   keyboardButtonNavigation?: boolean;
   selectedProfile?: ModelProfile | null;
   runtimeProfileId?: string;
@@ -1068,6 +1078,11 @@ export function RightSidebar({
   ) => void;
   onPanelAction?: (item: SidebarItem, action: SidebarAction) => void;
 }) {
+  const hasCanvasPanel = canvasPanel != null;
+  const hasTimelinePanel = timelinePanel != null;
+  const isIndependentWidgetItem = (item: SidebarItem) => item.category === "widget"
+    && ((hasCanvasPanel && ["canvas", "__canvas_widget__"].includes(item.id))
+      || (hasTimelinePanel && ["timeline", "__timeline_widget__"].includes(item.id)));
   const [activePanel, setActivePanel] = useState<string | null>(() => requestedPanelIdFromActiveItemId(activeItemId));
   const [categoryFilter, setCategoryFilter] = useState<"all" | SidebarCategory>("activity");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1121,7 +1136,10 @@ export function RightSidebar({
   const disabledToolIdSet = useMemo(() => new Set(disabledToolIds), [disabledToolIds]);
   const hiddenToolIdSet = useMemo(() => new Set(hiddenToolIds), [hiddenToolIds]);
   const placementManifestMap = useMemo(
-    () => new Map(buildBuiltinPlacementManifests(settingsSections).map((manifest) => [manifest.id, manifest])),
+    () => new Map(buildBuiltinPlacementManifests(settingsSections)
+      .filter((manifest) => !["canvas", "timeline"].includes(manifest.id)
+        && !["__canvas_widget__", "__timeline_widget__"].includes(manifest.renderer.action?.target ?? ""))
+      .map((manifest) => [manifest.id, manifest])),
     [settingsSections],
   );
 
@@ -1194,6 +1212,17 @@ export function RightSidebar({
 
   useEffect(() => {
     const requestedId = requestedPanelIdFromActiveItemId(activeItemId);
+    if (requestedId === "__close_canvas_widget__") {
+      setActivePanel((current) => current === "__canvas_widget__" ? null : current);
+      return;
+    }
+    if ((requestedId === "__canvas_widget__" && canvasPanel != null)
+      || (requestedId === "__timeline_widget__" && timelinePanel != null)) {
+      setCategoryFilter("widget");
+      setSearchQuery("");
+      setActivePanel(requestedId);
+      return;
+    }
     const specialPanelIds = new Set([
       "__tool_manager__",
       "__tool_filter_log__",
@@ -1212,10 +1241,12 @@ export function RightSidebar({
       }
       setActivePanel(requestedId);
     }
-  }, [activeItemId, hasPromptWidget, items]);
+  }, [activeItemId, hasCanvasPanel, hasPromptWidget, hasTimelinePanel, items]);
 
   useEffect(() => {
     if (!activePanel) return;
+    if (activePanel === "__canvas_widget__" && canvasPanel != null) return;
+    if (activePanel === "__timeline_widget__" && timelinePanel != null) return;
     if (activePanel === "__tool_manager__") return;
     if (activePanel === "__tool_filter_log__") return;
     if (activePanel === "__runtime_status__") return;
@@ -1230,7 +1261,7 @@ export function RightSidebar({
     if (!items.some((item) => item.id === activePanel)) {
       setActivePanel(null);
     }
-  }, [activePanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, workspaceTabs.length, workspaceTabsEnabled]);
+  }, [activePanel, canvasPanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, timelinePanel, workspaceTabs.length, workspaceTabsEnabled]);
 
   useEffect(() => {
     if (!activePanel || categoryFilter === "all") return;
@@ -1330,14 +1361,17 @@ export function RightSidebar({
     }
     return next;
   }, [customTagMap, items]);
+  const canvasMatchesSearch = sidebarItemMatchesSearch({ id: "canvas", label: "Canvas", category: "widget" }, [], searchQuery);
+  const timelineMatchesSearch = sidebarItemMatchesSearch({ id: "timeline", label: "Timeline", category: "widget" }, [], searchQuery);
   const searchFilteredItems = useMemo(
     () => items
+      .filter((item) => !isIndependentWidgetItem(item))
       .filter((item) => item.category !== "tool" || !hiddenToolIdSet.has(item.id))
       .filter((item) => sidebarItemMatchesSearch(item, tagMap.get(item.id) ?? [], searchQuery)),
-    [hiddenToolIdSet, items, searchQuery, tagMap],
+    [hasCanvasPanel, hasTimelinePanel, hiddenToolIdSet, items, searchQuery, tagMap],
   );
   useEffect(() => {
-    if (!activePanel || activePanel === "__tool_manager__" || activePanel === "__tool_filter_log__" || activePanel === "__runtime_status__" || activePanel === "__context_usage__" || activePanel === "__prompt_usage__" || activePanel === "__company_workspace__" || activePanel === "__coding_widget__" || activePanel === "__workspace_tabs__" || !searchQuery.trim()) return;
+    if (!activePanel || activePanel === "__tool_manager__" || activePanel === "__tool_filter_log__" || activePanel === "__runtime_status__" || activePanel === "__context_usage__" || activePanel === "__prompt_usage__" || activePanel === "__company_workspace__" || activePanel === "__coding_widget__" || activePanel === "__workspace_tabs__" || activePanel === "__canvas_widget__" || activePanel === "__timeline_widget__" || !searchQuery.trim()) return;
     if (!searchFilteredItems.some((item) => item.id === activePanel)) {
       setActivePanel(null);
     }
@@ -1347,8 +1381,11 @@ export function RightSidebar({
     for (const item of searchFilteredItems) {
       next[item.category] = (next[item.category] ?? 0) + 1;
     }
+    const widgetCount = Number(hasCanvasPanel && canvasMatchesSearch) + Number(hasTimelinePanel && timelineMatchesSearch);
+    next.widget = (next.widget ?? 0) + widgetCount;
+    next.all += widgetCount;
     return next;
-  }, [searchFilteredItems]);
+  }, [canvasMatchesSearch, hasCanvasPanel, hasTimelinePanel, searchFilteredItems, timelineMatchesSearch]);
   const allToolItems = useMemo(() => sortedToolUiItems(searchFilteredItems.filter((item) => item.category === "tool")), [searchFilteredItems]);
   const toolManagerBaseItems = useMemo(
     () => toolManagerBaseItemsForNameSearch(items, searchFilteredItems, searchQuery),
@@ -1443,6 +1480,14 @@ export function RightSidebar({
   const activePlacementManifest = activePanel?.startsWith(PLACEMENT_PANEL_PREFIX)
     ? placementManifestMap.get(activePanel.slice(PLACEMENT_PANEL_PREFIX.length)) ?? null
     : null;
+  const isCanvasWidgetActive = activePanel === "__canvas_widget__" && canvasPanel != null;
+  const isTimelineWidgetActive = activePanel === "__timeline_widget__" && timelinePanel != null;
+  const canvasWasActiveRef = useRef(false);
+  useEffect(() => {
+    if (isCanvasWidgetActive && !canvasWasActiveRef.current) onCanvasOpen?.();
+    if (!isCanvasWidgetActive && canvasWasActiveRef.current) onCanvasClose?.();
+    canvasWasActiveRef.current = isCanvasWidgetActive;
+  }, [isCanvasWidgetActive, onCanvasClose, onCanvasOpen]);
   const isToolManagerActive = activePanel === "__tool_manager__";
   const isToolFilterLogActive = activePanel === "__tool_filter_log__";
   const isRuntimeStatusActive = activePanel === "__runtime_status__";
@@ -1824,7 +1869,19 @@ export function RightSidebar({
 
   return (
     <aside aria-label="Tools and utility panels" className="rumi-right-sidebar relative hidden h-full flex-shrink-0 border-l border-zinc-800/60 bg-[#09090b] transition-[width,opacity] duration-200 ease-out md:flex">
-      {(activeItem || isPlacementPanelActive || isToolManagerActive || isToolFilterLogActive || isRuntimeStatusActive || isContextUsageActive || isPromptUsageActive || isCompanyPanelActive || isCodingPanelActive || isWorkspaceTabsActive) && (
+      {canvasPanel != null && (
+        <div data-testid="canvas-widget-panel" hidden={!isCanvasWidgetActive}
+          inert={!isCanvasWidgetActive} aria-hidden={!isCanvasWidgetActive}
+          className={cn("rumi-right-sidebar-panel rumi-layer-local-popover relative min-w-0 flex-col border-r border-zinc-800/40 bg-[#0a0a0c]", isCanvasWidgetActive ? "flex" : "hidden")}
+          style={{ width: panelWidthPx }}>
+          <div role="separator" tabIndex={0} aria-label="Canvas widget幅を変更"
+            aria-orientation="vertical" aria-valuemin={220} aria-valuemax={520} aria-valuenow={panelWidthPx}
+            className="absolute left-0 top-0 rumi-layer-local-popover h-full w-2 cursor-col-resize hover:bg-zinc-700/60 focus-visible:bg-indigo-400/50"
+            onPointerDown={startPanelResize} onKeyDown={resizePanelWithKeyboard} />
+          <div className="min-h-0 flex-1 overflow-hidden">{typeof canvasPanel === "function" ? canvasPanel(isCanvasWidgetActive) : canvasPanel}</div>
+        </div>
+      )}
+      {(activeItem || isTimelineWidgetActive || isPlacementPanelActive || isToolManagerActive || isToolFilterLogActive || isRuntimeStatusActive || isContextUsageActive || isPromptUsageActive || isCompanyPanelActive || isCodingPanelActive || isWorkspaceTabsActive) && (
         <div
           className="rumi-right-sidebar-panel rumi-layer-local-popover relative flex min-w-0 flex-col border-r border-zinc-800/40 bg-[#0a0a0c] shadow-2xl animate-in slide-in-from-right-2 duration-200"
           style={{ width: panelWidthPx }}
@@ -1845,7 +1902,7 @@ export function RightSidebar({
           <div className="flex h-11 flex-shrink-0 items-center justify-between gap-2 border-b border-zinc-800/60 px-2.5">
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", activeItem ? categoryColor(activeItem.category, "bg") : isPlacementPanelActive ? "bg-violet-300" : isCompanyPanelActive ? "bg-sky-400" : isCodingPanelActive ? "bg-zinc-300" : isWorkspaceTabsActive ? "bg-emerald-300" : isPromptUsageActive ? "bg-cyan-300" : isToolFilterLogActive ? "bg-amber-300" : isRuntimeStatusActive ? "bg-sky-300" : "bg-emerald-500")} />
-              <h3 className="text-[13px] font-medium text-zinc-100 truncate">{activeItem?.label ?? activePlacementManifest?.label ?? (isCompanyPanelActive ? "Employees" : isCodingPanelActive ? "Coding widget" : isWorkspaceTabsActive ? "Workspace tabs" : isPromptUsageActive ? "Current prompts" : isToolFilterLogActive ? "選定ログ" : isContextUsageActive ? "Context usage" : isRuntimeStatusActive ? "Runtime status" : "機能")}</h3>
+              <h3 className="text-[13px] font-medium text-zinc-100 truncate">{activeItem?.label ?? activePlacementManifest?.label ?? (isTimelineWidgetActive ? "Timeline" : isCompanyPanelActive ? "Employees" : isCodingPanelActive ? "Coding widget" : isWorkspaceTabsActive ? "Workspace tabs" : isPromptUsageActive ? "Current prompts" : isToolFilterLogActive ? "選定ログ" : isContextUsageActive ? "Context usage" : isRuntimeStatusActive ? "Runtime status" : "機能")}</h3>
               {activeItem?.badge && (
                 <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded-full font-bold flex-shrink-0">
                   {activeItem.badge}
@@ -1969,7 +2026,9 @@ export function RightSidebar({
           )}
 
           <div className={cn("flex-1 overflow-y-auto", isCompanyPanelActive ? "p-0" : "p-2.5")}>
-            {isCompanyPanelActive ? (
+            {isTimelineWidgetActive ? (
+              timelinePanel
+            ) : isCompanyPanelActive ? (
               companyPanel
             ) : isCodingPanelActive ? (
               codingPanel
@@ -2456,7 +2515,7 @@ export function RightSidebar({
                     }
                   }} onDrop={handleShortcutDrop}>
                   {pinnedItemIds.map((id) => items.find((entry) => entry.id === id))
-                    .filter((item): item is SidebarItem => Boolean(item) && (item!.category !== "tool" || !hiddenToolIdSet.has(item!.id)))
+                    .filter((item): item is SidebarItem => Boolean(item) && !isIndependentWidgetItem(item!) && (item!.category !== "tool" || !hiddenToolIdSet.has(item!.id)))
                     .map((item) => renderItemRailSlot(item, true))}
                   {filterPlacementCandidates([...placementManifestMap.values()], { surface: "right_sidebar", orientation: "vertical", configurableOnly: true }).map((manifest) => (
                     <RailSlot key={manifest.id} id={`placement:${manifest.id}`} label={manifest.label} category="ウィジェットと設定"
@@ -2464,6 +2523,28 @@ export function RightSidebar({
                       {renderPinnedPlacementButton(manifest.id)}
                     </RailSlot>
                   ))}
+                  {canvasPanel != null && (
+                    <RailSlot id="canvas" label="Canvas" category="ウィジェット" icon={<PanelsTopLeft size={18} />} available={canvasMatchesSearch}
+                      defaultVisible={categoryFilter === "widget" || categoryFilter === "all" || isCanvasWidgetActive}>
+                      <button type="button" tabIndex={buttonTabIndex} title="Canvas" aria-label="Canvas"
+                        aria-pressed={isCanvasWidgetActive}
+                        className={cn(RAIL_BUTTON_CLASS, isCanvasWidgetActive ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-600/70" : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300")}
+                        onClick={() => { setCategoryFilter("widget"); setActivePanel((current) => current === "__canvas_widget__" ? null : "__canvas_widget__"); }}>
+                        <PanelsTopLeft size={18} />
+                      </button>
+                    </RailSlot>
+                  )}
+                  {timelinePanel != null && (
+                    <RailSlot id="timeline" label="Timeline" category="ウィジェット" icon={<ListOrdered size={18} />} available={timelineMatchesSearch}
+                      defaultVisible={categoryFilter === "widget" || categoryFilter === "all" || isTimelineWidgetActive}>
+                      <button type="button" tabIndex={buttonTabIndex} title="Timeline" aria-label="Timeline"
+                        aria-pressed={isTimelineWidgetActive}
+                        className={cn(RAIL_BUTTON_CLASS, isTimelineWidgetActive ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-600/70" : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300")}
+                        onClick={() => { setCategoryFilter("widget"); setActivePanel((current) => current === "__timeline_widget__" ? null : "__timeline_widget__"); }}>
+                        <ListOrdered size={18} />
+                      </button>
+                    </RailSlot>
+                  )}
                   <RailSlot id="category" label="カテゴリ" category="ナビゲーション" icon={<Layers size={18} />}>
                   <CategorySwitcher active={categoryFilter} counts={counts} keyboardButtonNavigation={keyboardButtonNavigation} onChange={(id) => { setCategoryFilter(id); setOpenToolGroupMenu(null); }} />
                   </RailSlot>
@@ -2730,7 +2811,7 @@ export function RightSidebar({
                 </button>
               </RailSlot>
           </>
-          {[...items].filter((item) => item.category !== "tool" || !hiddenToolIdSet.has(item.id)).sort(compareSidebarItems)
+          {[...items].filter((item) => !isIndependentWidgetItem(item)).filter((item) => item.category !== "tool" || !hiddenToolIdSet.has(item.id)).sort(compareSidebarItems)
             .map((item) => renderItemRailSlot(item, pinnedItemIdSet.has(item.id) || unpinnedVisibleItems.some((entry) => entry.id === item.id)))}
                 </CustomizableSidebarRail>
 

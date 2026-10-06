@@ -34,6 +34,12 @@ class ProjectDirectoryPort:
         """Redeem one selection at most once for its captured owner."""
         return self._selections.consume_identity(token, scope)
 
+    def consume_many(
+        self, tokens: list[str], scope: DirectorySelectionScope
+    ) -> list[tuple[Path, tuple[int, int]]]:
+        """Atomically redeem every selection for its captured owner."""
+        return self._selections.consume_many(tokens, scope)
+
     def close(self) -> None:
         """Revoke all selections when the captured activation retires."""
         self._picker.close()

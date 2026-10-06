@@ -16,7 +16,9 @@ export type ComposerDropAction =
 
 export type ComposerMentionMetadata = {
   id: string;
-  kind: "file" | "service" | "skill" | "tool";
+  kind: "file" | "service" | "skill" | "tool" | "chat" | "group" | "mcp";
+  profileId?: string;
+  memberIds?: string[];
   label: string;
   syntax: string;
 };
@@ -25,6 +27,11 @@ export type ReconciledComposerSemanticDraft = {
   droppedWidgets: DroppedWidget[];
   selectedToolIds: string[];
 };
+
+/** Keep setup eligibility visible in every Composer catalog projection. */
+export function composerExtensionNeedsSetup(item: SidebarItem): boolean {
+  return item.tool_info?.setup_state?.status === "missing";
+}
 
 export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
   return items
@@ -37,7 +44,7 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       tags: item.tags ?? [],
       ui: item.tool_info?.service_id
         ? { ...item.ui, service_id: item.tool_info.service_id } : item.ui,
-      ...(item.tool_info?.setup_state?.status === "missing" ? { disabled: true } : {}),
+      ...(composerExtensionNeedsSetup(item) ? { disabled: true } : {}),
       presentation: item.presentation,
     }));
 }
@@ -339,6 +346,14 @@ export function composerKnownMentionValues(
   return [...uniqueMentionLookup(items).keys()];
 }
 
+function historyMentionFields(record: Record<string, unknown>): { profileId: string; memberIds: string[] } | null {
+  if (record.kind !== "chat" && record.kind !== "group") return null;
+  if (typeof record.profileId !== "string" || !record.profileId.trim()) return null;
+  if (!Array.isArray(record.memberIds) || record.memberIds.some((id) => typeof id !== "string" || !id.trim())) return null;
+  if (new Set(record.memberIds).size !== record.memberIds.length) return null;
+  return { profileId: record.profileId, memberIds: [...record.memberIds] as string[] };
+}
+
 export function composerMentionMetadataFromWidgets(
   widgets: DroppedWidget[],
 ): ComposerMentionMetadata[] {
@@ -350,7 +365,7 @@ export function composerMentionMetadataFromWidgets(
     if (!mention || typeof mention !== "object" || Array.isArray(mention)) continue;
     const record = mention as Record<string, unknown>;
     const kind = String(record.kind ?? widget.type);
-    if (!["file", "service", "skill", "tool"].includes(kind)) continue;
+    if (!["file", "service", "skill", "tool", "chat", "group", "mcp"].includes(kind)) continue;
     const id = String(
       record.id
       ?? record.tool_id
@@ -360,13 +375,17 @@ export function composerMentionMetadataFromWidgets(
       ?? widget.id,
     ).trim();
     const label = String(record.label ?? widget.label ?? id).trim();
-    if (!id || !label || seen.has(`${kind}:${id}`)) continue;
-    seen.add(`${kind}:${id}`);
+    const history = historyMentionFields(record);
+    if ((kind === "chat" || kind === "group") && !history) continue;
+    const key = JSON.stringify([kind, id, history?.profileId ?? null]);
+    if (!id || !label || seen.has(key)) continue;
+    seen.add(key);
     result.push({
       id,
       kind: kind as ComposerMentionMetadata["kind"],
       label,
       syntax: String(record.syntax ?? `@${label}`),
+      ...(history ?? {}),
     });
   }
   return result;
@@ -398,7 +417,7 @@ export function composerMentionToolIdsFromWidgets(widgets: DroppedWidget[]): str
       : {};
     const ids = kind === "tool"
       ? [String(mention.tool_id ?? mention.id ?? widget.sourceItemId ?? widget.id).trim()]
-      : kind === "service"
+      : (kind === "service" || kind === "mcp")
         ? normalizedStringList(serviceRecord.tool_ids)
         : [];
     for (const id of ids) {
@@ -453,6 +472,7 @@ export function publicComposerWidgetMetadata(
   if (!metadata) return undefined;
   const result = { ...metadata };
   delete result.composer_mention_owned_tool_ids;
+  delete result.composer_confirmation;
   return result;
 }
 
@@ -559,6 +579,7 @@ export function reconcileComposerSemanticDraft({
 
 export function normalizeComposerMentionMetadata(
   value: unknown,
+  historyCatalog?: { profileId: string; references: ComposerMentionMetadata[] },
 ): ComposerMentionMetadata[] {
   if (!Array.isArray(value)) return [];
   const result: ComposerMentionMetadata[] = [];
@@ -569,9 +590,24 @@ export function normalizeComposerMentionMetadata(
     const kind = String(record.kind ?? "");
     const id = String(record.id ?? "").trim();
     const label = String(record.label ?? "").trim();
-    if (!["file", "service", "skill", "tool"].includes(kind) || !id || !label) continue;
-    if (seen.has(`${kind}:${id}`)) continue;
-    seen.add(`${kind}:${id}`);
+    if (!["file", "service", "skill", "tool", "chat", "group", "mcp"].includes(kind) || !id || !label) continue;
+    const history = historyMentionFields(record);
+    const confirmed = kind === "chat" || kind === "group"
+      ? historyCatalog?.references.find((entry) => (
+          history && history.profileId === historyCatalog.profileId
+          && entry.profileId === historyCatalog.profileId
+          && entry.kind === kind && entry.id === id
+          && entry.syntax === String(record.syntax ?? `@${label}`)
+        ))
+      : null;
+    if ((kind === "chat" || kind === "group") && !confirmed) continue;
+    const key = JSON.stringify([kind, id, confirmed?.profileId ?? null]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (confirmed) {
+      result.push({ ...confirmed, memberIds: confirmed.memberIds ? [...confirmed.memberIds] : undefined });
+      continue;
+    }
     result.push({
       id,
       kind: kind as ComposerMentionMetadata["kind"],

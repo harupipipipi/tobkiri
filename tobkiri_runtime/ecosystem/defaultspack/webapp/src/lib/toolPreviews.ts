@@ -1,3 +1,4 @@
+import { buildFileEditTimelineEntries, type FileEditTimelineEntry } from "./fileEditTimeline";
 import type { ToolPreviewItem } from "../components/ToolPreview";
 import {
   conversationArtifactFileUrl,
@@ -253,7 +254,7 @@ export function mergeStreamActivityEvent(base: ChatActivityEvent, update: ChatAc
   const completedAt = updateCompletedAt ?? baseCompletedAt;
   if (startedAt !== undefined) merged.started_at = startedAt;
   if (completedAt !== undefined) merged.completed_at = completedAt;
-  for (const key of ["arguments", "result", "artifact", "artifacts", "output", "message", "timestamp"]) {
+  for (const key of ["arguments", "result", "artifact", "artifacts", "output", "message", "timestamp", "file_edit_receipt"]) {
     if (merged[key] === undefined && base[key] !== undefined) {
       merged[key] = base[key];
     }
@@ -497,4 +498,46 @@ export function toolPreviewsFromMessages(messages: ChatMessage[]): ToolPreviewIt
     return [...logPreviews, ...eventPreviews];
   }).sort((a, b) => b.timestamp - a.timestamp);
   return dedupePreviewItems(previews);
+}
+
+const REJECTED_RECEIPT_STATUSES = new Set([
+  "error", "failed", "failure", "denied", "rejected", "cancelled", "canceled",
+  "aborted", "timeout", "timed_out", "pending", "queued", "running", "started",
+  "in_progress", "executing", "processing", "tool_call", "tool_call_started",
+  "approval_required", "requires_approval", "pending_approval", "awaiting_approval",
+  "waiting_approval", "waiting_for_approval", "wait_approval", "waitapproval",
+]);
+
+/** Reject failed or unfinished receipt envelopes without reading tool arguments. */
+function receiptEnvelopeRejected(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(receiptEnvelopeRejected);
+  if (!isRecord(value)) return false;
+  if (value.is_error === true || value.isError === true
+    || value.ok === false || value.success === false
+    || value.error === true || value.failed === true || value.denied === true
+    || value.cancelled === true || value.canceled === true
+    || value.approval_required === true || value.requires_approval === true) return true;
+  if (["status", "phase", "outcome", "state", "type"].some((key) => (
+    typeof value[key] === "string"
+    && REJECTED_RECEIPT_STATUSES.has(value[key].trim().toLowerCase())
+  ))) return true;
+  return ["data", "result", "output", "widget"].some((key) => (
+    receiptEnvelopeRejected(value[key])
+  ));
+}
+
+/** Collect committed file edits only from the server's independent receipt field. */
+export function fileEditTimelineFromMessages(messages: ChatMessage[], profileId?: string): FileEditTimelineEntry[] {
+  const receipts: unknown[] = [];
+  for (const message of messages) {
+    for (const log of message.tool_logs ?? []) {
+      if (receiptEnvelopeRejected(log)) continue;
+      if (log.file_edit_receipt !== undefined) receipts.push(log.file_edit_receipt);
+    }
+    for (const event of message.events ?? []) {
+      if (!isToolEndEvent(event) || receiptEnvelopeRejected(event)) continue;
+      if (event.file_edit_receipt !== undefined) receipts.push(event.file_edit_receipt);
+    }
+  }
+  return buildFileEditTimelineEntries(receipts).filter((entry) => profileId === undefined || entry.profileId === profileId);
 }

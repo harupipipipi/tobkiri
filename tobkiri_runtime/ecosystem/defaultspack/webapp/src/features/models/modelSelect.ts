@@ -1,5 +1,6 @@
 import { connectionCatalogProviderId } from "../../lib/providerCatalog";
 import type { ModelProfile, ModelSearchItem, SettingsSection } from "../../lib/api";
+import { modelProfileConnectionId } from "./modelSelectionIdentity";
 
 export const MODEL_PICKER_QUERY_RESULT_LIMIT = 60;
 
@@ -136,8 +137,18 @@ export function enrichModelSelectOptions(
     const profile = profiles.get(option.value)
       ?? profiles.get(String(option.qualified_model_id ?? "").trim());
     if (!profile) return option;
+    // Capability aliases are advisory. Only a fully matching saved row may
+    // supply a connection missing from the public search response.
+    const exactConnections = new Set(modelProfiles
+      .filter((saved) => saved.profile_id === option.value
+        && Boolean(option.provider_id) && saved.provider_id === option.provider_id
+        && Boolean(option.model_id) && saved.model_id === option.model_id)
+      .map(modelProfileConnectionId).filter(Boolean));
+    const exactConnection = exactConnections.size === 1
+      ? exactConnections.values().next().value : undefined;
     return {
       ...option,
+      ...(!option.connection_id && exactConnection ? { connection_id: exactConnection } : {}),
       provider_id: option.provider_id ?? profile.provider_id,
       catalog_provider_id: option.catalog_provider_id ?? (typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined),
       provider_display_name: option.provider_display_name ?? profile.provider_display_name,
@@ -173,6 +184,7 @@ function registeredModelProfileOption(profile: ModelProfile): ModelSelectOption 
     // provider/model alias can name a different saved route.
     value,
     label: String(profile.display_name ?? value).trim() || value,
+    connection_id: modelProfileConnectionId(profile),
     provider_id: providerId,
     catalog_provider_id: typeof profile.metadata?.catalog_provider_id === "string" ? profile.metadata.catalog_provider_id : undefined,
     provider_display_name: String(profile.provider_display_name ?? providerId).trim() || providerId,

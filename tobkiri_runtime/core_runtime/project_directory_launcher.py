@@ -66,10 +66,10 @@ def _verify(
     return verified
 
 
-def pick_project_directory(
+def pick_project_directories(
     binding: ExecutionProfileIdentity,
-) -> Path | None:
-    """Ask the identity-matched Launcher to pick an existing directory.
+) -> list[Path] | None:
+    """Ask the identity-matched Launcher to pick existing directories.
 
     Credentials come exclusively from the captured Host contract. Responses
     must carry an Ed25519 attestation bound to this exact request and instance.
@@ -135,21 +135,38 @@ def pick_project_directory(
             or verified.get("identity") != binding.as_mapping()
         ):
             raise ValueError("invalid selection identity")
-        if verified.get("cancelled") is True and verified.get("path") is None:
+        if verified.get("cancelled") is True:
+            if verified.get("paths") is not None or verified.get("path") is not None:
+                raise ValueError("invalid cancellation")
             return None
-        path = verified.get("path")
-        if verified.get("cancelled") is not False or not isinstance(path, str):
-            raise ValueError("invalid selection")
-        root = Path(path)
+        paths = verified.get("paths") if "paths" in verified else [verified.get("path")]
         if (
-            not root.is_absolute()
-            or len(path) > 32768
-            or any(ord(c) < 32 for c in path)
+            verified.get("cancelled") is not False
+            or not isinstance(paths, list)
+            or not 1 <= len(paths) <= 32
         ):
-            raise ValueError("invalid directory")
-        return root
+            raise ValueError("invalid selection")
+        roots = []
+        for path in paths:
+            if not isinstance(path, str):
+                raise ValueError("invalid directory")
+            root = Path(path)
+            if (
+                not root.is_absolute()
+                or len(path.encode("utf-8")) > 32768
+                or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in path)
+            ):
+                raise ValueError("invalid directory")
+            roots.append(root)
+        return roots
     except Exception:
         raise RuntimeError(_ERROR) from None
+
+
+def pick_project_directory(binding: ExecutionProfileIdentity) -> Path | None:
+    """Return the first native selection for legacy single-directory callers."""
+    roots = pick_project_directories(binding)
+    return roots[0] if roots else None
 
 
 class LauncherDirectoryPickerPort:
@@ -157,6 +174,10 @@ class LauncherDirectoryPickerPort:
 
     def __init__(self, identity: ExecutionProfileIdentity) -> None:
         self._identity = identity
+
+    def pick_directories(self) -> list[Path] | None:
+        """Return all selections from the trusted Launcher OS picker."""
+        return pick_project_directories(self._identity)
 
     def pick_directory(self) -> Path | None:
         """Return only the result of the trusted Launcher OS picker."""

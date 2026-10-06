@@ -98,7 +98,7 @@ struct HostBrokerShared {
     used_approval_tokens: Mutex<HashMap<String, u64>>,
     attestation: BrokerAttestationIdentity,
     browser_access_opener: Arc<dyn Fn(&str, u16) -> Result<(), String> + Send + Sync>,
-    project_directory_picker: Arc<dyn Fn() -> Result<Option<PathBuf>, String> + Send + Sync>,
+    project_directory_picker: Arc<dyn Fn() -> Result<Option<Vec<PathBuf>>, String> + Send + Sync>,
     project_directory_lock: Mutex<()>,
     authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
@@ -190,18 +190,23 @@ impl HostBrokerRuntime {
             });
         let directory_app = app.clone();
         let project_directory_picker: Arc<
-            dyn Fn() -> Result<Option<PathBuf>, String> + Send + Sync,
+            dyn Fn() -> Result<Option<Vec<PathBuf>>, String> + Send + Sync,
         > = Arc::new(move || {
             use tauri_plugin_dialog::DialogExt;
             directory_app
                 .dialog()
                 .file()
-                .set_title("Choose a Tobkiri project folder")
-                .blocking_pick_folder()
+                .set_title("Choose Tobkiri project folders")
+                .blocking_pick_folders()
                 .map(|selected| {
                     selected
-                        .into_path()
-                        .map_err(|_| "Project folder picker returned an invalid path".to_string())
+                        .into_iter()
+                        .map(|entry| {
+                            entry.into_path().map_err(|_| {
+                                "Project folder picker returned an invalid path".to_string()
+                            })
+                        })
+                        .collect::<Result<Vec<PathBuf>, String>>()
                 })
                 .transpose()
         });
@@ -805,15 +810,28 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                     return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_STALE"}});
                 }
                 match selected {
-                    Ok(None) => json!({"ok":true,"identity":identity,"cancelled":true,"path":null}),
-                    Ok(Some(path)) if path.is_absolute() && path.is_dir() => match path.to_str() {
-                        Some(value)
-                            if value.len() <= 32768 && !value.chars().any(char::is_control) =>
-                        {
-                            json!({"ok":true,"identity":identity,"cancelled":false,"path":value})
+                    Ok(None) => {
+                        json!({"ok":true,"identity":identity,"cancelled":true,"paths":null})
+                    }
+                    Ok(Some(paths)) if !paths.is_empty() && paths.len() <= 32 => {
+                        let validated = paths
+                            .iter()
+                            .map(|path| {
+                                if !path.is_absolute() || !path.is_dir() {
+                                    return None;
+                                }
+                                path.to_str().filter(|value| {
+                                    value.len() <= 32768 && !value.chars().any(char::is_control)
+                                })
+                            })
+                            .collect::<Option<Vec<&str>>>();
+                        match validated {
+                            Some(values) => {
+                                json!({"ok":true,"identity":identity,"cancelled":false,"paths":values})
+                            }
+                            None => json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}}),
                         }
-                        _ => json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}}),
-                    },
+                    }
                     _ => json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}}),
                 }
             })
@@ -3880,6 +3898,43 @@ mod tests {
     }
 
     #[test]
+    fn project_directory_multiple_results_validate_every_directory() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let identity = crate::host_contract::ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:directory-test",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap();
+        crate::host_contract::write_contract(&config, &identity, []).unwrap();
+        let first = temp_dir.join("first");
+        let second = temp_dir.join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let selected = vec![first.clone(), second.clone()];
+        let mut shared = test_shared(config);
+        shared.project_directory_picker = Arc::new(move || Ok(Some(selected.clone())));
+        let mut request = authority_approval_open_request(
+            Some("broker-token"),
+            serde_json::to_value(identity).unwrap(),
+        );
+        request.path = "/api/host/project-directory/pick".into();
+        let shared = Arc::new(shared);
+        let response = route_request(&request, &shared).1;
+        let mut shared = Arc::try_unwrap(shared).ok().unwrap();
+        assert_eq!(response["paths"], json!([first, second]));
+        assert_eq!(response["cancelled"], false);
+        let missing = temp_dir.join("missing");
+        shared.project_directory_picker =
+            Arc::new(move || Ok(Some(vec![first.clone(), missing.clone()])));
+        let response = route_request(&request, &Arc::new(shared)).1;
+        assert_eq!(response["error"]["code"], "PROJECT_DIRECTORY_FAILED");
+        assert!(response.get("paths").is_none());
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
     fn project_directory_result_from_retired_profile_is_discarded() {
         let (config, temp_dir) = test_config_with_approval_secret("secret");
         let identity = crate::host_contract::ExecutionProfileIdentity::new(
@@ -3911,6 +3966,7 @@ mod tests {
             Some("PROJECT_DIRECTORY_STALE")
         );
         assert!(response.get("path").is_none());
+        assert!(response.get("paths").is_none());
         let _ = fs::remove_dir_all(temp_dir);
     }
 

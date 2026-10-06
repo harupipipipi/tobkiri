@@ -1,4 +1,5 @@
-import type { ProjectDirectorySelection } from "../lib/projectWorkspaceMount";
+import type { ComposerEntityCandidate } from "../lib/composerEntityCandidates";
+import type { ProjectDirectorySelection, ProjectDirectorySelectionSet, ProjectWorkspaceSet } from "../lib/projectWorkspaceMount";
 import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
@@ -7,7 +8,7 @@ import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
 import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
-import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
+import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
 import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
@@ -150,6 +151,7 @@ export type HistoryBoardRendererProps = {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
+  onChatGroupMove?: (conversationId: string, targetProjectId: string | null) => Promise<void>;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
   onSearchOpen?: () => void;
   onMinimize?: () => void;
@@ -157,8 +159,8 @@ export type HistoryBoardRendererProps = {
   isCompact?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
-  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
   onGroupDataPathPrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
   onCodingWorkspacesRefresh?: () => void | Promise<void>;
 };
@@ -204,7 +206,7 @@ export type ChatMessagesRendererProps = {
 };
 
 export type ComposerRendererProps = {
-  surfaceMode?: "standard" | "thread";
+  surfaceMode?: "standard" | "thread" | "scheduled";
   submissionDisabled?: boolean;
   widgetContext?: WidgetConversationContext;
   input: string;
@@ -240,8 +242,18 @@ export type ComposerRendererProps = {
   pendingMentionAttachmentPaths?: string[];
   droppedWidgets?: DroppedWidget[];
   entityReferences?: ComposerEntityReference[];
+  entityCandidates?: ComposerEntityCandidate[];
+  entityCandidateStatus?: string;
+  entityCandidatesHaveMore?: boolean;
+  entityCandidatesLoadMore?: () => void;
+  historyReferences?: ComposerEntityReference[];
+  historyReferenceTargetProfileId?: string;
+  onEntityCandidateConfirm?: (candidate: ComposerEntityCandidate) => Promise<{ widget: DroppedWidget; reference: ComposerEntityReference; syntax: string } | null>;
+  onReferenceConfirmationPendingChange?: (pending: boolean) => void;
+  onHistoryReferenceDrop?: (rawPayload: string) => Promise<{ widget: DroppedWidget; reference: ComposerEntityReference; syntax: string } | null>;
   selectedToolIds?: string[];
   actionApprovalMode?: ActionApprovalMode;
+  actionApprovalModes?: readonly ActionApprovalMode[];
   showActionApprovalControl?: boolean;
   showToolSelectionControl?: boolean;
   toolSelectionMode?: ToolSelectionMode;
@@ -291,6 +303,7 @@ export type ComposerRendererProps = {
   onPendingMentionAttachmentRemove?: (path: string) => void;
   onFileRemove?: (fileId: string) => void;
   onDropWidget?: (widget: DroppedWidget) => void;
+  onDroppedWidgetsChange?: (widgets: DroppedWidget[]) => void;
   onEntityReferencesChange?: (references: ComposerEntityReference[]) => void;
   onWidgetAction?: (widget: DroppedWidget) => void;
   onWidgetToggle?: (widgetId: string) => void;
@@ -303,8 +316,8 @@ export type ComposerRendererProps = {
   onCodingContextRefresh?: () => void;
   onProjectSelect?: (project: ProjectInfo | null) => void;
   projectProfileId?: string;
-  onProjectWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onProjectDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
+  onProjectWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onProjectDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
   onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
@@ -312,11 +325,10 @@ export type ToolPreviewPanelRendererProps = {
   widgetContext?: WidgetConversationContext;
   previews: ToolPreviewItem[];
   showPreview: boolean;
-  previewMode: ToolPreviewMode;
   activePreviewId: string | null;
+  activePreviewRevision?: number;
   memo?: string;
   onClose: () => void;
-  onModeChange: (mode: ToolPreviewMode) => void;
   onMemoChange?: (value: string) => void;
 };
 
@@ -330,6 +342,10 @@ export type RightSidebarRendererProps = {
   selectedToolIds?: string[];
   companyPanel?: ReactNode;
   codingPanel?: ReactNode;
+  canvasPanel?: ReactNode | ((visible: boolean) => ReactNode);
+  timelinePanel?: ReactNode;
+  onCanvasOpen?: () => void;
+  onCanvasClose?: () => void;
   keyboardButtonNavigation?: boolean;
   attachedFiles?: AttachedFile[];
   selectedProfile?: ModelProfile | null;
@@ -364,6 +380,7 @@ export type RightSidebarRendererProps = {
 };
 
 export type SettingsModalRendererProps = {
+  actionApprovalModes?: readonly ActionApprovalMode[];
   extensionSettings?: ReactNode;
   isOpen: boolean;
   activeSectionId?: string | null;

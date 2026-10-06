@@ -60,3 +60,12 @@ test("duplicate saved IDs cannot resurrect schema-excluded routes or confuse sel
   assert.equal(registeredDropdownSelection([excluded, kept], kept), kept);
   assert.deepEqual(registeredDropdownProfiles([excluded, kept], DEFAULT_MODEL_SELECTOR_SCHEMA, "", kept), [kept, excluded]);
 });
+
+
+test("pinned registered models lead stable unpinned ordering and still obey search", () => {
+  const key = JSON.stringify(["connection", "work-key", "same-model"]);
+  assert.deepEqual(registeredDropdownProfiles([personal, work], DEFAULT_MODEL_SELECTOR_SCHEMA, "", personal, [key]), [work, personal]);
+  assert.deepEqual(registeredDropdownProfiles([personal, work], DEFAULT_MODEL_SELECTOR_SCHEMA, "personal-key", work, [key]), [personal]);
+  assert.deepEqual(registeredDropdownProfiles([personal, work], DEFAULT_MODEL_SELECTOR_SCHEMA, "", null, [JSON.stringify(["connection", "unloaded", "same-model"])]), [personal, work]);
+  assert.equal(registeredDropdownSelection([personal, work], work), work);
+});

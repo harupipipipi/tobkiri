@@ -717,11 +717,15 @@ def _presentation_metadata(
         if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
         _execute_payload(spec, request, plan)
-        metadata = dict(_presentation(
-            action="Mount project folder", summary="Register and select this folder as an untrusted project workspace.",
-            detail=f"Folder: {_display_text(_required_text(plan.get('display_name')))}\nWorkspace: {_display_text(_required_text(plan.get('workspace_id')))}",
+        metadata: dict[str, Any] = dict(_presentation(
+            action="Mount project folders", summary="Register these exact folders as untrusted workspaces and select the primary.",
+            detail="\n".join(
+                f"Folder: {_display_text(_required_text(root.get('display_name')))}\nWorkspace: {_display_text(_required_text(root.get('workspace_id')))}"
+                for root in plan.get("roots", [plan])
+            ) + f"\nPrimary workspace: {_display_text(_required_text(plan.get('workspace_id')))}",
         ))
         metadata["workspace_id"] = _required_text(plan.get("workspace_id"))
+        metadata["workspace_ids"] = [root["workspace_id"] for root in plan.get("roots", [plan])]
         return metadata
     if spec.kind == "mcp_connect":
         plan, request = payload.get("plan"), payload.get("request")

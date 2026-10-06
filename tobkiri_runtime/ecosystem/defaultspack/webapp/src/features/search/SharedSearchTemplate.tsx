@@ -20,7 +20,7 @@ export type SharedSearchItem<T> = {
 export function SharedSearchTemplate<T>({
   queryState, onQueryStateChange, preset, items, onSelect, loading = false, error, onRetry,
   emptyMessage = "一致する結果はありません。", inputLabel = "検索", placeholder = "検索",
-  inputRef: externalInputRef, autoFocus = false, onEscape, trailingControls, renderItem,
+  inputRef: externalInputRef, autoFocus = false, onEscape, trailingControls, renderItem, renderItemAction, density = "default",
 }: {
   queryState: SearchQueryState; onQueryStateChange: (state: SearchQueryState) => void; preset?: SearchPreset;
   items: SharedSearchItem<T>[]; onSelect: (item: SharedSearchItem<T>) => void;
@@ -28,6 +28,8 @@ export function SharedSearchTemplate<T>({
   inputLabel?: string; placeholder?: string; inputRef?: RefObject<HTMLInputElement | null>;
   autoFocus?: boolean; onEscape?: () => void; trailingControls?: ReactNode;
   renderItem?: (item: SharedSearchItem<T>) => ReactNode;
+  renderItemAction?: (item: SharedSearchItem<T>) => ReactNode;
+  density?: "default" | "compact";
 }) {
   const query = queryState.value;
   const stateRef = useRef(queryState);
@@ -40,7 +42,10 @@ export function SharedSearchTemplate<T>({
   const inputRef = externalInputRef ?? ownInputRef;
   const listRef = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState(query.length);
-  const [index, setIndex] = useState(0);
+  const [navigation, setNavigation] = useState({ queryState, index: 0 });
+  const index = navigation.queryState === queryState ? navigation.index : 0;
+  const setIndex = (nextIndex: number) => setNavigation({ queryState, index: nextIndex });
+  const [activeItem, setActiveItem] = useState<{ queryState: SearchQueryState; key: string } | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const parsed = parseConfirmedSearchQuery(queryState, preset);
   const drafts = getDraftSearchTokens(queryState);
@@ -52,12 +57,20 @@ export function SharedSearchTemplate<T>({
   );
   const pendingConflict = drafts.length > 0 && pendingSuggestions.length > 0 && suggestions.length === 0 && !dismissed;
   const count = suggestions.length || (loading || error || parsed.conflict || drafts.length ? 0 : items.length);
-  const activeIndex = Math.min(index, Math.max(count - 1, 0));
+  const preservedIndex = !suggestions.length && activeItem?.queryState === queryState
+    ? items.findIndex((item) => item.key === activeItem.key) : -1;
+  const activeIndex = preservedIndex >= 0 ? preservedIndex : Math.min(index, Math.max(count - 1, 0));
   const id = useId();
-  useEffect(() => { setIndex(0); setDismissed(false); }, [queryState]);
+  useEffect(() => { setIndex(0); setActiveItem(null); setDismissed(false); }, [queryState]);
+  useEffect(() => {
+    if (!suggestions.length && count && items[activeIndex]) {
+      setActiveItem((previous) => previous?.queryState === queryState && previous.key === items[activeIndex].key
+        ? previous : { queryState, key: items[activeIndex].key });
+    }
+  }, [queryState, suggestions.length, count, items, activeIndex]);
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, query]);
+  }, [activeIndex, query, activeItem?.key]);
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -85,9 +98,15 @@ export function SharedSearchTemplate<T>({
     inputRef.current?.focus();
     requestAnimationFrame(() => inputRef.current?.setSelectionRange(next.caret, next.caret));
   };
-  return <div className="min-w-0">
-    <div className="flex items-center gap-3 px-5 py-4">
-      <Search size={18} className="shrink-0 text-zinc-400" aria-hidden="true" />
+  return <div className="min-w-0" onKeyDown={(event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || composingRef.current
+      || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onEscape?.();
+  }}>
+    <div className={cn("flex items-center", density === "compact" ? "gap-2.5 px-4 py-3.5" : "gap-3 px-5 py-4")}>
+      <Search size={density === "compact" ? 16 : 18} className="shrink-0 text-zinc-400" aria-hidden="true" />
       <InlineSearchInput
         ref={inputRef} role="combobox" aria-label={inputLabel} aria-autocomplete="list"
         aria-expanded="true" aria-controls={`${id}-list`}
@@ -111,7 +130,9 @@ export function SharedSearchTemplate<T>({
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             const step = event.key === "ArrowDown" ? 1 : -1;
-            setIndex((activeIndex + step + Math.max(count, 1)) % Math.max(count, 1));
+            const nextIndex = (activeIndex + step + Math.max(count, 1)) % Math.max(count, 1);
+            setIndex(nextIndex);
+            if (!suggestions.length && items[nextIndex]) setActiveItem({ queryState, key: items[nextIndex].key });
           } else if (mentionConfirmationKey({ key: event.key, shiftKey: event.shiftKey,
             isComposing: event.nativeEvent.isComposing, keyCode: event.nativeEvent.keyCode, repeat: event.repeat })
             && (event.key === "Enter" || suggestions.length)) {
@@ -126,7 +147,7 @@ export function SharedSearchTemplate<T>({
             else onEscape?.();
           }
         }}
-        className="min-w-0 flex-1 bg-transparent text-base text-zinc-100 outline-none placeholder:text-zinc-400"
+        className={cn("min-w-0 flex-1 bg-transparent text-zinc-100 outline-none placeholder:text-zinc-400", density === "compact" ? "text-sm" : "text-base")}
       />
       {trailingControls}
     </div>
@@ -141,11 +162,14 @@ export function SharedSearchTemplate<T>({
           : error ? <div role="alert" className="px-4 py-5 text-sm text-zinc-400"><p>{error}</p>{onRetry && <button type="button" onClick={onRetry} className="mt-2 rounded border border-white/10 px-3 py-1">再試行</button>}</div>
           : loading ? <p role="status" className="px-4 py-8 text-sm text-zinc-400">検索中…</p>
           : items.length === 0 ? <p role="status" className="px-4 py-8 text-sm text-zinc-400">{emptyMessage}</p>
-          : items.map((item, optionIndex) => <button
-            id={`${id}-option-${optionIndex}`} key={item.key} type="button" role="option" tabIndex={-1}
+          : items.map((item, optionIndex) => <div key={item.key} className="flex items-center gap-1" data-search-result-row="">
+          <button
+            id={`${id}-option-${optionIndex}`} type="button" role="option" tabIndex={-1}
             aria-selected={optionIndex === activeIndex} onClick={() => onSelect(item)}
-            className={cn("flex min-h-11 w-full items-center gap-3 rounded-xl px-4 py-2 text-left", optionIndex === activeIndex ? "bg-white/[0.08] text-zinc-100" : "text-zinc-300 hover:bg-white/[0.04]")}
-          >{renderItem ? renderItem(item) : <><span className="min-w-0 flex-1"><span className="block truncate text-sm">{item.title}</span>{item.description && <span className="mt-0.5 block truncate text-xs text-zinc-400">{item.description}</span>}</span>{item.badge && <span className="shrink-0 text-xs text-zinc-500">{item.badge}</span>}</>}</button>)}
+            className={cn("flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left", optionIndex === activeIndex ? "bg-white/[0.08] text-zinc-100" : "text-zinc-300 hover:bg-white/[0.04]")}
+          >{renderItem ? renderItem(item) : <><span className="min-w-0 flex-1"><span className="block truncate text-sm">{item.title}</span>{item.description && <span className="mt-0.5 block truncate text-xs text-zinc-400">{item.description}</span>}</span>{item.badge && <span className="shrink-0 text-xs text-zinc-500">{item.badge}</span>}</>}</button>
+          {renderItemAction?.(item)}
+          </div>)}
       </>}
     </div>
   </div>;

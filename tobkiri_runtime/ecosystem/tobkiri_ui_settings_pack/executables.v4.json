@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7487901b99fdb472c64b1a410f2846e0d618b3802fc3ad6ab5a76220282ca8aa",
+  "catalog_digest": "sha256:8acc44c932dd68db29bed4b597d7ad16d62cb2f82649bb484722ba61e5c5b579",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:4ebb68b9046a4a6a621bdb8cdc4da087ae6291f350f43d87c05fb3635a915785",
+  "source_identity": "sha256:8e0eb685fda9615cd1bdc970b5ca7705feafa07e99fcdd2e8fb3409fc5845d78",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.project.state.read",
-      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
       "implementation_path": "runtime/projects.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -54,7 +54,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.project.state.replace",
-      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
       "implementation_path": "runtime/projects.py",
       "materialization_mode": "on_demand",
       "operations": [

@@ -79,72 +79,108 @@ class DirectorySelections:
         self._entries: dict[str, _Selection] = {}
 
     def capture(self, root: Path, scope: DirectorySelectionScope) -> dict[str, object]:
-        """Capture a trusted picker result without exposing its filesystem path."""
-        if not isinstance(root, Path) or not root.is_absolute():
-            raise ValueError("picker directory is invalid")
-        try:
-            initial = os.stat(root, follow_symlinks=False)
-            if not stat.S_ISDIR(initial.st_mode):
+        """Capture one trusted result, preserving the original public projection."""
+        return self.capture_many([root], scope)[0]
+
+    def capture_many(
+        self, roots: list[Path], scope: DirectorySelectionScope
+    ) -> list[dict[str, object]]:
+        """Validate every root before publishing any bounded private tickets."""
+        if not isinstance(roots, list) or not 1 <= len(roots) <= 32:
+            raise ValueError("picker directory count is invalid")
+        captured_roots = []
+        identities = set()
+        for root in roots:
+            if not isinstance(root, Path) or not root.is_absolute():
                 raise ValueError("picker directory is invalid")
-            canonical = root.resolve(strict=True)
-            captured = os.stat(canonical, follow_symlinks=False)
-            if not stat.S_ISDIR(captured.st_mode) or (
-                initial.st_dev,
-                initial.st_ino,
-            ) != (captured.st_dev, captured.st_ino):
-                raise ValueError("picker directory changed")
-        except PermissionError:
-            raise PermissionError("picker directory access denied") from None
-        except OSError:
-            raise ValueError("picker directory is unavailable") from None
+            try:
+                initial = os.stat(root, follow_symlinks=False)
+                canonical = root.resolve(strict=True)
+                current = os.stat(canonical, follow_symlinks=False)
+                identity = (current.st_dev, current.st_ino)
+                if (
+                    not stat.S_ISDIR(initial.st_mode)
+                    or not stat.S_ISDIR(current.st_mode)
+                    or (initial.st_dev, initial.st_ino) != identity
+                ):
+                    raise ValueError("picker directory changed")
+                if identity in identities:
+                    raise ValueError("duplicate picker directory")
+                identities.add(identity)
+                captured_roots.append((canonical, identity))
+            except PermissionError:
+                raise PermissionError("picker directory access denied") from None
+            except OSError:
+                raise ValueError("picker directory is unavailable") from None
         with self._lock:
             self._require_open()
             self._purge()
-            if len(self._entries) >= self._capacity:
+            if len(self._entries) + len(roots) > self._capacity:
                 raise ValueError("directory selection quota exceeded")
-            token = secrets.token_urlsafe(32)
-            self._entries[token] = _Selection(
-                scope,
-                canonical,
-                self._now() + self._ttl,
-                (captured.st_dev, captured.st_ino),
-            )
-        return {
-            "selection_id": token,
-            "display_name": canonical.name or "Project folder",
-            "expires_in_ms": int(self._ttl * 1000),
-            "cancelled": False,
-        }
+            deadline = self._now() + self._ttl
+            result = []
+            for canonical, identity in captured_roots:
+                token = secrets.token_urlsafe(32)
+                self._entries[token] = _Selection(scope, canonical, deadline, identity)
+                result.append(
+                    {
+                        "selection_id": token,
+                        "display_name": canonical.name or "Project folder",
+                        "expires_in_ms": int(self._ttl * 1000),
+                        "cancelled": False,
+                    }
+                )
+            return result
 
     def consume(self, token: str, scope: DirectorySelectionScope) -> Path:
-        """Return a private root once; callers must still obtain mount approval."""
+        """Return one private root without granting filesystem authority."""
         return self.consume_identity(token, scope)[0]
 
     def consume_identity(
         self, token: str, scope: DirectorySelectionScope
     ) -> tuple[Path, tuple[int, int]]:
-        """Return the immutable picker identity so consumers can retain its fence."""
+        """Return one immutable identity through atomic batch validation."""
+        return self.consume_many([token], scope)[0]
+
+    def consume_many(
+        self, tokens: list[str], scope: DirectorySelectionScope
+    ) -> list[tuple[Path, tuple[int, int]]]:
+        """Redeem all tickets once only after every owner, expiry and root check."""
+        if (
+            not isinstance(tokens, list)
+            or not 1 <= len(tokens) <= 32
+            or any(not isinstance(t, str) or not t for t in tokens)
+            or len(set(tokens)) != len(tokens)
+        ):
+            raise PermissionError("directory selection is unavailable")
         with self._lock:
             self._require_open()
             self._purge()
-            if not isinstance(token, str) or not token:
-                raise PermissionError("directory selection is unavailable")
-            selected = self._entries.get(token)
-            if selected is None or selected.scope != scope:
-                raise PermissionError("directory selection is unavailable")
-            del self._entries[token]
-            # The mount consumer must repeat this check or use a retained handle:
-            # returning a Path cannot eliminate the subsequent filesystem race.
-            try:
-                current = os.stat(selected.root, follow_symlinks=False)
-                if (
-                    not stat.S_ISDIR(current.st_mode)
-                    or (current.st_dev, current.st_ino) != selected.identity
-                ):
-                    raise PermissionError("directory selection changed")
-            except OSError:
-                raise PermissionError("directory selection is unavailable") from None
-            return selected.root, selected.identity
+            selections = []
+            for token in tokens:
+                selected = self._entries.get(token)
+                if selected is None or selected.scope != scope:
+                    raise PermissionError("directory selection is unavailable")
+                try:
+                    current = os.stat(selected.root, follow_symlinks=False)
+                    if (
+                        not stat.S_ISDIR(current.st_mode)
+                        or (current.st_dev, current.st_ino) != selected.identity
+                    ):
+                        raise PermissionError("directory selection changed")
+                except OSError:
+                    raise PermissionError(
+                        "directory selection is unavailable"
+                    ) from None
+                selections.append(selected)
+            if len({s.identity for s in selections}) != len(selections):
+                raise PermissionError("duplicate directory selection")
+            now = self._now()
+            if any(selected.deadline <= now for selected in selections):
+                raise PermissionError("directory selection expired during validation")
+            for token in tokens:
+                del self._entries[token]
+            return [(s.root, s.identity) for s in selections]
 
     def close(self) -> None:
         """Revoke all tickets when their captured activation retires."""

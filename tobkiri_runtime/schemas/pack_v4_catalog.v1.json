@@ -1529,7 +1529,7 @@
           "path": "defaultspack/turn_progress_presentation.py"
         },
         {
-          "digest": "sha256:c74bf3d2abad75eaa515e7382eb32544ee4351895267885bcd2a96bc13f3be9c",
+          "digest": "sha256:8ad54215c56c0503a6636bfe2895d56d8e348bdbc891bcf3dcf1c366a3d52687",
           "kind": "executable",
           "path": "defaultspack/http_surface_presentation.py"
         },
@@ -8841,7 +8841,7 @@
         {
           "contract_id": "tobkiri.service.tool.local.operation.v1",
           "function_id": "rumi_default_tools_pack.file-create-tool",
-          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
           "operation_ids": [
             "rumi_default_tools_pack.file-create-operation"
           ]
@@ -8849,7 +8849,7 @@
         {
           "contract_id": "tobkiri.service.file.create.v1",
           "function_id": "rumi_default_tools_pack.file-create-prepare.service",
-          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
           "operation_ids": [
             "rumi_default_tools_pack.file-create-prepare"
           ]
@@ -8857,7 +8857,7 @@
         {
           "contract_id": "tobkiri.service.file.create.v1",
           "function_id": "rumi_default_tools_pack.file-create.service",
-          "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
           "operation_ids": [
             "rumi_default_tools_pack.file-create"
           ]
@@ -8903,7 +8903,7 @@
             {
               "entrypoint_id": "file-create-operation",
               "id": "rumi_default_tools_pack.file-create-operation",
-              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
+              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -8944,12 +8944,12 @@
             {
               "entrypoint_id": "file-create-prepare",
               "id": "rumi_default_tools_pack.file-create-prepare",
-              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
+              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
             },
             {
               "entrypoint_id": "file-create",
               "id": "rumi_default_tools_pack.file-create",
-              "implementation_digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902"
+              "implementation_digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390"
             }
           ],
           "owner": "rumi_default_tools_pack",
@@ -9163,7 +9163,7 @@
           "path": "runtime/files.py"
         },
         {
-          "digest": "sha256:396f99ecf495ae74ae7133014570a1f0fd6460a47e6749e62cab5c2c66e3c902",
+          "digest": "sha256:b83cf0e4e81681810d0daacd9330c10ffb686185033b822dd778131cf23ab390",
           "kind": "executable",
           "path": "runtime/file_create.py"
         }
@@ -22031,7 +22031,7 @@
         {
           "contract_id": "tobkiri.action.workspace.mount.v1",
           "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
-          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "operation_ids": [
             "rumi_workspace_mount_pack.workspace-mount"
           ]
@@ -22039,7 +22039,7 @@
         {
           "contract_id": "tobkiri.resource.workspace.v1",
           "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "operation_ids": [
             "rumi_workspace_mount_pack.workspace-resource"
           ]
@@ -22047,7 +22047,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-directory.service",
-          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "operation_ids": [
             "workspace.directory.acquire"
           ]
@@ -22055,7 +22055,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
-          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "operation_ids": [
             "workspace.mount.prepare"
           ]
@@ -22063,7 +22063,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
-          "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "operation_ids": [
             "workspace.mount.execute"
           ]
@@ -22101,7 +22101,7 @@
             {
               "entrypoint_id": "workspace-mount",
               "id": "rumi_workspace_mount_pack.workspace-mount",
-              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22134,7 +22134,7 @@
             {
               "entrypoint_id": "workspace-resource",
               "id": "rumi_workspace_mount_pack.workspace-resource",
-              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22171,7 +22171,7 @@
               ],
               "entrypoint_id": "project-directory",
               "id": "workspace.directory.acquire",
-              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
             },
             {
               "effect_ceiling": [
@@ -22180,7 +22180,7 @@
               ],
               "entrypoint_id": "project-workspace-prepare",
               "id": "workspace.mount.prepare",
-              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
             },
             {
               "effect_ceiling": [
@@ -22189,7 +22189,7 @@
               ],
               "entrypoint_id": "project-workspace-execute",
               "id": "workspace.mount.execute",
-              "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945"
+              "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9"
             }
           ],
           "owner": "rumi_workspace_mount_pack",
@@ -22227,6 +22227,34 @@
                 {
                   "additionalProperties": false,
                   "properties": {
+                    "primary_selection_id": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "selection_ids": {
+                      "items": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "selection_ids",
+                    "primary_selection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
                     "plan": {
                       "additionalProperties": false,
                       "properties": {
@@ -22245,6 +22273,11 @@
                           "type": "integer"
                         },
                         "plan_digest": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "primary_workspace_id": {
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
@@ -22272,6 +22305,47 @@
                           "maxLength": 32768,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "roots": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "display_name": {
+                                "maxLength": 255,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "root_identity": {
+                                "items": {
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "maxItems": 2,
+                                "minItems": 2,
+                                "type": "array"
+                              },
+                              "root_path": {
+                                "maxLength": 32768,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "workspace_id": {
+                                "maxLength": 255,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "workspace_id",
+                              "root_path",
+                              "root_identity",
+                              "display_name"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 32,
+                          "minItems": 1,
+                          "type": "array"
                         },
                         "security_epoch": {
                           "minimum": 1,
@@ -22302,19 +22376,51 @@
                       "type": "object"
                     },
                     "request": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "selection_id": {
-                          "maxLength": 255,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9_-]+$",
-                          "type": "string"
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "selection_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "selection_id"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "primary_selection_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "selection_ids": {
+                              "items": {
+                                "maxLength": 255,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]+$",
+                                "type": "string"
+                              },
+                              "maxItems": 32,
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            }
+                          },
+                          "required": [
+                            "selection_ids",
+                            "primary_selection_id"
+                          ],
+                          "type": "object"
                         }
-                      },
-                      "required": [
-                        "selection_id"
-                      ],
-                      "type": "object"
+                      ]
                     }
                   },
                   "required": [
@@ -22343,7 +22449,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+          "digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
           "kind": "executable",
           "path": "runtime/mounts.py"
         }
@@ -26368,7 +26474,7 @@
         {
           "contract_id": "tobkiri.resource.project.state.v1",
           "function_id": "tobkiri.project.state.read",
-          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
           "operation_ids": [
             "tobkiri_ui_settings_pack.projects-read"
           ]
@@ -26376,7 +26482,7 @@
         {
           "contract_id": "tobkiri.action.project.state.v1",
           "function_id": "tobkiri.project.state.replace",
-          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
           "operation_ids": [
             "tobkiri_ui_settings_pack.projects-replace"
           ]
@@ -26652,7 +26758,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
               "id": "tobkiri_ui_settings_pack.projects-read",
-              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+              "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -26694,7 +26800,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
               "id": "tobkiri_ui_settings_pack.projects-replace",
-              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+              "implementation_digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -27226,7 +27332,7 @@
           "path": "runtime/state_changes.py"
         },
         {
-          "digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
           "kind": "executable",
           "path": "runtime/projects.py"
         },

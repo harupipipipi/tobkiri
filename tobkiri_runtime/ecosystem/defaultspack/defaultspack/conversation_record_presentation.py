@@ -6,6 +6,7 @@ from typing import Mapping
 
 from .conversation_list_presentation import CONVERSATION_LIST_TARGET
 from .conversation_create_presentation import CONVERSATION_CREATE_TARGET
+from .file_edit_presentation import present_message_file_edits
 
 CONVERSATION_RECORD_TARGETS = {
     (f"defaults.conversations.{action}", *source[1:]): action
@@ -90,7 +91,9 @@ def normalize_conversation_record(
     return normalized
 
 
-def present_conversation_record(result: Mapping[str, object]) -> dict[str, object]:
+def present_conversation_record(
+    result: Mapping[str, object], *, profile_id: str | None = None
+) -> dict[str, object]:
     """Return an owned record with the existing UI model alias."""
     if result.get("state") == "error":
         return dict(result)
@@ -108,7 +111,11 @@ def present_conversation_record(result: Mapping[str, object]) -> dict[str, objec
         **record,
         "model": record.get("model_reference", ""),
         "messages": [
-            {**message, "conversation_id": record["id"]} for message in messages
+            {
+                **present_message_file_edits(message, profile_id=profile_id),
+                "conversation_id": record["id"],
+            }
+            for message in messages
         ],
     }
 

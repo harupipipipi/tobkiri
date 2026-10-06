@@ -22,9 +22,9 @@
     },
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:5c314c6b4beddc6f23f1203cf5e84c2302621a3ad613ea0021882960003a6f5e",
+      "artifact_digest": "sha256:86210aefbed5a657fbfb53048057a3f3862dddb143eb9fda3a0117948ee46f5d",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93"
+      "source_identity": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -32,7 +32,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93"
+      "source_content_hash": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983"
     },
     "manifest_authority": "v4-authoritative",
     "owner_surfaces": [
@@ -45,7 +45,7 @@
   "pack_identity": "rumi:ecosystem/rumi_workspace_mount_pack",
   "provenance": {
     "build_identity": "rumi_workspace_mount_pack:1.0.0",
-    "content_hash": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+    "content_hash": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
     "signature": null,
     "trust_class": "local"
   },

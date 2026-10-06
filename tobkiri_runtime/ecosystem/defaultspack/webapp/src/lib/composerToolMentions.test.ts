@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { composerMentionSelectionRequest, consumeLegacyToolMentionSnapshot, materializeLegacyToolMentions, replaceComposerToolMentions, resolveComposerToolMentions } from "./composerToolMentions";
 import { composerExtensionItems, composerFileMentionWidget, composerServiceMentionWidget, composerSkillMentionWidget, composerToolMentionWidget, reconcileComposerSemanticDraft } from "./composerWidgets";
+import { anchorComposerMentionWidget, confirmedComposerMentionRange, updateConfirmedComposerWidgets } from "./composerMentionAnchors";
 import type { ComposerExtensionItem } from "../renderers/types";
 
 const tools: ComposerExtensionItem[] = [
@@ -28,7 +29,7 @@ test("confirmed tool selection produces the visible turn selection and deletion 
 });
 
 test("service selection expands available tools and service exclusion stays visible", () => {
-  const draft = resolveComposerToolMentions("@google_drive @-browser", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }], exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets, tools);
+  const draft = resolveComposerToolMentions("@google_drive @-browser", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }], exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@google_drive @-browser", "@google_drive @-browser".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   assert.deepEqual(draft.toolIds, ["drive_read", "drive_write"]);
   assert.deepEqual(draft.include, [{ kind: "tool", id: "drive_read" }, { kind: "tool", id: "drive_write" }]);
   assert.deepEqual(draft.exclude, [{ kind: "service", id: "browser" }]);
@@ -37,10 +38,10 @@ test("service selection expands available tools and service exclusion stays visi
 });
 
 test("exclusion wins a conflicting mention and none mode emits no includes", () => {
-  const draft = resolveComposerToolMentions("@drive_read @-google_drive", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "google_drive" }] }, ["drive_read"], tools).widgets, tools);
+  const draft = resolveComposerToolMentions("@drive_read @-google_drive", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "google_drive" }] }, ["drive_read"], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@drive_read @-google_drive", "@drive_read @-google_drive".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   assert.deepEqual(draft.toolIds, []);
   assert.deepEqual(composerMentionSelectionRequest(draft, "none").include, []);
-  assert.deepEqual(resolveComposerToolMentions("@drive_read", draft.widgets, tools).toolIds, ["drive_read"]);
+  assert.deepEqual(resolveComposerToolMentions("@drive_read", updateConfirmedComposerWidgets("@drive_read @-google_drive", "@drive_read", draft.widgets, { start: 11, end: 27 }), tools).toolIds, ["drive_read"]);
 });
 
 test("legacy pins/exclusions materialize into deletable input without unavailable tools", () => {
@@ -93,7 +94,7 @@ test("sidebar selection inserts inline targets and preserves text and file widge
 });
 
 test("negative semantic widgets survive reconciliation without selecting tools", () => {
-  const draft = resolveComposerToolMentions("@-browser", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets, tools);
+  const draft = resolveComposerToolMentions("@-browser", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@-browser", "@-browser".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   const reconciled = reconcileComposerSemanticDraft({ text: "@-browser", droppedWidgets: draft.widgets, selectedToolIds: [] });
   assert.equal(reconciled.droppedWidgets.length, 1);
   assert.deepEqual(reconciled.selectedToolIds, []);
@@ -107,7 +108,7 @@ test("authenticated service/readiness metadata keeps missing tools unavailable",
 });
 
 test("explicit sidebar selection removes the overlapping inline exclusion", () => {
-  const original = resolveComposerToolMentions("Find @-browser", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets, tools);
+  const original = resolveComposerToolMentions("Find @-browser", materializeLegacyToolMentions("", { exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "Find @-browser", "Find @-browser".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   const enabled = replaceComposerToolMentions("Find @-browser", original.widgets, tools, ["browser_open"]);
   assert.equal(enabled.value, "Find @browser_open ");
   const draft = resolveComposerToolMentions(enabled.value, enabled.widgets, tools);
@@ -124,14 +125,14 @@ test("semantic ownership does not confirm longer raw mentions", () => {
 
 test("service mentions remain compatible with saved submission without opening custom widget context", async () => {
   const { isSavedTurnToolMentionWidget } = await import("./composerToolMentions");
-  const draft = resolveComposerToolMentions("@google_drive @-browser", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }], exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets, tools);
+  const draft = resolveComposerToolMentions("@google_drive @-browser", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }], exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@google_drive @-browser", "@google_drive @-browser".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   assert.ok(draft.widgets.every(isSavedTurnToolMentionWidget));
   assert.equal(isSavedTurnToolMentionWidget({ id: "custom", type: "service", label: "Custom" }), false);
   assert.equal(isSavedTurnToolMentionWidget(composerSkillMentionWidget({ id: "skill", label: "Skill" })), false);
 });
 
 test("overlapping service and individual mentions produce one target per actual tool", () => {
-  const draft = resolveComposerToolMentions("@google_drive @drive_read", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }] }, ["drive_read"], tools).widgets, tools);
+  const draft = resolveComposerToolMentions("@google_drive @drive_read", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }] }, ["drive_read"], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@google_drive @drive_read", "@google_drive @drive_read".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   assert.deepEqual(draft.include, [{ kind: "tool", id: "drive_read" }, { kind: "tool", id: "drive_write" }]);
   assert.deepEqual(draft.toolIds, ["drive_read", "drive_write"]);
 });
@@ -172,4 +173,35 @@ test("sidebar changes preserve unconfirmed @ prose while confirming selected ids
   const next = replaceComposerToolMentions("Explain @drive_read", [], tools, ["browser_open"]);
   assert.equal(next.value, "Explain @drive_read @browser_open ");
   assert.deepEqual(resolveComposerToolMentions(next.value, next.widgets, tools).toolIds, ["browser_open"]);
+});
+
+
+test("sidebar removal deletes only the confirmed duplicate and moves retained skill anchors", () => {
+  const text = "@Drive Read @Drive Read @Settings";
+  const widget = anchorComposerMentionWidget(composerToolMentionWidget(tools[0]), text, 0);
+  const skill = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings" }), text, 24);
+  const next = replaceComposerToolMentions(text, [widget, skill], tools, ["browser_open"]);
+  assert.equal(next.value, " @Drive Read @Settings @browser_open ");
+  assert.deepEqual(resolveComposerToolMentions(next.value, next.widgets, tools).toolIds, ["browser_open"]);
+  assert.equal(confirmedComposerMentionRange(next.widgets.find((item) => item.type === "skill")!, next.value)?.start, 13);
+});
+
+test("a stale anchor cannot activate another identical typed tool occurrence", () => {
+  const widget = anchorComposerMentionWidget(composerToolMentionWidget(tools[0]), "@Drive Read @Drive Read", 0);
+  assert.deepEqual(resolveComposerToolMentions("@Drive Read", [widget], tools).toolIds, []);
+});
+
+test("confirmed MCP server resolves only authenticated enabled inspected tool ids", () => {
+  const widget = composerServiceMentionWidget({ id: "exact-server", label: "mcp:exact-server", toolIds: ["drive_read", "not_implemented", "invented"] });
+  widget.metadata = { ...widget.metadata, mention: { ...(widget.metadata?.mention as object), kind: "mcp", id: "exact-server", syntax: "@mcp:exact-server" } };
+  const text = "Use @mcp:exact-server";
+  const anchored = anchorComposerMentionWidget(widget, text, 4);
+  const draft = resolveComposerToolMentions(text, [anchored], tools);
+  assert.deepEqual(draft.toolIds, ["drive_read"]);
+  assert.deepEqual(composerMentionSelectionRequest(draft, "auto"), {
+    mode: "manual", include: [{ kind: "tool", id: "drive_read" }], exclude: [], scope: "turn", must_use: true,
+  });
+  assert.deepEqual(resolveComposerToolMentions(text, [], tools).toolIds, []);
+  const disconnected = { ...anchored, metadata: { ...anchored.metadata, service: { tool_ids: [] } } };
+  assert.deepEqual(resolveComposerToolMentions(text, [disconnected], tools).toolIds, []);
 });

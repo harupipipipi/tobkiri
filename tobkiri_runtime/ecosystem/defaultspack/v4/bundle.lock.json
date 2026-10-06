@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:ac8d581840bf82e23636d6265772884c78ad290075267e3cdc4e957929fd1c95"
+      "digest": "sha256:54734286e0eb8091f8d152194f2159b86c5341db2472b7dcd89f38a2699cf504"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:60370dbbf866f1ff3bba7074d5713404b74da0235272e5784a54bd56215d844f"
+      "digest": "sha256:1bc1f451578852a42e3474cabbb738a69c14ec9d7b3d58400f57e93b175f8a3f"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -34,7 +34,7 @@
     {
       "path": "packs/rumi-workspace-mount.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:294e55178e49ed0a15f8896ef3268ea5f298dfa816cae303b87fdd603dc2a368"
+      "digest": "sha256:48c34f20f21f69e5cfae895ebb4fe646398db719517f7072aefad401fc9feb3b"
     },
     {
       "path": "packs/rumi_agent_continuity_pack.executables.v4.json",
@@ -519,12 +519,12 @@
     {
       "path": "packs/rumi_default_tools_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:01433035d5509c42e1e98fb914c8934db52f3e3752ebef07d0a0b60d45a13e5a"
+      "digest": "sha256:51a3c538430d2b1464033ef06b24ece343a2669b78f60758dffdf0e4e07b6977"
     },
     {
       "path": "packs/rumi_default_tools_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2a45d6d55a990e5d1b1baa1f8fd2c202bfb6bef873eca88ba04dc0174a9e8cab"
+      "digest": "sha256:0474ef852e3647f43eca75b02fb7833e5e46fb64bdd9cde4e2fe4a5e58fe8bec"
     },
     {
       "path": "packs/rumi_desktop_host_service_pack.executables.v4.json",
@@ -1379,7 +1379,7 @@
     {
       "path": "packs/rumi_workspace_mount_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:e8dcd2391b47e75e4fa239e8192a0b827f068bf33d26516eec703135500ea1d7"
+      "digest": "sha256:709da404813747a0fbac0b72280de611e90de4137d8dcd75dd6cb2b3a359bab5"
     },
     {
       "path": "packs/rumi_workspace_pack.executables.v4.json",
@@ -1479,12 +1479,12 @@
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:a3d237f60f9ca75ee05221010311e56f88dd5fa443d8d70826775d37e2b26866"
+      "digest": "sha256:8d27e18e01a8007297a77c40960f639d01cedb752aa66d882e9bd71a96ab92ea"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:befe7508b380fb52cf6167d6a7de919428d6ea8d4c2d037c51f472f3f6bfcff9"
+      "digest": "sha256:5333595ee72d3298504a8b812b3c0eb815035da7bc92e7b696af3504abac5c83"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
@@ -1514,7 +1514,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:2031276b0119f8089b1e9c89a8c381e0645409512335ae057d046a77c3e46fc5"
+      "digest": "sha256:d90127f4edeafef5d05ba6e390f664d2ee1433e5859648abe979124547055a63"
     }
   ]
 }

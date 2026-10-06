@@ -18,23 +18,23 @@ export const ACTION_APPROVAL_OPTIONS: Array<{
 }> = [
   {
     mode: "ask",
-    label: "承認を求める",
+    label: "人が承認",
     shortLabel: "承認",
-    description: "外部ファイル編集やネット利用を常に確認します",
+    description: "操作ごとに、あなたが確認してから実行します",
     icon: Hand,
   },
   {
     mode: "agent",
-    label: "代理で承認",
+    label: "別のAIが承認",
     shortLabel: "代理",
-    description: "安全でない可能性がある操作だけ確認します",
+    description: "別のAIが操作と引数を審査します。危険・判定不能な場合は理由を知らせて停止します",
     icon: ShieldCheck,
   },
   {
     mode: "full",
-    label: "フルアクセス",
+    label: "追加承認なし",
     shortLabel: "フル",
-    description: "ネットと全ファイルへ制限なくアクセスします",
+    description: "あなたが許可した範囲内で実行します。禁止された操作は実行できません",
     icon: ShieldAlert,
   },
 ];
@@ -43,6 +43,7 @@ export function ActionApprovalControl({
   mode,
   disabled = false,
   disabledReason,
+  availableModes = ["ask"],
   surfaceClassName,
   tabIndex,
   onModeChange,
@@ -51,6 +52,7 @@ export function ActionApprovalControl({
   mode: ActionApprovalMode;
   disabled?: boolean;
   disabledReason?: string;
+  availableModes?: readonly ActionApprovalMode[];
   surfaceClassName: string;
   tabIndex?: number;
   onModeChange: (mode: ActionApprovalMode) => void;
@@ -145,25 +147,29 @@ export function ActionApprovalControl({
         {ACTION_APPROVAL_OPTIONS.map((option) => {
           const OptionIcon = option.icon;
           const selected = option.mode === mode;
+          const available = option.mode === "ask" || availableModes.includes(option.mode);
           return (
             <button
               key={option.mode}
               type="button"
               role="menuitemradio"
               aria-checked={selected}
+              disabled={!available}
+              title={available ? option.description : "この承認方式は現在利用できません"}
               tabIndex={tabIndex}
               onClick={() => {
+                if (!available) return;
                 onModeChange(option.mode);
                 setOpen(false);
               }}
-              className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[0.65rem] px-3 py-2 text-left transition-colors ${
+              className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[0.65rem] px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected ? "bg-zinc-700/55 text-zinc-50" : "text-zinc-200 hover:bg-zinc-700/35"
               }`}
             >
               <OptionIcon size={18} className="flex-shrink-0 text-zinc-300" />
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium leading-5">{option.label}</span>
-                <span className="block text-[11px] leading-4 text-zinc-400">{option.description}</span>
+                <span className="block text-[11px] leading-4 text-zinc-400">{available ? option.description : "この承認方式は現在利用できません"}</span>
               </span>
               {selected && <Check size={16} className="flex-shrink-0 text-zinc-200" />}
             </button>

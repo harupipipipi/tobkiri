@@ -108,3 +108,61 @@ def test_filesystem_root_selection_has_a_visible_label_without_exposing_its_path
     assert captured_root == root.resolve(strict=True)
     current = captured_root.stat()
     assert identity == (current.st_dev, current.st_ino)
+
+
+def test_batch_wrong_owner_or_expired_token_does_not_consume_valid_sibling(tmp_path):
+    from dataclasses import replace
+
+    now = [0.0]
+    store = DirectorySelections(clock=lambda: now[0], ttl_seconds=1)
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    owner = scope()
+    old = store.capture(first, owner)["selection_id"]
+    now[0] = 0.5
+    fresh = store.capture(second, owner)["selection_id"]
+    with pytest.raises(PermissionError):
+        store.consume_many([old, fresh], replace(owner, profile_id="wrong"))
+    assert old in store._entries and fresh in store._entries
+    now[0] = 1
+    with pytest.raises(PermissionError):
+        store.consume_many([old, fresh], owner)
+    assert store.consume_identity(fresh, owner)[0] == second
+
+
+def test_expiry_during_batch_validation_preserves_unconsumed_tickets(
+    tmp_path, monkeypatch
+):
+    import tobkiri_host.directory_selections as module
+
+    now = [0.0]
+    store = DirectorySelections(clock=lambda: now[0], ttl_seconds=1)
+    root = tmp_path / "root"
+    root.mkdir()
+    token = store.capture(root, scope())["selection_id"]
+    real_stat = module.os.stat
+
+    def slow_stat(*args, **kwargs):
+        result = real_stat(*args, **kwargs)
+        now[0] = 2.0
+        return result
+
+    monkeypatch.setattr(module.os, "stat", slow_stat)
+    with pytest.raises(PermissionError):
+        store.consume_many([token], scope())
+    assert token in store._entries
+
+
+def test_parent_symlink_alias_duplicate_identity_publishes_nothing(tmp_path):
+    root = tmp_path / "real"
+    root.mkdir()
+    child = root / "child"
+    child.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(root, target_is_directory=True)
+    store = DirectorySelections()
+    with pytest.raises(ValueError):
+        store.capture_many([child, alias / "child"], scope())
+    assert store._entries == {}

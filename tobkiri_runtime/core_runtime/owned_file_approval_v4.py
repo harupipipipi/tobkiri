@@ -38,6 +38,7 @@ class _LiveFileRequest:
     guard: Any
     deadline: float
     cancel: Any = None
+    file_edit_receipt: dict[str, Any] | None = None
 
 
 _live_lock = RLock()
@@ -117,6 +118,51 @@ def file_effect_execution_guard(effect_id: str, context: Any) -> Any:
 
     guard()
     return guard
+
+
+def record_file_tool_edit(
+    request: Mapping[str, Any], context: Any, receipt: Mapping[str, Any]
+) -> None:
+    """Hold published-file metadata privately until the effect succeeds.
+
+    This is not an authority receipt and never changes execution permissions.
+    The existing guarded request lifetime owns and drains the metadata.
+    """
+    from core_runtime.file_edit_receipts import validate_file_edit_receipt
+
+    assert_file_request_live(request, context)
+    value = validate_file_edit_receipt(receipt)
+    if (
+        value is None
+        or value["operation"] != "create"
+        or value["profile_id"] != context.profile_id
+        or value["workspace_id"] != request.get("workspace_id")
+        or value["path"] != request.get("path")
+    ):
+        raise PermissionError("file edit metadata binding is invalid")
+    with _live_lock:
+        record = _live_requests.get(request["invocation_key"])
+        if record is None or record.file_edit_receipt is not None:
+            raise PermissionError("file edit metadata is unavailable")
+        record.file_edit_receipt = value
+
+
+def file_tool_edit_after_success(
+    request: Mapping[str, Any], context: Any, effect_id: str
+) -> dict[str, Any] | None:
+    """Release metadata after the caller observes its exact terminal success.
+
+    Only the finite Host tool's succeeded/resumed branch calls this function;
+    unknown/recovered effects and unsuccessful outcomes have no public record.
+    """
+    assert_file_request_live(request, context)
+    with _live_lock:
+        key = request["invocation_key"]
+        record = _live_requests.get(key)
+        if record is None or _file_effects.get(effect_id) != key:
+            return None
+        value = record.file_edit_receipt
+        return {**value, "stats": dict(value["stats"])} if value else None
 
 
 def close_file_tool_request(key: str) -> None:

@@ -4,10 +4,15 @@ import type { ModelSelectOption } from "./modelSelect";
 /** Resolve a saved route's execution connection without inferring a manufacturer. */
 export function modelProfileConnectionId(profile: ModelProfile): string {
   const metadata = profile.metadata;
-  const explicit = metadata?.connection_id ?? metadata?.provider_instance_id;
-  return typeof explicit === "string" && explicit.trim()
-    ? explicit.trim()
-    : String(profile.provider_id ?? "").trim();
+  // Preserve the existing alias priority and admit the registry's canonical
+  // provider_connection_id spelling when the earlier aliases are absent.
+  const explicit = [
+    metadata?.connection_id,
+    metadata?.provider_instance_id,
+    metadata?.provider_connection_id,
+  ].find((value) => typeof value === "string" && value.trim());
+  return typeof explicit === "string"
+    ? explicit.trim() : String(profile.provider_id ?? "").trim();
 }
 
 /** Return only an exact saved route adapted locally; catalogue IDs cannot switch. */

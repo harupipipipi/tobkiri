@@ -1,3 +1,7 @@
+import { modelProfileConnectionId } from "../features/models/modelSelectionIdentity";
+import type { ComposerEntityCandidate } from "../lib/composerEntityCandidates";
+import { HISTORY_REFERENCE_DROP_MIME, HISTORY_REFERENCE_DROP_EVENT, type HistoryReferenceDropDetail } from "../lib/historyReferences";
+import { anchorComposerMentionWidget, confirmedComposerMentionRange, updateConfirmedComposerWidgets } from "../lib/composerMentionAnchors";
 import { ComposerRegisteredModelDropdown as ModelDropdown } from "./ComposerRegisteredModelDropdown";
 export { ComposerRegisteredModelDropdown as ModelDropdown } from "./ComposerRegisteredModelDropdown";
 import { mentionConfirmationKey } from "../features/search/searchQueryState";
@@ -73,7 +77,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useId, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type {
@@ -120,7 +124,7 @@ import {
   type ComposerVoicePhase,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
-import { composerFileMentionWidget, composerKnownMentionValues, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation } from "../lib/composerWidgets";
+import { composerFileMentionWidget, composerKnownMentionValues, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation, composerMentionMetadataFromWidgets } from "../lib/composerWidgets";
 import { WidgetAttentionIcon } from "../lib/widgetAttention";
 import {
   COMPOSER_REFERENCE_MIME,
@@ -132,8 +136,7 @@ import {
   serializeComposerReferences,
   type ComposerEntityReference,
 } from "../lib/composerReferences";
-import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComposer";
-import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
+import { activeMentionAtCursor } from "../lib/mentionContract";
 import { insertAtMentionText } from "../lib/composerMentionInsertion";
 export { insertAtMentionText } from "../lib/composerMentionInsertion";
 import { withSettingsAssistantSkill } from "../lib/settingsMode";
@@ -1786,13 +1789,16 @@ function ModeSelector({
 }
 
 export type ComposerMentionSection = {
-  id: "plugin" | "builtin-tool" | "custom-tool" | "skill" | "service" | "file";
+  id: "plugin" | "builtin-tool" | "custom-tool" | "skill" | "service" | "file" | "chat" | "group" | "mcp";
   label: string;
   badge: string;
   tone: "sky" | "cyan" | "violet" | "blue" | "emerald" | "amber" | "rose" | "neutral";
 };
 
 const COMPOSER_MENTION_SECTIONS: Record<ComposerMentionSection["id"], ComposerMentionSection> = {
+  chat: { id: "chat", label: "チャット", badge: "チャット", tone: "sky" },
+  group: { id: "group", label: "グループ", badge: "グループ", tone: "blue" },
+  mcp: { id: "mcp", label: "MCP サーバー", badge: "MCP", tone: "cyan" },
   plugin: { id: "plugin", label: "プラグイン・接続", badge: "接続", tone: "cyan" },
   "builtin-tool": { id: "builtin-tool", label: "内蔵ツール", badge: "内蔵", tone: "sky" },
   "custom-tool": { id: "custom-tool", label: "追加したツール", badge: "追加", tone: "emerald" },
@@ -1848,17 +1854,21 @@ const COMPOSER_MENTION_SECTION_ORDER: readonly ComposerMentionSection["id"][] = 
   "skill",
   "service",
   "file",
+  "chat",
+  "group",
+  "mcp",
 ];
 
 export type ComposerAtMentionCandidate =
   | { kind: "tool"; id: string; label: string; displayLabel?: string; description?: string; item: ComposerExtensionItem; section: ComposerMentionSection }
   | { kind: "service"; id: string; label: string; displayLabel?: string; description?: string; service: ToolGroup; section: ComposerMentionSection }
   | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
+  | { kind: "entity"; id: string; label: string; displayLabel?: string; description?: string; entity: ComposerEntityCandidate; section: ComposerMentionSection }
   | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
 
 /** Build a semantic candidate while retaining exclusion intent for tools. */
 export function composerAtMentionCandidateWidget(
-  candidate: ComposerAtMentionCandidate,
+  candidate: Exclude<ComposerAtMentionCandidate, { kind: "entity" }>,
   exclude = false,
 ): DroppedWidget {
   const negative = exclude && (candidate.kind === "tool" || candidate.kind === "service");
@@ -2005,8 +2015,10 @@ export function JsonListPanel({
   activeIndex,
   onActiveIndexChange,
   onSelect,
+  footer,
 }: {
   payload: JsonListPanelPayload;
+  footer?: ReactNode;
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
   onSelect: (index: number) => void;
@@ -2089,6 +2101,7 @@ export function JsonListPanel({
           );
         })}
       </div>
+      {footer && <div className="border-t border-white/[0.06]">{footer}</div>}
     </div>
   );
 }
@@ -2101,14 +2114,15 @@ export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]
         ? candidate.service.id
         : candidate.kind === "skill"
           ? String(candidate.skill.metadata?.icon ?? candidate.skill.id)
-          : candidate.file;
+          : candidate.kind === "entity" ? candidate.entity.kind : candidate.file;
     return {
       id: candidate.id,
       title: candidate.displayLabel ?? candidate.label,
       description: candidate.description,
       section: { id: candidate.section.id, label: candidate.section.label },
       icon,
-      fallbackIcon: candidate.kind,
+      fallbackIcon: candidate.kind === "entity" ? "service" : candidate.kind,
+      disabled: candidate.kind === "entity" && !candidate.entity.available,
       badges: [{ label: candidate.section.badge, tone: candidate.section.tone }],
     };
   });
@@ -2202,24 +2216,77 @@ export type ComposerInlineMentionPart = {
   text: string;
 };
 
-const INLINE_MENTION_TOKEN_CHAR = /[\p{L}\p{M}\p{N}_./:-]/u;
-
-function composerMentionSyntaxFromWidget(widget: DroppedWidget): string | null {
-  if (widget.metadata?.source !== "composer_at_mention") return null;
-  const mention = widget.metadata.mention;
-  if (!mention || typeof mention !== "object" || Array.isArray(mention)) return null;
-  const syntax = String((mention as Record<string, unknown>).syntax ?? "").trim();
-  return syntax.startsWith("@") && syntax.length > 1 ? syntax : null;
+/** Search only supplied authenticated entity candidates, retaining their identities. */
+export function composerEntityMentionCandidates(candidates: ComposerEntityCandidate[], query: string): ComposerAtMentionCandidate[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  const prefix = normalized.match(/^(chat|group|mcp)(?::|\s|$)/);
+  const text = prefix ? normalized.slice(prefix[0].length).trim() : normalized;
+  return candidates.filter((candidate) => (!prefix || candidate.kind === prefix[1])
+    && (!text || `${candidate.id} ${candidate.label}`.toLocaleLowerCase().includes(text)))
+    .map((entity) => ({ kind: "entity", id: `${entity.kind}:${entity.id}`, label: entity.syntax.slice(1),
+      displayLabel: entity.label, description: entity.syntax, entity,
+      section: COMPOSER_MENTION_SECTIONS[entity.kind] }));
 }
 
-function inlineMentionMatchesAt(input: string, syntax: string, offset: number): boolean {
-  const codePointIndex = utf16OffsetToCodePointIndex(input, offset);
-  if (!isMentionStart(input, codePointIndex, [syntax.slice(1)])) return false;
-  const followingCharacters = [...input.slice(offset + syntax.length)];
-  const nextCharacter = followingCharacters[0] ?? "";
-  if (!nextCharacter) return true;
-  if (nextCharacter === ".") return !INLINE_MENTION_TOKEN_CHAR.test(followingCharacters[1] ?? "");
-  return !INLINE_MENTION_TOKEN_CHAR.test(nextCharacter);
+/** Copy only anchored occurrences wholly inside the current native selection. */
+export function composerReferencesForSelection(input: string, start: number, end: number, widgets: DroppedWidget[], references: ComposerEntityReference[]): ComposerEntityReference[] {
+  const value = input.slice(start, end);
+  return widgets.flatMap((widget) => {
+    const range = confirmedComposerMentionRange(widget, input);
+    if (!range || range.start < start || range.end > end) return [];
+    const mention = composerMentionMetadataFromWidgets([widget])[0];
+    if (!mention) return [];
+    const reference = [...references].reverse().find((item) => item.kind === mention.kind && item.id === mention.id && item.syntax === range.syntax && item.profileId === mention.profileId);
+    if (!reference) return [];
+    return [{ ...reference, confirmedRange: { value, start: range.start - start, end: range.end - start } }];
+  });
+}
+
+/** Saved route freshness includes its execution connection, independent of object identity. */
+export function composerReferenceModelBinding(profile: ModelProfile | null): string {
+  return JSON.stringify(profile ? [profile.profile_id, profile.provider_id, profile.model_id, modelProfileConnectionId(profile)] : null);
+}
+
+export type ComposerReferenceInsertionSnapshot = {
+  input: string; value: string; start: number; end: number;
+  droppedWidgets: DroppedWidget[]; entityReferences: ComposerEntityReference[];
+  profileId?: string; modelProfile: ModelProfile | null; modelBinding?: string; imeGeneration: number;
+  blocked: boolean;
+};
+
+/** Async confirmation may update only the exact draft and caret that requested it. */
+export function composerReferenceInsertionIsCurrent(captured: ComposerReferenceInsertionSnapshot, live: ComposerReferenceInsertionSnapshot): boolean {
+  return !live.blocked && captured.input === live.input && captured.value === live.value
+    && captured.start === live.start && captured.end === live.end
+    && captured.droppedWidgets === live.droppedWidgets && captured.entityReferences === live.entityReferences
+    && captured.profileId === live.profileId && (captured.modelBinding ?? composerReferenceModelBinding(captured.modelProfile)) === (live.modelBinding ?? composerReferenceModelBinding(live.modelProfile))
+    && captured.imeGeneration === live.imeGeneration;
+}
+
+/** Only a visible, topmost composer at the release point may accept a history drop. */
+export function validComposerHistoryDropTarget(target: HTMLElement, point: { x: number; y: number }, targetId: string, top: Element | null): boolean {
+  const rect = target.getBoundingClientRect();
+  const view = target.ownerDocument?.defaultView;
+  if (view) {
+    for (let node: HTMLElement | null = target; node; node = node.parentElement) {
+      const style = view.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0") return false;
+    }
+  }
+  return target.id === targetId && target.isConnected && rect.width > 0 && rect.height > 0
+    && Number.isFinite(point.x) && Number.isFinite(point.y)
+    && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom
+    && top !== null && target.contains(top);
+}
+
+/** Reconfirmation replaces one entity's earlier anchor instead of cloning it. */
+export function replaceConfirmedComposerWidget(widgets: DroppedWidget[], widget: DroppedWidget): DroppedWidget[] {
+  const entityKey = (item: DroppedWidget) => {
+    const mention = composerMentionMetadataFromWidgets([item])[0];
+    return mention ? JSON.stringify([mention.kind, mention.id, mention.profileId ?? null])
+      : `${item.type}:${item.sourceItemId || item.id.replace(/^exclude:/, "")}`;
+  };
+  return [...widgets.filter((prior) => entityKey(prior) !== entityKey(widget)), widget];
 }
 
 /** Split composer text into ordinary and selected semantic-mention runs. */
@@ -2228,30 +2295,16 @@ export function composerInlineMentionParts(
   widgets: DroppedWidget[],
 ): ComposerInlineMentionPart[] {
   if (!input) return [];
-  const syntaxes = [...new Set(
-    widgets
-      .map(composerMentionSyntaxFromWidget)
-      .filter((syntax): syntax is string => Boolean(syntax)),
-  )].sort((left, right) => right.length - left.length);
-  if (syntaxes.length === 0) return [{ mention: false, text: input }];
-
-  const matches: Array<{ end: number; start: number }> = [];
+  const ranges = widgets.filter((widget) => widget.metadata?.source === "composer_at_mention")
+    .map((widget) => confirmedComposerMentionRange(widget, input))
+    .filter((range): range is NonNullable<typeof range> => range !== null)
+    .sort((left, right) => left.start - right.start || right.end - left.end);
+  const matches: Array<{ start: number; end: number }> = [];
   let cursor = 0;
-  while (cursor < input.length) {
-    let best: { end: number; start: number } | null = null;
-    for (const syntax of syntaxes) {
-      for (let offset = input.indexOf(syntax, cursor); offset >= 0; offset = input.indexOf(syntax, offset + 1)) {
-        if (!inlineMentionMatchesAt(input, syntax, offset)) continue;
-        const candidate = { start: offset, end: offset + syntax.length };
-        if (!best || candidate.start < best.start || (candidate.start === best.start && candidate.end > best.end)) {
-          best = candidate;
-        }
-        break;
-      }
-    }
-    if (!best) break;
-    matches.push(best);
-    cursor = best.end;
+  for (const range of ranges) {
+    if (range.start < cursor) continue;
+    matches.push(range);
+    cursor = range.end;
   }
   if (matches.length === 0) return [{ mention: false, text: input }];
 
@@ -2544,8 +2597,11 @@ export function ComposerRenderer({
   pendingMentionAttachmentPaths = [],
   droppedWidgets = [],
   entityReferences = [],
+  entityCandidates = [], entityCandidateStatus, entityCandidatesHaveMore = false, entityCandidatesLoadMore,
+  onEntityCandidateConfirm, onHistoryReferenceDrop, onReferenceConfirmationPendingChange, historyReferenceTargetProfileId, historyReferences = [],
   selectedToolIds = [],
   actionApprovalMode = "ask",
+  actionApprovalModes,
   showActionApprovalControl = true,
   showToolSelectionControl = false,
   toolSelectionMode = "auto",
@@ -2585,6 +2641,7 @@ export function ComposerRenderer({
   onPendingMentionAttachmentRemove,
   onFileRemove,
   onDropWidget,
+  onDroppedWidgetsChange,
   onEntityReferencesChange,
   onWidgetAction,
   onWidgetToggle,
@@ -2641,8 +2698,35 @@ export function ComposerRenderer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imeActiveRef = useRef(false);
+  const imeGenerationRef = useRef(0);
   const imeEndedAtRef = useRef(-Infinity);
+  const historyDropTargetId = useId();
+  const historyDropTargetRef = useRef<HTMLDivElement | null>(null);
+  const [entityConfirmationError, setEntityConfirmationError] = useState("");
+  const entityConfirmationPendingRef = useRef(false);
+  useEffect(() => () => onReferenceConfirmationPendingChange?.(false), [onReferenceConfirmationPendingChange]);
+  const liveReferenceDraftRef = useRef({ input, droppedWidgets, entityReferences, profileId: historyReferenceTargetProfileId, modelProfile: selectedProfile, modelBinding: composerReferenceModelBinding(selectedProfile), blocked: submissionDisabled || isGenerating || voiceStatus !== "idle" });
+  liveReferenceDraftRef.current = { input, droppedWidgets, entityReferences, profileId: historyReferenceTargetProfileId, modelProfile: selectedProfile, modelBinding: composerReferenceModelBinding(selectedProfile), blocked: submissionDisabled || isGenerating || voiceStatus !== "idle" };
+  const nativeMentionEditRef = useRef<{ start: number; end: number } | undefined>(undefined);
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const captureEdit = (event: Event) => {
+      const native = event as InputEvent;
+      if (!native.inputType.startsWith("insert") && !["deleteContentBackward", "deleteContentForward", "deleteByCut"].includes(native.inputType)) {
+        nativeMentionEditRef.current = undefined;
+        return;
+      }
+      let start = textarea.selectionStart;
+      let end = textarea.selectionEnd;
+      if (start === end && native.inputType === "deleteContentBackward") start -= [...textarea.value.slice(0, start)].at(-1)?.length ?? 0;
+      if (start === end && native.inputType === "deleteContentForward") end += [...textarea.value.slice(end)][0]?.length ?? 0;
+      nativeMentionEditRef.current = { start, end };
+    };
+    textarea.addEventListener("beforeinput", captureEdit);
+    return () => textarea.removeEventListener("beforeinput", captureEdit);
+  });
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
   const voiceGenerationRef = useRef(new ComposerVoiceOperation());
   const attachmentTranscriptionRef = useRef(new ComposerVoiceOperation());
@@ -2823,14 +2907,17 @@ export function ComposerRenderer({
   const currentDirectory = codingContext?.directory || ".";
   const selectedCodingWorkspace = codingWorkspaces.find((workspace) => workspace.workspace_id === (selectedCodingWorkspaceId || codingContext?.workspaceId)) ?? codingWorkspaces[0] ?? null;
   const atMentionKnownValues = useMemo(() => [
+    ...entityCandidates.map((candidate) => candidate.syntax.slice(1)),
     ...composerKnownMentionValues(toolItems),
     ...composerKnownMentionValues(mentionSkills),
     ...mentionToolGroups.flatMap((service) => [service.id, service.label]),
     ...(mode === "coding" ? codingContext?.files ?? [] : []),
-  ], [codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
+  ], [entityCandidates, codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
   const atMentionCandidates = useMemo<ComposerAtMentionCandidate[]>(() => {
     const exclude = atMentionQuery.startsWith("-");
-    const query = exclude ? atMentionQuery.slice(1) : atMentionQuery;
+    const rawQuery = exclude ? atMentionQuery.slice(1) : atMentionQuery;
+    const scope = rawQuery.trim().toLowerCase().match(/^(tool|skill|file|chat|group|mcp)(?::|\s|$)/)?.[1];
+    const query = scope ? rawQuery.trim().replace(/^(tool|skill|file|chat|group|mcp)(?::|\s|$)/i, "").trim() : rawQuery;
     const toolCandidates = filterComposerToolMentions(toolItems, query, 32).map((item) => {
       const display = composerToolMentionDisplay(item);
       return {
@@ -2891,15 +2978,17 @@ export function ComposerRenderer({
           section: COMPOSER_MENTION_SECTIONS.file,
         }))
       : [];
-    return orderComposerAtMentionCandidates([
+    const candidates = orderComposerAtMentionCandidates([
       ...toolsInSection("plugin"),
       ...toolsInSection("builtin-tool"),
       ...toolsInSection("custom-tool"),
       ...(exclude ? [] : skillCandidates),
       ...serviceCandidates,
       ...(exclude ? [] : fileCandidates),
+      ...(exclude ? [] : composerEntityMentionCandidates(entityCandidates, rawQuery)),
     ]);
-  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
+    return scope ? candidates.filter((candidate) => candidate.kind === "entity" ? candidate.entity.kind === scope : candidate.kind === scope) : candidates;
+  }, [entityCandidates, atMentionQuery, codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);
   const commandPalette = useMemo(() => commandPalettePayload(matchedCommands), [matchedCommands]);
@@ -3271,19 +3360,66 @@ export function ComposerRenderer({
 
   const handleInputChange = useCallback(
     (value: string) => {
+      const edit = nativeMentionEditRef.current;
+      nativeMentionEditRef.current = undefined;
+      const updatedWidgets = updateConfirmedComposerWidgets(input, value, droppedWidgets, edit);
+      onDroppedWidgetsChange?.(updatedWidgets);
       onInputChange(value);
-      onEntityReferencesChange?.(mergeComposerReferences(entityReferences, [], value));
+      onEntityReferencesChange?.(composerReferencesForSelection(value, 0, value.length, updatedWidgets, entityReferences));
       updateAtMentionStateFromInput(value);
 
       if (!templateAllowsSlashCommands || !value.startsWith("/") || value.startsWith("//")) {
         setSelectedCommandIndex(0);
       }
     },
-    [entityReferences, onEntityReferencesChange, onInputChange, templateAllowsSlashCommands, updateAtMentionStateFromInput],
+    [droppedWidgets, input, onDroppedWidgetsChange, entityReferences, onEntityReferencesChange, onInputChange, templateAllowsSlashCommands, updateAtMentionStateFromInput],
   );
+
+  const confirmEntityInsertion = useCallback(async (
+    resolve: () => Promise<{ widget: DroppedWidget; reference: ComposerEntityReference; syntax: string } | null>,
+    replaceMention: boolean,
+  ) => {
+    const textarea = textareaRef.current;
+    if (!textarea || imeActiveRef.current || entityConfirmationPendingRef.current || submissionDisabled || isGenerating) return;
+    const value = textarea.value;
+    const selection = { start: textarea.selectionStart, end: textarea.selectionEnd };
+    const captured = { ...liveReferenceDraftRef.current, value, ...selection, imeGeneration: imeGenerationRef.current };
+    entityConfirmationPendingRef.current = true;
+    onReferenceConfirmationPendingChange?.(true);
+    setEntityConfirmationError("");
+    try {
+      const admitted = await resolve();
+      const live = { ...liveReferenceDraftRef.current, value: textarea.value, start: textarea.selectionStart, end: textarea.selectionEnd, imeGeneration: imeGenerationRef.current };
+      if (!admitted || imeActiveRef.current || textareaRef.current !== textarea || !textarea.isConnected
+        || !composerReferenceInsertionIsCurrent(captured, live)) return;
+      const start = replaceMention ? activeMentionAtCursor(value, selection.start, atMentionKnownValues)?.start ?? selection.start : selection.start;
+      const next = replaceMention
+        ? insertAtMentionText(value, selection.start, admitted.syntax.slice(1), atMentionKnownValues, selection.end)
+        : insertComposerReferencePaste(value, selection.start, selection.end, { text: `${admitted.syntax} `, references: [admitted.reference] });
+      const widget = anchorComposerMentionWidget(admitted.widget, next.value, start);
+      if (!widget.metadata?.composer_confirmation) return;
+      const end = replaceMention ? value.length - (next.value.length - next.cursor) : selection.end;
+      const updated = replaceConfirmedComposerWidget(updateConfirmedComposerWidgets(value, next.value, captured.droppedWidgets, { start, end }), widget);
+      if (onDroppedWidgetsChange) onDroppedWidgetsChange(updated); else onDropWidget?.(widget);
+      nativeMentionEditRef.current = undefined;
+      onInputChange(next.value);
+      onEntityReferencesChange?.(mergeComposerReferences(captured.entityReferences, [{ ...admitted.reference, confirmedRange: { value: next.value, start, end: start + admitted.syntax.length } }], next.value));
+      setAtMentionOpen(false); setAtMentionQuery(""); setAtMentionStart(null);
+      setTimeout(() => {
+        if (textareaRef.current !== textarea || textarea.value !== next.value || imeActiveRef.current) return;
+        textarea.setSelectionRange(next.cursor, next.cursor); textarea.focus();
+      }, 0);
+    } catch (error) {
+      setEntityConfirmationError(error instanceof Error ? error.message : "参照を確認できませんでした。");
+    } finally { entityConfirmationPendingRef.current = false; onReferenceConfirmationPendingChange?.(false); }
+  }, [onReferenceConfirmationPendingChange, atMentionKnownValues, submissionDisabled, isGenerating, onDroppedWidgetsChange, onDropWidget, onInputChange, onEntityReferencesChange]);
 
   const handleAtMentionSelect = useCallback(
     (candidate: ComposerAtMentionCandidate) => {
+      if (candidate.kind === "entity") {
+        if (candidate.entity.available && onEntityCandidateConfirm) void confirmEntityInsertion(() => onEntityCandidateConfirm(candidate.entity), true);
+        return;
+      }
       const textarea = textareaRef.current;
       if (!textarea || imeActiveRef.current) return;
 
@@ -3293,7 +3429,14 @@ export function ComposerRenderer({
         && (candidate.kind === "tool" || candidate.kind === "service");
       const label = `${exclude ? "-" : ""}${candidate.label}`;
       const next = insertAtMentionText(currentInput, cursorPos, label, atMentionKnownValues, textarea.selectionEnd);
-      onDropWidget?.(composerAtMentionCandidateWidget(candidate, exclude));
+      const start = activeMentionAtCursor(currentInput, cursorPos, atMentionKnownValues)?.start ?? cursorPos;
+      const updated = updateConfirmedComposerWidgets(currentInput, next.value, droppedWidgets, {
+        start, end: currentInput.length - (next.value.length - next.cursor),
+      });
+      const widget = anchorComposerMentionWidget(composerAtMentionCandidateWidget(candidate, exclude), next.value, start);
+      if (onDroppedWidgetsChange) onDroppedWidgetsChange(replaceConfirmedComposerWidget(updated, widget));
+      else onDropWidget?.(widget);
+      nativeMentionEditRef.current = undefined;
 	      onInputChange(next.value);
 	      if (candidate.kind !== "service" && !exclude) {
 	        const reference: ComposerEntityReference = {
@@ -3311,11 +3454,12 @@ export function ComposerRenderer({
       setAtMentionStart(null);
 
       setTimeout(() => {
+        if (textareaRef.current !== textarea || textarea.value !== next.value || imeActiveRef.current) return;
         textarea.setSelectionRange(next.cursor, next.cursor);
         textarea.focus();
       }, 0);
     },
-		    [atMentionKnownValues, atMentionQuery, atMentionStart, entityReferences, input, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange],
+		    [onEntityCandidateConfirm, confirmEntityInsertion, droppedWidgets, onDroppedWidgetsChange, atMentionKnownValues, atMentionQuery, atMentionStart, entityReferences, input, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange],
 		  );
 
   const attachFiles = useCallback(async (files: FileList | File[] | null) => {
@@ -3338,15 +3482,17 @@ export function ComposerRenderer({
 
   const handleCopy = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const textarea = event.currentTarget;
-    const selectedText = input.slice(textarea.selectionStart, textarea.selectionEnd);
-    const serialized = serializeComposerReferences(selectedText, entityReferences);
+    const value = textarea.value;
+    const selectedText = value.slice(textarea.selectionStart, textarea.selectionEnd);
+    const references = composerReferencesForSelection(value, textarea.selectionStart, textarea.selectionEnd, droppedWidgets, entityReferences);
+    const serialized = serializeComposerReferences(selectedText, references);
     if (!serialized) return;
     event.preventDefault();
-    event.clipboardData.setData("text/plain", composerReferencesAsMarkdown(selectedText, entityReferences));
+    event.clipboardData.setData("text/plain", composerReferencesAsMarkdown(selectedText, references));
     event.clipboardData.setData(COMPOSER_REFERENCE_MIME, serialized);
-  }, [entityReferences, input]);
+  }, [droppedWidgets, entityReferences, input]);
 
-  const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = useCallback(async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = composerClipboardFiles(event.clipboardData);
     if (files.length > 0) {
       event.preventDefault();
@@ -3358,6 +3504,8 @@ export function ComposerRenderer({
       tools: toolItems,
       skills: mentionSkills,
       files: mode === "coding" ? codingContext?.files ?? [] : [],
+      profileId: historyReferenceTargetProfileId, historyReferences, preserveConfirmationRanges: true,
+      mcpReferences: entityCandidates.filter((candidate) => candidate.kind === "mcp" && candidate.available).map((candidate) => ({ kind: "mcp" as const, id: candidate.id, syntax: candidate.syntax, label: candidate.label })),
     };
     const restored = raw
       ? restoreComposerReferences(raw, catalog)
@@ -3365,26 +3513,78 @@ export function ComposerRenderer({
     if (!restored) return;
     event.preventDefault();
     const textarea = event.currentTarget;
-    const next = insertComposerReferencePaste(input, textarea.selectionStart, textarea.selectionEnd, restored);
+    const currentInput = textarea.value;
+    const edit = { start: textarea.selectionStart, end: textarea.selectionEnd };
+    const captured = { ...liveReferenceDraftRef.current, value: currentInput, ...edit, imeGeneration: imeGenerationRef.current };
+    if (imeActiveRef.current || entityConfirmationPendingRef.current) return;
+    const resolvedEntities = new Map<string, { widget: DroppedWidget; reference: ComposerEntityReference; syntax: string }>();
+    const entityReferencesToRestore = restored.references.filter((reference) => ["chat", "group", "mcp"].includes(reference.kind));
+    if (entityReferencesToRestore.length) {
+      if (!onEntityCandidateConfirm) return;
+      entityConfirmationPendingRef.current = true;
+      onReferenceConfirmationPendingChange?.(true);
+      try {
+        for (const reference of entityReferencesToRestore) {
+          const candidate = entityCandidates.find((item) => item.kind === reference.kind && item.id === reference.id && item.syntax === reference.syntax);
+          if (!candidate?.available) return;
+          const admitted = await onEntityCandidateConfirm(candidate);
+          if (!admitted || admitted.syntax !== reference.syntax) return;
+          resolvedEntities.set(`${reference.kind}:${reference.id}`, admitted);
+        }
+        const live = { ...liveReferenceDraftRef.current, value: textarea.value, start: textarea.selectionStart, end: textarea.selectionEnd, imeGeneration: imeGenerationRef.current };
+        if (imeActiveRef.current || textareaRef.current !== textarea || !textarea.isConnected
+          || !composerReferenceInsertionIsCurrent(captured, live)) return;
+      } catch (error) {
+        setEntityConfirmationError(error instanceof Error ? error.message : "参照を確認できませんでした。");
+        return;
+      } finally { entityConfirmationPendingRef.current = false; onReferenceConfirmationPendingChange?.(false); }
+    }
+    const next = insertComposerReferencePaste(currentInput, edit.start, edit.end, restored);
+    let updatedWidgets = updateConfirmedComposerWidgets(currentInput, next.value, droppedWidgets, edit);
+    nativeMentionEditRef.current = undefined;
+    const admitWidget = (widget: DroppedWidget, syntax: string, reference: ComposerEntityReference) => {
+      let anchored: DroppedWidget | null = null;
+      if (reference.confirmedRange) {
+        const candidate = anchorComposerMentionWidget(widget, next.value, edit.start + reference.confirmedRange.start);
+        if (candidate.metadata?.composer_confirmation) anchored = candidate;
+      }
+      for (let offset = reference.confirmedRange ? -1 : restored.text.indexOf(syntax); offset >= 0; offset = restored.text.indexOf(syntax, offset + 1)) {
+        const candidate = anchorComposerMentionWidget(widget, next.value, edit.start + offset);
+        if (candidate.metadata?.composer_confirmation) { anchored = candidate; break; }
+      }
+      if (!anchored) return;
+      updatedWidgets = replaceConfirmedComposerWidget(updatedWidgets, anchored);
+      if (!onDroppedWidgetsChange) onDropWidget?.(anchored);
+    };
     onInputChange(next.value);
-    onEntityReferencesChange?.(mergeComposerReferences(entityReferences, next.references, next.value));
     for (const reference of next.references) {
       if (reference.kind === "tool") {
         const item = toolItems.find((candidate) => candidate.id === reference.id);
-        if (item) onDropWidget?.(composerToolMentionWidget(item, reference.syntax));
+        if (item) admitWidget(composerToolMentionWidget(item, reference.syntax), reference.syntax, reference);
       } else if (reference.kind === "skill") {
         const skill = mentionSkills.find((candidate) => candidate.id === reference.id);
-        if (skill) onDropWidget?.(composerSkillMentionWidget(skill, reference.syntax));
-      } else if (mode === "coding") {
-        onDropWidget?.(composerFileMentionWidget(reference.id, reference.syntax));
+        if (skill) admitWidget(composerSkillMentionWidget(skill, reference.syntax), reference.syntax, reference);
+      } else if (["chat", "group", "mcp"].includes(reference.kind)) {
+        const admitted = resolvedEntities.get(`${reference.kind}:${reference.id}`);
+        if (admitted) admitWidget(admitted.widget, reference.syntax, reference);
+      } else if (reference.kind === "file" && mode === "coding") {
+        admitWidget(composerFileMentionWidget(reference.id, reference.syntax), reference.syntax, reference);
         onAtFileAttach?.(reference.id);
       }
     }
+    onDroppedWidgetsChange?.(updatedWidgets);
+    const pastedReferences = next.references.map((reference) => {
+      const resolved = resolvedEntities.get(`${reference.kind}:${reference.id}`);
+      return resolved ? { ...resolved.reference, confirmedRange: reference.confirmedRange } : reference;
+    });
+    const currentReferences = composerReferencesForSelection(next.value, 0, next.value.length, updatedWidgets, [...entityReferences, ...pastedReferences]);
+    onEntityReferencesChange?.(mergeComposerReferences([], currentReferences, next.value));
     setTimeout(() => {
+      if (textareaRef.current !== textarea || textarea.value !== next.value || imeActiveRef.current) return;
       textarea.setSelectionRange(next.cursor, next.cursor);
       textarea.focus();
     }, 0);
-  }, [attachFiles, codingContext?.files, entityReferences, input, mentionSkills, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange, toolItems]);
+  }, [onReferenceConfirmationPendingChange, onEntityCandidateConfirm, entityCandidates, historyReferences, historyReferenceTargetProfileId, droppedWidgets, onDroppedWidgetsChange, attachFiles, codingContext?.files, entityReferences, input, mentionSkills, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange, toolItems]);
 
   const requestAudioTranscript = useCallback(async (
     file: AttachedFile,
@@ -3410,6 +3610,22 @@ export function ComposerRenderer({
     onFileAttach?.([transcriptFile]);
   }, [onFileAttach, onFileRemove, requestAudioTranscript]);
 
+  const acceptHistoryDrop = useCallback((rawPayload: string, point: { x: number; y: number }, targetId: string) => {
+    const target = historyDropTargetRef.current;
+    if (!target || !onHistoryReferenceDrop || !historyReferenceTargetProfileId || typeof document === "undefined"
+      || !validComposerHistoryDropTarget(target, point, targetId, document.elementFromPoint(point.x, point.y))) return;
+    void confirmEntityInsertion(() => onHistoryReferenceDrop(rawPayload), false);
+  }, [confirmEntityInsertion, onHistoryReferenceDrop, historyReferenceTargetProfileId]);
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<HistoryReferenceDropDetail>).detail;
+      if (!detail || typeof detail.rawPayload !== "string" || !detail.point || detail.targetId !== historyDropTargetId) return;
+      acceptHistoryDrop(detail.rawPayload, detail.point, detail.targetId);
+    };
+    window.addEventListener(HISTORY_REFERENCE_DROP_EVENT, receive);
+    return () => window.removeEventListener(HISTORY_REFERENCE_DROP_EVENT, receive);
+  }, [acceptHistoryDrop, historyDropTargetId]);
+
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -3418,10 +3634,9 @@ export function ComposerRenderer({
         return;
       }
 
-      const historyData = event.dataTransfer.getData(HISTORY_CHAT_DROP_MIME);
+      const historyData = event.dataTransfer.getData(HISTORY_REFERENCE_DROP_MIME);
       if (historyData) {
-        const widget = parseHistoryChatDrop(historyData);
-        if (widget) onDropWidget?.(widget);
+        acceptHistoryDrop(historyData, { x: event.clientX, y: event.clientY }, historyDropTargetId);
         return;
       }
 
@@ -3442,7 +3657,7 @@ export function ComposerRenderer({
         }
       }
     },
-    [attachFiles, onDropWidget, requestModelProfileSelect, toolItems],
+    [acceptHistoryDrop, historyDropTargetId, attachFiles, onDropWidget, requestModelProfileSelect, toolItems],
   );
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
@@ -3453,6 +3668,7 @@ export function ComposerRenderer({
   const handleSubmitWithApiKeyGuard = useCallback(
     (event: React.SyntheticEvent) => {
       event.preventDefault();
+      if (entityConfirmationPendingRef.current) return;
       if (onLocalCommandSubmit?.(input)) return;
       if (voiceStatus !== "idle" && !isGenerating) return;
       if (isGenerating) {
@@ -3482,10 +3698,10 @@ export function ComposerRenderer({
 
   const handleSendButtonClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
-      if (!isGenerating) return;
+      if (!isGenerating && surfaceMode !== "scheduled") return;
       handleSubmitWithApiKeyGuard(event);
     },
-    [handleSubmitWithApiKeyGuard, isGenerating],
+    [handleSubmitWithApiKeyGuard, isGenerating, surfaceMode],
   );
 
   useEffect(() => {
@@ -3697,6 +3913,7 @@ export function ComposerRenderer({
         );
         if (atomicEdit) {
           event.preventDefault();
+          nativeMentionEditRef.current = { start: atomicEdit.cursor, end: currentKeyInput.length - (atomicEdit.value.length - atomicEdit.cursor) };
           handleInputChange(atomicEdit.value);
           window.setTimeout(() => {
             textarea.setSelectionRange(atomicEdit.cursor, atomicEdit.cursor);
@@ -4074,6 +4291,7 @@ export function ComposerRenderer({
       render: () => (
         <ActionApprovalControl
           mode={actionApprovalMode}
+          availableModes={actionApprovalModes}
           disabled={isGenerating || !onActionApprovalModeChange}
           disabledReason={!onActionApprovalModeChange ? "この会話の承認は設定された権限に従います。ここで代理承認やフルアクセスに変更する機能は未対応です。" : undefined}
           surfaceClassName={COMPOSER_CONTROL_SURFACE_CLASSNAME}
@@ -4272,10 +4490,10 @@ export function ComposerRenderer({
       width: isNewConversation ? COMPOSER_CHROME_WIDTHS.sendLarge : COMPOSER_CHROME_WIDTHS.send,
       render: () => (
         <button
-          type={isGenerating ? "button" : "submit"}
+          type={isGenerating || surfaceMode === "scheduled" ? "button" : "submit"}
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
-          aria-label={localPetInput ? "/pet を実行" : isGenerating
+          aria-label={surfaceMode === "scheduled" ? "Agentタスクを保存" : localPetInput ? "/pet を実行" : isGenerating
             ? (steeringControlsPending
               ? (isPendingRecovery ? "送信結果が未確認" : "会話を準備中")
               : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "生成を停止")
@@ -4286,7 +4504,7 @@ export function ComposerRenderer({
             submissionDisabled || pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
           )))}
-          title={localPetInput ? "ペットを表示" : isGenerating
+          title={surfaceMode === "scheduled" ? "Agentタスクを保存" : localPetInput ? "ペットを表示" : isGenerating
             ? (steeringControlsPending
               ? (isPendingRecovery ? "送信結果が未確認" : "会話を準備中")
               : (surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "停止")
@@ -4321,7 +4539,11 @@ export function ComposerRenderer({
     },
   ];
 
-  const availableChromeWidgets = surfaceMode === "thread" ? chromeWidgets.filter((widget) => widget.id === "send") : chromeWidgets;
+  const availableChromeWidgets = surfaceMode === "thread"
+    ? chromeWidgets.filter((widget) => widget.id === "send")
+    : surfaceMode === "scheduled"
+      ? chromeWidgets.filter((widget) => ["model-picker", "tool-selection-control", "action-approval-control", "send"].includes(widget.id))
+      : chromeWidgets;
   const conversationFileAttachWidget = availableChromeWidgets.find((widget) => widget.id === "file-attach" && widget.visible !== false);
   const leadingChromeWidgets = composerChromeWidgetsForSlot(availableChromeWidgets, "leading")
     .filter((widget) => widget.id !== "file-attach");
@@ -4341,20 +4563,24 @@ export function ComposerRenderer({
         ["models", "Models", SlidersHorizontal],
       ] as const);
 
+  const ComposerFrame = surfaceMode === "scheduled" ? "div" : "form";
   return (
     <div
-      className={`${isNewConversation ? "w-full px-4" : "rumi-composer-dock px-4 pb-3 pt-2 bg-[#09090b] flex-shrink-0 max-[640px]:px-2 max-[640px]:pb-2"}`}
+      id={historyDropTargetId}
+      ref={historyDropTargetRef}
+      data-history-reference-drop-target="composer"
+      className={`${surfaceMode === "scheduled" ? "rumi-calendar-agent-editor w-full min-w-0" : isNewConversation ? "w-full px-4" : "rumi-composer-dock px-4 pb-3 pt-2 bg-[#09090b] flex-shrink-0 max-[640px]:px-2 max-[640px]:pb-2"}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <div className={`rumi-composer-shell ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
+      <div className={surfaceMode === "scheduled" ? "w-full min-w-0" : `rumi-composer-shell ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
         <RuntimeCapabilityBanner
           visible={imageRequiresVisionModel}
           onSwitchToVisionModel={onSwitchToVisionModel}
           onOpenModelManager={onOpenModelManager}
           onOpenToolSettings={onOpenToolSettings}
         />
-        <form
+        <ComposerFrame
           onSubmit={handleSubmitWithApiKeyGuard}
           className={`rumi-composer-frame ${
             isNewConversation
@@ -4362,6 +4588,7 @@ export function ComposerRenderer({
               : "rounded-2xl max-[640px]:rounded-2xl"
           } relative flex flex-col border overflow-visible`}
         >
+          {entityConfirmationError && !showAtMentionSuggestions && <ErrorNotice message={entityConfirmationError} title="参照を確認できませんでした" />}
           {apiKeyPromptProfile && (
             <ProviderApiKeyPrompt
               profile={apiKeyPromptProfile}
@@ -4413,6 +4640,10 @@ export function ComposerRenderer({
               activeIndex={selectedAtMentionIndex}
               onActiveIndexChange={setSelectedAtMentionIndex}
                 onSelect={(index) => handleAtMentionSelect(atMentionCandidates[index])}
+                footer={(entityCandidateStatus || entityConfirmationError || entityCandidatesHaveMore) ? <>
+                  {(entityCandidateStatus || entityConfirmationError) && <p role="status" className="px-3 py-1 text-xs text-zinc-400">{entityConfirmationError || entityCandidateStatus}</p>}
+                  {entityCandidatesHaveMore && entityCandidatesLoadMore && <button type="button" onClick={entityCandidatesLoadMore} className="px-3 py-2 text-xs text-sky-300">さらに参照を表示</button>}
+                </> : undefined}
               />
             </>
           )}
@@ -4877,7 +5108,7 @@ export function ComposerRenderer({
                           event.stopPropagation();
                         }
                       }}
-                      onCompositionStart={() => { imeActiveRef.current = true; }}
+                      onCompositionStart={() => { imeActiveRef.current = true; imeGenerationRef.current += 1; }}
                       onCompositionEnd={() => { imeActiveRef.current = false; imeEndedAtRef.current = Date.now(); }}
                       onKeyDown={handleKeyDown}
                       onCopy={handleCopy}
@@ -4986,7 +5217,7 @@ export function ComposerRenderer({
                         event.stopPropagation();
                       }
                     }}
-                    onCompositionStart={() => { imeActiveRef.current = true; }}
+                    onCompositionStart={() => { imeActiveRef.current = true; imeGenerationRef.current += 1; }}
                       onCompositionEnd={() => { imeActiveRef.current = false; imeEndedAtRef.current = Date.now(); }}
                       onKeyDown={handleKeyDown}
                     onCopy={handleCopy}
@@ -5036,7 +5267,7 @@ export function ComposerRenderer({
           />
 
           {!isNewConversation && (
-            <div className="px-3 pb-2.5 pt-1 flex items-center justify-between gap-2 max-[640px]:gap-1.5 max-[640px]:px-2 max-[640px]:pb-1.5">
+            <div className={surfaceMode === "scheduled" ? "grid min-w-0 gap-1 p-2" : "px-3 pb-2.5 pt-1 flex items-center justify-between gap-2 max-[640px]:gap-1.5 max-[640px]:px-2 max-[640px]:pb-1.5"}>
               <div className="flex min-w-0 items-center gap-1 overflow-visible">
                 {leadingChromeWidgets.map((widget) => (
                   <ComposerChromeWidget key={widget.id} widget={widget} />
@@ -5106,7 +5337,7 @@ export function ComposerRenderer({
               </span>
             </div>
           )}
-        </form>
+        </ComposerFrame>
       </div>
     </div>
   );

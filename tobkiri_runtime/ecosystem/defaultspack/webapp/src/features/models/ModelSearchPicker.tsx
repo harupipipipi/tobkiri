@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { ModelPinButton } from "./ModelPinButton";
+import { useModelPins } from "./useModelPins";
+import { orderPinnedModels } from "./modelPins";
+import { modelPinIdentityForOption } from "./modelPinIdentity";
 import { Check, ChevronDown, X } from "lucide-react";
 import { ViewportPopover } from "../../ui/layers/ViewportPopover";
 import { ErrorNotice } from "../../components/ErrorNotice";
@@ -66,12 +70,25 @@ export function ModelSearchPicker({
   const retained = providerFiltered.find((option) => option.value === value || option.qualified_model_id === value);
   const pageSize = maxVisibleOptions ?? resolvedSchema.layout.max_visible_options;
   const [visibleLimit, setVisibleLimit] = useState(pageSize);
-  useEffect(() => setVisibleLimit(pageSize), [query, pageSize]);
-  const matchingOptions = parsed.conflict || !parsed.kinds.includes("model") ? [] : buildVisibleModelOptions({
-    options: providerFiltered, selected: resolvedSchema.layout.selected_position === "first" ? retained : undefined,
+  const [pinVisibilityFloor, setPinVisibilityFloor] = useState(0);
+  useEffect(() => { setVisibleLimit(pageSize); setPinVisibilityFloor(0); }, [query, pageSize]);
+  const modelPins = useModelPins();
+  const matchingUnpinnedOptions = parsed.conflict || !parsed.kinds.includes("model") ? [] : buildVisibleModelOptions({
+    options: providerFiltered, selected: !parsed.text && resolvedSchema.layout.selected_position === "first" ? retained : undefined,
     query: parsed.text, resultLimit: Number.MAX_SAFE_INTEGER,
   });
-  const visibleOptions = matchingOptions.slice(0, maxVisibleOptions ?? visibleLimit);
+  const matchingOptions = orderPinnedModels(matchingUnpinnedOptions, modelPins.pins, modelPinIdentityForOption);
+  const visibleOptions = matchingOptions.slice(0, Math.max(maxVisibleOptions ?? visibleLimit, pinVisibilityFloor));
+  const togglePin = (option: ModelSelectOption) => {
+    const identity = modelPinIdentityForOption(option);
+    if (!modelPins.enabled || !identity) return;
+    const nextPins = modelPins.isPinned(identity)
+      ? modelPins.pins.filter((pin) => pin !== identity) : [...modelPins.pins, identity];
+    const nextOrder = orderPinnedModels(matchingUnpinnedOptions, nextPins, modelPinIdentityForOption);
+    const retainedRank = nextOrder.findIndex((item) => item === option);
+    setPinVisibilityFloor((previous) => Math.max(previous, visibleOptions.length + 1, retainedRank + 1));
+    modelPins.toggle(identity);
+  };
   const setOpen = (next: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
@@ -86,20 +103,26 @@ export function ModelSearchPicker({
 
   const searchError = error || catalogue.error;
   const contents = <>
-    {searchError && <ErrorNotice message={searchError} severity="warning" copyLabel="モデル検索エラーをコピー" />}
+    {searchError && <ErrorNotice message={searchError} severity="warning" copyLabel="モデル検索エラーをコピー"
+      className="gap-2 p-2.5 text-sm leading-[22px] [&_[data-copy-action]]:h-6 [&_[data-copy-action]]:w-6 [&_[data-copy-icon]]:size-3"
+      iconClassName="h-3.5 w-3.5" />}
     <SharedSearchTemplate
       queryState={queryState} onQueryStateChange={changeQueryState} preset={preset}
-      inputLabel="モデルを検索" placeholder={placeholder} autoFocus
+      inputLabel="モデルを検索" placeholder={placeholder} autoFocus density="compact"
       items={visibleOptions.map((option) => {
         const display = modelSelectDisplay(option);
         return { key: option.value, kind: "model" as const, title: display.label,
-          description: display.subtitle, badge: display.badges.map((badge) => badge.label).join(" · "), value: option };
+          description: [display.subtitle, option.connection_id].filter(Boolean).join(" · "), badge: display.badges.map((badge) => badge.label).join(" · "), value: option };
       })}
       onSelect={(item) => pick(item.value)} onEscape={() => setOpen(false)}
       loading={visibleOptions.length === 0 && (loading || catalogue.loading)}
       onRetry={() => { catalogue.retry(); onSearch?.(parsed.text); }} emptyMessage={searchError ? "表示できるモデルがありません。再試行してください。" : emptyText}
       trailingControls={searchError
-        ? <button type="button" onClick={catalogue.retry} className="text-xs text-zinc-400">再試行</button> : undefined}
+        ? <button type="button" onClick={catalogue.retry} className="rounded px-1 py-0.5 text-[11px] text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400">再試行</button> : undefined}
+      renderItemAction={(item) => <ModelPinButton label={`${item.title} · ${item.value.connection_id ?? item.value.provider_id ?? ""}/${item.value.model_id ?? ""}`}
+        pinned={modelPins.isPinned(modelPinIdentityForOption(item.value))}
+        disabled={!modelPins.enabled || !modelPinIdentityForOption(item.value)}
+        onToggle={() => togglePin(item.value)} />}
       renderItem={(item) => <>
         <span className="min-w-0 flex-1"><span className="block truncate text-sm">{item.title}</span>
           <span className="block truncate text-xs text-zinc-400">{item.description}</span>
@@ -107,8 +130,8 @@ export function ModelSearchPicker({
         </span>{item.value.value === value && <Check size={14} className="shrink-0 text-emerald-300" />}
       </>}
     />
-    {!maxVisibleOptions && matchingOptions.length > visibleLimit && <button type="button"
-      onClick={() => setVisibleLimit((limit) => limit + pageSize)} className="w-full border-t border-zinc-800 px-5 py-2 text-xs text-zinc-400">さらに表示</button>}
+    {!maxVisibleOptions && matchingOptions.length > visibleOptions.length && <button type="button"
+      onClick={() => setVisibleLimit((limit) => Math.max(limit, pinVisibilityFloor) + pageSize)} className="w-full border-t border-zinc-800 px-5 py-2 text-xs text-zinc-400">さらに表示</button>}
     {!parsed.conflict && parsed.kinds.includes("model") && catalogue.complete === false && !catalogue.loading && !catalogue.error && <p className="px-5 py-2 text-xs text-zinc-500">カタログの一部を表示しています。検索語で絞り込んでください。</p>}
     {clearLabel && value && <button type="button" disabled={disabled} onClick={() => pick(null)} className="flex w-full items-center justify-between px-5 py-2 text-xs text-zinc-400">{clearLabel}<X size={12} /></button>}
   </>;

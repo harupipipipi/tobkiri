@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+            "digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+        "source_digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workspace_mount_pack"
       },
@@ -86,7 +86,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+            "digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +97,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+        "source_digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workspace_mount_pack"
       },
@@ -138,7 +138,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:cccf9808352e6a515a6e5ecf2415f8534dafb86e92226b0b6def7b8b4a894305",
+          "input_schema_digest": "sha256:9113b59cff18e150ade5dd0a8296d8537c0f7d9f98c0e6aa4259768ad65ed718",
           "operation_id": "workspace.directory.acquire",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -152,7 +152,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:cccf9808352e6a515a6e5ecf2415f8534dafb86e92226b0b6def7b8b4a894305",
+          "input_schema_digest": "sha256:9113b59cff18e150ade5dd0a8296d8537c0f7d9f98c0e6aa4259768ad65ed718",
           "operation_id": "workspace.mount.prepare",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -166,7 +166,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:cccf9808352e6a515a6e5ecf2415f8534dafb86e92226b0b6def7b8b4a894305",
+          "input_schema_digest": "sha256:9113b59cff18e150ade5dd0a8296d8537c0f7d9f98c0e6aa4259768ad65ed718",
           "operation_id": "workspace.mount.execute",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -176,7 +176,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+            "digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -187,7 +187,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93",
+        "source_digest": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workspace_mount_pack"
       },
@@ -207,12 +207,9 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+      "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
       "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        },
-        "sha256:cccf9808352e6a515a6e5ecf2415f8534dafb86e92226b0b6def7b8b4a894305": {
+        "sha256:9113b59cff18e150ade5dd0a8296d8537c0f7d9f98c0e6aa4259768ad65ed718": {
           "oneOf": [
             {
               "additionalProperties": false,
@@ -231,6 +228,34 @@
               },
               "required": [
                 "selection_id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "primary_selection_id": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                "selection_ids": {
+                  "items": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "selection_ids",
+                "primary_selection_id"
               ],
               "type": "object"
             },
@@ -259,6 +284,11 @@
                       "minLength": 1,
                       "type": "string"
                     },
+                    "primary_workspace_id": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "profile_id": {
                       "maxLength": 255,
                       "minLength": 1,
@@ -282,6 +312,47 @@
                       "maxLength": 32768,
                       "minLength": 1,
                       "type": "string"
+                    },
+                    "roots": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "display_name": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "root_identity": {
+                            "items": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                          },
+                          "root_path": {
+                            "maxLength": 32768,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "workspace_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "workspace_id",
+                          "root_path",
+                          "root_identity",
+                          "display_name"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 32,
+                      "minItems": 1,
+                      "type": "array"
                     },
                     "security_epoch": {
                       "minimum": 1,
@@ -312,19 +383,51 @@
                   "type": "object"
                 },
                 "request": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "selection_id": {
-                      "maxLength": 255,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9_-]+$",
-                      "type": "string"
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "selection_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selection_id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "primary_selection_id": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        },
+                        "selection_ids": {
+                          "items": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "maxItems": 32,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        }
+                      },
+                      "required": [
+                        "selection_ids",
+                        "primary_selection_id"
+                      ],
+                      "type": "object"
                     }
-                  },
-                  "required": [
-                    "selection_id"
-                  ],
-                  "type": "object"
+                  ]
                 }
               },
               "required": [
@@ -334,6 +437,9 @@
               "type": "object"
             }
           ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
         }
       },
       "status": "accepted",
@@ -341,5 +447,5 @@
     }
   ],
   "pack_id": "rumi_workspace_mount_pack",
-  "source_identity": "sha256:d5b924a0dd9c2a2b14028a448fe62d4358bb9bd727422cd4f749ef6d9676ee93"
+  "source_identity": "sha256:dc2fa39160496cf1dfbf0828b7c28b3cec6bf1cfd941a826423d564b148ef983"
 }

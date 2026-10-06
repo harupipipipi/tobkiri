@@ -14,10 +14,13 @@ from core_runtime.host_provider_function_v4 import (
     HostFunction,
     SingleOperationHostFactoryV4,
 )
+from core_runtime.file_edit_receipts import committed_file_edit_receipt
 from core_runtime.owned_file_approval_v4 import (
     assert_file_request_live,
     close_file_tool_request,
     open_file_tool_approval,
+    file_tool_edit_after_success,
+    record_file_tool_edit,
     register_file_tool_request,
 )
 from ecosystem.rumi_workspace_mount_pack.runtime.mounts import (
@@ -155,6 +158,35 @@ def _bind_execute(context: Any) -> HostFunction:
             invocation.assert_current()
             assert_file_request_live(request, invocation.envelope.context)
             written = port.create_file(lease, identity, handle, data, mode=0o600)
+            try:
+                record_file_tool_edit(
+                    request,
+                    invocation.envelope.context,
+                    committed_file_edit_receipt(
+                        mutation_id=request["invocation_key"],
+                        operation="create",
+                        profile_id=binding.profile_id,
+                        workspace_id=binding.workspace_id,
+                        root_identity=(
+                            str(binding.canonical_root),
+                            binding.root_st_dev,
+                            binding.root_st_ino,
+                        ),
+                        frame_identity=invocation.envelope.context.request_id,
+                        path=path,
+                        before=None,
+                        after=data,
+                        sensitive=any(
+                            part.lower() in {".env", ".secrets", "secrets"}
+                            or part.lower().startswith(".env.")
+                            for part in path.split("/")
+                        ),
+                    ),
+                )
+            except (PermissionError, ValueError, TypeError):
+                # Optional metadata must not change an already published save.
+                # The Broker still owns cancellation, audit and final success.
+                pass
             return {
                 "created": True,
                 "workspace_id": binding.workspace_id,
@@ -250,6 +282,12 @@ def _bind_tool(context: Any) -> HostFunction:
                             raise PermissionError("file tool approval changed")
                         state = effect.get("state")
                     if state == "succeeded" and resumed:
+                        try:
+                            receipt = file_tool_edit_after_success(
+                                request, invocation.envelope.context, effect_id
+                            )
+                        except PermissionError:
+                            receipt = None
                         return {
                             "result": json.dumps(
                                 {
@@ -258,6 +296,7 @@ def _bind_tool(context: Any) -> HostFunction:
                                     "workspace_id": binding.workspace_id,
                                     "byte_count": len(data),
                                     "content_digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                                    **({"file_edit_receipt": receipt} if receipt else {}),
                                 },
                                 sort_keys=True,
                             ),

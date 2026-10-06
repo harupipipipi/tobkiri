@@ -1,5 +1,8 @@
-import type { ProjectDirectorySelection } from "../lib/projectWorkspaceMount";
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ProjectFolderList } from "../features/projects/ProjectFolderList";
+import { emptyProjectFolderDraft, appendProjectFolderSelections, removeProjectFolderSelection, setPrimaryProjectFolderSelection, projectFolderSelectionSet, consumeProjectFolderSelections } from "../lib/projectFolderDraft";
+import type { ProjectWorkspaceBinding } from "../features/projects/projectStorage";
+import type { ProjectDirectorySelection, ProjectDirectorySelectionSet, ProjectWorkspaceSet } from "../lib/projectWorkspaceMount";
+import React, { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
 import { ErrorNotice } from './ErrorNotice';
 import { ProjectFolderSelection } from '../lib/projectFolderSelection';
 import {
@@ -44,6 +47,17 @@ import { HistoryNavigation } from './history/HistoryNavigation';
 import { ModalFoundation } from './ModalFoundation';
 import { LayerPortal } from '../ui/layers/LayerPortal';
 import { layerZ } from '../ui/layers/layerTokens';
+import { HistoryMembershipMove, historyMembershipDecision, withoutHistoryChatPlacement, applyCanonicalHistoryOrganization } from '../lib/historyMembershipMove';
+import { buildHistoryChatReference, buildHistoryGroupReference, canonicalHistoryTagGroupId, HISTORY_REFERENCE_DROP_MIME, type HistoryReferenceDragPayload } from '../lib/historyReferences';
+import { historyReferenceTargetAtPoint, dispatchHistoryReferenceDrop } from '../lib/historyReferenceTransport';
+
+const HistoryReferenceProfile = createContext<string | undefined>(undefined);
+
+function writeNativeHistoryReference(event: React.DragEvent, payload: HistoryReferenceDragPayload | null): void {
+  if (!payload) return;
+  event.dataTransfer.setData(HISTORY_REFERENCE_DROP_MIME, JSON.stringify(payload));
+  event.dataTransfer.effectAllowed = "copyMove";
+}
 import { ConversationAttentionIndicator } from './conversation/ConversationAttentionIndicator';
 import { ConversationGlyph } from './conversation/ConversationGlyph';
 import { WarmActionIcon } from './WarmActionIcon';
@@ -59,7 +73,6 @@ import {
   type ProjectInfo,
 } from '../features/projects/projectStorage';
 import {
-  applyHistoryOrganization,
   loadHistoryOrganization,
   historyOrganizationStorageKey,
   organizationFromGroups,
@@ -128,6 +141,7 @@ export type ChatGroup = {
   workspaceId?: string | null;
   workspaceLabel?: string | null;
   workspaceRoot?: string | null;
+  workspaceBindings?: ProjectWorkspaceBinding[];
   rumiDataPath?: string | null;
 };
 
@@ -139,6 +153,7 @@ export type HistoryBoardNewTaskOptions = {
   workspaceId?: string | null;
   workspaceLabel?: string | null;
   workspaceRoot?: string | null;
+  workspaceBindings?: ProjectWorkspaceBinding[];
   rumiDataPath?: string | null;
 };
 
@@ -181,17 +196,17 @@ function classifyChatType(chat: ChatItem): ChatItem['type'] {
 }
 
 function groupDateLabel(dateText: string): 'today' | 'recent' | 'older' {
-  if (dateText === 'Today') {
+  if ((dateText === 'Today' || dateText === '今日')) {
     return 'today';
   }
-  if (dateText === 'Yesterday' || dateText === 'Previous 7 Days') {
+  if (dateText === 'Yesterday' || dateText === 'Previous 7 Days' || dateText === '昨日' || dateText === '過去7日') {
     return 'recent';
   }
   return 'older';
 }
 
 function cleanTag(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 40);
+  return Array.from(value.trim().toLowerCase().replace(/\s+/g, "-")).slice(0, 40).join("");
 }
 
 function chatTags(chat: ChatItem): string[] {
@@ -218,11 +233,12 @@ type ClientPoint = { x: number; y: number };
 function clientPointFromEvent(event: Event | null | undefined): ClientPoint | null {
   const pointer = event as (Event & { clientX?: number; clientY?: number; touches?: TouchList; changedTouches?: TouchList }) | null | undefined;
   if (!pointer) return null;
-  if (typeof pointer.clientX === "number" && typeof pointer.clientY === "number") {
+  if (typeof pointer.clientX === "number" && typeof pointer.clientY === "number"
+      && Number.isFinite(pointer.clientX) && Number.isFinite(pointer.clientY)) {
     return { x: pointer.clientX, y: pointer.clientY };
   }
   const touch = pointer.touches?.[0] ?? pointer.changedTouches?.[0];
-  if (touch) return { x: touch.clientX, y: touch.clientY };
+  if (touch && Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) return { x: touch.clientX, y: touch.clientY };
   return null;
 }
 
@@ -342,14 +358,9 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
       type: classifyChatType(chat),
     };
     const customGroupId = stringOrNull(normalized.metadata?.group_id ?? normalized.metadata?.groupId);
-    if (customGroupId) {
-      if (!metadataGroupsById.has(customGroupId)) {
-        metadataGroupsById.set(customGroupId, {
-          id: customGroupId,
-          title: stringOrNull(normalized.metadata?.group_title ?? normalized.metadata?.groupTitle) ?? customGroupId,
-        });
-        customChatBuckets.set(customGroupId, []);
-      }
+    // Metadata hints alone do not create Projects. Membership is resolved only
+    // against the canonical Project owner snapshot.
+    if (customGroupId && metadataGroupsById.has(customGroupId)) {
       customChatBuckets.get(customGroupId)?.push(normalized);
       return;
     }
@@ -429,6 +440,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([tag, chats]) => ({
               id: `group-tag-${tag}`,
+              sourceGroupId: canonicalHistoryTagGroupId(tag),
               title: `#${tag}`,
               isCollapsed: false,
               chats,
@@ -478,6 +490,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
     workspaceId: group.workspaceId ?? null,
     workspaceLabel: group.workspaceLabel ?? null,
     workspaceRoot: group.workspaceRoot ?? null,
+    workspaceBindings: group.workspaceBindings,
     rumiDataPath: group.rumiDataPath ?? null,
     isCollapsed: false,
     chats: customChatBuckets.get(group.id) ?? [],
@@ -693,6 +706,7 @@ interface SortableChatItemProps {
 }
 
 function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onToggleChildren, isChildrenExpanded, depth = 0 }: SortableChatItemProps) {
+  const referenceProfile = useContext(HistoryReferenceProfile);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(chat.title);
   const children = chat.children ?? [];
@@ -733,6 +747,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         draggable={!selectionMode}
         onDragStart={(event) => {
           if (selectionMode) return;
+          writeNativeHistoryReference(event, buildHistoryChatReference(chat, referenceProfile ?? ""));
           const payload = historyChatDragPayload({ ...chat, groupId: chatGroupId(chat) || undefined });
           event.dataTransfer.setData(HISTORY_CHAT_DROP_MIME, JSON.stringify(payload));
           event.dataTransfer.setData("text/plain", chat.title);
@@ -858,6 +873,7 @@ interface SubGroupProps {
 }
 
 function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, depth }: SubGroupProps) {
+  const referenceProfile = useContext(HistoryReferenceProfile);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -940,6 +956,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         <div
           {...attributes}
           {...listeners}
+          draggable={!selectionMode && !isEditing}
+          onDragStart={(event) => writeNativeHistoryReference(event, buildHistoryGroupReference(group, referenceProfile ?? ""))}
           className="flex h-5 w-4 items-center justify-center text-zinc-700 hover:text-zinc-400 opacity-0 group-hover/folder:opacity-100 transition-all cursor-grab active:cursor-grabbing"
           onClick={(e) => e.stopPropagation()}
           title="Drag to move"
@@ -1196,7 +1214,11 @@ function DraggableColumnHandle({ group, children }: { group: ChatGroup; children
     id: `drag-col-${group.id}`,
     data: { type: 'ColumnDrag', group },
   });
-  const dragHandleProps = { ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>;
+  const referenceProfile = useContext(HistoryReferenceProfile);
+  const dragHandleProps = { ...attributes, ...listeners,
+    draggable: true,
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => writeNativeHistoryReference(event, buildHistoryGroupReference(group, referenceProfile ?? "")),
+  } as React.HTMLAttributes<HTMLDivElement>;
 
   return (
     <div ref={setNodeRef} className={cn("relative", isDragging && "opacity-30")}>
@@ -1251,6 +1273,7 @@ interface HistoryBoardProps {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
+  onChatGroupMove?: (conversationId: string, targetProjectId: string | null) => Promise<void>;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
   onSearchOpen?: () => void;
   onMinimize?: () => void;
@@ -1258,8 +1281,8 @@ interface HistoryBoardProps {
   isCompact?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
-  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
   onGroupDataPathPrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
   onCodingWorkspacesRefresh?: () => void | Promise<void>;
   selectionMode?: boolean;
@@ -1282,10 +1305,11 @@ function workspaceSummary(workspaceId?: string | null, workspaceLabel?: string |
 
 function newTaskOptionsForGroup(group: ChatGroup | null, fallbackGroupId: string): HistoryBoardNewTaskOptions {
   return {
-    groupId: group?.id ?? fallbackGroupId,
+    groupId: group?.sourceGroupId ?? group?.id ?? fallbackGroupId,
     workspaceId: group?.workspaceId ?? null,
     workspaceLabel: group?.workspaceLabel ?? null,
     workspaceRoot: group?.workspaceRoot ?? null,
+    workspaceBindings: group?.workspaceBindings,
     rumiDataPath: group?.rumiDataPath ?? null,
   };
 }
@@ -1323,8 +1347,8 @@ export function buildHistoryCalendarSummary(chatItems: ChatItem[]): HistoryCalen
 
   visitChats(chatItems, (chat) => {
     summary.total += 1;
-    if (chat.date === "Today") summary.today += 1;
-    else if (chat.date === "Yesterday" || chat.date === "Previous 7 Days") summary.recent += 1;
+    if (groupDateLabel(chat.date) === "today") summary.today += 1;
+    else if (groupDateLabel(chat.date) === "recent") summary.recent += 1;
     else summary.older += 1;
     if (chat.isPinned) summary.pinned += 1;
     if (chat.isStarred) summary.starred += 1;
@@ -1470,6 +1494,7 @@ export function HistoryBoard({
   isDesktopsActive = false,
   onSettingsClick,
   onChatMetadataChange,
+  onChatGroupMove,
   onSearchOpen,
   onMinimize,
   onRestore,
@@ -1493,13 +1518,29 @@ export function HistoryBoard({
     : null;
   const organizationRef = useRef<HistoryOrganizationV1 | null>(initialOrganization);
   const organizationRevisionRef = useRef(initialOrganization?.revision ?? 0);
-  const [groups, setGroups] = useState<ChatGroup[]>(() => applyHistoryOrganization(
+  const [groups, setGroups] = useState<ChatGroup[]>(() => applyCanonicalHistoryOrganization(
     buildGroupsFromChats(chatItems, customGroups),
     initialOrganization,
   ));
   const groupsRef = useRef(groups);
   const pendingGroupsRef = useRef<ChatGroup[] | null>(null);
   const undoGroupsRef = useRef<ChatGroup[] | null>(null);
+  const membershipMoveRef = useRef(new HistoryMembershipMove());
+  const membershipProfileRef = useRef(profileId);
+  membershipProfileRef.current = profileId;
+  const membershipMountedRef = useRef(true);
+  const membershipChatItemsRef = useRef(chatItems);
+  membershipChatItemsRef.current = chatItems;
+  const membershipCustomGroupsRef = useRef(customGroups);
+  membershipCustomGroupsRef.current = customGroups;
+  useEffect(() => {
+    membershipMountedRef.current = true;
+    return () => {
+      membershipMountedRef.current = false;
+      membershipMoveRef.current.invalidate();
+    };
+  }, []);
+  useEffect(() => { membershipMoveRef.current.invalidate(); }, [profileId]);
   const [saveState, setSaveState] = useState<HistorySaveState>(() => {
     if (initialOrganizationLoad.status === "corrupt") {
       return { kind: "corrupt", message: initialOrganizationLoad.message, raw: initialOrganizationLoad.raw };
@@ -1517,7 +1558,8 @@ export function HistoryBoard({
   const [newGroupTitle, setNewGroupTitle] = useState("");
   const [newGroupWorkspaceChoice, setNewGroupWorkspaceChoice] = useState<GroupWorkspaceChoice>("none");
   const [newGroupCustomPath, setNewGroupCustomPath] = useState("");
-  const [newGroupDirectorySelection, setNewGroupDirectorySelection] = useState<ProjectDirectorySelection | null>(null);
+  const [newGroupFolderDraft, setNewGroupFolderDraft] = useState(emptyProjectFolderDraft);
+  const [newGroupMounted, setNewGroupMounted] = useState<ProjectWorkspaceSet | null>(null);
   const [newGroupError, setNewGroupError] = useState<string | null>(null);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isSelectingGroupDirectory, setIsSelectingGroupDirectory] = useState(false);
@@ -1531,7 +1573,8 @@ export function HistoryBoard({
     setIsSelectingGroupDirectory(false);
     setIsCreatingGroup(false);
     setNewGroupCustomPath("");
-    setNewGroupDirectorySelection(null);
+    setNewGroupFolderDraft(emptyProjectFolderDraft());
+    setNewGroupMounted(null);
     setNewGroupWorkspaceChoice("none");
     setNewGroupError(null);
     return () => projectOperationRef.current.invalidate();
@@ -1554,7 +1597,7 @@ export function HistoryBoard({
       if (current.status === "ready" || current.status === "empty") {
         organizationRef.current = current.status === "ready" ? current.organization : null;
         organizationRevisionRef.current = current.status === "ready" ? current.organization.revision : 0;
-        const next = applyHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organizationRef.current);
+        const next = applyCanonicalHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organizationRef.current);
         groupsRef.current = next;
         setGroups(next);
         setSaveState({ kind: "idle", message: "" });
@@ -1577,7 +1620,7 @@ export function HistoryBoard({
       ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
       : organizationRef.current;
     const next = withCollapsedState(
-      applyHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organization),
+      applyCanonicalHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organization),
       collapsed,
     );
     groupsRef.current = next;
@@ -1601,6 +1644,7 @@ export function HistoryBoard({
   };
 
   const persistArrangement = (next: ChatGroup[], previous: ChatGroup[], message: string) => {
+    if (membershipMoveRef.current.pending) return;
     replaceGroups(next);
     const result = saveHistoryOrganization(next, organizationRevisionRef.current, undefined, undefined, profileId);
     undoGroupsRef.current = previous;
@@ -1619,6 +1663,7 @@ export function HistoryBoard({
   };
 
   const retryHistorySave = () => {
+    if (membershipMoveRef.current.pending) return;
     const pending = pendingGroupsRef.current;
     if (!pending) return;
     const current = loadHistoryOrganization(undefined, profileId);
@@ -1651,6 +1696,7 @@ export function HistoryBoard({
   };
 
   const undoHistoryChange = () => {
+    if (membershipMoveRef.current.pending) return;
     const previous = undoGroupsRef.current;
     if (!previous) return;
     const current = groupsRef.current;
@@ -1681,6 +1727,7 @@ export function HistoryBoard({
   };
 
   const resetHistoryArrangement = () => {
+    if (membershipMoveRef.current.pending) return;
     if (!resetArmed) {
       setResetArmed(true);
       setHistoryAnnouncement("Reset requires confirmation. Activate Confirm reset to continue.");
@@ -1709,6 +1756,7 @@ export function HistoryBoard({
   const [activeType, setActiveType] = useState<string | null>(null);
   const activeDragStartPointRef = useRef<ClientPoint | null>(null);
   const activeDragGroupsSnapshotRef = useRef<ChatGroup[] | null>(null);
+  const activeReferenceRef = useRef<HistoryReferenceDragPayload | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1719,10 +1767,14 @@ export function HistoryBoard({
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     activeDragGroupsSnapshotRef.current = groupsRef.current;
+    activeReferenceRef.current = active.data.current?.type === 'Chat'
+      ? buildHistoryChatReference(active.data.current.chat, profileId ?? "")
+      : active.data.current?.type === 'ColumnDrag'
+        ? buildHistoryGroupReference(active.data.current.group, profileId ?? "") : null;
     if (active.data.current?.type === 'ColumnDrag') {
       setActiveColumnDrag(active.data.current.group);
       setActiveType('ColumnDrag');
-      activeDragStartPointRef.current = null;
+      activeDragStartPointRef.current = clientPointFromEvent(event.activatorEvent);
     } else if (active.data.current?.type === 'Chat') {
       setActiveChat(active.data.current.chat);
       setActiveType('Chat');
@@ -1739,12 +1791,14 @@ export function HistoryBoard({
     setActiveChat(null);
     setOverColumnId(null);
     setActiveType(null);
+    activeReferenceRef.current = null;
     setHistoryAnnouncement("History move cancelled.");
   };
 
   // --- Drag Over ---
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
+    if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
     if (!over) { setOverColumnId(null); return; }
 
     if (active.data.current?.type === 'ColumnDrag') {
@@ -1813,14 +1867,21 @@ export function HistoryBoard({
   };
 
   // --- Drag End ---
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     const dragSnapshot = activeDragGroupsSnapshotRef.current;
     activeDragGroupsSnapshotRef.current = null;
     const draggedChat = active.data.current?.type === 'Chat' ? active.data.current.chat as ChatItem : null;
     const dragStartPoint = activeDragStartPointRef.current;
+    const reference = activeReferenceRef.current;
+    activeReferenceRef.current = null;
+    const finalPoint = dragStartPoint ? {
+      x: dragStartPoint.x + event.delta.x,
+      y: dragStartPoint.y + event.delta.y,
+    } : null;
+    const referenceTargetId = finalPoint ? historyReferenceTargetAtPoint(finalPoint) : null;
     let droppedOnKanban = false;
-    if (draggedChat && dragStartPoint) {
+    if (!referenceTargetId && draggedChat && dragStartPoint) {
       const finalPoint = {
         x: dragStartPoint.x + event.delta.x,
         y: dragStartPoint.y + event.delta.y,
@@ -1837,18 +1898,82 @@ export function HistoryBoard({
     setOverColumnId(null);
     setActiveType(null);
 
+    if (referenceTargetId && finalPoint) {
+      if (dragSnapshot) replaceGroups(dragSnapshot);
+      if (reference && reference.profile_id === profileId) {
+        dispatchHistoryReferenceDrop(reference, finalPoint, referenceTargetId);
+      }
+      return;
+    }
+
     if (active.data.current?.type === 'Chat') {
       if (!dragSnapshot) return;
       if (droppedOnKanban || !over) {
         replaceGroups(dragSnapshot);
         return;
       }
-      if (groupsRef.current !== dragSnapshot) {
-        persistArrangement(groupsRef.current, dragSnapshot, `Moved ${draggedChat?.title ?? "chat"}.`);
+      if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
+      const next = groupsRef.current;
+      if (next !== dragSnapshot) {
+        const sourceId = findGroupContainingChat(dragSnapshot, String(active.id));
+        const targetId = findGroupContainingChat(next, String(active.id));
+        const source = sourceId ? findGroupById(dragSnapshot, sourceId) : null;
+        const target = targetId ? findGroupById(next, targetId) : null;
+        if (!source || !target) { replaceGroups(dragSnapshot); return; }
+        const decision = historyMembershipDecision(source, target);
+        if (decision.kind === "blocked") {
+          replaceGroups(dragSnapshot);
+          setHistoryAnnouncement("This group is based on conversation details. Move the conversation to a Project to organize it.");
+          return;
+        }
+        if (decision.kind === "owner") {
+          if (!onChatGroupMove) {
+            replaceGroups(dragSnapshot);
+            setSaveState({ kind: "unsaved", message: "Project moves are unavailable. Refresh history and try again." });
+            return;
+          }
+          setSaveState({ kind: "unsaved", message: "Moving conversation…" });
+          setHistoryAnnouncement("Moving conversation.");
+          const scopeCurrent = () => membershipMountedRef.current && membershipProfileRef.current === profileId;
+          const result = await membershipMoveRef.current.run(
+            () => onChatGroupMove(String(active.id), decision.targetProjectId), scopeCurrent);
+          if (!scopeCurrent()) return;
+          if (result.kind === "failed") {
+            if (groupsRef.current === next) replaceGroups(dragSnapshot);
+            const reason = result.error instanceof Error ? result.error.message : "Conversation move failed.";
+            setSaveState({ kind: "unsaved", message: `Conversation move was not confirmed. ${reason}` });
+            setHistoryAnnouncement(`Move cancelled. ${reason}`);
+          } else if (result.kind === "acknowledged") {
+            // Remove the old local override before owner metadata reprojects
+            // membership. Preserve every other chat's order and group nesting.
+            const localOrganization = pendingGroupsRef.current
+              ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+              : organizationRef.current;
+            const sanitized = withoutHistoryChatPlacement(localOrganization, String(active.id));
+            const projected = applyCanonicalHistoryOrganization(buildGroupsFromChats(
+              membershipChatItemsRef.current, membershipCustomGroupsRef.current), sanitized);
+            const placementOnly = removeChatFromTree(projected, String(active.id)).groups;
+            const saved = saveHistoryOrganization(placementOnly, organizationRevisionRef.current,
+              undefined, undefined, profileId);
+            organizationRef.current = saved.ok ? saved.organization : sanitized;
+            if (saved.ok) organizationRevisionRef.current = saved.organization.revision;
+            pendingGroupsRef.current = saved.ok ? null : placementOnly;
+            replaceGroups(projected);
+            undoGroupsRef.current = null;
+            const message = saved.ok
+              ? "Conversation moved. Undo is unavailable for this move."
+              : `Conversation moved; sidebar layout could not be saved. ${saved.message} Undo is unavailable for this move.`;
+            setSaveState({ kind: saved.ok ? "saved" : "unsaved", message });
+            setHistoryAnnouncement(message);
+          }
+          return;
+        }
+        persistArrangement(next, dragSnapshot, `Moved ${draggedChat?.title ?? "chat"}.`);
       }
       return;
     }
 
+    if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
     if (!over || active.id === over.id) return;
 
     // Column → Column: nest inside
@@ -1920,10 +2045,12 @@ export function HistoryBoard({
 
   // --- Actions ---
   const handleRenameGroup = async (id: string, newTitle: string) => {
+    if (membershipMoveRef.current.pending) return;
     const sourceGroupId = findGroupById(groups, id)?.sourceGroupId ?? id;
     const nextCustomGroups = customGroups.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
     try {
       const saved = await saveCustomGroups(nextCustomGroups);
+      if (membershipMoveRef.current.pending) return;
       setCustomGroups(saved);
       setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
     } catch (error) {
@@ -1934,6 +2061,7 @@ export function HistoryBoard({
   };
 
   const handleToggleCollapse = (id: string) => {
+    if (membershipMoveRef.current.pending) return;
     // Drag handlers read groupsRef, so collapse changes must update that snapshot too.
     replaceGroups(toggleHistoryGroupCollapsed(groupsRef.current, id));
   };
@@ -1952,6 +2080,7 @@ export function HistoryBoard({
   };
 
   const handleRenameChat = (chatId: string, newTitle: string) => {
+    if (membershipMoveRef.current.pending) return;
     replaceGroups(mapGroups(groupsRef.current, g => ({
       ...g,
       chats: g.chats.map(c => c.id === chatId ? { ...c, title: newTitle } : c),
@@ -1959,6 +2088,7 @@ export function HistoryBoard({
   };
 
   const handleUngroup = (subGroupId: string) => {
+    if (membershipMoveRef.current.pending) return;
     const previous = groupsRef.current;
     const next = mapGroups(previous, g => {
       const subIdx = g.subGroups.findIndex(s => s.id === subGroupId);
@@ -1976,13 +2106,15 @@ export function HistoryBoard({
   };
 
   const openCreateGroup = () => {
+    if (membershipMoveRef.current.pending) return;
     if (projectOperationRef.current.creating) return;
     projectOperationRef.current.invalidate();
     setIsSelectingGroupDirectory(false);
     setNewGroupTitle(`Project ${customGroups.length + 1}`);
     setNewGroupWorkspaceChoice("none");
     setNewGroupCustomPath("");
-    setNewGroupDirectorySelection(null);
+    setNewGroupFolderDraft(emptyProjectFolderDraft());
+    setNewGroupMounted(null);
     setNewGroupError(null);
     setIsCreateGroupOpen((value) => !value);
   };
@@ -2003,6 +2135,7 @@ export function HistoryBoard({
     if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
     const nextCustomGroups = [...customGroups, customGroup];
     const saved = await saveCustomGroups(nextCustomGroups);
+    if (membershipMoveRef.current.pending) return false;
     if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
     setCustomGroups(saved);
     const newGroup: ChatGroup = {
@@ -2031,8 +2164,9 @@ export function HistoryBoard({
       if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       if (selected) {
         setNewGroupWorkspaceChoice("custom");
-        setNewGroupDirectorySelection(selected);
-        setNewGroupCustomPath(selected.display_name);
+        setNewGroupFolderDraft(appendProjectFolderSelections(newGroupFolderDraft, selected));
+        setNewGroupMounted(null);
+        setNewGroupCustomPath("Selected folders");
       }
     } catch (error) {
       if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
@@ -2044,12 +2178,14 @@ export function HistoryBoard({
 
   const handleCreateGroup = async (event?: React.FormEvent) => {
     event?.preventDefault();
+    if (membershipMoveRef.current.pending) return;
     const ticket = projectOperationRef.current.begin("creation");
     if (ticket === null) return;
     setIsCreatingGroup(true);
     setNewGroupError(null);
     const title = newGroupTitle.trim() || `Project ${customGroups.length + 1}`;
     let workspace: Pick<CodingWorkspaceRecord, "workspace_id" | "label" | "root_path"> | null = null;
+    let mounted: ProjectWorkspaceSet | null = null;
     try {
       if (newGroupWorkspaceChoice === "current") {
         if (!selectedCodingWorkspaceId) {
@@ -2066,16 +2202,18 @@ export function HistoryBoard({
           return;
         }
       } else if (newGroupWorkspaceChoice === "custom") {
-        if (!newGroupDirectorySelection) {
-          setNewGroupError("保存先フォルダを選択してください。");
-          return;
-        }
         if (!onCodingWorkspaceCreate) throw new Error("Workspace creation is unavailable.");
-        const created = await onCodingWorkspaceCreate(newGroupDirectorySelection,
-          () => projectOperationRef.current.matches(ticket) && projectProfileRef.current === profileId);
-        if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
-        if (!created?.workspace_id) throw new Error("Workspace creation did not return a workspace.");
-        workspace = created;
+        mounted = newGroupMounted;
+        if (!mounted) {
+          const selection = projectFolderSelectionSet(newGroupFolderDraft);
+          setNewGroupFolderDraft(consumeProjectFolderSelections(newGroupFolderDraft));
+          mounted = await onCodingWorkspaceCreate(selection,
+            () => projectOperationRef.current.matches(ticket) && projectProfileRef.current === profileId) ?? null;
+          if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
+          if (!mounted?.workspace.workspace_id) throw new Error("Workspace creation did not return all selected folders.");
+          setNewGroupMounted(mounted);
+        }
+        workspace = mounted.workspace;
       }
 
       if (workspace && !workspace.root_path?.trim()) {
@@ -2089,6 +2227,9 @@ export function HistoryBoard({
         workspaceId: workspace?.workspace_id ?? null,
         workspaceLabel: workspace?.label ?? null,
         workspaceRoot: workspace?.root_path ?? null,
+        ...(mounted ? { workspaceBindings: mounted.workspaces.map((item) => ({
+          workspaceId: item.workspace_id, workspaceLabel: item.label, workspaceRoot: item.root_path,
+        })) } : {}),
         rumiDataPath: null,
       };
       await createCustomGroup(customGroup, ticket);
@@ -2132,10 +2273,12 @@ export function HistoryBoard({
   }, [visibleChatItems]);
 
   const handleTogglePinned = (chat: ChatItem) => {
+    if (membershipMoveRef.current.pending) return;
     onChatMetadataChange?.(chat.id, { is_pinned: !chat.isPinned });
   };
 
   const handleToggleStarred = (chat: ChatItem) => {
+    if (membershipMoveRef.current.pending) return;
     onChatMetadataChange?.(chat.id, { is_starred: !chat.isStarred });
   };
 
@@ -2202,7 +2345,7 @@ export function HistoryBoard({
         {([
           ["none", "No workspace", "Keep this as a standalone project"],
           ["current", "Current workspace", currentWorkspaceText || "No coding workspace selected"],
-          ["custom", "Choose a folder", "Create or reuse a coding workspace"],
+          ["custom", "Choose folders", "Link folders and choose the primary workspace"],
         ] as const).map(([value, label, description]) => {
           const disabled = isCreatingGroup || (value === "current" && !selectedCodingWorkspaceId);
           const selected = newGroupWorkspaceChoice === value;
@@ -2256,15 +2399,9 @@ export function HistoryBoard({
             <FolderOpen size={12} />
             {isSelectingGroupDirectory ? "選択中..." : "フォルダを選択"}
           </button>
-          <p
-            className={cn(
-              "mt-1.5 truncate px-1 font-mono text-[10px]",
-              newGroupCustomPath ? "text-zinc-300" : "text-zinc-500",
-            )}
-            title={newGroupCustomPath || undefined}
-          >
-            {newGroupCustomPath || "保存先フォルダ未選択"}
-          </p>
+          <ProjectFolderList draft={newGroupFolderDraft} disabled={isSelectingGroupDirectory || isCreatingGroup}
+            onRemove={(id) => { setNewGroupFolderDraft((draft) => removeProjectFolderSelection(draft, id)); setNewGroupMounted(null); }}
+            onPrimaryChange={(id) => { setNewGroupFolderDraft((draft) => setPrimaryProjectFolderSelection(draft, id)); setNewGroupMounted(null); }} />
         </div>
       )}
 
@@ -2312,6 +2449,7 @@ export function HistoryBoard({
 
   if (isCompact) {
     return (
+      <HistoryReferenceProfile.Provider value={profileId}>
       <div className="relative flex h-full w-full flex-col items-center bg-[var(--rumi-surface-base)] text-zinc-400">
         {navigation}
         <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{historyAnnouncement}</span>
@@ -2322,6 +2460,8 @@ export function HistoryBoard({
               return (
                 <button
                   key={`group-${item.id}`}
+                  draggable={!selectionMode}
+                  onDragStart={(event) => writeNativeHistoryReference(event, buildHistoryGroupReference(item.group, profileId ?? ""))}
                   type="button"
                   onClick={() => handleGroupHeaderClick(item.group)}
                   className={cn(
@@ -2343,6 +2483,13 @@ export function HistoryBoard({
             return (
               <button
                 key={chat.id}
+                draggable={!selectionMode}
+                onDragStart={(event) => {
+                  writeNativeHistoryReference(event, buildHistoryChatReference(chat, profileId ?? ""));
+                  event.dataTransfer.setData(HISTORY_CHAT_DROP_MIME, JSON.stringify(historyChatDragPayload({ ...chat, groupId: chatGroupId(chat) || undefined })));
+                  event.dataTransfer.setData("text/plain", chat.title);
+                  event.dataTransfer.effectAllowed = "copyMove";
+                }}
                 type="button"
                 onClick={() => onChatSelect(chat.id)}
                 className={cn(
@@ -2375,10 +2522,12 @@ export function HistoryBoard({
           </button>
         </div>
       </div>
+      </HistoryReferenceProfile.Provider>
     );
   }
 
   return (
+    <HistoryReferenceProfile.Provider value={profileId}>
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
@@ -2529,5 +2678,6 @@ export function HistoryBoard({
       </DragOverlay>
       </LayerPortal>}
     </DndContext>
+    </HistoryReferenceProfile.Provider>
   );
 }

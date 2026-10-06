@@ -1,9 +1,15 @@
-import type { ProjectDirectorySelection } from "../../lib/projectWorkspaceMount";
+import type { ProjectDirectorySelection, ProjectDirectorySelectionSet, ProjectWorkspaceSet } from "../../lib/projectWorkspaceMount";
 import { Check, ChevronDown, FolderOpen, Link2, Loader2, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { CodingWorkspaceRecord } from "../../lib/api";
 import { ProjectFolderSelection } from "../../lib/projectFolderSelection";
+import {
+  MAX_PROJECT_FOLDERS, appendProjectFolderSelections, consumeProjectFolderSelections,
+  emptyProjectFolderDraft, projectFolderSelectionSet, removeProjectFolderSelection,
+  setPrimaryProjectFolderSelection, type ProjectFolderDraft,
+} from "../../lib/projectFolderDraft";
+import { ProjectFolderList } from "./ProjectFolderList";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { addProject, filterProjects, newProjectId, type ProjectInfo } from "./projectStorage";
 
@@ -14,8 +20,8 @@ type ProjectPickerProps = {
   disabled?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   onSelect: (project: ProjectInfo | null) => void;
-  onDirectorySelect?: () => Promise<ProjectDirectorySelection | null | undefined>;
-  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelection, isCurrent: () => boolean) => Promise<CodingWorkspaceRecord | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
   onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
@@ -32,8 +38,8 @@ export function ProjectPicker({
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
-  const [folderPath, setFolderPath] = useState("");
-  const [folderSelection, setFolderSelection] = useState<ProjectDirectorySelection | null>(null);
+  const [folderDraft, setFolderDraft] = useState<ProjectFolderDraft>(emptyProjectFolderDraft);
+  const mountedWorkspaceSetRef = useRef<ProjectWorkspaceSet | null>(null);
   const [folderSelectionFailed, setFolderSelectionFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +57,8 @@ export function ProjectPicker({
     setCreating(false);
     setTitle("");
     setBusy(false);
-    setFolderPath("");
-    setFolderSelection(null);
+    setFolderDraft(emptyProjectFolderDraft());
+    mountedWorkspaceSetRef.current = null;
     setFolderSelectionFailed(false);
     setError(null);
   }, [profileId]);
@@ -98,8 +104,8 @@ export function ProjectPicker({
     setBusy(false);
     setCreating(false);
     setTitle("");
-    setFolderPath("");
-    setFolderSelection(null);
+    setFolderDraft(emptyProjectFolderDraft());
+    mountedWorkspaceSetRef.current = null;
     setFolderSelectionFailed(false);
     setError(null);
   };
@@ -114,15 +120,16 @@ export function ProjectPicker({
       const selected = await onDirectorySelect();
       if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       if (selected) {
+        const next = appendProjectFolderSelections(folderDraft, selected);
+        setFolderDraft(next);
         setError(null);
         setFolderSelectionFailed(false);
-        setFolderSelection(selected);
-        setFolderPath(selected.display_name);
-        setTitle((current) => current.trim() ? current : selected.display_name);
+        mountedWorkspaceSetRef.current = null;
+        setTitle((current) => current.trim() ? current : next.selections[0].display_name);
       }
     } catch (reason) {
       if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
-      setFolderSelectionFailed(!folderSelection);
+      setFolderSelectionFailed(folderDraft.selections.length === 0);
       setError(reason instanceof Error ? reason.message : "Folder selection failed.");
     } finally {
       if (operationRef.current.finish(ticket)) setBusy(false);
@@ -140,20 +147,41 @@ export function ProjectPicker({
     if (ticket === null) return;
     setBusy(true);
     setError(null);
+    let mountAttempted = false;
     try {
-      let workspace: CodingWorkspaceRecord | null = null;
-      if (folderSelection) {
-        const created = await onCodingWorkspaceCreate?.(folderSelection,
+      let mounted = mountedWorkspaceSetRef.current;
+      if (folderDraft.selections.length && !mounted) {
+        if (!onCodingWorkspaceCreate) throw new Error("Workspace creation is unavailable.");
+        const selections = projectFolderSelectionSet(folderDraft);
+        // Host consumes these tickets at prepare; preserve the draft but never
+        // issue a second mount with them if approval or transport fails.
+        setFolderDraft(consumeProjectFolderSelections(folderDraft));
+        mountAttempted = true;
+        const created = await onCodingWorkspaceCreate(selections,
           () => operationRef.current.matches(ticket) && currentProfile() === profileId);
         if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
-        if (!created?.workspace_id) throw new Error("Workspace creation did not return a workspace.");
-        workspace = created;
+        if (!created?.workspace || !Array.isArray(created.workspaces)
+          || created.workspaces.length !== selections.selections.length) {
+          throw new Error("Workspace creation did not return every selected folder. Choose folders again.");
+        }
+        const identities = new Set<string>();
+        for (const workspace of created.workspaces) {
+          if (!workspace.workspace_id?.trim() || !workspace.root_path?.trim()
+            || !workspace.label?.trim() || identities.has(workspace.workspace_id)) {
+            throw new Error("Workspace creation returned invalid folder bindings. Choose folders again.");
+          }
+          identities.add(workspace.workspace_id);
+        }
+        if (!created.workspaces.some((workspace) => workspace.workspace_id === created.workspace.workspace_id
+          && workspace.root_path === created.workspace.root_path && workspace.label === created.workspace.label)) {
+          throw new Error("Workspace creation returned an invalid primary folder. Choose folders again.");
+        }
+        mounted = created;
+        mountedWorkspaceSetRef.current = created;
       }
-      // Canonical Project and conversation owners store this binding. New
-      // projects do not require the retired per-folder .rumiDP storage path.
-      if (folderPath && !workspace?.root_path.trim()) {
-        throw new Error("Workspace creation did not return a folder.");
-      }
+      const workspace = mounted?.workspace;
+      // Canonical Project ownership stores every approved workspace binding.
+      // Cache mount results so a save retry never reuses consumed folder tickets.
       const project: ProjectInfo = {
         id: newProjectId(),
         title: projectTitle,
@@ -161,6 +189,11 @@ export function ProjectPicker({
         workspaceLabel: workspace?.label ?? null,
         workspaceRoot: workspace?.root_path ?? null,
         rumiDataPath: null,
+        ...(mounted ? { workspaceBindings: mounted.workspaces.map((binding) => ({
+          workspaceId: binding.workspace_id,
+          workspaceLabel: binding.label,
+          workspaceRoot: binding.root_path,
+        })) } : {}),
       };
       if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
       await addProject(project);
@@ -171,7 +204,10 @@ export function ProjectPicker({
       setOpen(false);
     } catch (reason) {
       if (!operationRef.current.matches(ticket) || currentProfile() !== profileId) return;
-      setError(reason instanceof Error ? reason.message : "Project creation failed.");
+      const message = reason instanceof Error ? reason.message : "Project creation failed.";
+      setError(mountAttempted && !mountedWorkspaceSetRef.current
+        ? `${message} Remove the submitted folders and choose them again; your project name is preserved.`
+        : message);
     } finally {
       if (operationRef.current.finish(ticket)) setBusy(false);
     }
@@ -199,7 +235,7 @@ export function ProjectPicker({
               <div className="flex min-h-9 items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-zinc-100">New Project</p>
-                  <p className="text-[10px] text-zinc-500">Optionally link an existing folder.</p>
+                  <p className="text-[10px] text-zinc-500">Optionally link existing folders.</p>
                 </div>
                 <button type="button" onClick={resetCreate} disabled={operationRef.current.creating} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100" aria-label="Back to projects">
                   <X size={14} />
@@ -215,15 +251,32 @@ export function ProjectPicker({
               <button
                 type="button"
                 onClick={() => void pickFolder()}
-                disabled={!onDirectorySelect || busy}
+                disabled={!onDirectorySelect || busy || folderDraft.selections.length >= MAX_PROJECT_FOLDERS}
                 className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-zinc-800 bg-black/20 px-3 text-left text-xs text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50"
               >
                 {busy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{folderPath ? "Linked folder" : "Link existing folder"}</span>
-                  {folderPath && <span className="mt-0.5 block truncate font-mono text-[10px] text-zinc-500">{folderPath}</span>}
+                  <span className="block font-medium">{folderDraft.selections.length ? "Add folders" : "Link existing folders"}</span>
+                  <span className="mt-0.5 block text-[10px] text-zinc-500">Select up to {MAX_PROJECT_FOLDERS} folders</span>
                 </span>
               </button>
+              <ProjectFolderList
+                draft={folderDraft}
+                disabled={busy}
+                onRemove={(id) => {
+                  if (operationRef.current.creating || busy) return;
+                  setFolderDraft(removeProjectFolderSelection(folderDraft, id));
+                  mountedWorkspaceSetRef.current = null;
+                  setFolderSelectionFailed(false);
+                  setError(null);
+                }}
+                onPrimaryChange={(id) => {
+                  if (operationRef.current.creating || busy) return;
+                  setFolderDraft(setPrimaryProjectFolderSelection(folderDraft, id));
+                  mountedWorkspaceSetRef.current = null;
+                  setError(null);
+                }}
+              />
               {error && (
                 <ErrorNotice
                   className="px-2.5 py-2 text-[10px]"

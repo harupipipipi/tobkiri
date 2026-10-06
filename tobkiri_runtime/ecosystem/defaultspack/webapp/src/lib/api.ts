@@ -1,4 +1,4 @@
-import { mountProjectDirectory, type ProjectDirectorySelection, type ProjectMountStatus } from "./projectWorkspaceMount";
+import { mountProjectDirectories, type ProjectDirectorySelection, type ProjectDirectorySelectionSet, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { toolSidebarReadiness } from "./toolCatalogReadiness";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
 import type { ToolPreviewItem } from "../components/ToolPreview";
@@ -77,6 +77,27 @@ export function validSavedToolSelection(value: unknown): value is SavedToolSelec
     }
   }
   return selection.mode !== "none" || (!selection.must_use && !(selection.include as unknown[] | undefined)?.length);
+}
+
+/** Validate lean history IDs only; active-profile authority belongs to the Host. */
+export function validSavedChatReferences(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 16) return false;
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)
+      || Object.keys(item).length !== 3
+      || Object.keys(item).some((key) => !["kind", "profile_id", "id"].includes(key))
+      || !["chat", "group"].includes(item.kind)
+      || typeof item.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(item.id)
+      || typeof item.profile_id !== "string" || !item.profile_id
+      || item.profile_id.trim() !== item.profile_id
+      || new TextEncoder().encode(item.profile_id).byteLength > 128
+      || item.profile_id.includes("..") || /[\\/\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(item.profile_id)) return false;
+    const key = JSON.stringify([item.kind, item.profile_id, item.id]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
 }
 
 export const MAX_SAVED_TURN_TEXT_BYTES = 60 * 1024;
@@ -166,6 +187,8 @@ export type SavedTurnRequest = {
   conversation_revision: number;
   content: SavedTurnContent;
   tool_selection?: SavedToolSelection;
+  /** Up to 16 profile-scoped history IDs; the Host resolves membership again. */
+  chat_references?: Array<{ kind: "chat" | "group"; profile_id: string; id: string }>;
   /** Exact reference selected from the Host-admitted strategy catalog. */
   strategy_reference?: string;
   thinking_level?: "none" | "low" | "medium" | "high" | "xhigh";
@@ -230,6 +253,8 @@ export type SavedTurnGuidanceRequest = {
     visible: boolean;
     auto_send: boolean;
     metadata: Record<string, unknown>;
+    chat_references?: SavedTurnRequest["chat_references"];
+    tool_selection?: SavedToolSelection;
   };
 };
 
@@ -295,6 +320,7 @@ export type SavedTurnEventSnapshot = {
 };
 
 export type ProjectStateRecord = {
+  workspace_bindings?: { workspace_id: string; workspace_label: string; workspace_root: string }[];
   id: string;
   title: string;
   workspace_id: string | null;
@@ -313,20 +339,41 @@ export type ProjectStateSnapshot = {
   caller_session_digest?: string;
 };
 
-function isProjectStateSnapshot(value: unknown): value is ProjectStateSnapshot {
+export function isProjectStateSnapshot(value: unknown): value is ProjectStateSnapshot {
   const record = objectRecord(value);
   if (!record || record.namespace !== "defaultspack.projects.v1"
     || !Number.isSafeInteger(record.revision) || Number(record.revision) < 0
     || !Array.isArray(record.projects) || record.projects.length > 256) return false;
   return record.projects.every((candidate) => {
     const project = objectRecord(candidate);
-    if (!project || Object.keys(project).sort().join(",") !== [
-      "id", "rumi_data_path", "title", "workspace_id", "workspace_label", "workspace_root",
-    ].sort().join(",")) return false;
+    const fields = ["id", "rumi_data_path", "title", "workspace_id", "workspace_label", "workspace_root"];
+    if (!project || ![fields, [...fields, "workspace_bindings"]].some((expected) => (
+      Object.keys(project).sort().join(",") === expected.sort().join(",")
+    ))) return false;
     if (typeof project.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(project.id)
       || typeof project.title !== "string" || !project.title.trim()) return false;
-    return ["workspace_id", "workspace_label", "workspace_root", "rumi_data_path"]
-      .every((key) => project[key] === null || typeof project[key] === "string");
+    if (!["workspace_id", "workspace_label", "workspace_root", "rumi_data_path"]
+      .every((key) => project[key] === null || typeof project[key] === "string")) return false;
+    if (!Object.prototype.hasOwnProperty.call(project, "workspace_bindings")) return true;
+    if (!Array.isArray(project.workspace_bindings) || project.workspace_bindings.length < 1 || project.workspace_bindings.length > 32) return false;
+    const seen = new Set<string>();
+    const bindingFields = ["workspace_id", "workspace_label", "workspace_root"];
+    const valid = project.workspace_bindings.every((value) => {
+      const binding = objectRecord(value);
+      if (!binding || Object.keys(binding).sort().join(",") !== [...bindingFields].sort().join(",")) return false;
+      const id = binding.workspace_id;
+      const label = binding.workspace_label;
+      const root = binding.workspace_root;
+      if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(id) || seen.has(id)
+        || typeof label !== "string" || !label || label !== label.trim() || label.length > 512 || label.includes("\0")
+        || typeof root !== "string" || !/^(?:\/(?!\/)|[A-Za-z]:\/|\/\/[^/]+\/[^/]+(?:\/|$))/.test(root.replace(/\\/g, "/")) || root !== root.trim() || root.length > 4096 || root.includes("\0")
+        || root.replace(/\\/g, "/").split("/").some((part) => part === "." || part === "..")) return false;
+      seen.add(id);
+      return true;
+    });
+    return valid && project.workspace_bindings.some((binding) => bindingFields.every((key) => (
+      (binding as Record<string, unknown>)[key] === project[key]
+    )));
   });
 }
 
@@ -4262,6 +4309,7 @@ export const api = {
     const guidanceKeys = [
       "auto_send", "conversation_id", "metadata", "prompt", "target_id", "target_type", "visible",
     ];
+    const optionalGuidanceKeys = ["chat_references", "tool_selection"];
     if (
       !value || typeof value !== "object"
       || Object.keys(value).sort().join(",") !== keys.join(",")
@@ -4271,7 +4319,10 @@ export const api = {
       || !SAVED_TURN_IDENTIFIER.test(value.guidance_id)
       || !value.guidance
       || typeof value.guidance !== "object"
-      || Object.keys(value.guidance).sort().join(",") !== guidanceKeys.join(",")
+      || guidanceKeys.some((key) => !Object.prototype.hasOwnProperty.call(value.guidance, key))
+      || Object.keys(value.guidance).some((key) => !guidanceKeys.includes(key) && !optionalGuidanceKeys.includes(key))
+      || (Object.prototype.hasOwnProperty.call(value.guidance, "chat_references") && !validSavedChatReferences(value.guidance.chat_references))
+      || (Object.prototype.hasOwnProperty.call(value.guidance, "tool_selection") && !validSavedToolSelection(value.guidance.tool_selection))
       || typeof value.guidance.prompt !== "string"
       || !value.guidance.prompt.trim()
       || new TextEncoder().encode(value.guidance.prompt).length > 20 * 1024
@@ -4421,6 +4472,7 @@ export const api = {
     if (Object.keys(input).some((key) => ![
       ...fields,
       "tool_selection",
+      "chat_references",
       "strategy_reference",
       "thinking_level",
     ].includes(key)) || fields.some((key) => !(key in input))
@@ -4428,6 +4480,7 @@ export const api = {
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
       || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
       || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
+      || (input.chat_references !== undefined && !validSavedChatReferences(input.chat_references))
       || (input.strategy_reference !== undefined && (
         typeof input.strategy_reference !== "string"
         || !input.strategy_reference.trim()
@@ -6366,19 +6419,19 @@ export const api = {
   },
 
   selectDirectory(_prompt?: string) {
-    return request<(ProjectDirectorySelection & { cancelled: false }) | { cancelled: true; selection_id: null }>(defaultspackContractRoute("api/ui/select-directory"), {
+    return request<(ProjectDirectorySelectionSet & ProjectDirectorySelection & { cancelled: false }) | { cancelled: true; selection_id: null }>(defaultspackContractRoute("api/ui/select-directory"), {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
-  async mountProjectWorkspace(selection: ProjectDirectorySelection, assertCurrent: () => void) {
+  async mountProjectWorkspace(selection: ProjectDirectorySelectionSet, assertCurrent: () => void) {
     const post = (body: object) => request<ProjectMountStatus>(defaultspackContractRoute("api/projects/workspace"), {
       method: "POST", body: JSON.stringify(body),
     });
-    const workspaceId = await mountProjectDirectory(selection, {
+    const mounted = await mountProjectDirectories(selection, {
       assertCurrent,
-      prepare: (selection_id, correlation_id) => post({ phase: "prepare", effect_kind: "workspace_mount", request: { selection_id }, correlation_id }),
+      prepare: (request, correlation_id) => post({ phase: "prepare", effect_kind: "workspace_mount", request, correlation_id }),
       lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "workspace_mount", correlation_id }),
       status: (effect_id) => post({ phase: "status", effect_id }),
       resume: (effect_id) => post({ phase: "resume", effect_id }),
@@ -6387,9 +6440,17 @@ export const api = {
       pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
     });
     assertCurrent();
-    const result = await api.getCodingWorkspace(workspaceId);
+    const results = await Promise.all(mounted.workspaceIds.map((id) => api.getCodingWorkspace(id)));
     assertCurrent();
-    return result.workspace;
+    const workspaces = results.map((result, index) => {
+      if (result.workspace.workspace_id !== mounted.workspaceIds[index] || !result.workspace.root_path.trim()) {
+        throw new Error("Project folder result changed. Inspect the mounted workspaces before retrying.");
+      }
+      return result.workspace;
+    });
+    const workspace = workspaces.find((item) => item.workspace_id === mounted.workspaceId);
+    if (!workspace) throw new Error("Project primary workspace is unavailable.");
+    return { workspace, workspaces };
   },
 
   prepareChatGroupStorage(rootPath: string) {
@@ -6712,6 +6773,18 @@ export const api = {
     );
   },
 
+  listChatReferences(options?: { cursor?: string; limit?: number }) {
+    const query = new URLSearchParams();
+    query.set("limit", String(options?.limit ?? 100));
+    if (options?.cursor) query.set("cursor", options.cursor);
+    return request<unknown>(`${defaultspackContractRoute("api/chat/references")}?${query.toString()}`, { cache: "no-store" });
+  },
+  resolveChatReferences(references: Array<{ kind: "chat" | "group"; id: string }>) {
+    return request<unknown>(defaultspackContractRoute("api/chat/references/resolve"), {
+      method: "POST",
+      body: JSON.stringify({ references }),
+    });
+  },
   listMcpServers() {
     return request<{ servers: McpServerRecord[]; count: number }>(defaultspackContractRoute("api/tools/mcp"), { cache: "no-store" });
   },

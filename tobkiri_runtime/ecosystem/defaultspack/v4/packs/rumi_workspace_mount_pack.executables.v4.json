@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_workspace_mount_pack",
-  "source_identity": "sha256:e13c549c8ada72f513e85fd5c8b82b826311d3c3364321fdd581b1f8071ead71",
+  "source_identity": "sha256:a2db9ae4d4023b056e116f75e2c5ae33c7a0cf21da3bd67f7e59c35ea3cc8445",
   "variants": [
     {
       "variant_id": "rumi_workspace_mount_pack.project-directory.service.python",
       "function_id": "rumi_workspace_mount_pack.project-directory.service",
       "implementation_path": "runtime/mounts.py",
-      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
           "operation_id": "workspace.directory.acquire",
           "input_schema": {
             "oneOf": [
@@ -40,6 +40,34 @@
                 },
                 "required": [
                   "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
                 ],
                 "type": "object"
               },
@@ -68,6 +96,11 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "profile_id": {
                         "maxLength": 255,
                         "minLength": 1,
@@ -91,6 +124,47 @@
                         "maxLength": 32768,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
                       },
                       "security_epoch": {
                         "minimum": 1,
@@ -121,19 +195,51 @@
                     "type": "object"
                   },
                   "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "selection_id": {
-                        "maxLength": 255,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_-]+$",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "selection_id"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -161,7 +267,7 @@
       "variant_id": "rumi_workspace_mount_pack.project-workspace-execute.service.python",
       "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
       "implementation_path": "runtime/mounts.py",
-      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -173,7 +279,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
           "operation_id": "workspace.mount.execute",
           "input_schema": {
             "oneOf": [
@@ -194,6 +300,34 @@
                 },
                 "required": [
                   "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
                 ],
                 "type": "object"
               },
@@ -222,6 +356,11 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "profile_id": {
                         "maxLength": 255,
                         "minLength": 1,
@@ -245,6 +384,47 @@
                         "maxLength": 32768,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
                       },
                       "security_epoch": {
                         "minimum": 1,
@@ -275,19 +455,51 @@
                     "type": "object"
                   },
                   "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "selection_id": {
-                        "maxLength": 255,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_-]+$",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "selection_id"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -315,7 +527,7 @@
       "variant_id": "rumi_workspace_mount_pack.project-workspace-prepare.service.python",
       "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
       "implementation_path": "runtime/mounts.py",
-      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -327,7 +539,7 @@
         {
           "contract_id": "tobkiri.service.workspace.project.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8e7c50ec44bfbcf28dfd417468a245f43e63c7d60bcc761051304c5397fe2264",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
           "operation_id": "workspace.mount.prepare",
           "input_schema": {
             "oneOf": [
@@ -348,6 +560,34 @@
                 },
                 "required": [
                   "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
                 ],
                 "type": "object"
               },
@@ -376,6 +616,11 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "profile_id": {
                         "maxLength": 255,
                         "minLength": 1,
@@ -399,6 +644,47 @@
                         "maxLength": 32768,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
                       },
                       "security_epoch": {
                         "minimum": 1,
@@ -429,19 +715,51 @@
                     "type": "object"
                   },
                   "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "selection_id": {
-                        "maxLength": 255,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_-]+$",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "selection_id"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -469,7 +787,7 @@
       "variant_id": "rumi_workspace_mount_pack.workspace-mount.manage.python",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
       "implementation_path": "runtime/mounts.py",
-      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -503,7 +821,7 @@
       "variant_id": "rumi_workspace_mount_pack.workspace-mount.resource.python",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
       "implementation_path": "runtime/mounts.py",
-      "implementation_digest": "sha256:1cea0eabaaf5dd12a5a0a302c6f0e9c9545dcf17f628f0430be693467143c945",
+      "implementation_digest": "sha256:c8937b801c579d605647c09b11ccd5ee6e87eabcd50a22379d1b213ebb238ba9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -534,6 +852,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:4a2fb0f269cb069d6118de56b5f4fbfc5fe57e7cbf9fd11ef0426223f97a5edd",
-  "catalog_digest": "sha256:ddc13f71e54f8f0ebd49694dde702fcb2bf6a89fd40db656d2d1861db20200e5"
+  "materialization_catalog_digest": "sha256:9be5a77692ba4586c64dc9b23d31b9e3c3920821499692b551ca6a7dd54053fb",
+  "catalog_digest": "sha256:e256176e958dba14a3614db171393d30475e96de71147dd3046a7840ee756d0f"
 }

@@ -1,15 +1,23 @@
+import { anchorComposerMentionWidget, updateConfirmedComposerWidgets } from "../lib/composerMentionAnchors";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
+import { CalendarAgentPromptEditor } from "../features/composer/CalendarAgentPromptEditor";
 import { installKeyboardOnlyFocusRings } from "../lib/focusModality";
 import { useToolSelectionController } from "../features/tools/useToolSelectionController";
 import type { ConversationToolPreferences } from "../features/tools/types";
 import { composerToolMentionGroups } from "../lib/composerToolMentions";
 import {
   composerMenuCommands,
+  composerEntityMentionCandidates,
+  composerReferencesForSelection,
+  composerReferenceInsertionIsCurrent,
+  validComposerHistoryDropTarget,
+  composerSkillMentionWidget,
+  replaceConfirmedComposerWidget,
   composerMentionSkills,
   COMPOSER_ATTACH_COMMAND_ID,
   COMPOSER_ATTACH_IMAGE_COMMAND_ID,
@@ -2596,4 +2604,140 @@ test("running composer removes helper-row space while keeping steer and stop con
   assert.match(html, />次の指示<\/textarea>/);
   const emptyHtml = renderToolModeComposer({ isGenerating: true, input: "", onSteerSubmit: () => undefined });
   assert.match(emptyHtml, /aria-label="生成を停止"/);
+});
+
+
+test("only the explicitly confirmed duplicate occurrence is blue and atomic", () => {
+  const input = "@Settings Mode and @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 19);
+  assert.deepEqual(composerInlineMentionParts(input, [widget]), [
+    { mention: false, text: "@Settings Mode and " },
+    { mention: true, text: "@Settings Mode" },
+  ]);
+  assert.equal(atomicComposerMentionEdit(input, 5, 5, "Backspace", [widget]), null);
+  assert.equal(atomicComposerMentionEdit(input, input.length, input.length, "Backspace", [widget])?.value, "@Settings Mode and ");
+});
+
+test("deleting a confirmed duplicate never transfers its styling to typed identical text", () => {
+  const input = "@Settings Mode @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 0);
+  const next = "@Settings Mode";
+  const widgets = updateConfirmedComposerWidgets(input, next, [widget], { start: 0, end: 15 });
+  assert.deepEqual(composerInlineMentionParts(next, widgets), [{ mention: false, text: next }]);
+});
+
+test("native prefix edits retain only the shifted confirmed occurrence", () => {
+  const input = "@Settings Mode @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 15);
+  const next = `X ${input}`;
+  const widgets = updateConfirmedComposerWidgets(input, next, [widget], { start: 0, end: 0 });
+  assert.deepEqual(composerInlineMentionParts(next, widgets), [
+    { mention: false, text: "X @Settings Mode " }, { mention: true, text: "@Settings Mode" },
+  ]);
+});
+
+
+test("explicit reconfirmation keeps shifted older entities and replaces the same entity anchor", () => {
+  const input = "@Settings Mode @Other";
+  const first = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 0);
+  const other = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "other", label: "Other" }), input, 15);
+  const next = `${input} @Settings Mode`;
+  const updated = updateConfirmedComposerWidgets(input, next, [first, other], { start: input.length, end: input.length });
+  const replacement = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), next, input.length + 1);
+  const merged = replaceConfirmedComposerWidget(updated, replacement);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(composerInlineMentionParts(next, merged), [
+    { mention: false, text: "@Settings Mode " }, { mention: true, text: "@Other" },
+    { mention: false, text: " " }, { mention: true, text: "@Settings Mode" },
+  ]);
+});
+
+
+test("entity mention queries retain real catalog identities and filter explicit kinds", () => {
+  const candidates = [
+    { kind: "chat" as const, id: "c1", label: "Project chat", profileId: "p", syntax: "@chat:c1", available: true },
+    { kind: "group" as const, id: "g1", label: "Project group", profileId: "p", syntax: "@group:g1", available: true },
+    { kind: "mcp" as const, id: "server", label: "Project MCP", syntax: "@mcp:server", available: false, status: "disconnected", toolIds: [] },
+  ];
+  assert.deepEqual(composerEntityMentionCandidates(candidates, "chat:").map((candidate) => candidate.id), ["chat:c1"]);
+  assert.deepEqual(composerEntityMentionCandidates(candidates, "group g1").map((candidate) => candidate.id), ["group:g1"]);
+  assert.equal(composerEntityMentionCandidates(candidates, "Project").length, 3);
+  assert.equal(composerEntityMentionCandidates(candidates, "imaginary").length, 0);
+  const palette = atMentionPalettePayload(composerEntityMentionCandidates(candidates, "mcp:server"));
+  assert.equal(palette.items[0].disabled, true);
+});
+
+test("async reference insertion rejects edited drafts, changed profiles, caret movement and IME activity", () => {
+  const snapshot = { input: "@chat:", value: "@chat:", start: 6, end: 6, droppedWidgets: [], entityReferences: [], profileId: "p", modelProfile: null, imeGeneration: 0, blocked: false };
+  assert.equal(composerReferenceInsertionIsCurrent(snapshot, { ...snapshot }), true);
+  for (const changed of [
+    { input: "edited" }, { value: "edited" }, { start: 0 }, { end: 0 },
+    { profileId: "other" }, { droppedWidgets: [] }, { entityReferences: [] },
+    { imeGeneration: 1 }, { blocked: true },
+    { modelProfile: { profile_id: "changed", display_name: "Changed" } },
+  ]) assert.equal(composerReferenceInsertionIsCurrent(snapshot, { ...snapshot, ...changed }), false);
+});
+
+test("clipboard references retain the confirmed duplicate's selected coordinates", () => {
+  const input = "@Settings Mode and @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 19);
+  const reference = { kind: "skill" as const, id: "settings", syntax: "@Settings Mode" };
+  assert.deepEqual(composerReferencesForSelection(input, 0, 14, [widget], [reference]), []);
+  assert.deepEqual(composerReferencesForSelection(input, 19, input.length, [widget], [reference]), [
+    { ...reference, confirmedRange: { value: "@Settings Mode", start: 0, end: 14 } },
+  ]);
+  assert.deepEqual(composerReferencesForSelection(input, 20, input.length, [widget], [reference]), []);
+});
+
+test("history reference release targets only a connected topmost visible composer", () => {
+  const top = {};
+  const target = { id: "composer-unique", isConnected: true, getBoundingClientRect: () => ({ left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100 }), contains: (element: unknown) => element === top } as unknown as HTMLElement;
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, target.id, top as Element), true);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, "other-composer", top as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, target.id, {} as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 500, y: 50 }, target.id, top as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: NaN, y: 50 }, target.id, top as Element), false);
+});
+
+
+test("reconfirmation namespaces MCP and service identities even when registry IDs match", () => {
+  const service = { id: "service:shared", type: "service" as const, label: "Service", sourceItemId: "shared", metadata: { source: "composer_at_mention", mention: { kind: "service", id: "shared", label: "Service", syntax: "@Service" } } };
+  const mcp = { ...service, id: "mcp:shared", metadata: { source: "composer_at_mention", mention: { kind: "mcp", id: "shared", label: "MCP", syntax: "@mcp:shared" } } };
+  assert.equal(replaceConfirmedComposerWidget([service], mcp).length, 2);
+});
+
+
+test("async freshness rejects a changed connection behind the same saved profile ID", () => {
+  const profile = { profile_id: "saved", display_name: "Saved", provider_id: "openai", model_id: "model", metadata: { connection_id: "personal" } };
+  const captured = { input: "@chat:", value: "@chat:", start: 6, end: 6, droppedWidgets: [], entityReferences: [], profileId: "p", modelProfile: profile, imeGeneration: 0, blocked: false };
+  assert.equal(composerReferenceInsertionIsCurrent(captured, { ...captured, modelProfile: { ...profile, metadata: { connection_id: "work" } } }), false);
+  assert.equal(composerReferenceInsertionIsCurrent(captured, { ...captured, modelProfile: { ...profile } }), true);
+});
+
+test("scheduled Composer stays inside one calendar form and exposes the calendar save action", () => {
+  const html = renderToStaticMarkup(createElement("form", {}, createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "Run this task", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: false, mode: "auto", showApprovalControl: true, showToolControl: false,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  })));
+  assert.equal((html.match(/<form\b/g) ?? []).length, 1);
+  assert.match(html, /type="button"[^>]*aria-label="Agentタスクを保存"/);
+  assert.match(html, /data-composer-widget="action-approval-control"/);
+  assert.doesNotMatch(html, /data-composer-widget="(?:file-attach|project-picker|voice-input|tool-selection-control)"/);
+});
+
+test("calendar Composer obeys hidden policy display and blocks a save while references are resolving", () => {
+  const html = renderToStaticMarkup(createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "@chat:raw", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: true, mode: "none", showApprovalControl: false, showToolControl: true,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  }));
+  assert.doesNotMatch(html, /<form\b|data-composer-widget="action-approval-control"/);
+  assert.match(html, /data-composer-widget="tool-selection-control"/);
+  assert.match(html, /aria-label="Agentタスクを保存"[^>]*disabled=""/);
+  assert.doesNotMatch(html, /rumi-composer-textarea-highlighted/);
 });

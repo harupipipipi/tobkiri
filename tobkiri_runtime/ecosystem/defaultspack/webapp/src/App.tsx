@@ -1,5 +1,13 @@
+import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
+import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
+import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
+import { prepareComposerReferenceSubmission, requiresComposerReferenceRefresh, isSavedTurnHistoryReferenceWidget, composerSelectableToolSnapshotKey, composerReferencePreflightDraftIsCurrent } from "./lib/composerReferenceSubmission";
+import { commitHistoryMembershipMove } from "./lib/historyMembership";
 import { confirmedComposerSkillIds } from "./lib/confirmedComposerReferences";
-import type { ProjectDirectorySelection } from "./lib/projectWorkspaceMount";
+import { prepareComposerFollowupInput } from "./lib/composerFollowupInput";
+import { modelProfileConnectionId } from "./features/models/modelSelectionIdentity";
+import { CalendarAgentPromptEditor } from "./features/composer/CalendarAgentPromptEditor";
+import type { ProjectDirectorySelectionSet } from "./lib/projectWorkspaceMount";
 import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
 import { savedTurnStoreIdentity, useScopedPendingChat, type PendingRecoveryEntry } from "./lib/scopedPendingChat";
@@ -8,7 +16,7 @@ import { FrontendViewSlot } from "./host/FrontendViewSlot";
 import { viewsForSlot, matchesViewReference, type CatalogViewReference, type ViewSlot } from "./host/catalogViewRegistry";
 import { useVerifiedFrontendHost } from "./host/VerifiedFrontendHostContext";
 import { iconAttentionForConversation } from "./lib/widgetAttention";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import { AppWindow, Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -40,7 +48,6 @@ import {
   type TransientAlertTone,
 } from "./components/TransientAlert";
 import { WarmActionIcon } from "./components/WarmActionIcon";
-import { useExitPresence } from "./ui/motion/useExitPresence";
 import {
   TobkiriLoadingScreen,
   type TobkiriLoadingStep,
@@ -72,8 +79,10 @@ import { applicationPathname, parseProfileScreenPath, profileScreenPathFromLocat
 import { UiPrecisionComparator } from "./pages/UiPrecisionComparator";
 import { ConversationShareLanding, ImportedConversationNotice } from "./pages/ConversationShareLanding";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
-import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
-import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
+import type { ToolPreviewItem } from "./components/ToolPreview";
+import { hasCanvasItems } from "./components/ToolPreview";
+import { FileEditTimeline } from "./components/FileEditTimeline";
+import { fileEditTimelineFromMessages } from "./lib/toolPreviews";
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, SavedTurnNotStartedError, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
@@ -84,12 +93,13 @@ import {
   loadProjects,
   projectTaskContext,
   type ProjectInfo,
+  type ProjectWorkspaceBinding,
 } from "./features/projects/projectStorage";
 import {
   filterModelProfilesBySelector,
   modelSelectorSchemaFromCatalog,
 } from "./features/models";
-import type { ConversationToolPreferences } from "./features/tools/types";
+import type { ConversationToolPreferences, ToolSelectionMode } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
 import {
   buildConversationPresentations,
@@ -250,6 +260,7 @@ export function highRiskResumeDisposition(state: string): "pending" | "succeeded
 }
 
 type PendingNewTaskContext = {
+  workspaceBindings?: ProjectWorkspaceBinding[];
   groupId?: string;
   workspaceId?: string | null;
   workspaceLabel?: string | null;
@@ -264,6 +275,10 @@ type CalendarItem = {
   date: string;
   endDate?: string;
   agentPrompt?: string;
+  agentWidgets?: DroppedWidget[];
+  agentProfileId?: string;
+  agentModel?: string;
+  agentToolSelectionMode?: ToolSelectionMode;
   kind: CalendarItemKind;
   lastRunStatus?: string;
   scheduleId?: string;
@@ -789,11 +804,21 @@ function CalendarComposerPanel({
   modelId,
   modelProfiles,
   settings,
+  Composer,
+  profileId,
+  tools,
+  showApprovalControl,
+  showToolControl,
 }: {
   conversationId: string | null;
   modelId: string;
   modelProfiles: ModelProfile[];
   settings: CalendarSettings;
+  Composer: ReturnType<typeof resolveDefaultspackRenderers>["composer"];
+  profileId: string;
+  tools: ComposerExtensionItem[];
+  showApprovalControl: boolean;
+  showToolControl: boolean;
 }) {
   const today = new Date();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -812,12 +837,30 @@ function CalendarComposerPanel({
   const [draftTime, setDraftTime] = useState(formatCalendarTime(settings.defaultTime));
   const [draftAgentEnabled, setDraftAgentEnabled] = useState(settings.agentTaskDefault);
   const [draftAgentPrompt, setDraftAgentPrompt] = useState("");
+  const [draftAgentWidgets, setDraftAgentWidgets] = useState<DroppedWidget[]>([]);
+  const [draftAgentModel, setDraftAgentModel] = useState(() => resolveCalendarAgentModel(settings, modelId, modelProfiles));
+  const [draftToolMode, setDraftToolMode] = useState<ToolSelectionMode>("auto");
+  const [referencePending, setReferencePending] = useState(false);
+  const referencePendingRef = useRef(false);
+  const calendarCompositionRef = useRef({ active: false, endedAt: 0 });
+  const updateReferencePending = useCallback((pending: boolean) => {
+    referencePendingRef.current = pending;
+    setReferencePending(pending);
+  }, []);
+  const draftModelProfile = modelProfiles.find((model) => model.profile_id === draftAgentModel || model.qualified_model_id === draftAgentModel);
+  const draftModelBinding = JSON.stringify(draftModelProfile ? [draftModelProfile.profile_id, draftModelProfile.provider_id, draftModelProfile.model_id, modelProfileConnectionId(draftModelProfile)] : null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isTimeMenuOpen, setIsTimeMenuOpen] = useState(false);
   const [lastAgentResult, setLastAgentResult] = useState<string | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
   const suppressNextCellOpenRef = useRef(false);
+  const draftStateRef = useRef({ activeEditor, draftTitle, draftKind, draftTime, draftAgentEnabled,
+    draftAgentPrompt, draftAgentWidgets, draftAgentModel, draftToolMode, profileId, conversationId,
+    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending });
+  draftStateRef.current = { activeEditor, draftTitle, draftKind, draftTime, draftAgentEnabled,
+    draftAgentPrompt, draftAgentWidgets, draftAgentModel, draftToolMode, profileId, conversationId,
+    toolKey: composerSelectableToolSnapshotKey(tools), modelBinding: draftModelBinding, referencePending };
 
   useEffect(() => {
     setDraftKind(settings.defaultItemType);
@@ -920,6 +963,9 @@ function CalendarComposerPanel({
     setDraftTime(formatCalendarTime(settings.defaultTime));
     setDraftAgentEnabled(settings.agentTaskDefault && kind === "task");
     setDraftAgentPrompt("");
+    setDraftAgentWidgets([]);
+    setDraftAgentModel(resolveCalendarAgentModel(settings, modelId, modelProfiles));
+    setDraftToolMode("auto");
     setDraftError(null);
     setLastAgentResult(null);
     setIsTimeMenuOpen(false);
@@ -944,19 +990,25 @@ function CalendarComposerPanel({
     setDraftTime(formatCalendarTime(item.time ?? settings.defaultTime));
     setDraftAgentEnabled(Boolean(item.scheduleId));
     setDraftAgentPrompt(item.agentPrompt ?? item.title);
+    setDraftAgentWidgets(item.agentWidgets ?? []);
+    setDraftAgentModel(item.agentModel ?? resolveCalendarAgentModel(settings, modelId, modelProfiles));
+    setDraftToolMode(item.agentToolSelectionMode ?? "auto");
     setDraftError(null);
     setLastAgentResult(item.lastRunStatus ? `Agent last run: ${item.lastRunStatus}` : null);
     setIsTimeMenuOpen(false);
   };
 
-  const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string) => ({
+  const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string,
+    followupInput: Awaited<ReturnType<typeof prepareComposerFollowupInput>>) => ({
     name: `Calendar: ${title}`,
-    description: `Created from Rumi calendar for ${calendarRangeLabel(startKey, endKey)}.`,
+    description: `Created from Tobkiri calendar for ${calendarRangeLabel(startKey, endKey)}.`,
     schedule_type: "once",
     schedule_config: { run_at: calendarRunAtIso(startKey, time) },
     task: {
       message: agentPrompt || title,
-      model: resolveCalendarAgentModel(settings, modelId, modelProfiles),
+      model: draftAgentModel,
+      profile_id: profileId,
+      ...followupInput,
       conversation_id: settings.agentCurrentChat ? conversationId || null : null,
       metadata: {
         source: "calendar",
@@ -981,8 +1033,9 @@ function CalendarComposerPanel({
     endKey: string,
     time: string,
     agentPrompt: string,
+    followupInput: Awaited<ReturnType<typeof prepareComposerFollowupInput>>,
   ): Promise<{ scheduleId?: string; scheduleStatus?: string }> => {
-    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt);
+    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt, followupInput);
     if (existing?.scheduleId) {
       const updated = extractScheduleRecord(await api.updateSchedule(existing.scheduleId, payload));
       return {
@@ -998,9 +1051,15 @@ function CalendarComposerPanel({
     };
   };
 
-  const submitDraft = async (event: FormEvent<HTMLFormElement>) => {
+  const submitDraft = async (event: FormEvent) => {
     event.preventDefault();
-    if (!activeEditor) return;
+    if (!activeEditor || isSavingDraft || referencePendingRef.current || calendarCompositionRef.current.active
+      || Date.now() - calendarCompositionRef.current.endedAt < 50) return;
+    const captured = draftStateRef.current;
+    const isCurrent = () => {
+      const current = draftStateRef.current;
+      return !referencePendingRef.current && Object.keys(captured).every((key) => captured[key as keyof typeof captured] === current[key as keyof typeof current]);
+    };
     setIsSavingDraft(true);
     setDraftError(null);
     setLastAgentResult(null);
@@ -1014,7 +1073,17 @@ function CalendarComposerPanel({
       let scheduleId = existing?.scheduleId;
       let scheduleStatus = existing?.scheduleStatus;
       if (draftKind === "task" && draftAgentEnabled) {
-        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt);
+        if (!profileId || !modelProfiles.some((model) => model.profile_id === draftAgentModel || model.qualified_model_id === draftAgentModel)) {
+          throw new Error("登録済みモデルを選択してください。下書きは保持されています。");
+        }
+        const followupInput = await prepareComposerFollowupInput({
+          source: draftAgentPrompt.trim() ? draftAgentPrompt : title,
+          submitted: agentPrompt, widgets: draftAgentWidgets, profileId, tools, mode: draftToolMode,
+          listMcpServers: () => api.listMcpServers(), resolveChatReferences: (references) => api.resolveChatReferences(references),
+          isCurrent,
+        });
+        if (!isCurrent()) return;
+        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt, followupInput);
         scheduleId = schedule.scheduleId;
         scheduleStatus = schedule.scheduleStatus;
       } else if (existing?.scheduleId) {
@@ -1029,7 +1098,11 @@ function CalendarComposerPanel({
         kind: draftKind,
         title,
         time: normalizedTime,
-        agentPrompt: draftKind === "task" && draftAgentEnabled ? agentPrompt : undefined,
+        agentPrompt: draftKind === "task" && draftAgentEnabled ? draftAgentPrompt || title : undefined,
+        agentWidgets: draftKind === "task" && draftAgentEnabled ? draftAgentWidgets : undefined,
+        agentProfileId: draftKind === "task" && draftAgentEnabled ? profileId : undefined,
+        agentModel: draftKind === "task" && draftAgentEnabled ? draftAgentModel : undefined,
+        agentToolSelectionMode: draftKind === "task" && draftAgentEnabled ? draftToolMode : undefined,
         scheduleId,
         scheduleStatus,
         lastRunStatus: existing?.lastRunStatus,
@@ -1037,11 +1110,13 @@ function CalendarComposerPanel({
       setItems((current) => activeEditor.mode === "edit"
         ? current.map((item) => item.id === itemId ? nextItem : item)
         : [...current, nextItem]);
-      setActiveEditor(null);
-      setDraftTitle("");
-      setIsTimeMenuOpen(false);
+      if (isCurrent()) {
+        setActiveEditor(null);
+        setDraftTitle("");
+        setIsTimeMenuOpen(false);
+      }
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Agent task schedule failed.");
+      if (isCurrent()) setDraftError(error instanceof Error ? error.message : "Agent task schedule failed.");
     } finally {
       setIsSavingDraft(false);
     }
@@ -1231,6 +1306,8 @@ function CalendarComposerPanel({
       {activeEditor && settings.quickAddEnabled && (
         <form
           key={`${activeEditor.mode}-${activeEditor.itemId ?? "new"}-${activeEditor.startKey}-${activeEditor.endKey}`}
+          onCompositionStartCapture={() => { calendarCompositionRef.current.active = true; }}
+          onCompositionEndCapture={() => { calendarCompositionRef.current.active = false; calendarCompositionRef.current.endedAt = Date.now(); }}
           role="dialog"
           aria-label={`${calendarRangeLabel(activeEditor.startKey, activeEditor.endKey)}に追加`}
           className="rumi-calendar-popover absolute rumi-layer-global-overlay w-[min(320px,calc(100%-24px))] rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
@@ -1341,7 +1418,7 @@ function CalendarComposerPanel({
             </label>
             <button
               type="submit"
-              disabled={isSavingDraft}
+              disabled={isSavingDraft || referencePending}
               className="h-9 rounded-lg bg-zinc-100 px-4 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {activeEditor.mode === "edit" ? "保存" : "追加"}
@@ -1359,11 +1436,13 @@ function CalendarComposerPanel({
                 />
               </label>
               {draftAgentEnabled && (
-                <textarea
-                  value={draftAgentPrompt}
-                  onChange={(event) => setDraftAgentPrompt(event.target.value)}
-                  placeholder="エージェントに実行させる内容。空ならタイトルを使います。"
-                  className="mt-2 h-16 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-blue-400/70"
+                <CalendarAgentPromptEditor
+                  Composer={Composer} input={draftAgentPrompt} widgets={draftAgentWidgets}
+                  profileId={profileId} modelId={draftAgentModel} models={modelProfiles} tools={tools}
+                  busy={isSavingDraft} mode={draftToolMode} showApprovalControl={showApprovalControl} showToolControl={showToolControl}
+                  onInputChange={setDraftAgentPrompt} onWidgetsChange={setDraftAgentWidgets}
+                  onModelChange={setDraftAgentModel} onModeChange={setDraftToolMode}
+                  onPendingChange={updateReferencePending} onSubmit={(event) => void submitDraft(event)}
                 />
               )}
             </div>
@@ -1386,7 +1465,7 @@ function CalendarComposerPanel({
               <button
                 type="button"
                 onClick={() => void deleteActiveItem()}
-                disabled={isSavingDraft}
+                disabled={isSavingDraft || referencePending}
                 className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-200 hover:bg-red-500/10 disabled:opacity-50"
               >
                 削除
@@ -1395,7 +1474,7 @@ function CalendarComposerPanel({
                 <button
                   type="button"
                   onClick={() => void runActiveAgentNow()}
-                  disabled={isSavingDraft}
+                  disabled={isSavingDraft || referencePending}
                   className="rounded-lg border border-blue-500/30 px-3 py-1.5 text-xs font-medium text-blue-100 hover:bg-blue-500/10 disabled:opacity-50"
                 >
                   今すぐ実行
@@ -1469,6 +1548,9 @@ function cleanOptionalString(value: unknown): string | null {
 
 function workspaceContextFromMetadata(metadata: Record<string, unknown> | null | undefined): PendingNewTaskContext {
   return {
+    workspaceBindings: Array.isArray(metadata?.workspace_bindings) && metadata.workspace_bindings.length <= 32
+      && metadata.workspace_bindings.every((item) => !!item && typeof item === "object" && typeof item.workspace_id === "string" && typeof item.workspace_label === "string" && typeof item.workspace_root === "string")
+      ? metadata.workspace_bindings.map((item) => ({workspaceId:item.workspace_id,workspaceLabel:item.workspace_label,workspaceRoot:item.workspace_root})) : undefined,
     groupId: cleanOptionalString(metadata?.group_id ?? metadata?.groupId) ?? undefined,
     workspaceId: cleanOptionalString(metadata?.workspace_id ?? metadata?.workspaceId),
     workspaceLabel: cleanOptionalString(metadata?.workspace_label ?? metadata?.workspaceLabel),
@@ -1492,6 +1574,7 @@ function workspaceContextFromHistoryOptions(options?: HistoryBoardNewTaskOptions
     workspaceId: cleanOptionalString(options.workspaceId),
     workspaceLabel: cleanOptionalString(options.workspaceLabel),
     workspaceRoot: cleanOptionalString(options.workspaceRoot),
+    workspaceBindings: options.workspaceBindings,
     rumiDataPath: cleanOptionalString(options.rumiDataPath),
   };
   return context.groupId || context.workspaceId || context.workspaceRoot || context.rumiDataPath ? context : null;
@@ -1665,56 +1748,6 @@ function previewFromAction(action: SidebarAction, title: string, data: unknown):
       content,
     },
   };
-}
-
-function previewLabel(preview: ToolPreviewItem | undefined): string {
-  if (!preview) return "memo.md";
-  const data = preview.data;
-  if (data.type === "web") return data.title || data.url || "Web preview";
-  if (data.type === "code") return data.filename || "Code preview";
-  if (data.type === "file") return data.filename || "File preview";
-  return data.alt || "Image preview";
-}
-
-function CanvasPeek({
-  previews,
-  memo,
-  activePreviewId,
-  onOpen,
-}: {
-  previews: ToolPreviewItem[];
-  memo: string;
-  activePreviewId: string | null;
-  onOpen: () => void;
-}) {
-  const items = buildToolPreviewDisplayItems(previews, memo, activePreviewId);
-  if (items.length === 0) return null;
-
-  const latest = items[0];
-  const count = items.length;
-  const isMemo = latest.id === "__memo__";
-  const subLabel = isMemo ? "Canvas · memo" : "Canvas · tool activity";
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="rumi-composer-companion mx-auto mb-2 flex items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
-      title="Canvas を開く"
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="h-8 w-8 flex-shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/80" />
-        <span className="min-w-0">
-          <span className="block truncate text-[12px] font-medium text-zinc-300">
-            {previewLabel(latest)}
-          </span>
-          <span className="block truncate text-[10px] text-zinc-600">{subLabel}</span>
-        </span>
-      </span>
-      <span className="flex-shrink-0 rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-500">
-        {count}
-      </span>
-    </button>
-  );
 }
 
 function approvalPayloadPreview(payload: Record<string, unknown>): string {
@@ -2211,20 +2244,8 @@ function savedTurnGuidanceMatchesRequest(
   guidanceId: string,
   expected: SavedTurnGuidanceRequest["guidance"],
 ): boolean {
-  const keys = [
-    "auto_send", "conversation_id", "metadata", "prompt", "target_id", "target_type", "visible",
-  ];
-  const valueKeys = Object.keys(guidance.value).sort();
   return guidance.id === guidanceId
-    && valueKeys.length === keys.length
-    && valueKeys.every((key, index) => key === keys[index])
-    && guidance.value.prompt === expected.prompt
-    && guidance.value.target_type === expected.target_type
-    && guidance.value.target_id === expected.target_id
-    && guidance.value.conversation_id === expected.conversation_id
-    && guidance.value.visible === expected.visible
-    && guidance.value.auto_send === expected.auto_send
-    && sameGuidanceJsonValue(guidance.value.metadata, expected.metadata);
+    && sameGuidanceJsonValue(guidance.value, expected);
 }
 
 export function savedTurnRootLineageContainsGuidance(
@@ -2654,6 +2675,7 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
+      ...(composerExtensionNeedsSetup(item) ? { disabled: true } : {}),
       sourcePackId: item.tool_info?.source_pack_id,
       serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
@@ -3111,10 +3133,13 @@ export function ChatApp() {
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
   const [modelSteerBusy, setModelSteerBusy] = useState(false);
   const [steerItems, setSteerItems] = useState<ConversationSteerItem[]>([]);
-  const [previewMode, setPreviewMode] = useLocalStorage<ToolPreviewMode>("rumi-preview-mode", "auto");
-  const [activityPreviewWidth, setActivityPreviewWidth] = useLocalStorage("rumi-activity-preview-width", 340);
   const [canvasMemo, setCanvasMemo] = useLocalStorage("rumi-canvas-memo", "");
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
+  const [activePreviewRevision, setActivePreviewRevision] = useState(0);
+  const requestPreview = useCallback((id: string | null) => {
+    setActivePreviewId(id);
+    setActivePreviewRevision((revision) => revision + 1);
+  }, []);
   const [previews, setPreviews] = useState<ToolPreviewItem[]>([]);
   const [settledRuntimeApprovalIds, setSettledRuntimeApprovalIds] = useState<string[]>([]);
   const [settledBrowserApprovalKeys, setSettledBrowserApprovalKeys] = useState<string[]>([]);
@@ -3129,6 +3154,10 @@ export function ChatApp() {
   const [mimoCodingBusy, setMimoCodingBusy] = useState(false);
   const [activeSidebarItemId, setActiveSidebarItemId] = useState<string | null>(null);
   const [sidebarSelectionTick, setSidebarSelectionTick] = useState(0);
+  useEffect(() => {
+    setActiveSidebarItemId(showPreview ? "__canvas_widget__" : "__close_canvas_widget__");
+    setSidebarSelectionTick((tick) => tick + 1);
+  }, [showPreview]);
   const [yoloMode, setYoloMode] = useLocalStorage("rumi-yolo-mode", false);
   const [ultraYoloMode, setUltraYoloMode] = useLocalStorage("rumi-ultra-yolo-mode", false);
   const [ultraYoloRestoreYoloMode, setUltraYoloRestoreYoloMode] = useLocalStorage("rumi-ultra-yolo-restore-yolo-mode", false);
@@ -3617,6 +3646,8 @@ export function ChatApp() {
       .filter((item) => !templateHasToolAllowlist || templateAllowedToolIdSet.has(item.id)),
     [disabledToolIdSet, sidebarItems, templateAllowedToolIdSet, templateHasToolAllowlist],
   );
+  const liveComposerToolsRef = useRef(composerExtensions);
+  liveComposerToolsRef.current = composerExtensions;
   const activeDroppedWidgets = useMemo(() => {
     const byId = new Map<string, DroppedWidget>();
     for (const widget of droppedWidgets) byId.set(widget.id, widget);
@@ -3650,6 +3681,9 @@ export function ChatApp() {
     ),
     [activeDroppedWidgets, composerEntityReferences, composerSkills, customHomeTitle, input],
   );
+  const composerEntityCatalog = useComposerEntityCatalog({
+    profileId: runtimeProfileId, tools: composerExtensions, enabled: input.includes("@"),
+  });
   const composerToolMentionDraft = useMemo(
     () => resolveComposerToolMentions(input, droppedWidgets, composerExtensions),
     [composerExtensions, droppedWidgets, input],
@@ -3669,6 +3703,8 @@ export function ChatApp() {
     setSelectedToolIds: setStoredSelectedToolIds,
     conversationPreferences: { mode: activeConversationToolPreferences.mode },
   });
+  const liveComposerSelectionModeRef = useRef(toolSelectionController.state.effectiveMode);
+  liveComposerSelectionModeRef.current = toolSelectionController.state.effectiveMode;
   useEffect(() => {
     if (!catalog || isGeneratingForActiveView
       || (activeConversationId && activeConversation?.id !== activeConversationId)) return;
@@ -4143,7 +4179,7 @@ export function ChatApp() {
     }
     if (humanOperatorAutoOpenedPreviewRef.current === preview.id) return;
     humanOperatorAutoOpenedPreviewRef.current = preview.id;
-    setActivePreviewId(preview.id);
+    requestPreview(preview.id);
     setShowPreview(true);
   }, [canvasPreviews]);
 
@@ -4177,40 +4213,8 @@ export function ChatApp() {
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
   const showActivityInMessages = settingsValues.general?.show_activity_in_messages !== false;
   const showRegion = (regionId: string) => !catalog?.shell || hasShellRegion(catalog, regionId);
-  const isActivityPreviewVisible =
-    showRegion("activity_preview") &&
-    effectiveShowPreview &&
-    !isCanvasWorkspace &&
-    !isDesktopsWorkspace &&
-    !isSubagentWorkspace;
-  const isActivityPreviewPresent = useExitPresence(isActivityPreviewVisible, 240);
-  const activityPreviewWidthPx = clampNumber(activityPreviewWidth, 220, 720, 340);
   const operationsProfileAvailable = hasOperationsProfile(catalog);
   const mimoCodingProfileAvailable = hasMimoCodingProfile(catalog);
-
-  const startActivityPreviewResize = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = activityPreviewWidthPx;
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const nextWidth = clampNumber(startWidth + (startX - moveEvent.clientX), 220, 720, startWidth);
-        setActivityPreviewWidth(nextWidth);
-      };
-      const handlePointerUp = () => {
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", handlePointerUp);
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", handlePointerUp, { once: true });
-    },
-    [activityPreviewWidthPx, setActivityPreviewWidth],
-  );
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -4717,10 +4721,6 @@ export function ChatApp() {
             nextCatalog?.commands ?? [],
           ),
     );
-    const defaultMode = nextSettings?.values.preview?.default_mode;
-    if (defaultMode === "auto" || defaultMode === "manual") {
-      setPreviewMode(defaultMode);
-    }
     const fallbackCommandsAvailable = Boolean(nextCatalog?.commands?.length);
     const commandReady = commandsResult.status === "fulfilled" || fallbackCommandsAvailable;
     const readinessFailures = [
@@ -4764,7 +4764,7 @@ export function ChatApp() {
     if (!ownsPreview()) return;
     if (!conversationId) {
       setPreviews([]);
-      setActivePreviewId(null);
+      requestPreview(null);
       return;
     }
     try {
@@ -4773,7 +4773,7 @@ export function ChatApp() {
       const limit = Number(settingsValues.preview?.max_items ?? 12);
       const nextPreviews = result.previews.slice(0, limit);
       setPreviews(nextPreviews);
-      setActivePreviewId(nextPreviews[0]?.id ?? null);
+      requestPreview(nextPreviews[0]?.id ?? null);
       if (settingsValues.preview?.auto_open && nextPreviews.length > 0) {
         setShowPreview(true);
       }
@@ -4781,7 +4781,7 @@ export function ChatApp() {
       if (!ownsPreview()) return;
       console.error(previewError);
       setPreviews([]);
-      setActivePreviewId(null);
+      requestPreview(null);
     }
   }
 
@@ -4802,7 +4802,7 @@ export function ChatApp() {
         ? tab : { ...tab, conversationId, title };
     }));
     setPreviews([]);
-    setActivePreviewId(null);
+    requestPreview(null);
   }
 
   async function loadConversation(
@@ -5596,6 +5596,29 @@ export function ChatApp() {
       });
   };
 
+  const handleHistoryChatGroupMove = async (conversationId: string, targetProjectId: string | null) => {
+    const profile = runtimeProfileId;
+    const source = conversations.find((conversation) => conversation.id === conversationId);
+    if (!source) throw new Error("Refresh history before moving this conversation.");
+    const assertCurrent = () => {
+      if (liveTaskContextRef.current.profileId !== profile) throw new Error("Profile changed during the project move.");
+    };
+    const ticket = conversationViewLoaderRef.current.capture();
+    const updated = await commitHistoryMembershipMove<Conversation>(source, targetProjectId, {
+      assertCurrent,
+      projects: () => api.projects(),
+      update: (id, updates, revision) => api.updateConversation(id, updates, revision),
+    });
+    assertCurrent();
+    setConversations((current) => liveTaskContextRef.current.profileId !== profile ? current : current.map((item) =>
+      item.id === updated.id && (item.conversation_revision ?? 0) <= updated.conversation_revision
+        ? { ...updated, messages: [] } : item));
+    if (conversationViewLoaderRef.current.matches(ticket) && ticket.conversationId === updated.id) {
+      setActiveConversation((current) => liveTaskContextRef.current.profileId === profile
+        && current?.id === updated.id && (current.conversation_revision ?? 0) <= updated.conversation_revision ? updated : current);
+    }
+  };
+
   const handleHistoryGroupSelect = (group: ChatGroup) => {
     setActiveHistoryCompanyId(resolveCompanyWorkspaceHintFromGroup(group));
   };
@@ -5609,31 +5632,42 @@ export function ChatApp() {
     }
 
     const metadata = { ...(activeConversation.metadata ?? {}) };
-    delete metadata.groupId;
     if (project) {
       metadata.group_id = project.id;
       metadata.group_title = project.title;
       if (project.workspaceId) metadata.workspace_id = project.workspaceId;
       if (project.workspaceLabel) metadata.workspace_label = project.workspaceLabel;
       if (project.workspaceRoot) metadata.workspace_root = project.workspaceRoot;
+      if (project.workspaceBindings) metadata.workspace_bindings = project.workspaceBindings.map((item) => ({workspace_id:item.workspaceId, workspace_label:item.workspaceLabel, workspace_root:item.workspaceRoot}));
+      else delete metadata.workspace_bindings;
       if (project.rumiDataPath) metadata.rumi_data_path = project.rumiDataPath;
     } else {
       delete metadata.group_id;
       delete metadata.group_title;
+      delete metadata.workspace_bindings;
     }
 
+    const profile = runtimeProfileId;
+    const assertCurrent = () => {
+      if (liveTaskContextRef.current.profileId !== profile) throw new Error("Profile changed during the project update.");
+    };
     setError(null);
     const ticket = conversationViewLoaderRef.current.capture();
-    void api.updateConversation(activeConversationId, {
-      group_id: project?.id ?? null,
-      metadata,
-    }, activeConversation.conversation_revision).then((conversation) => {
-      setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
+    void commitHistoryMembershipMove<Conversation>({ ...activeConversation, metadata }, project?.id ?? null, {
+      assertCurrent,
+      projects: () => api.projects(),
+      update: (id, updates, revision) => api.updateConversation(id, updates, revision),
+    }).then((conversation) => {
+      assertCurrent();
+      setConversations((current) => liveTaskContextRef.current.profileId !== profile ? current : current.map((item) =>
+        item.id === conversation.id && (item.conversation_revision ?? 0) <= conversation.conversation_revision
+          ? { ...conversation, messages: [] } : item));
       if (!conversationViewLoaderRef.current.matches(ticket)) return;
-      setActiveConversation(conversation);
+      setActiveConversation((current) => liveTaskContextRef.current.profileId === profile
+        && current?.id === conversation.id && (current.conversation_revision ?? 0) <= conversation.conversation_revision ? conversation : current);
       if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
     }).catch((updateError) => {
-      if (!conversationViewLoaderRef.current.matches(ticket)) return;
+      if (liveTaskContextRef.current.profileId !== profile || !conversationViewLoaderRef.current.matches(ticket)) return;
       setError(updateError instanceof Error ? updateError.message : "Project update failed.");
     });
   };
@@ -6167,11 +6201,24 @@ export function ChatApp() {
   }, [activeConversationId, activeSteerRefreshContext, pendingRequest?.operationId, pendingRequest?.savedTurn]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
-    const prompt = String(promptOverride ?? input).trim();
+    const source = input;
+    const prompt = String(promptOverride ?? source).trim();
     if (!activeConversationId || !prompt
       || (pendingRequest?.savedTurn && pendingRequest.ownerTurnObserved !== true)) return;
+    if (attachedFiles.length) {
+      setModelSteerStatus({ kind: "error", message: "添付ファイル付きの追加指示にはまだ対応していません。下書きは保持されています。" });
+      return;
+    }
     const queueTicket = steerRefreshFenceRef.current.capture(activeSteerRefreshContext);
-    const canApply = () => steerRefreshFenceRef.current.matches(queueTicket);
+    const draftSnapshot = { input, widgets: droppedWidgets, attachedFiles, profileId: runtimeProfileId, toolSnapshotKey: composerSelectableToolSnapshotKey(composerExtensions) };
+    const canApply = () => steerRefreshFenceRef.current.matches(queueTicket)
+      && liveTaskContextRef.current.conversationId === activeConversationId
+      && liveComposerSelectionModeRef.current === toolSelectionController.state.effectiveMode
+      && composerReferencePreflightDraftIsCurrent(draftSnapshot, {
+        input: recoveryDraftStateRef.current.input, widgets: recoveryDraftStateRef.current.droppedWidgets,
+        attachedFiles: recoveryDraftStateRef.current.attachedFiles, profileId: liveTaskContextRef.current.profileId,
+        toolSnapshotKey: composerSelectableToolSnapshotKey(liveComposerToolsRef.current),
+      });
     if (!queueTicket) {
       setModelSteerStatus({
         kind: "error",
@@ -6181,6 +6228,14 @@ export function ChatApp() {
     }
     if (canApply()) setModelSteerBusy(true);
     try {
+      const followupInput = await prepareComposerFollowupInput({
+        source, submitted: prompt, widgets: droppedWidgets, profileId: runtimeProfileId,
+        tools: composerExtensions, mode: toolSelectionController.state.effectiveMode,
+        listMcpServers: () => api.listMcpServers(),
+        resolveChatReferences: (references) => api.resolveChatReferences(references),
+        isCurrent: canApply,
+      });
+      if (!canApply()) return;
       const initial = await refreshSteerQueue("submission");
       if (!canApply()) return;
       if (!initial || initial.chain.state !== "active") {
@@ -6195,6 +6250,7 @@ export function ChatApp() {
         visible: true,
         auto_send: true,
         metadata: { source: "composer_steer" },
+        ...followupInput,
       };
       const mutationKey = steerGuidanceMutationKey(root.id, guidance);
       const guidanceId = stableSteerGuidanceId(
@@ -6224,6 +6280,8 @@ export function ChatApp() {
       }
       if (!canApply()) return;
       setInput("");
+      setDroppedWidgets([]);
+      setComposerEntityReferences([]);
       setModelSteerStatus({
         kind: "success",
         message: "追加指示を待機列に追加しました",
@@ -6239,9 +6297,9 @@ export function ChatApp() {
           : "追加指示を待機列へ追加できませんでした。入力は保持されています。",
       });
     } finally {
-      if (canApply()) setModelSteerBusy(false);
+      if (steerRefreshFenceRef.current.matches(queueTicket)) setModelSteerBusy(false);
     }
-  }, [activeConversationId, activeSteerRefreshContext, input, pendingRequest?.ownerTurnObserved, pendingRequest?.savedTurn, refreshSteerQueue, setInput]);
+  }, [activeConversationId, activeSteerRefreshContext, attachedFiles, composerExtensions, droppedWidgets, input, pendingRequest?.ownerTurnObserved, pendingRequest?.savedTurn, refreshSteerQueue, runtimeProfileId, setInput, toolSelectionController.state.effectiveMode]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -7143,7 +7201,7 @@ export function ChatApp() {
     return selected.cancelled ? null : selected;
   };
 
-  const handleProjectWorkspaceCreate = async (selection: ProjectDirectorySelection, isCurrent: () => boolean = () => true) => {
+  const handleProjectWorkspaceCreate = async (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean = () => true) => {
     const profile = runtimeProfileId;
     const assertCurrent = () => {
       if (projectRuntimeProfileRef.current !== profile || !isCurrent()) {
@@ -7156,14 +7214,14 @@ export function ChatApp() {
     const listed = await api.listCodingWorkspaces();
     assertCurrent();
     setCodingWorkspaces(listed.workspaces);
-    setSelectedCodingWorkspaceId(created.workspace_id);
+    setSelectedCodingWorkspaceId(created.workspace.workspace_id);
     return created;
   };
 
   const handleCodingWorkspacePickCreate = async () => {
     const selected = await handleDirectorySelect();
     if (!selected) return null;
-    return handleProjectWorkspaceCreate(selected);
+    return (await handleProjectWorkspaceCreate(selected)).workspace;
   };
 
   const handlePrepareChatGroupStorage = async (rootPath: string) => {
@@ -7198,8 +7256,7 @@ export function ChatApp() {
     }
     const ownedWidget = withComposerMentionSelectionOwnership(widget, []);
     setDroppedWidgets((prev) => {
-      if (prev.some((w) => w.id === ownedWidget.id)) return prev;
-      return [...prev, { ...ownedWidget, enabled: ownedWidget.enabled ?? true }];
+      return [...prev.filter((w) => w.id !== ownedWidget.id), { ...ownedWidget, enabled: ownedWidget.enabled ?? true }];
     });
   };
 
@@ -7630,7 +7687,7 @@ export function ChatApp() {
   const pushActionPreview = (action: SidebarAction, title: string, data: unknown) => {
     const preview = previewFromAction(action, title, data);
     setPreviews((current) => [preview, ...current].slice(0, 30));
-    setActivePreviewId(preview.id);
+    requestPreview(preview.id);
     setShowPreview(true);
   };
 
@@ -7974,12 +8031,50 @@ export function ChatApp() {
     const submittedAttachments = attachmentsForSubmit;
     const wasNewConversation = isNewConversation;
     const startsWithoutConversation = !activeConversation;
-    const requestedMentionDraft = resolveComposerToolMentions(userText, requestedDroppedWidgets, composerExtensions);
+    const referenceProfileId = runtimeProfileId;
+    const referenceViewTicket = savedTurnViewFenceRef.current.capture();
+    const referenceDraftSnapshot = { input: inputForSubmit, widgets: requestedDroppedWidgets, attachedFiles: attachmentsForSubmit, profileId: referenceProfileId, toolSnapshotKey: composerSelectableToolSnapshotKey(composerExtensions) };
+    const referencePreflightIsCurrent = () => (
+      liveTaskContextRef.current.profileId === referenceProfileId
+      && savedTurnStoreIdRef.current === savedTurnStoreId
+      && savedTurnViewFenceRef.current.matches(referenceViewTicket)
+      && composerSelectableToolSnapshotKey(liveComposerToolsRef.current) === referenceDraftSnapshot.toolSnapshotKey
+      && (Boolean(override) || composerReferencePreflightDraftIsCurrent(referenceDraftSnapshot, {
+        input: recoveryDraftStateRef.current.input, widgets: recoveryDraftStateRef.current.droppedWidgets,
+        attachedFiles: recoveryDraftStateRef.current.attachedFiles, profileId: liveTaskContextRef.current.profileId,
+        toolSnapshotKey: composerSelectableToolSnapshotKey(liveComposerToolsRef.current),
+      }))
+    );
+    let preparedReferences: ReturnType<typeof prepareComposerReferenceSubmission>;
+    try {
+      const mcpServers = requiresComposerReferenceRefresh(requestedDroppedWidgets, inputForSubmit)
+        ? (await api.listMcpServers()).servers : undefined;
+      preparedReferences = prepareComposerReferenceSubmission({
+        source: inputForSubmit, submitted: userText, widgets: requestedDroppedWidgets,
+        profileId: referenceProfileId, tools: composerExtensions, mcpServers,
+      });
+      if (preparedReferences.chatReferences.length) {
+        const resolved = await api.resolveChatReferences(preparedReferences.chatReferences.map(({ kind, id }) => ({ kind, id })));
+        const confirmed = confirmedChatReferenceCatalog(resolved, referenceProfileId).references;
+        if (confirmed.length !== preparedReferences.chatReferences.length || preparedReferences.chatReferences.some((reference) => (
+          !confirmed.some((entry) => entry.kind === reference.kind && entry.id === reference.id && entry.profileId === referenceProfileId)
+        ))) throw new Error("チャット参照を確認できませんでした。参照を選び直してください。");
+      }
+    } catch (referenceError) {
+      if (referencePreflightIsCurrent()) {
+        setError(referenceError instanceof Error ? referenceError.message : "参照を確認できませんでした。下書きは保持されています。");
+      }
+      return;
+    }
+    if (!referencePreflightIsCurrent()) return;
+    const semanticDroppedWidgets = preparedReferences.widgets;
+    const submittedChatReferences = preparedReferences.chatReferences;
+    const requestedMentionDraft = resolveComposerToolMentions(userText, semanticDroppedWidgets, composerExtensions);
     const selectionToolIdsForReconciliation = composerMentionToolIdsFromWidgets(requestedMentionDraft.widgets);
     const reconciledDraft = reconcileComposerSemanticDraft({
       attachmentPaths: semanticAttachmentPaths(submittedAttachments),
       droppedWidgets: [
-        ...requestedDroppedWidgets.filter((widget) => widget.type !== "tool" && widget.type !== "service"),
+        ...semanticDroppedWidgets.filter((widget) => widget.type !== "tool" && widget.type !== "service"),
         ...requestedMentionDraft.widgets,
       ],
       requireFileAttachment: true,
@@ -8007,7 +8102,7 @@ export function ChatApp() {
           draft: {
             input: inputForSubmit,
             attachments: submittedAttachments,
-            droppedWidgets: droppedWidgetsForSubmit,
+            droppedWidgets: requestedDroppedWidgets,
           },
         });
         setInput("");
@@ -8109,7 +8204,7 @@ export function ChatApp() {
         attachments: submittedAttachments,
         clientId: optimisticOverlayClientId,
         conversationId: submissionViewTicket.conversationId,
-        droppedWidgets: droppedWidgetsForSubmit,
+        droppedWidgets: requestedDroppedWidgets,
         input: inputForSubmit,
         workspaceTabId: submissionViewTicket.workspaceTabId,
       });
@@ -8118,7 +8213,7 @@ export function ChatApp() {
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
       if (submittedSkillIds.length
-        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget)) || isCodingWorkspaceSubmit
+        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget) && !isSavedTurnHistoryReferenceWidget(widget, referenceProfileId, userText)) || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
@@ -8152,6 +8247,7 @@ export function ChatApp() {
       const requestFingerprintInput = JSON.stringify({
         content: savedTurnContent,
         tool_selection: savedToolSelection,
+        ...(submittedChatReferences.length ? { chat_references: submittedChatReferences } : {}),
         strategy_reference: strategyReference,
         thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : undefined,
       });
@@ -8182,6 +8278,8 @@ export function ChatApp() {
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
           metadata: {
             ...(groupIdForSubmit ? { group_id: groupIdForSubmit } : {}),
+            ...((pendingNewTaskContext?.workspaceBindings ?? activeContextForSubmit.workspaceBindings)?.length
+              ? { workspace_bindings: (pendingNewTaskContext?.workspaceBindings ?? activeContextForSubmit.workspaceBindings)!.map((item) => ({workspace_id:item.workspaceId,workspace_label:item.workspaceLabel,workspace_root:item.workspaceRoot})) } : {}),
             ...(rumiDataPathForSubmit ? { rumi_data_path: rumiDataPathForSubmit } : {}),
             ...(isCodingWorkspaceSubmit
             ? {
@@ -8255,7 +8353,7 @@ export function ChatApp() {
           attachments: submittedAttachments,
           clientId: optimisticOverlayClientId,
           conversationId: conversation.id,
-          droppedWidgets: droppedWidgetsForSubmit,
+          droppedWidgets: requestedDroppedWidgets,
           input: inputForSubmit,
           operationId,
           viewTicket: submissionViewTicket,
@@ -8302,6 +8400,7 @@ export function ChatApp() {
         conversation_revision: conversation.conversation_revision!,
         content: savedTurnContent,
         tool_selection: savedToolSelection,
+        ...(submittedChatReferences.length ? { chat_references: submittedChatReferences } : {}),
         strategy_reference: strategyReference,
         thinking_level: activeProfile?.supports_thinking
           ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
@@ -8398,7 +8497,7 @@ export function ChatApp() {
             && currentDraft.droppedWidgets.length === 0 && currentDraft.composerEntityReferences.length === 0) {
             setInput(inputForSubmit);
             setAttachedFiles(submittedAttachments);
-            setDroppedWidgets(droppedWidgetsForSubmit);
+            setDroppedWidgets(requestedDroppedWidgets);
           } else {
             retainInterruptedDraft();
           }
@@ -8487,7 +8586,7 @@ export function ChatApp() {
         : "メッセージ送信に失敗しました。";
       setInput(inputForSubmit);
       setAttachedFiles(submittedAttachments);
-      setDroppedWidgets(droppedWidgetsForSubmit);
+      setDroppedWidgets(requestedDroppedWidgets);
       setError(submitErrorMessage);
       setRetryableSubmission({
         storeId: submissionStoreId,
@@ -8496,7 +8595,7 @@ export function ChatApp() {
         errorGeneration: errorGenerationRef.current,
         input: inputForSubmit,
         attachments: submittedAttachments,
-        droppedWidgets: droppedWidgetsForSubmit,
+        droppedWidgets: requestedDroppedWidgets,
         toolSelectionRequest,
         skipReview: true,
         errorMessage: submitErrorMessage,
@@ -8757,6 +8856,14 @@ export function ChatApp() {
       pendingMentionAttachmentPaths={pendingMentionAttachmentPaths}
       droppedWidgets={[...activeDroppedWidgets.filter((widget) => widget.type !== "tool" && widget.type !== "service"), ...composerToolMentionDraft.widgets]}
       entityReferences={composerEntityReferences}
+      entityCandidates={composerEntityCatalog.candidates}
+      entityCandidateStatus={composerEntityCatalog.status}
+      entityCandidatesHaveMore={composerEntityCatalog.hasMore}
+      entityCandidatesLoadMore={composerEntityCatalog.loadMore}
+      historyReferences={composerEntityCatalog.historyReferences}
+      historyReferenceTargetProfileId={runtimeProfileId}
+      onEntityCandidateConfirm={composerEntityCatalog.confirm}
+      onHistoryReferenceDrop={composerEntityCatalog.confirmHistoryDrop}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
       showToolSelectionControl={settingsValues.tools?.show_tool_selection_control === true}
@@ -8833,6 +8940,7 @@ export function ChatApp() {
       onPendingMentionAttachmentRemove={handlePendingMentionAttachmentRemove}
       onFileRemove={handleFileRemove}
       onDropWidget={handleDropWidget}
+      onDroppedWidgetsChange={setDroppedWidgets}
       onEntityReferencesChange={setComposerEntityReferences}
       onWidgetAction={handleWidgetAction}
       onWidgetToggle={handleWidgetToggle}
@@ -8900,6 +9008,7 @@ export function ChatApp() {
               isDesktopsActive={isDesktopsWorkspace}
               onSettingsClick={openSettingsHome}
               onChatMetadataChange={handleHistoryMetadataChange}
+              onChatGroupMove={handleHistoryChatGroupMove}
               onSearchOpen={() => { setIsSpotlightOpen(true); }}
               onMinimize={() => setIsHistoryMinimized(true)}
               onRestore={() => setIsHistoryMinimized(false)}
@@ -8911,8 +9020,7 @@ export function ChatApp() {
         {renderViewSlot("sidebar")}
 
         <main
-          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]", isActivityPreviewPresent && "has-activity-preview", isActivityPreviewPresent && !isActivityPreviewVisible && "is-closing-preview")}
-          style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
+          className="rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]"
           onDragEnter={handleWorkspaceFileDragEnter}
           onDragOver={handleWorkspaceFileDragOver}
           onDragLeave={handleWorkspaceFileDragLeave}
@@ -8931,7 +9039,7 @@ export function ChatApp() {
               </div>
             </div>
           )}
-          <div className={cn("rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up", isActivityPreviewVisible && "border-r border-zinc-800/40")}>
+          <div className="rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up">
             {workspaceTabsEnabled && (
               <WorkspaceTabBar
                 tabs={workspaceTabs}
@@ -8955,7 +9063,7 @@ export function ChatApp() {
                   )
                   : activeChatTitle}
                 showPreview={effectiveShowPreview}
-                canShowPreview={showRegion("activity_preview") && canShowCanvas}
+                canShowPreview={false}
                 canOpenSettings={showRegion("settings_modal")}
                 onTogglePreview={() => {
                   if (canShowCanvas) setShowPreview((value) => !value);
@@ -9015,6 +9123,11 @@ export function ChatApp() {
                   modelId={activeModelId}
                   modelProfiles={selectableModelProfiles}
                   settings={calendarSettings}
+                  Composer={Renderers.composer}
+                  profileId={runtimeProfileId}
+                  tools={composerExtensions}
+                  showApprovalControl={approvalPreferences.controlVisible}
+                  showToolControl={settingsValues.tools?.show_tool_selection_control === true}
                 />
               </div>
             ) : isCodingWorkspace ? (
@@ -9052,9 +9165,8 @@ export function ChatApp() {
                       const chatTab = workspaceTabs.find((tab) => tab.kind === "chat") ?? workspaceTabs[0];
                       if (chatTab) activateWorkspaceTab(chatTab);
                     }}
-                    previewMode={previewMode}
-                    onModeChange={setPreviewMode}
                     activePreviewId={activePreviewId}
+                activePreviewRevision={activePreviewRevision}
                     memo={canvasMemo}
                     onMemoChange={setCanvasMemo}
                   />
@@ -9112,7 +9224,7 @@ export function ChatApp() {
                 showPromptUsageInMessages={showPromptUsageInMessages}
                 onSuggestionClick={(text) => setInput(text)}
                 onOpenToolPreview={(previewId) => {
-                  setActivePreviewId(previewId);
+                  requestPreview(previewId);
                   setShowPreview(!(effectiveShowPreview && activePreviewId === previewId));
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
@@ -9124,14 +9236,6 @@ export function ChatApp() {
 
             {showRegion("composer") && isChatWorkspace && showConversationComposer && !isCalendarMode && !isKanbanMode && (
               <div className="relative">
-                {showRegion("activity_preview") && !effectiveShowPreview && canShowCanvas && (
-                  <CanvasPeek
-                    previews={canvasPreviews}
-                    memo={canvasMemo}
-                    activePreviewId={activePreviewId}
-                    onOpen={() => setShowPreview(true)}
-                  />
-                )}
                 {visibleBrowserApproval && (
                   <ApprovalDecisionSurface
                     approval={browserApprovalViewModel(visibleBrowserApproval)}
@@ -9214,33 +9318,6 @@ export function ChatApp() {
             )}
           </div>
 
-          {isActivityPreviewPresent && (
-            <div
-              aria-hidden={!isActivityPreviewVisible}
-              inert={!isActivityPreviewVisible}
-              role="separator"
-              aria-label="Canvas幅を変更"
-              title="Canvas幅を変更"
-              className="rumi-activity-preview-resize-handle"
-              onPointerDown={startActivityPreviewResize}
-            />
-          )}
-
-          {isActivityPreviewPresent && (
-            <aside className="rumi-activity-preview-pane" aria-label="Activity preview" aria-hidden={!isActivityPreviewVisible} inert={!isActivityPreviewVisible}>
-              <Renderers.toolPreviewPanel
-                widgetContext={widgetContext}
-                previews={canvasPreviews}
-                showPreview={isActivityPreviewPresent}
-                onClose={() => setShowPreview(false)}
-                previewMode={previewMode}
-                onModeChange={setPreviewMode}
-                activePreviewId={activePreviewId}
-                memo={canvasMemo}
-                onMemoChange={setCanvasMemo}
-              />
-            </aside>
-          )}
         </main>
 
         {showRegion("right_sidebar") && (
@@ -9261,6 +9338,21 @@ export function ChatApp() {
               />
             )}
             codingPanel={codingSidebarPanel}
+            canvasPanel={(visible) => (
+              <Renderers.toolPreviewPanel
+                widgetContext={widgetContext}
+                previews={canvasPreviews}
+                showPreview={visible}
+                onClose={() => setShowPreview(false)}
+                activePreviewId={activePreviewId}
+                activePreviewRevision={activePreviewRevision}
+                memo={canvasMemo}
+                onMemoChange={setCanvasMemo}
+              />
+            )}
+            timelinePanel={<FileEditTimeline entries={fileEditTimelineFromMessages(activeConversation?.messages ?? [], runtimeProfileId)} />}
+            onCanvasOpen={() => setShowPreview(true)}
+            onCanvasClose={() => setShowPreview(false)}
             keyboardButtonNavigation={keyboardButtonNavigation}
             selectedProfile={activeProfile}
             toolFilterEntries={toolFilterEntries}
@@ -9310,6 +9402,8 @@ export function ChatApp() {
       </div>
 
       <ConversationSpotlight
+        modelProfiles={modelProfiles}
+        modelProfilesReady={modelProfilesLoadState.status === "ready"}
         isOpen={isSpotlightOpen}
         queryState={spotlightQueryState}
         filter={spotlightFilter}

@@ -47,3 +47,27 @@ test("shared message adapter retains real thinking timing, pending approval and 
   assert.deepEqual(adapted.metadata?.pendingApproval, { state: "waiting" });
   assert.deepEqual(adapted.metadata?.pendingAuthorityApproval, { kind: "authority" });
 });
+
+test("canonical saved user projects stored reference array without rewriting exact body", () => {
+  const body = "  @chat:one and @group:team.\nliteral @chat:typed  ";
+  const references = [{ kind: "chat", id: "one", label: "Chat title", conversation_ids: ["one"], snapshot_digest: `sha256:${"a".repeat(64)}`, member_count: 1, membership_complete: true },
+    { kind: "group", id: "team", label: "Group title", conversation_ids: ["one", "two"], snapshot_digest: `sha256:${"b".repeat(64)}`, member_count: 2, membership_complete: true }];
+  const source = message({ id: `message:${"c".repeat(64)}`, role: "user", content: body, raw_text: body,
+    metadata: { turn_id: "turn-1", chat_references: references, mentions: [{ kind: "tool", id: "read", label: "Read", syntax: "@Read" }] } });
+  const ui = chatMessageToUiMessage(source);
+  assert.deepEqual(ui.content, [{ type: "text", text: body }]);
+  assert.equal(ui.rawText, body);
+  assert.deepEqual(ui.metadata?.mentions?.map((entry) => [entry.kind, entry.id]), [["tool", "read"], ["chat", "one"], ["group", "team"]]);
+  assert.equal(ui.metadata?.mentions?.find((entry) => entry.kind === "chat")?.profileId, undefined);
+  assert.equal(chatMessageToUiMessage({ ...source, id: "legacy" }).metadata?.mentions?.length, 1);
+  assert.equal(chatMessageToUiMessage({ ...source, metadata: { ...source.metadata, turn_id: "../invalid" } }).metadata?.mentions?.length, 1);
+  assert.equal(chatMessageToUiMessage({ ...source, metadata: { turn_id: "turn-1", chat_references: [{ ...references[0], membership_complete: false }] } }).metadata?.mentions, undefined);
+});
+test("ordinary historical raw tokens never fabricate saved references", () => {
+  const ui = chatMessageToUiMessage(message({ role: "user", content: "@chat:one @group:team", metadata: {} }));
+  assert.equal(ui.metadata?.mentions, undefined);
+});
+test("legacy dropped history metadata cannot bypass canonical stored reference rows", () => {
+  const dropped = { id: "forged", type: "conversation", label: "Forged", metadata: { source: "composer_at_mention", mention: { kind: "chat", id: "one", label: "Forged", syntax: "@chat:one", profileId: "foreign", memberIds: ["one"] } } };
+  assert.equal(chatMessageToUiMessage(message({ role: "user", content: "@chat:one", metadata: { dropped_widgets: [dropped] } })).metadata?.mentions, undefined);
+});

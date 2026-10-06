@@ -529,6 +529,48 @@ test("saved turn guidance rejects malformed or oversized input before sending", 
   assert.equal(calls, 0);
 });
 
+test("guidance carries bounded references and tool selection and requires their exact queue receipt", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const guidance = {
+    prompt: "Use @chat:one", target_type: "conversation" as const, target_id: "conversation-1", conversation_id: "conversation-1",
+    visible: true, auto_send: true, metadata: { source: "composer_steer" },
+    chat_references: [{ kind: "chat" as const, profile_id: "local", id: "one" }],
+    tool_selection: { mode: "manual" as const, include: [{ kind: "tool" as const, id: "pack/tool" }], scope: "turn" as const, must_use: true },
+  };
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "running", revision: 2,
+    guidance: [{ id: "guidance-1", status: "queued", value: guidance }] };
+  globalThis.fetch = async (_url, init) => {
+    assert.deepEqual(JSON.parse(String(init?.body)).guidance, guidance);
+    return new Response(JSON.stringify({ success: true, data: turn }));
+  };
+  await api.steerSavedTurn({ turn_id: "turn-1", expected_revision: 1, guidance_id: "guidance-1", guidance });
+  assert.equal(savedTurnRootLineageContainsGuidance([turn], "conversation-1", "turn-1", "guidance-1", guidance), true);
+  for (const changed of [{ ...guidance, chat_references: [] }, { ...guidance, tool_selection: { mode: "none" as const } }]) {
+    assert.equal(savedTurnRootLineageContainsGuidance([{ ...turn, guidance: [{ ...turn.guidance[0], value: changed }] }],
+      "conversation-1", "turn-1", "guidance-1", guidance), false);
+  }
+});
+
+test("guidance rejects invented reference authority and invalid tool fields before any request", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("unexpected request"); };
+  const guidance = { prompt: "Continue", target_type: "conversation" as const, target_id: "conversation-1", conversation_id: "conversation-1",
+    visible: true, auto_send: true, metadata: {} };
+  for (const extra of [
+    { chat_references: [{ kind: "chat", profile_id: "local", id: "one", approved: true }] },
+    { chat_references: undefined }, { chat_references: [{ kind: "chat", profile_id: "local", id: "../escape" }] },
+    { resolved_chat_references: { references: [] } }, { tool_selection: { mode: "manual", strict: true } },
+    { tool_selection: { mode: "none", include: ["pack/tool"] } },
+  ]) {
+    await assert.rejects(api.steerSavedTurn({ turn_id: "turn-1", expected_revision: 1, guidance_id: "guidance-1",
+      guidance: { ...guidance, ...extra } } as never), /invalid/);
+  }
+  assert.equal(calls, 0);
+});
+
 test("uncertain guidance retries retain one stable ID for the exact pending mutation", () => {
   const ids = new Map<string, string>();
   const guidance = {
@@ -4975,4 +5017,37 @@ test("canonical catalog readiness overrides legacy enabled badges before compose
   assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
   assert.equal(catalog.sidebar.items.find((item) => item.id === "retired-browser")?.badge, "Unavailable");
   assert.equal(catalog.sidebar.items.find((item) => item.id === "calculator")?.label, "計算");
+});
+
+test("saved turn transports only lean bounded history references", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const input = { turn_id: "history-turn", conversation_id: "conversation-1", conversation_revision: 1, content: "hello" };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.equal(init?.method, "POST");
+    const body = JSON.parse(String(init?.body));
+    assert.deepEqual(Object.keys(body), ["request"]);
+    assert.deepEqual(body.request.chat_references, submitted);
+    return new Response(JSON.stringify({ success: true, data: { status: "completed", turn: { id: input.turn_id, conversation_id: input.conversation_id } } }));
+  };
+  let submitted: SavedTurnRequest["chat_references"] = [];
+  await api.startSavedTurn({ ...input, chat_references: submitted });
+  submitted = [{ kind: "chat", profile_id: "local", id: "chat-1" }, { kind: "group", profile_id: "local", id: `tag:${"a".repeat(252)}` }];
+  await api.startSavedTurn({ ...input, chat_references: submitted });
+  submitted = Array.from({ length: 16 }, (_, index) => ({ kind: "chat" as const, profile_id: "local", id: `chat-${index}` }));
+  await api.startSavedTurn({ ...input, chat_references: submitted });
+  assert.equal(calls, 3);
+  const valid = { kind: "chat", profile_id: "local", id: "chat-1" };
+  const invalid = [null, {}, [valid, valid], Array.from({ length: 17 }, (_, index) => ({ ...valid, id: `chat-${index}` })),
+    [{ ...valid, label: "Client label" }], [{ ...valid, approved: true }], [{ ...valid, member_ids: ["other"] }],
+    [{ ...valid, kind: "mcp" }], [{ ...valid, id: "a".repeat(257) }], [{ ...valid, id: "../escape" }],
+    ...["../escape", "a/b", "a\\b", " local", "local\n", "a\u202e", "あ".repeat(43)].map((profile_id) => [{ ...valid, profile_id }])];
+  for (const chat_references of invalid) {
+    await assert.rejects(api.startSavedTurn({ ...input, chat_references } as never), /invalid|unsupported/);
+  }
+  await assert.rejects(api.startSavedTurn({ ...input, chat_references: [valid], approved: true } as never), /invalid|unsupported/);
+  assert.equal(calls, 3);
 });

@@ -43,3 +43,23 @@ test("connection metadata is retained without treating a model publisher as its 
   assert.equal(savedModelProfileForOption([routed], { ...option,
     provider_id: "openrouter", model_id: "google/gemma-4", connection_id: "opaque.saved.openrouter" }), routed);
 });
+
+test("registry provider_connection_id alias preserves the exact opaque connection", () => {
+  const routed = { ...profile, provider_id: "openrouter", model_id: "google/gemma-4",
+    metadata: { provider_connection_id: "opaque.registry.connection" } };
+  assert.equal(modelProfileConnectionId(routed), "opaque.registry.connection");
+  assert.equal(savedModelProfileForOption([routed], { ...option,
+    provider_id: "openrouter", model_id: "google/gemma-4", connection_id: "opaque.registry.connection" }), routed);
+});
+
+test("connection aliases have stable priority and skip empty or invalid values", () => {
+  assert.equal(modelProfileConnectionId({ ...profile, metadata: {
+    connection_id: "first", provider_instance_id: "second", provider_connection_id: "third",
+  } }), "first");
+  assert.equal(modelProfileConnectionId({ ...profile, metadata: {
+    connection_id: " ", provider_instance_id: "second", provider_connection_id: "third",
+  } }), "second");
+  assert.equal(modelProfileConnectionId({ ...profile, metadata: {
+    connection_id: 42, provider_instance_id: "", provider_connection_id: "third",
+  } }), "third");
+});

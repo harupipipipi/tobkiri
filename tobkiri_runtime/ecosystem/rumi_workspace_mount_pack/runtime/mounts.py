@@ -18,7 +18,12 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from core_runtime.workspace_mount_effect import validate_project_plan, ProjectMountPersistenceUncertain
+from core_runtime.workspace_mount_effect import (
+    validate_project_plan,
+    ProjectMountPersistenceUncertain,
+    project_selection_request,
+    project_plan_roots,
+)
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_host.directory_selections import DirectorySelectionScope
 from core_runtime.paths import USER_DATA_DIR
@@ -35,7 +40,9 @@ _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _RESOURCE_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.resource"
 _ACTION_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.manage"
 _RESOURCE_SERVICE_OPERATIONS = frozenset({"list", "get"})
-_ACTION_SERVICE_OPERATIONS = frozenset({"mount", "unmount", "update", "select", "trust"})
+_ACTION_SERVICE_OPERATIONS = frozenset(
+    {"mount", "unmount", "update", "select", "trust"}
+)
 
 
 class WorkspaceConflict(RuntimeError):
@@ -97,7 +104,9 @@ class WorkspaceMountStore:
                 "metadata": _copy(metadata or {}),
                 "created_at": current.get("created_at") if current else now,
                 "updated_at": now,
-                "mount_revision": int(current.get("mount_revision") or 0) + 1 if current else 1,
+                "mount_revision": (
+                    int(current.get("mount_revision") or 0) + 1 if current else 1
+                ),
             }
             state["mounts"][workspace_id] = record
             state["revision"] += 1
@@ -108,46 +117,63 @@ class WorkspaceMountStore:
         self, plan: Mapping[str, Any], *, assert_current: Callable[[], None]
     ) -> dict[str, Any]:
         """Atomically mount and select the exact directory approved by the Host."""
-        root = Path(plan["root_path"])
-        root_fd = open_directory_nofollow(root)
+        roots = project_plan_roots(plan)
+        descriptors = []
         try:
-            identity = os.fstat(root_fd)
-            if [identity.st_dev, identity.st_ino] != plan["root_identity"]:
-                raise PermissionError("project folder identity changed")
+            for item in roots:
+                root = Path(item["root_path"])
+                descriptor = open_directory_nofollow(root)
+                descriptors.append(descriptor)
+                identity = os.fstat(descriptor)
+                if [identity.st_dev, identity.st_ino] != item["root_identity"]:
+                    raise PermissionError("project folder identity changed")
             with NamedLock(self.lock_root, "mounts"):
                 assert_current()
                 state = self._read()
                 _assert_revision(state, plan["expected_revision"])
-                workspace_id = _identifier(plan["workspace_id"])
-                if workspace_id in state["mounts"]:
-                    raise WorkspaceConflict("project workspace already exists")
-                # Recheck the path while retaining the selected directory descriptor.
-                current_fd = open_directory_nofollow(root)
-                try:
-                    current = os.fstat(current_fd)
-                    if (current.st_dev, current.st_ino) != (
-                        identity.st_dev,
-                        identity.st_ino,
-                    ):
-                        raise PermissionError("project folder identity changed")
-                finally:
-                    os.close(current_fd)
+                records = []
+                for item, descriptor in zip(roots, descriptors):
+                    workspace_id = _identifier(item["workspace_id"])
+                    if workspace_id in state["mounts"]:
+                        raise WorkspaceConflict("project workspace already exists")
+                    for existing in state["mounts"].values():
+                        metadata = existing.get("metadata", {})
+                        if (
+                            existing.get("root_path") == item["root_path"]
+                            or metadata.get("directory_identity")
+                            == item["root_identity"]
+                        ):
+                            raise WorkspaceConflict("project folder is already mounted")
+                    current_fd = open_directory_nofollow(Path(item["root_path"]))
+                    try:
+                        current = os.fstat(current_fd)
+                        retained = os.fstat(descriptor)
+                        if (current.st_dev, current.st_ino) != (
+                            retained.st_dev,
+                            retained.st_ino,
+                        ):
+                            raise PermissionError("project folder identity changed")
+                    finally:
+                        os.close(current_fd)
+                    now = int(time.time() * 1000)
+                    records.append(
+                        {
+                            "id": workspace_id,
+                            "root_path": item["root_path"],
+                            "metadata": {
+                                "label": item["display_name"],
+                                "trusted": False,
+                                "directory_identity": item["root_identity"],
+                            },
+                            "created_at": now,
+                            "updated_at": now,
+                            "mount_revision": 1,
+                        }
+                    )
                 assert_current()
-                now = int(time.time() * 1000)
-                record = {
-                    "id": workspace_id,
-                    "root_path": str(root),
-                    "metadata": {
-                        "label": plan["display_name"],
-                        "trusted": False,
-                        "directory_identity": plan["root_identity"],
-                    },
-                    "created_at": now,
-                    "updated_at": now,
-                    "mount_revision": 1,
-                }
-                state["mounts"][workspace_id] = record
-                state["selected_workspace_id"] = workspace_id
+                for record in records:
+                    state["mounts"][record["id"]] = record
+                state["selected_workspace_id"] = plan["workspace_id"]
                 state["revision"] += 1
                 try:
                     self._write(state)
@@ -155,13 +181,16 @@ class WorkspaceMountStore:
                     raise ProjectMountPersistenceUncertain(
                         "project mount result is unknown"
                     ) from exc
+            primary = next(r for r in records if r["id"] == plan["workspace_id"])
             return {
-                "mount": _copy(record),
+                "mount": _copy(primary),
+                "mounts": [_copy(r) for r in records],
                 "revision": state["revision"],
-                "selected_workspace_id": workspace_id,
+                "selected_workspace_id": primary["id"],
             }
         finally:
-            os.close(root_fd)
+            for descriptor in descriptors:
+                os.close(descriptor)
 
     def unmount(self, workspace_id: str, *, expected_revision: int) -> dict[str, Any]:
         """Remove mount metadata without deleting workspace files."""
@@ -372,7 +401,10 @@ def capture_workspace_binding(
     finally:
         os.close(root_fd)
     expected_identity = mount.get("metadata", {}).get("directory_identity")
-    if expected_identity is not None and expected_identity != [root_stat.st_dev, root_stat.st_ino]:
+    if expected_identity is not None and expected_identity != [
+        root_stat.st_dev,
+        root_stat.st_ino,
+    ]:
         raise PermissionError("the selected project directory has changed")
     return WorkspaceMutationBinding(
         profile_id=store.profile_id,
@@ -503,7 +535,8 @@ def _validate_factory_context(
     function_id: str,
 ) -> None:
     if not context.provider_bindings or any(
-        binding.function.function_id != function_id for binding in context.provider_bindings
+        binding.function.function_id != function_id
+        for binding in context.provider_bindings
     ):
         raise PermissionError("workspace Host Provider bindings are incomplete")
 
@@ -629,34 +662,43 @@ class ProjectWorkspaceHostFactoryV4:
                 context.profile_id, user_data_root=user_data_root
             )
             if operation == "workspace.mount.prepare":
-                if (
-                    port is None
-                    or set(payload) != {"selection_id"}
-                    or not isinstance(payload["selection_id"], str)
-                ):
+                if port is None:
                     raise PermissionError("project folder selection is required")
-                root, selected_identity = port.consume(payload["selection_id"], scope)
-                descriptor = open_directory_nofollow(root)
-                try:
-                    identity = os.fstat(descriptor)
-                    if (identity.st_dev, identity.st_ino) != selected_identity:
-                        raise PermissionError("project folder identity changed")
-                    invocation.assert_current()
-                    plan = {
-                        "version": "tobkiri.workspace.project-plan.v1",
-                        "profile_id": context.profile_id,
-                        "activation_id": scope.activation_id,
-                        "plan_digest": context.plan_digest,
-                        "security_epoch": context.security_epoch,
-                        "workspace_id": "project-" + secrets.token_hex(16),
-                        "root_path": str(root),
-                        "root_identity": [identity.st_dev, identity.st_ino],
-                        "display_name": root.name or "Project",
-                        "expected_revision": store.snapshot()["revision"],
-                        "request_digest": canonical_digest(dict(payload)),
-                    }
-                finally:
-                    os.close(descriptor)
+                tokens, primary_token = project_selection_request(payload)
+                selected = port.consume_many(tokens, scope)
+                roots = []
+                for root, selected_identity in selected:
+                    descriptor = open_directory_nofollow(root)
+                    try:
+                        identity = os.fstat(descriptor)
+                        if (identity.st_dev, identity.st_ino) != selected_identity:
+                            raise PermissionError("project folder identity changed")
+                        roots.append(
+                            {
+                                "workspace_id": "project-" + secrets.token_hex(16),
+                                "root_path": str(root),
+                                "root_identity": [identity.st_dev, identity.st_ino],
+                                "display_name": root.name or "Project",
+                            }
+                        )
+                    finally:
+                        os.close(descriptor)
+                invocation.assert_current()
+                primary = roots[tokens.index(primary_token)]
+                plan = {
+                    "version": "tobkiri.workspace.project-plan.v1",
+                    "profile_id": context.profile_id,
+                    "activation_id": scope.activation_id,
+                    "plan_digest": context.plan_digest,
+                    "security_epoch": context.security_epoch,
+                    **primary,
+                    "expected_revision": store.snapshot()["revision"],
+                    "request_digest": canonical_digest(dict(payload)),
+                }
+                if set(payload) != {"selection_id"}:
+                    plan.update(
+                        roots=roots, primary_workspace_id=primary["workspace_id"]
+                    )
                 validate_project_plan(payload, plan)
                 return plan
             if (

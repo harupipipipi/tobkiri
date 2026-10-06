@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mountProjectDirectory, type ProjectMountStatus } from "./projectWorkspaceMount";
+import { mountProjectDirectories, mountProjectDirectory, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { ProjectFolderSelection } from "./projectFolderSelection";
 const selection = { selection_id: "opaque-ticket", display_name: "Folder", expires_in_ms: 60000 };
 const pending: ProjectMountStatus = { effect_id: "effect", approval_request_id: "approval", state: "approval_pending" };
 const complete: ProjectMountStatus = { ...pending, state: "succeeded", redacted_metadata: { workspace_id: "workspace" } };
-function ports(overrides = {}) {
+function ports<T extends object = {}>(overrides: T = {} as T) {
   const calls: string[] = [];
   return {
     calls,
@@ -65,4 +65,20 @@ test("wrong effect status cannot bind a project", async () => {
 test("successful state requires a Host workspace identity before project persistence", async () => {
   const p = ports({ resume: async () => ({ ...complete, redacted_metadata: {} }) });
   await assert.rejects(mountProjectDirectory(selection, p), /did not return an identity/);
+});
+
+const set = {selections:[selection,{...selection,selection_id:"second"}],primary_selection_id:"second"};
+test("all-root effect requires all distinct identities and explicit primary", async () => {
+  const p = ports({prepare: async (request: unknown) => {assert.deepEqual(request,{selection_ids:["opaque-ticket","second"],primary_selection_id:"second"});return pending;}, resume: async () => ({...complete,redacted_metadata:{workspace_id:"two",workspace_ids:["one","two"]}})});
+  assert.deepEqual(await mountProjectDirectories(set,p),{workspaceId:"two",workspaceIds:["one","two"]});
+});
+test("partial or duplicated successful root sets cannot persist a project", async () => {
+  for (const ids of [["one"],["one","one"]]) {
+    const p = ports({prepare:async()=>pending,resume:async()=>({...complete,redacted_metadata:{workspace_id:"one",workspace_ids:ids}})});
+    await assert.rejects(mountProjectDirectories(set,p), /every selected folder/);
+  }
+});
+test("invalid primary fails before preparing any root", async () => {
+  const p = ports({prepare:async()=>{throw new Error("must not prepare");}});
+  await assert.rejects(mountProjectDirectories({...set,primary_selection_id:"outside"},p),/selection is invalid/);
 });

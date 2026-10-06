@@ -1,5 +1,6 @@
 import type { ChatContentBlock, ChatMessage, ModelProfile } from "./api";
 import type { ChatUiMessage, DroppedWidget } from "../renderers/types";
+import { savedChatReferenceMentions } from "./savedChatReferenceMentions";
 import { boundedDurationLabel } from "./duration";
 import { formatRelativeTime, messageToText } from "./chat";
 import { composerMentionMetadataFromWidgets, normalizeComposerMentionMetadata } from "./composerWidgets";
@@ -55,8 +56,19 @@ export function chatMessageToUiMessage(message: ChatMessage, profile?: ModelProf
   const fallbackMentions = explicitMentions.length === 0 && Array.isArray(metadata.dropped_widgets)
     ? composerMentionMetadataFromWidgets(metadata.dropped_widgets as DroppedWidget[])
     : [];
-  const mentions = explicitMentions.length > 0 ? explicitMentions : fallbackMentions;
   const ownerTurnId = canonicalOwnerTurnId(message);
+  const baseMentions = (explicitMentions.length > 0 ? explicitMentions : fallbackMentions)
+    .filter((mention) => mention.kind !== "chat" && mention.kind !== "group");
+  // History rows are persisted server display snapshots. They do not create
+  // Profile ownership, semantic draft selections, or execution permissions.
+  const storedReferences = ownerTurnId ? savedChatReferenceMentions(metadata.chat_references) : [];
+  const seenMentions = new Set<string>();
+  const mentions = [...baseMentions, ...storedReferences].filter((mention) => {
+    const key = JSON.stringify([mention.kind, mention.id]);
+    if (seenMentions.has(key)) return false;
+    seenMentions.add(key);
+    return true;
+  });
   const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0 || ownerTurnId
     ? {
         ...displayMetadata,
