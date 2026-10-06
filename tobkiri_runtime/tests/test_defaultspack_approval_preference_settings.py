@@ -135,4 +135,7 @@ def test_catalog_defaults_are_preferences_and_reviewer_is_not_authority() -> Non
     assert fields["fixed_action_approval_mode"]["default"] == "ask"
     assert fields["approval_reviewer_model"]["default"] == ""
     assert "設定だけでは代理承認は有効になりません" in fields["approval_reviewer_model"]["help"]
-    assert "高リスク操作や審査できない操作は実行を止め" in fields["approval_reviewer_model"]["help"]
+    assert (
+        "危険な操作や審査できない操作は、理由を知らせて停止します。"
+        in fields["approval_reviewer_model"]["help"]
+    )

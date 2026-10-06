@@ -2569,7 +2569,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
-          "sha256": "739e86b334b13a7ce0e429c14f2ff9acb74c8190c52f75155eec3b638b7dbfa6"
+          "sha256": "9fe3854177c3eff55c87b95c3edd6c3ff0ac4aded82189f95b2a672000cfb4ef"
         }
       ]
     },
@@ -2689,7 +2689,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/ecosystem.json",
-          "sha256": "19bb01d14d61358e113bb3bb83186715fc52e6702795c754f496f672ef11543d"
+          "sha256": "27c118c109143b7d5a6d33952e6803c963ec2274dd59767cd0fb56311e4fd3c9"
         }
       ]
     },
