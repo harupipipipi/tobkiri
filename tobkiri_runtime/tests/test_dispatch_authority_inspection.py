@@ -266,7 +266,7 @@ def test_guard_api_rejects_unsafe_sidecar_permissions(dispatched, suffix):
         with pytest.raises(AuthorityStoreError):
             authority.store.inspect_dispatch_authority(envelope.lease.token.decode())
     finally:
-        path.unlink()
+        path.unlink(missing_ok=True)
 
 
 def test_guard_api_rejects_inherited_process_fence(dispatched, monkeypatch):
