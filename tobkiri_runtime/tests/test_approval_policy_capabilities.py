@@ -1,6 +1,5 @@
 """Exercise the exact finite native resource and Host presentation projection."""
 
-from pathlib import Path
 from types import SimpleNamespace as NS
 import json
 
@@ -8,8 +7,9 @@ import pytest
 
 from core_runtime import approval_policy_capabilities_v4
 
-HOST = vars(approval_policy_capabilities_v4)
 from ecosystem.rumi_host_authority_bridge_pack.runtime import approval_policy_capabilities
+
+HOST = vars(approval_policy_capabilities_v4)
 
 FACTORY = vars(approval_policy_capabilities)
 

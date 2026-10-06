@@ -1,6 +1,5 @@
 """Root references always repeat actual proof and never resurrect revoked state."""
 
-from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest

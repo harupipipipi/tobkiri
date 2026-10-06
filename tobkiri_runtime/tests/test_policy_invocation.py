@@ -1,14 +1,12 @@
 """Verify private selected-root inheritance and owned file live binding."""
 
-from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
 
-from core_runtime import policy_invocation_v4
+from core_runtime import policy_invocation_v4, owned_file_approval_v4
 
 MODULE = vars(policy_invocation_v4)
-from core_runtime import owned_file_approval_v4
 
 OWNED = vars(owned_file_approval_v4)
 

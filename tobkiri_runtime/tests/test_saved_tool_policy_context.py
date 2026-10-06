@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from types import ModuleType, SimpleNamespace as NS
+from types import SimpleNamespace as NS
 
 import pytest
 

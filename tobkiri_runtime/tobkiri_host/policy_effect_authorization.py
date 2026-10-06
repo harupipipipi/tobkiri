@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityDenied, AuthorityScope, authority_digest
-from core_runtime.authority.policy_exact_grant import KIND
 
 FILE_CREATE = ("tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create")
 NATIVE_KIND = "interactive_native_v1"

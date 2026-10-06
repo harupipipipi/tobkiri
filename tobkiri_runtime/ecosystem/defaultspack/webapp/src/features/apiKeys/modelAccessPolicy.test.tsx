@@ -111,3 +111,61 @@ test("catalog rebuilds a pure public projection and preserves valid empty states
     assert.deepEqual(await resource.catalog(scope), response);
   }
 });
+
+test("policy mode rejects non-string enum values without coercion", () => {
+  for (const mode of [["all"], ["explicit"], {}, null, true, false, 0, 1, "unknown", " all "]) {
+    assert.throws(() => normalizeModelAccess({ ...policy(), mode }, null));
+  }
+  assert.deepEqual(normalizeModelAccess(policy("all"), null), policy("all"));
+  assert.deepEqual(normalizeModelAccess(policy("explicit", ["b/model", "a/model", "a/model"]), null), policy("explicit", ["a/model", "b/model"]));
+});
+
+test("native routing enums reject non-string values without coercion", () => {
+  for (const [key, valid] of [["data_collection", "deny"], ["sort", "price"]] as const) {
+    for (const invalid of [[valid], {}, null, true, false, 0, 1, ` ${valid} `, "unknown"]) {
+      const value = { ...policy("all"), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing: { [key]: invalid } } };
+      assert.throws(() => normalizeModelAccess(value, OPENROUTER_FILTER_REVISION));
+    }
+  }
+});
+
+test("valid native routing enum strings preserve policy and model identities", () => {
+  for (const data_collection of ["allow", "deny"]) {
+    for (const sort of ["price", "latency", "throughput"]) {
+      const value = { ...policy("explicit", ["vendor/a", "vendor/b"]), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing: { data_collection, sort } } };
+      assert.deepEqual(normalizeModelAccess(value, OPENROUTER_FILTER_REVISION), value);
+    }
+  }
+});
+
+test("resource rejects malformed policy enums in returned snapshots", async () => {
+  const invalidPolicies = [
+    { ...policy(), mode: ["explicit"] },
+    ...[{ data_collection: ["deny"] }, { sort: ["price"] }].map((routing) => ({ ...policy(), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing } })),
+  ];
+  for (const model_access of invalidPolicies) {
+    const resource = createProviderModelAccessResources({
+      async getModelAccess() { return { ...snapshot(), native_capability: OPENROUTER_FILTER_REVISION, model_access }; },
+      async setModelAccess() { throw new Error("unexpected write"); },
+      async getModelAccessCatalog() { throw new Error("unexpected catalog"); },
+    });
+    await assert.rejects(resource.load(scope));
+  }
+});
+
+test("resource rejects malformed draft enums before invoking the save port", async () => {
+  let writes = 0;
+  const resource = createProviderModelAccessResources({
+    async getModelAccess() { return snapshot(); },
+    async setModelAccess() { ++writes; return snapshot(scope, policy(), 2); },
+    async getModelAccessCatalog() { throw new Error("unexpected catalog"); },
+  });
+  const current = { ...snapshot(), native_capability: OPENROUTER_FILTER_REVISION };
+  for (const draft of [
+    { ...policy(), mode: ["explicit"] },
+    ...[{ data_collection: ["deny"] }, { sort: ["price"] }].map((routing) => ({ ...policy(), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing } })),
+  ]) {
+    await assert.rejects(resource.save(current, draft as unknown as ModelAccessPolicy));
+  }
+  assert.equal(writes, 0);
+});

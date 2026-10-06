@@ -34,7 +34,7 @@ from tests.test_tobkiri_host_authority_v4_adapter import (
     _Admission,
     _NoAdapters,
 )
-from tobkiri_host.models import OpaqueAuthorityRef, InvocationFrame, RuntimeEvidence
+from tobkiri_host.models import OpaqueAuthorityRef, RuntimeEvidence
 from tobkiri_host.contracts import OperationRoute, AdapterPlanner
 from tobkiri_host.broker import RequestBroker, PreparedInvocationSnapshot
 from tobkiri_host.backends import BackendRegistry
@@ -42,7 +42,6 @@ from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.ports import OpaqueInvocationLease
 from tobkiri_host.errors import ProviderExecutionError
-from tobkiri_protocol.canonical import canonical_digest
 
 
 @pytest.mark.parametrize("tool_kind", ["read", "calculator"])

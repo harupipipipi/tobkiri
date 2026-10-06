@@ -26,7 +26,7 @@ def normalize_model_access(
     } or value.get("version") != VERSION:
         raise ValueError("model access policy schema is invalid")
     mode = value.get("mode")
-    if mode not in {"all", "explicit"}:
+    if not isinstance(mode, str) or mode not in {"all", "explicit"}:
         raise ValueError("model access mode is invalid")
     ids = value.get("model_ids", [])
     if not isinstance(ids, list) or len(ids) > 4096 or any(

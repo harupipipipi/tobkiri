@@ -1,6 +1,5 @@
 """Check private selection dispatch lifetime and exact retained completion ordering."""
 
-from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest

@@ -13,6 +13,10 @@ import urllib.request
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
+from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
+    CAPABILITY_REVISION, discovery_url,
+)
+
 if TYPE_CHECKING:
     from core_runtime.host_provider_backend_v4 import (
         CapturedHostProviderV4,
@@ -24,9 +28,6 @@ if TYPE_CHECKING:
 CATALOG_REVISION = "sha256:b077149ea0f3e60fa3bbcc6bc6bb82c91afe8b35fa1fe1462ea2dc6131cf409b"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
-from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
-    CAPABILITY_REVISION, discovery_url,
-)
 
 _OPENROUTER_PROVIDER_ID = "openrouter"
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all"

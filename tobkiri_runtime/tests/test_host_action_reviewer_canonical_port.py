@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import replace
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest

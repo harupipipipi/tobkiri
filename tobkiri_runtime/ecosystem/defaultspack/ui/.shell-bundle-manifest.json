@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "426599dc01dceb374ef29a446f9189a7ca502c8d2f8038ecf1a3a850d0b6a035",
+    "digest": "37739199c74a22a49d31d979eea36217df561836a0191ea7c57dd590a1454c08",
     "entries": [
       {
         "path": "index.html",
@@ -905,13 +905,13 @@
       },
       {
         "path": "src/features/apiKeys/modelAccessPolicy.test.tsx",
-        "size": 7799,
-        "sha256": "169a0caa49747290dc159b5b7fcd53c4449ca8705d360e037b5aa26565df6644"
+        "size": 10892,
+        "sha256": "d268a7094b6029dda816dd8fa6ae898f070b3d5ca10dd74142c4536945738d10"
       },
       {
         "path": "src/features/apiKeys/modelAccessPolicy.ts",
-        "size": 6551,
-        "sha256": "de265e358e5920e76380e861e12a0870534971c09f3e2397dc2f41f889bf2234"
+        "size": 6624,
+        "sha256": "5a73759eecb43d513653ed8912bb76f5f75ccabf7aa116ba1094f902cce7fe0b"
       },
       {
         "path": "src/features/apiKeys/resources/nativeProviderModelAccessResources.ts",
@@ -2976,7 +2976,7 @@
     ]
   },
   "bundle": {
-    "digest": "cd1ffefe887e6cf28cb913b264852217ec1cc6ab05ca01296579d96056bcf63d",
+    "digest": "937a9d4102b827bf90ea5d68caa3cf5d12f693be24774b44495889de3a7cdc5d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2990,8 +2990,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2752963,
-        "sha256": "1ef616f9459e69f5c7de9a647dd7ca85f2684395440c6e2a8dd1978f342e8e80"
+        "size": 2752999,
+        "sha256": "5d8b177e91c0226ae91ea6becd53a581330556e02a0fbf1db10683076e700874"
       },
       {
         "path": "shell-icons.js",

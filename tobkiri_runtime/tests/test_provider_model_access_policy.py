@@ -52,6 +52,19 @@ def test_all_is_dynamic_without_catalog_snapshot_and_empty_explicit_denies():
         normalize_model_access(policy("all", ["a/v1"]), connection=connection())
 
 
+@pytest.mark.parametrize("mode", [
+    ["all"], ["explicit"], {}, {"mode": "all"}, None,
+    True, False, 0, 1, "unknown", " all ",
+])
+def test_policy_mode_requires_an_exact_string_enum(mode: object) -> None:
+    """Malformed JSON modes raise the policy validation error consistently."""
+    with pytest.raises(ValueError, match="model access mode is invalid"):
+        normalize_model_access(
+            {"version": VERSION, "mode": mode, "model_ids": []},
+            connection=connection(),
+        )
+
+
 @pytest.mark.parametrize("ids", [[], ["stable/a", "stable/b"]])
 def test_legacy_explicit_lists_are_preserved_even_empty(ids):
     record = connection()

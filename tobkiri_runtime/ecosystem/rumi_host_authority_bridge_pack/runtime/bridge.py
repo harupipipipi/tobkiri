@@ -34,7 +34,6 @@ from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import (
     AuthorityApprovalWindowOpenCommand,
     ChatApprovalContinuationCommand,
-    ChatApprovalContinuationPort,
     InteractiveApprovalDecisionCommand,
     InteractiveApprovalGetQuery,
     InteractiveApprovalListQuery,

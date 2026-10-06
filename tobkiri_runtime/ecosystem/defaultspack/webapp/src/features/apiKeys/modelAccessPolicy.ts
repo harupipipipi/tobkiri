@@ -25,7 +25,7 @@ function list(value: unknown, choices?: string[]): string[] {
 }
 /** Validate drafts and returned policy; unknown native fields never pass through. */
 export function normalizeModelAccess(value: unknown, capability: string | null): ModelAccessPolicy {
-  if (!isObject(value) || !exactKeys(value, ["version", "mode", "model_ids", "native_filters"]) || value.version !== MODEL_ACCESS_VERSION || !["all", "explicit"].includes(String(value.mode))) throw new Error("モデル許可の保存形式が無効です。");
+  if (!isObject(value) || !exactKeys(value, ["version", "mode", "model_ids", "native_filters"]) || value.version !== MODEL_ACCESS_VERSION || (value.mode !== "all" && value.mode !== "explicit")) throw new Error("モデル許可の保存形式が無効です。");
   const ids = value.model_ids ?? [];
   if (!Array.isArray(ids) || ids.length > 4096 || ids.some((id) => typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$/.test(id)) || (value.mode === "all" && ids.length)) throw new Error("モデルIDまたは許可モードが無効です。");
   const result: ModelAccessPolicy = { version: MODEL_ACCESS_VERSION, mode: value.mode as ModelAccessPolicy["mode"], model_ids: [...new Set(ids)].sort() };
@@ -50,11 +50,11 @@ export function normalizeModelAccess(value: unknown, capability: string | null):
       r[key] = routing[key];
     }
     if (routing.data_collection !== undefined) {
-      if (!["allow", "deny"].includes(String(routing.data_collection))) throw new Error("データ収集条件が無効です。");
+      if ((typeof routing.data_collection !== "string" || !["allow", "deny"].includes(routing.data_collection))) throw new Error("データ収集条件が無効です。");
       r.data_collection = routing.data_collection as "allow" | "deny";
     }
     if (routing.sort !== undefined) {
-      if (!["price", "latency", "throughput"].includes(String(routing.sort))) throw new Error("経路の優先条件が無効です。");
+      if ((typeof routing.sort !== "string" || !["price", "latency", "throughput"].includes(routing.sort))) throw new Error("経路の優先条件が無効です。");
       r.sort = routing.sort as NativeRouting["sort"];
     }
     if (routing.max_price !== undefined) {

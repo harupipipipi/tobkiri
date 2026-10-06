@@ -38,8 +38,6 @@ from tobkiri_host.policy_exact_authority_adapter import (
     CommittedPolicyDerivationRoot,
 )
 from tobkiri_host.policy_effect_authorization import PolicyEffectAuthorizationAdapter
-from tobkiri_host.saved_tool_policy_execution import SavedToolApprovalExecution
-from tobkiri_host.saved_tool_context import NestedToolBinding
 from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
 from tobkiri_host.typed_pending_effect_persistence import TypedPendingEffectPersistence
 from tobkiri_host.interactive_effects import PendingEffectController
@@ -544,5 +542,62 @@ def provision_signed_executor_policy_parent(tmp_path, monkeypatch):
                 or capture["workspace"] != str(tmp_path.resolve())
             ):
                 raise AuthorityDenied("saved root changed")
+
+        policy_root = CommittedPolicyDerivationRoot(
+            policy=selected.policy,
+            command=selected.command,
+            expected=selected.kwargs,
+            prepared_validator=validate,
+            current_guard=lambda _: live(),
+            saved_root_guard=saved_guard,
+            reviewer=reviewers[0].reviewer if reviewers else None,
+            review_transport_verifier=reviewers[0].verifier if reviewers else None,
+        )
+        h.kernel.policy_roots[policy_root.selection_id] = policy_root
+        policy_port = PolicyEffectAuthorizationAdapter(
+            authority=authority,
+            broker=broker,
+            root_for=lambda _: policy_root,
+            owned_file_guard=assert_file_request_live,
+        )
+        controller = PendingEffectController(
+            persistence=TypedPendingEffectPersistence(h.store),
+            approvals=authority,
+            coordinator_principal=OpaqueAuthorityRef(principals["coordinator"].principal_id),
+            coordinator_publisher_lineage="publisher.target",
+            policy_authorizations=policy_port,
+            clock=h.clock,
+        )
+        route = CapturedInteractiveEffectRoute(
+            INTERACTIVE_EFFECT_SPECS["file_create"],
+            OpaqueAuthorityRef(principals["coordinator"].principal_id),
+            OpaqueAuthorityRef(principals["execute"].principal_id),
+            scopes["execute"],
+        )
+        service = HostInteractiveEffectService(
+            broker=broker,
+            controller=controller,
+            routes=(route,),
+            context_for_execute=lambda *_: context_for("coordinator", "execute"),
+            assert_current_capture=live,
+            profile_id=root.profile_id,
+            activation_id=root.activation_id,
+            plan_digest=root.plan_digest,
+            security_epoch=root.security_epoch,
+            policy_effect_authorization_port=policy_port,
+            clock=h.clock,
+        )
+        capture = NS(
+            profile_id=root.profile_id,
+            plan_digest=root.plan_digest,
+            security_epoch=root.security_epoch,
+            activation={"activation_id": root.activation_id},
+            selected_tool_policy_port=policy_registry.capture_current,
+        )
+        bridge = InteractiveEffectCoordinatorBridgeV4(
+            capture=capture,
+            binding=selected.catalog.resolve_pinned(*specs["coordinator"][:2]),
+            effect_port=service,
+        )
 
         return NS(**locals())

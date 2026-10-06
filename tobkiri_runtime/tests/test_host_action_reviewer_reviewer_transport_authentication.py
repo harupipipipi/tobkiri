@@ -1,7 +1,5 @@
 """Native encrypted lease proof authentication; test principal fixture only."""
 
-from dataclasses import replace
-from types import SimpleNamespace
 import pytest
 from core_runtime.authority.v4 import AuthorityDenied, AuthorityScope, LeaseState, authority_digest
 from tests.test_authority_v4_lifecycle import _Harness, _digest
@@ -12,7 +10,6 @@ from core_runtime.bootstrap.action_review_v4.canonical_reviewer_port import (
 from core_runtime.bootstrap.action_review_v4.reviewer_transport_authentication import (
     CommittedReviewerTransportAuthenticator,
 )
-import core_runtime.bootstrap.action_review_v4.reviewer_transport_authentication as authentication
 
 
 def test_actual_native_store_committed_reviewer_lease_and_revocation(tmp_path, monkeypatch):

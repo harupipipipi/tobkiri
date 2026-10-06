@@ -31,7 +31,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
+      "artifact_hash": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
       "contract_id": "rumi.service.host.authorize.v1",
       "id": "host-authority",
       "loader": "python",
@@ -75,9 +75,9 @@
           "authority_owner": "core_runtime.authority",
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:7f8e2842063ddcdc9a2ffd538ac85163e259094cdea85e3e9f0ccb2839948aac",
+            "artifact_digest": "sha256:2f153289db952e6f880d25a685afe0430ec3d57aabb216319a1682025530484a",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522"
+            "source_identity": "sha256:8c5370ddf8adc6ff1a5157fab4bbee5c48f86c1be58cfe785fe214a57e767ffb"
           },
           "projection_owner": "scripts/migrate_manifest_authority.py",
           "receipt": {
@@ -90,7 +90,7 @@
         "pack_identity": "rumi:ecosystem/rumi_host_authority_bridge_pack",
         "provenance": {
           "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
-          "content_hash": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
+          "content_hash": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
           "signature": null,
           "trust_class": "local"
         },
@@ -119,7 +119,7 @@
       "owner": "rumi_host_authority_bridge_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:16e1cb18030db52a907e1c99e124b5f25d73031cd323fbfc82b2f3fe09df4522"
+      "source_identity": "sha256:8c5370ddf8adc6ff1a5157fab4bbee5c48f86c1be58cfe785fe214a57e767ffb"
     }
   },
   "migration": {
@@ -149,7 +149,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
-    "content_hash": "sha256:2bfdaecda4de916ec7181cf95599e6c805f27497ecb984fc8d4e0fe7eb444508",
+    "content_hash": "sha256:ff2aa0d51e931bbffda8b879f128183d231c9f032c78148c6805c55ecfc4a894",
     "signature": null,
     "trust_class": "local"
   },

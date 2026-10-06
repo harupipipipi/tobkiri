@@ -1,7 +1,6 @@
 """Actual root review method plus independent real generate Broker/Store fixture."""
 
 from types import SimpleNamespace
-from dataclasses import replace
 import pytest
 from tests.test_authority_v4_lifecycle import _Harness, _digest
 from core_runtime.host_contract import bind_host_contract

@@ -1,6 +1,5 @@
 """Canonical captured readonly route quote; authorized read-session fixture."""
 
-from types import SimpleNamespace
 import pytest
 from core_runtime.authority.v4 import AuthorityDenied, authority_digest
 from core_runtime.global_contract_dispatch import GlobalContractInvocationError
