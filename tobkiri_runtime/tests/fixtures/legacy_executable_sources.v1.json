@@ -2689,6 +2689,86 @@
             "rumi_provider_registry_pack.provider-registry-resource.generate",
             "rumi_provider_registry_pack.provider-registry-resource.stream"
           ]
+        },
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_provider_registry_pack.model-access.read",
+          "implementation_path": "runtime/model_access_resource.py",
+          "operation_ids": [
+            "rumi_provider_registry_pack.model-access-read"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_provider_registry_pack.model-access.catalog",
+          "implementation_path": "runtime/model_access_resource.py",
+          "operation_ids": [
+            "rumi_provider_registry_pack.model-access-catalog"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_provider_registry_pack.model-access.prepare",
+          "implementation_path": "runtime/model_access_mutation.py",
+          "operation_ids": [
+            "rumi_provider_registry_pack.model-access-prepare"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_provider_registry_pack.model-access.execute",
+          "implementation_path": "runtime/model_access_mutation.py",
+          "operation_ids": [
+            "rumi_provider_registry_pack.model-access-save"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
         }
       ]
     },

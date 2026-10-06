@@ -15401,6 +15401,210 @@
       ],
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python"
     },
+    "rumi_provider_registry_pack.model-access.catalog": {
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.model-access.catalog",
+      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_path": "runtime/model_access_resource.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-catalog",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+          "implementation_path": "runtime/model_access_resource.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-catalog",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.model-access.catalog.python"
+    },
+    "rumi_provider_registry_pack.model-access.execute": {
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.model-access.execute",
+      "implementation_digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9",
+      "implementation_path": "runtime/model_access_mutation.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.model-access-save",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-save",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9",
+          "implementation_path": "runtime/model_access_mutation.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.model-access-save",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-save",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.model-access.execute.python"
+    },
+    "rumi_provider_registry_pack.model-access.prepare": {
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.model-access.prepare",
+      "implementation_digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9",
+      "implementation_path": "runtime/model_access_mutation.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.model-access-prepare",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-prepare",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a9e5a29aabe996986e3882a625be8aafcc424c04c232f2cf642d687b716758e9",
+          "implementation_path": "runtime/model_access_mutation.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.model-access-prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-prepare",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.model-access.prepare.python"
+    },
+    "rumi_provider_registry_pack.model-access.read": {
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.model-access.read",
+      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_path": "runtime/model_access_resource.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.model-access-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+          "implementation_path": "runtime/model_access_resource.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.model-access-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.model-access-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.model-access.read.python"
+    },
     "rumi_provider_registry_pack.provider-configure.execute": {
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "contract_version": "1.0.0",
@@ -28552,7 +28756,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:1ac5eaa043ebc3d989aa54db2ab8c4a059956076841498ea765c8132c6025442",
+    "input_digest": "sha256:b24c250039bef3ca20783685c11169b803aa5c9cf48190cd83344de58f935305",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -29303,7 +29507,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:3df6101d8a105eb21b3efd1850924e5f1573eddad41e306ff7851d393cabf0af",
+        "digest": "sha256:51c3754d4717646000a0f9c599e9da21ee8c4a01e8abcef3f0edd3956cddacdc",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
