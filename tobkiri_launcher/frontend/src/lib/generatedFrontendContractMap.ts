@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d
+// Raw source digest: sha256:a54d62bc15a7c5654bef65ec0eacc65d5c85782ea4f56c138394be9fe0f7f0ce
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:a54d62bc15a7c5654bef65ec0eacc65d5c85782ea4f56c138394be9fe0f7f0ce" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:93e8c004b84a44298a6f26318e9fa93c17f2606d9d8b9fb457fc0d36935d6f6d",
+  "artifact_digest": "sha256:a54d62bc15a7c5654bef65ec0eacc65d5c85782ea4f56c138394be9fe0f7f0ce",
   "routes": [
     {
       "method": "GET",
@@ -1547,6 +1547,64 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           ]
         }
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/read",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.read",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "operation_id": "rumi_provider_registry_pack.model-access-read",
+          "provider_id": "rumi_provider_registry_pack.model-access.read",
+          "function_id": "rumi_provider_registry_pack.model-access.read",
+          "allowed_payload_keys": [
+            "profile_id",
+            "provider_instance_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.catalog",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+          "provider_id": "rumi_provider_registry_pack.model-access.catalog",
+          "function_id": "rumi_provider_registry_pack.model-access.catalog",
+          "allowed_payload_keys": [
+            "profile_id",
+            "provider_instance_id",
+            "discovery_filters"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-model-access/save",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.provider-model-access.save",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "allowed_payload_keys": [
+            "phase",
+            "effect_kind",
+            "request",
+            "effect_id",
+            "correlation_id"
+          ]
+        }
+      ]
     }
   ]
 };
@@ -2892,6 +2950,58 @@ const EXPECTED_ROUTES = {
     "targets": [
       {
         "contribution_id": "defaults.projects.workspace",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "operation_id": "interactive_effect.manage",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "allowed_payload_keys": [
+          "phase",
+          "effect_kind",
+          "request",
+          "effect_id",
+          "correlation_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/ai/provider-model-access/read": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.provider-model-access.read",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.model-access-read",
+        "provider_id": "rumi_provider_registry_pack.model-access.read",
+        "function_id": "rumi_provider_registry_pack.model-access.read",
+        "allowed_payload_keys": [
+          "profile_id",
+          "provider_instance_id"
+        ]
+      }
+    ]
+  },
+  "POST /api/ai/provider-model-access/catalog": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.provider-model-access.catalog",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+        "provider_id": "rumi_provider_registry_pack.model-access.catalog",
+        "function_id": "rumi_provider_registry_pack.model-access.catalog",
+        "allowed_payload_keys": [
+          "profile_id",
+          "provider_instance_id",
+          "discovery_filters"
+        ]
+      }
+    ]
+  },
+  "POST /api/ai/provider-model-access/save": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.provider-model-access.save",
         "contract_id": "tobkiri.service.interactive-effect.v1",
         "operation_id": "interactive_effect.manage",
         "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
