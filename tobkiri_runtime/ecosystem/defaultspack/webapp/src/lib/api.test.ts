@@ -5009,3 +5009,13 @@ test("saved-turn no-start proof rejects generic errors and mismatched request/ef
     assert.equal(isSavedTurnNotStartedProof({ ...proof, ...changed }, requestId), false);
   }
 });
+
+
+test("canonical catalog readiness overrides legacy enabled badges before composer selection", () => {
+  const catalog = uiCatalogWithSelectedTools({ ...validUiCatalogFixture, sidebar: { ...validUiCatalogFixture.sidebar,
+    items: [{ id: "retired-browser", category: "tool", label: "Old browser", tool_info: { setup_state: { status: "ok" } } },
+      { id: "calculator", category: "tool", label: "計算", tool_info: { setup_state: { status: "missing" } } }] } }, selectedToolCatalogFixture);
+  assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
+  assert.equal(catalog.sidebar.items.find((item) => item.id === "retired-browser")?.badge, "Unavailable");
+  assert.equal(catalog.sidebar.items.find((item) => item.id === "calculator")?.label, "計算");
+});

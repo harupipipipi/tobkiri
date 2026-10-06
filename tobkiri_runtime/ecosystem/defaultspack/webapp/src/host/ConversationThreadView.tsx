@@ -103,6 +103,7 @@ export function ConversationThreadView({
     const before = progressRef.current;
     if (before && before.expiresAtMs <= Date.now()) { setProgress(null); setProgressStatus("unavailable"); return; }
     const payload = threadProgressPayload(descriptor.progress, current, context, before?.cursor ?? 0);
+    if (payload && before?.progressId) payload.progress_id = before.progressId;
     const captured = payload ? threadProgressReadCapture(catalog, registered, payload) : null;
     if (!captured) { setProgress(null); setProgressStatus("unavailable"); return; }
     progressCaptureDeadline.current = narrowThreadProgressDeadline(progressCaptureDeadline.current, captured.expiresAtMs);

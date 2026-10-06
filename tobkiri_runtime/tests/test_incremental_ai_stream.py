@@ -562,3 +562,82 @@ def test_revoked_actual_lease_is_fenced_before_host_contribution_entry(
     with pytest.raises(PermissionError):
         backend.invoke(envelope)
     assert calls == ["entered"]
+
+
+def test_tool_stage_is_bound_to_exact_producer_and_terminal_result(tmp_path: Path) -> None:
+    """Only the claimed producer can append a finite tool stage."""
+    journal, identity = _journal(tmp_path)
+    arguments = dict(
+        owner="owner",
+        capture="capture",
+        producer="producer",
+        producer_input_digest="input",
+        execution="lease.request",
+    )
+    started = {
+        "type": "tool_started",
+        "tool_id": "file/read",
+        "tool_call_id": "call",
+        "arguments": {"path": "sample.txt"},
+    }
+    with pytest.raises(PermissionError):
+        journal.publish(identity, **{**arguments, "producer": "foreign"}, cursor=1, event=started)
+    journal.publish(identity, **arguments, cursor=1, event=started)
+    page = journal.read(identity, owner="owner", capture="capture", cursor=0)
+    assert page["progress_id"] == identity
+    assert page["provider_complete"] is False
+    completed = {
+        "type": "tool_completed",
+        "tool_id": "file/read",
+        "tool_call_id": "call",
+        "status": "success",
+        "content": '{"status":"success","result":"done","error":null}',
+    }
+    journal.publish(identity, **arguments, cursor=2, event=completed)
+    assert (
+        journal.read(identity, owner="owner", capture="capture", cursor=1)["provider_complete"]
+        is True
+    )
+    with pytest.raises(PermissionError):
+        journal.publish(identity, **arguments, cursor=3, event=started)
+
+
+@pytest.mark.parametrize("extra", ["approved", "grant", "execution", "result"])
+def test_tool_progress_events_cannot_carry_authority(extra: str) -> None:
+    from tobkiri_protocol.turn_progress_v1 import validate_event
+
+    with pytest.raises(ValueError):
+        validate_event(
+            {
+                "type": "tool_started",
+                "tool_id": "read",
+                "tool_call_id": "call",
+                "arguments": {},
+                extra: True,
+            }
+        )
+
+
+def test_stream_tool_fragments_normalize_without_publishing_execution_claims() -> None:
+    """A tool round assembles exact JSON args and remains non-authoritative."""
+    from ecosystem.rumi_ai_tool_bridge_pack.runtime.bridge import create_tool_intent_operation
+
+    published = []
+    stream = ProviderStream("openai", published.append)
+    for part in (
+        {"index": 0, "id": "call-1", "function": {"name": "file.read", "arguments": '{"path":'}},
+        {"index": 0, "function": {"arguments": '"sample.txt"}'}},
+    ):
+        stream.receive({"data": {"choices": [{"index": 0, "delta": {"tool_calls": [part]}}]}})
+    stream.receive({"data": {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}})
+    stream.receive({"done": True})
+    result = stream.result()
+    normalized = create_tool_intent_operation(None)("normalize", {
+        "request_id": "request", "intents": result["tool_intents"],
+    })["intents"]
+    assert normalized == [{
+        "intent_id": "call-1", "request_id": "request", "operation": "file.read",
+        "arguments": {"path": "sample.txt"}, "authority_granted": False,
+        "approved": False, "approval_status": "unrequested", "executes": False,
+    }]
+    assert published == [{"type": "finish", "finish_reason": "tool_calls"}]

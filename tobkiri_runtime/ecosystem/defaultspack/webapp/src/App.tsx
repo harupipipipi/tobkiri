@@ -1,3 +1,4 @@
+import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
 import { savedTurnStoreIdentity, useScopedPendingChat, type PendingRecoveryEntry } from "./lib/scopedPendingChat";
 import { chatMessageToUiMessage } from "./lib/chatUiMessage";
@@ -3379,8 +3380,12 @@ export function ChatApp() {
   const latestActivePendingSignature = latestActiveMessage
     ? `${latestActiveMessage.id}:${latestActiveMessage.role}:${latestActiveMessage.finish_reason ?? ""}:${String(latestActiveThinking.state ?? "")}`
     : "";
+  const liveSavedProgressMessage = useSavedChatProgress(savedTurnStoreId,
+    taskPetSnapshot?.profileId === runtimeProfileId ? taskPetSnapshot.snapshot : null,
+    activeConversation, pendingRequest);
   const messages = [
     ...orderedMessages.map((message) => toUiMessage(message, activeProfile)),
+    ...(liveSavedProgressMessage ? [toUiMessage(liveSavedProgressMessage, activeProfile)] : []),
     ...visibleOptimisticSavedTurnOverlays.map((overlay) => {
       const message = toUiMessage(overlay.message, activeProfile);
       return {
@@ -4193,12 +4198,13 @@ export function ChatApp() {
   }, [setIsHistoryMinimized]);
 
   useEffect(() => {
+    if (!catalog) return;
     const validIds = new Set(composerExtensions.map((tool) => tool.id));
     setStoredSelectedToolIds((current) => {
       const next = current.filter((toolId) => validIds.has(toolId));
       return next.length === current.length ? current : next;
     });
-  }, [composerExtensions, setStoredSelectedToolIds]);
+  }, [catalog, composerExtensions, setStoredSelectedToolIds]);
 
   useEffect(() => {
     const validIds = new Set(composerExtensions.map((tool) => tool.id));

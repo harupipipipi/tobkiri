@@ -3900,6 +3900,86 @@
         "exact_request_digest": null,
         "opaque": false
       }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_default_tools_pack.files-read",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operation_id": "rumi_default_tools_pack.files-read-operation",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.local.operation.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.files-read-operation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_default_tools_pack.files-read",
+      "target_provider_id": "rumi_file_inspect_pack.file-inspect.service",
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.file.inspect.v1"
+          ],
+          "operation": [
+            "rumi_file_inspect_pack.file-inspect"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_default_tools_pack.files-read",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.progress",
+      "contract_id": "tobkiri.action.turn.progress.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-progress",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.progress.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-progress"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
     }
   ],
   "shell": {

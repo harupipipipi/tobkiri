@@ -51,10 +51,7 @@ def tool_host(tmp_path):
 
         def contract_client(**kwargs):
             assert kwargs == {
-                "allowed_contract_ids": frozenset({
-                    broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE,
-                }),
-                "consumer_pack_id": broker.PACK_ID, "include_credentials": False,
+                        broker.ACTION,
             }
             return client
 
@@ -71,14 +68,7 @@ class _Client:
         self.selected = True
         self.failure = None
         self.execute_callback = None
-        self.definition = _definition({
-            "tool_id": "sample", "authority": "file.read",
-            "input_schema": {
-                "type": "object", "properties": {"value": {"type": "integer"}},
-                "required": ["value"], "additionalProperties": False,
-            },
-            "execution": {"kind": "local", "contract_id": "tobkiri.service.tool.local.operation.v1"},
-        })
+        self.progress_failure = None
 
     def providers(self, contract):
         assert contract == broker.EXECUTE
@@ -91,6 +81,10 @@ class _Client:
 
     def invoke(self, contract, operation, payload, **kwargs):
         self.calls.append((contract, operation, payload, kwargs))
+        if contract == broker.ACTION:
+            if self.progress_failure:
+                raise self.progress_failure
+            return {"bound": True}
         if contract == broker.DEFINITION:
             assert payload == {"operation": "resolve", "tool_id": "alias"}
             return {"found": True, "resolved_tool_id": "sample", "definition": self.definition}
@@ -104,6 +98,7 @@ class _Client:
                 raise self.failure
             return {"result": {"value": payload["arguments"]["value"], "token": "private"}}
         assert contract == broker.NORMALIZE
+        assert operation == "rumi_tool_result_pack.tool-result-normalize"
         return create_normalize_operation(None)("normalize", payload)
 
 
@@ -249,3 +244,77 @@ def test_mcp_execution_keeps_captured_gateway_and_connection_identity(tool_host,
         assert broker._mcp_request(context, execution, {"value": 3}) == {
             "connection_id": "connection-1", "tool": "ping", "arguments": {"value": 3},
         }
+
+
+def test_saved_tool_progress_is_exact_and_effect_executes_once(tool_host):
+    invoke, client, _, _ = tool_host
+    result = invoke(
+        {
+            "tool_id": "alias",
+            "tool_call_id": "call-1",
+            "arguments": {"value": 3},
+            "progress_id": "stage",
+        }
+    )
+    progress = [call[2] for call in client.calls if call[0] == broker.ACTION]
+    assert [item["phase"] for item in progress] == ["tool_bind", "tool_publish", "tool_publish"]
+    assert progress[1]["event"] == {
+        "type": "tool_started",
+        "tool_id": "alias",
+        "tool_call_id": "call-1",
+        "arguments": {"value": 3},
+    }
+    assert progress[2]["event"]["status"] == result["status"]
+    assert '"token":"[REDACTED]"' in progress[2]["event"]["content"]
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_progress_denial_preserves_actual_result_without_replay(tool_host):
+    invoke, client, _, _ = tool_host
+    client.progress_failure = PermissionError("producer denied")
+    assert (
+        invoke(
+            {
+                "tool_id": "alias",
+                "tool_call_id": "call-1",
+                "arguments": {"value": 3},
+                "progress_id": "stage",
+            }
+        )["status"]
+        == "success"
+    )
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_actual_denial_does_not_publish_fake_completion(tool_host):
+    invoke, client, _, _ = tool_host
+    client.failure = PermissionError("approval held")
+    with pytest.raises(PermissionError, match="approval held"):
+        invoke(
+            {
+                "tool_id": "alias",
+                "tool_call_id": "call-1",
+                "arguments": {"value": 3},
+                "progress_id": "stage",
+            }
+        )
+    events = [call[2].get("event") for call in client.calls if call[0] == broker.ACTION]
+    assert not any(event and event["type"] == "tool_completed" for event in events)
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+@pytest.mark.parametrize("failure", ["arguments", "definition", "executor"])
+def test_invalid_or_unavailable_tool_never_publishes_execution_progress(tool_host, failure):
+    invoke, client, _, _ = tool_host
+    payload = {"tool_id": "alias", "tool_call_id": "call-1",
+               "arguments": {"value": 3}, "progress_id": "stage"}
+    if failure == "arguments":
+        payload["arguments"] = {"value": True}
+    elif failure == "definition":
+        payload["expected_definition_hash"] = "0" * 64
+    else:
+        client.selected = False
+    with pytest.raises((ValueError, PermissionError)):
+        invoke(payload)
+    assert all(call[0] not in {broker.ACTION, broker.EXECUTE, broker.NORMALIZE}
+               for call in client.calls)

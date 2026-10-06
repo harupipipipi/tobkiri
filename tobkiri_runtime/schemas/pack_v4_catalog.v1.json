@@ -1522,6 +1522,11 @@
           "index_role": "sidecar",
           "kind": "sidecar",
           "path": "extensions/tools/settings_update/manifest.json"
+        },
+        {
+          "kind": "executable",
+          "path": "defaultspack/turn_progress_presentation.py",
+          "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0"
         }
       ],
       "secrets": [],
@@ -2341,7 +2346,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
+              "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2374,7 +2379,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
+              "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2407,7 +2412,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
+              "implementation_digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2517,7 +2522,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
+          "digest": "sha256:82c7ec1a0f85ac720aaa3a106294ad94af5f87a120d0b03cb132ec6eb98c01e4",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
@@ -8819,6 +8824,11 @@
               "entrypoint_id": "calculator-evaluate",
               "id": "rumi_default_tools_pack.calculator-evaluate",
               "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa"
+            },
+            {
+              "entrypoint_id": "files-read-operation",
+              "id": "rumi_default_tools_pack.files-read-operation",
+              "implementation_digest": "sha256:49704c83ce1dc309970c3d034ceef4d0c76d3530dd90af64cea1a6ed13f6c8c8"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -8827,7 +8837,11 @@
             "tool.local.operation"
           ],
           "routing_keys": [
-            "calculator"
+            "calculator",
+            "file_reader",
+            "coding_file_read",
+            "coding_file_list",
+            "coding_file_search"
           ],
           "schemas": {
             "input": {
@@ -8841,7 +8855,20 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
+        }
+      ],
       "runtime_artifacts": [
         {
           "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
@@ -8880,7 +8907,7 @@
           "path": "tools/coding_file_delete/manifest.json"
         },
         {
-          "digest": "sha256:57406c10011a141a3b0212f9a7038b86e82b27e9d23dc152e43c1599d527a9e2",
+          "digest": "sha256:a8ae2eee3b76859cea0a42ede6e28bdabfcbf475bf02d59d6c420dffb3f9cfa7",
           "kind": "sidecar",
           "path": "tools/coding_file_list/manifest.json"
         },
@@ -8890,7 +8917,7 @@
           "path": "tools/coding_file_patch/manifest.json"
         },
         {
-          "digest": "sha256:1f69dd59fb22279059789d968c03657acff3945ed56ad85ee3cf59211d1cba42",
+          "digest": "sha256:f18e4a0fc67dd5f76ea48b181d2291fb87c4035d61c7ab40a93ac94bf9864135",
           "kind": "sidecar",
           "path": "tools/coding_file_read/manifest.json"
         },
@@ -8900,7 +8927,7 @@
           "path": "tools/coding_file_restore/manifest.json"
         },
         {
-          "digest": "sha256:5bf3c5ec67d410279e108b7fe414c1087cf227b64b5607824c9aa3fcbd88385e",
+          "digest": "sha256:74f3dceda7641b4dac1856eeff6d9fe969d206c759f703c34601ae8c86ac1540",
           "kind": "sidecar",
           "path": "tools/coding_file_search/manifest.json"
         },
@@ -8940,7 +8967,7 @@
           "path": "tools/computer_use/manifest.json"
         },
         {
-          "digest": "sha256:b6c40154cfbd2fd5c74410778e13a21adaee2bc8aae818a3546c517ad1d5696e",
+          "digest": "sha256:a3cf706dfa5419bbd0422730eb7f02ae52b266f93ea4eca053c747b330196e47",
           "kind": "sidecar",
           "path": "tools/file_reader/manifest.json"
         },
@@ -9008,6 +9035,11 @@
           "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
           "kind": "executable",
           "path": "domain/tool/calculator.py"
+        },
+        {
+          "kind": "executable",
+          "path": "runtime/files.py",
+          "digest": "sha256:49704c83ce1dc309970c3d034ceef4d0c76d3530dd90af64cea1a6ed13f6c8c8"
         }
       ],
       "secrets": [],
@@ -9025,7 +9057,25 @@
         "source_format": "ecosystem.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "pack_local",
+      "functions": [
+        {
+          "function_id": "rumi_default_tools_pack.calculator",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "operation_ids": [
+            "rumi_default_tools_pack.calculator-evaluate"
+          ],
+          "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa"
+        },
+        {
+          "function_id": "rumi_default_tools_pack.files-read",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "operation_ids": [
+            "rumi_default_tools_pack.files-read-operation"
+          ],
+          "implementation_digest": "sha256:49704c83ce1dc309970c3d034ceef4d0c76d3530dd90af64cea1a6ed13f6c8c8"
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",
@@ -18616,7 +18666,7 @@
             {
               "entrypoint_id": "tool-invoke",
               "id": "rumi_tool_broker_pack.tool-invoke",
-              "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b"
+              "implementation_digest": "sha256:fe00643ac8627c592a06c98e07f348860a2739cd7c81515e4e0717d4b76ff41b"
             }
           ],
           "owner": "rumi_tool_broker_pack",
@@ -18660,11 +18710,17 @@
           "contract_id": "tobkiri.service.tool.result.normalize.v1",
           "optional": false,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
+          "digest": "sha256:fe00643ac8627c592a06c98e07f348860a2739cd7c81515e4e0717d4b76ff41b",
           "kind": "executable",
           "path": "runtime/broker.py"
         }
@@ -21354,18 +21410,18 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:2108a51c90ad297b64ef9d2790e9d507bee1d78641f3ff48228cff2205ce198e",
+          "digest": "sha256:35551f0e0c0afe3c665609e03bf80c03b5ac5ac6ee48dcf8103017761aaeffcb",
           "kind": "executable",
           "path": "runtime/saved.py"
         },
         {
           "path": "runtime/progress.py",
-          "digest": "sha256:4e65767f3a525f471f8d53c546943260f6e69cc86ec23e5abafec11f16b3081d",
+          "digest": "sha256:405c42946539258d310a8b161f4f0bd1840bd9c6f3168dd06d568d9f727c8f6a",
           "kind": "sidecar"
         },
         {
           "path": "runtime/progress_host.py",
-          "digest": "sha256:5a5ddfa95f7f47b78736e0fe0e64f6a9eaff10010cff7038984707d6511b5e8c",
+          "digest": "sha256:35e6ce9b5f4e43d1d6ba5be917591d21b947ce899c6cccd50ef12bf4951708af",
           "kind": "sidecar"
         }
       ],

@@ -133,3 +133,47 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
         assert isinstance(failure.value.__cause__, ValueError)
         assert str(failure.value.__cause__) == "tool invocation payload is invalid"
         assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
+
+
+@pytest.mark.parametrize("tool_id,arguments,expected", [
+    ("calculator", {"expression": "2+2"}, "4"),
+    ("coding_file_read", {"path": "hello.txt"}, "owned file content"),
+])
+def test_defaults_finite_tools_execute_through_production_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tool_id: str, arguments: dict, expected: str,
+) -> None:
+    """Use real signed owner edges and file jail, without any provider request."""
+    import json
+    from ecosystem.rumi_tool_broker_pack.runtime import broker
+    from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore
+
+    edge = {
+        "caller_function_id": "shell.tauri.default",
+        "target_provider_id": broker.HOST_PROVIDER_FACTORY.function_id,
+        "contract_id": broker.CONTRACT, "operation_id": broker.OPERATION,
+        "authority_mode": "profile_grant",
+        "requested_scope_template": {
+            "capability": "operation.invoke",
+            "dimensions": {
+                "contract": [broker.CONTRACT], "operation": [broker.OPERATION],
+            },
+            "quotas": {}, "exact_request_digest": None, "opaque": False,
+        },
+    }
+    with captured_host_profile(
+        tmp_path, monkeypatch, packs=(), edges=[edge], backends=(),
+    ) as (session, _store):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "hello.txt").write_text("owned file content", encoding="utf-8")
+        mounts = WorkspaceMountStore("defaults", user_data_root=tmp_path / "user-data")
+        mounts.mount("owned", str(workspace), expected_revision=0)
+        mounts.select("owned", expected_revision=1)
+        result = session.invoke(broker.CONTRACT, broker.OPERATION, {
+            "tool_id": tool_id, "tool_call_id": "finite-call",
+            "arguments": arguments, "_session_id": "finite-owner-proof",
+        })
+        assert result["status"] == "success"
+        assert result["is_error"] is False
+        assert expected in json.dumps(result, ensure_ascii=False)

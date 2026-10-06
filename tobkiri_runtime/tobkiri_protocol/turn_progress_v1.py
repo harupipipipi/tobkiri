@@ -66,6 +66,31 @@ def validate_event(value: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError("progress delta is invalid")
         if len(value["delta"].encode("utf-8")) > MAX_DELTA_BYTES:
             raise ValueError("progress delta exceeds its limit")
+    elif kind in {"tool_started", "tool_completed"}:
+        fields = {"type", "tool_id", "tool_call_id"}
+        fields |= {"arguments"} if kind == "tool_started" else {"status", "content"}
+        if set(value) != fields or any(
+            not isinstance(value[key], str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value[key])
+            for key in ("tool_id", "tool_call_id")
+        ):
+            raise ValueError("progress tool identity is invalid")
+        if kind == "tool_started" and not isinstance(value["arguments"], dict):
+            raise ValueError("progress tool arguments are invalid")
+        if kind == "tool_completed" and (
+            value["status"] not in {"success", "error"} or not isinstance(value["content"], str)
+        ):
+            raise ValueError("progress tool completion is invalid")
+        if kind == "tool_completed":
+            content = json.loads(value["content"])
+            if (
+                not isinstance(content, dict)
+                or set(content) != {"status", "result", "error"}
+                or content["status"] != value["status"]
+            ):
+                raise ValueError("progress tool result is invalid")
+        if len(json.dumps(value, allow_nan=False).encode()) > MAX_DELTA_BYTES:
+            raise ValueError("progress tool event exceeds its limit")
     elif kind == "finish":
         if set(value) != {"type", "finish_reason"} or value["finish_reason"] not in {
             "stop",
