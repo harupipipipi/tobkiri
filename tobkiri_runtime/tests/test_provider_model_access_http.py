@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 import uuid
+import time
 import sys
 import urllib.request
 from urllib.parse import parse_qs, urlsplit
@@ -325,9 +326,22 @@ def test_model_access_requires_approval_and_resumes_once(
     assert status != 200 or pending["data"]["state"] != "succeeded"
     assert registry.path.read_bytes() == before
     _approve(server, headers, effect)
+    status, result = _post(
+        server, headers, _SAVE, {"phase": "resume", "effect_id": effect["effect_id"]}
+    )
+    # Observe the detached result without extending the effect's execution TTL.
+    deadline = time.monotonic() + 5.0
+    while status == 200 and result["data"]["state"] in {"claimed", "dispatched"}:
+        assert time.monotonic() < deadline, result
+        time.sleep(0.05)
+        status, result = _post(
+            server, headers, _SAVE, {"phase": "status", "effect_id": effect["effect_id"]}
+        )
+    assert status == 200, result
+    assert result["data"]["state"] == "succeeded", result
     for _ in range(2):
         status, result = _post(
-            server, headers, _SAVE, {"phase": "resume", "effect_id": effect["effect_id"]}
+            server, headers, _SAVE, {"phase": "status", "effect_id": effect["effect_id"]}
         )
         assert status == 200, result
         assert result["data"]["state"] == "succeeded", result

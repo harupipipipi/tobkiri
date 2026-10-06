@@ -14,7 +14,7 @@ from core_runtime.global_contract_dispatch import GlobalContractClient
 from tobkiri_protocol.canonical import canonical_digest
 
 from .local_endpoint import local_openai_endpoint
-from .registry import ProviderRegistry
+from .registry import ProviderRegistry, ProviderRegistryConflict
 
 CREDENTIAL_CONTRACT = "tobkiri.action.credential.manage.v1"
 CREDENTIAL_OPERATION = "rumi_credential_broker_pack.credential-manage"
@@ -90,7 +90,7 @@ def prepare_configuration(
 ) -> dict[str, Any]:
     """Read the existing revision and describe a write without storing a key."""
     request = configuration_request(payload)
-    return {
+    plan = {
         "profile_id": registry.profile_id,
         "provider_instance_id": "provider." + request["connection_name"],
         "adapter_id": request["protocol"],
@@ -100,6 +100,11 @@ def prepare_configuration(
         # digest raw while freezing the separately canonicalized endpoint.
         "request_digest": canonical_digest(dict(payload)),
     }
+    registry.prepare_save(
+        _connection_record(request, plan, None),
+        expected_revision=plan["expected_revision"],
+    )
+    return plan
 
 
 def _connection_record(
@@ -143,31 +148,26 @@ def execute_configuration(
     # connection changed since prepare, nor leave a key behind for that conflict.
     if dict(plan) != prepare_configuration(registry, request):
         raise PermissionError("provider configuration changed after preparation")
+    prepared = registry.prepare_save(
+        _connection_record(request, plan, None),
+        expected_revision=plan["expected_revision"],
+    )
     if request["protocol"] == "local-openai-compatible":
-        record = _connection_record(request, plan, None)
         try:
-            registry.save(record, expected_revision=plan["expected_revision"])
-        except Exception:
-            try:
-                matches = [
-                    item for item in registry.snapshot()["providers"]
-                    if item["provider_instance_id"]
-                    == record["provider_instance_id"]
-                ]
-            except Exception:
-                raise RuntimeError(
-                    "provider connection save was not confirmed"
-                ) from None
-            if len(matches) != 1 or any(
-                matches[0].get(key) != value
-                for key, value in record.items()
+            registry.save(prepared, expected_revision=plan["expected_revision"])
+        except Exception as exc:
+            if isinstance(exc, (ValueError, ProviderRegistryConflict)) or not (
+                _connection_save_confirmed(
+                    _save_snapshot(registry), prepared,
+                    expected_revision=plan["expected_revision"],
+                )
             ):
                 raise RuntimeError(
                     "provider connection save was not confirmed"
                 ) from None
         return {
             "configured": True,
-            "provider_instance_id": record["provider_instance_id"],
+            "provider_instance_id": prepared["provider_instance_id"],
         }
     try:
         created = client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
@@ -189,27 +189,66 @@ def execute_configuration(
         or created.get("consumer_pack_id") != consumer_pack_id
     ):
         raise RuntimeError("provider credential save was not confirmed")
-    record = _connection_record(request, plan, handle)
+    record = {**prepared, "credential_handle": handle}
     try:
         registry.save(record, expected_revision=plan["expected_revision"])
-    except Exception:
-        # The owner may have committed before its ACK was lost. Confirm that
-        # exact handle before considering cleanup; never revoke a live binding.
-        try:
-            matches = [item for item in registry.snapshot()["providers"]
-                       if item["provider_instance_id"] == record["provider_instance_id"]]
-        except Exception:
-            raise RuntimeError("provider connection save was not confirmed") from None
-        if len(matches) != 1 or any(matches[0].get(key) != value for key, value in record.items()):
+    except Exception as exc:
+        # Confirm the complete intended record and both owner revisions after
+        # an uncertain ACK. Known policy/CAS rejections cannot confirm a save.
+        snapshot = _save_snapshot(registry)
+        if isinstance(exc, (ValueError, ProviderRegistryConflict)) or not (
+            _connection_save_confirmed(
+                snapshot, record, expected_revision=plan["expected_revision"],
+            )
+        ):
+            if any(
+                item.get("credential_handle") == handle
+                for item in snapshot["providers"]
+            ):
+                raise RuntimeError("provider connection save was not confirmed") from None
             try:
                 client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
                     "operation": "revoke", "profile_id": registry.profile_id,
                     "handle": handle,
                 })
             except Exception:
-                raise RuntimeError("provider configuration cleanup was not confirmed") from None
+                raise RuntimeError(
+                    "provider configuration cleanup was not confirmed"
+                ) from None
             raise RuntimeError("provider connection save was not confirmed") from None
     return {
         "configured": True,
         "provider_instance_id": record["provider_instance_id"],
     }
+
+
+def _save_snapshot(registry: ProviderRegistry) -> dict[str, Any]:
+    """Read acknowledgement evidence without revoking an uncertain live handle."""
+    try:
+        return registry.snapshot()
+    except Exception:
+        raise RuntimeError("provider connection save was not confirmed") from None
+
+
+def _connection_save_confirmed(
+    snapshot: Mapping[str, Any],
+    record: Mapping[str, Any],
+    *,
+    expected_revision: int,
+) -> bool:
+    """Require the entire intended record and its exact committed revisions."""
+    if snapshot["revision"] != expected_revision + 1:
+        return False
+    matches = [
+        item for item in snapshot["providers"]
+        if item["provider_instance_id"] == record["provider_instance_id"]
+    ]
+    if len(matches) != 1:
+        return False
+    saved = matches[0]
+    if not all(isinstance(saved.get(key), str) for key in ("created_at", "updated_at")):
+        return False
+    return {
+        key: value for key, value in saved.items()
+        if key not in {"created_at", "updated_at"}
+    } == dict(record)

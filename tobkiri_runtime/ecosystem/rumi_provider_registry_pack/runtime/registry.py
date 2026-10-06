@@ -75,12 +75,7 @@ class ProviderRegistry:
             self._assert_revision(state, expected_revision)
             key = normalized["provider_instance_id"]
             current = state["providers"].get(key, {})
-            if "model_access" not in normalized:
-                existing = effective_model_access(current)
-                if existing is not None:
-                    normalized["model_access"] = normalize_model_access(
-                        existing, connection=normalized,
-                    )
+            _retain_model_access(normalized, current)
             now = _now()
             normalized["created_at"] = str(current.get("created_at") or now)
             normalized["updated_at"] = now
@@ -95,6 +90,27 @@ class ProviderRegistry:
                 "provider": dict(normalized),
                 "store_revision": state["revision"],
             }
+
+    def prepare_save(
+        self,
+        record: Mapping[str, Any],
+        *,
+        expected_revision: int,
+    ) -> dict[str, Any]:
+        """Validate a proposed save without writes and freeze its record revision.
+
+        Save repeats the same policy validation under its mutation lock. This
+        preflight does not reserve a revision or authorize the subsequent write.
+        """
+        normalized = _provider_record(record)
+        state = self._read()
+        self._assert_revision(state, expected_revision)
+        current = state["providers"].get(normalized["provider_instance_id"], {})
+        _retain_model_access(normalized, current)
+        return {
+            **normalized,
+            "record_revision": int(current.get("record_revision") or 0) + 1,
+        }
 
     def set_model_access(
         self,
@@ -293,6 +309,35 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
     if policy is not None:
         normalized["model_access"] = normalize_model_access(policy, connection=normalized)
     return normalized
+
+
+def _retain_model_access(
+    normalized: dict[str, Any], current: Mapping[str, Any],
+) -> None:
+    """Carry policy only within the exact existing model route namespace."""
+    if "model_access" in normalized:
+        return
+    existing = effective_model_access(current)
+    if existing is None:
+        return
+    if _model_namespace(current) != _model_namespace(normalized):
+        raise ValueError(
+            "provider route changed; create a new connection or explicitly "
+            "replace model access for the new connection"
+        )
+    normalized["model_access"] = normalize_model_access(
+        existing, connection=normalized,
+    )
+
+
+def _model_namespace(record: Mapping[str, Any]) -> tuple[Any, Any, Any]:
+    """Compare protocol, catalog identity, and the complete saved API route."""
+    metadata = record.get("metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    return (
+        record.get("adapter_id"), metadata.get("catalog_provider_id"),
+        record.get("endpoint"),
+    )
 
 
 def _provider_endpoint(

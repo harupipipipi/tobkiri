@@ -999,12 +999,12 @@
     {
       "path": "packs/rumi_provider_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:dedd443941fbd27d77ccbe00b9e3d6689b0fa3663a629e9aa1fcd28c6ce40ff2"
+      "digest": "sha256:db4f4bcfc1bb2f2db7a60cdc69885af7e3387e6786f7768571d2993d6b87d38f"
     },
     {
       "path": "packs/rumi_provider_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2e1521b1ad5de999752e3bb88467c5ea5457e454b7e5544e5450b8f97fd39212"
+      "digest": "sha256:2c66aeba1f38882ab8b13d1c22d8b74c902644294855cde1559f04ff8eba85d8"
     },
     {
       "path": "packs/rumi_qr_pairing_connector_pack.executables.v4.json",
