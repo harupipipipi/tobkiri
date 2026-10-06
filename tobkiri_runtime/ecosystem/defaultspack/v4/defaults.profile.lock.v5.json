@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:f4071d75bab7f954d79ee29ba0f0927128c216b940bc9346d4f231bbedfcf993",
   "profile_definition_digest": "sha256:320d5ff800a9f880c342777b4ac81b4049c56b7f88ec05d0a8db80e3cb3985ad",
-  "catalog_revision": "sha256:b57db812b627542b32c3b5fe74adbe7a995eb8eaf5cd7d137502419d8629d6f8",
-  "bundle_digest": "sha256:07e731679453a0cfe327a10694a475645af86db3e94ec83940deadb79242beee",
+  "catalog_revision": "sha256:b36329508eb8ace78e6d8d02c420bb6fe95070534fc0865f94d7d5c50c6c81bf",
+  "bundle_digest": "sha256:b66a02a53633066ea6d1814dbde7c6965853c790c0aa77a7c151c41a36bc5a24",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -58,7 +58,7 @@
     {
       "role": "pack",
       "identity": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151"
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170"
     },
     {
       "role": "pack",
@@ -908,8 +908,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
       "platform": "any",
       "architecture": "any",
@@ -920,8 +920,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.guidance.python",
       "platform": "any",
       "architecture": "any",
@@ -932,8 +932,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
       "platform": "any",
       "architecture": "any",
@@ -944,8 +944,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource.python",
       "platform": "any",
       "architecture": "any",
@@ -956,8 +956,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.progress.python",
       "platform": "any",
       "architecture": "any",
@@ -968,8 +968,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
       "platform": "any",
       "architecture": "any",
@@ -980,8 +980,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python",
       "platform": "any",
       "architecture": "any",
@@ -992,8 +992,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python",
       "platform": "any",
       "architecture": "any",
@@ -1004,8 +1004,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:44ea3c0931b64ea4a264712114edeccd697d5e57696e333cc09e0ba0e0570151",
-      "executable_catalog_digest": "sha256:e1f317315c005009a66cf1bb4ceb3a1e38b71350c46006e45dde027507bf9eb7",
+      "artifact_digest": "sha256:a6044008e6c636dac7f9031f7a49876e371e63310c11a803a8e11e2033165170",
+      "executable_catalog_digest": "sha256:28e2635d6b02a87be33d6a5e83237c9248e7f995a2639f4bc20ad11eb2d2c745",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python",
       "platform": "any",
       "architecture": "any",
@@ -1209,7 +1209,7 @@
   ],
   "requested_edges_digest": "sha256:790ae2c1358f123a29c600b85c53a7962c7087bef85f530bf9dbc823b1616314",
   "constraints_digest": "sha256:b76cd9f5387c82967e809339c5f34ba9760c696b21a542f4ec79ffa37bfb7b03",
-  "closure_digest": "sha256:2f9e27cadaea8c9db22af44f5c0e8ce73dd4a88cd2d56d17c8f19aed01277ae5",
+  "closure_digest": "sha256:b8d490ef901f75183bfcaf52447b25840e172f9bca608a7afd9c6e028628214a",
   "provenance_digest": "sha256:ab7023d0d971f95524fdc075207516a03995dfe741ebf577ebacabed2748efa2",
-  "lock_digest": "sha256:83986b25fbe4015bbbeb2926bc9be70449770f3ed0fa035be127bbd7b7ca958d"
+  "lock_digest": "sha256:9440b3458b60ff5ee52b337eeae5ab53c13f141a5755f694332591872b022dd9"
 }
