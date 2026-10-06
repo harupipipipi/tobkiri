@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:7fb68d81855d5a6c18adb4b746771ee0f14b7f3573c621e392faa0b771a175f9",
+  "artifact_set_digest": "sha256:9f451a7bbe89b4187f2e134e324d75d0e1249e5f205e79ab77ea4e69e31d9eb6",
   "artifacts": [
     {
-      "digest": "sha256:50e75c0abf4ed7364f6c0c4163f8a25fb193628691a7d26a7e1585382c7177e1",
+      "digest": "sha256:4256428275e4a4973f6d24c6633e06b38c191e3f22b64f71801bd7bfff0019d5",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:9d2b9d1c2451aa49db0ae060b83af8b44e1a2d6b72dd65d82cc3d0587bfec3fe",
+      "digest": "sha256:33b210d33202aa5eee69a16d5bfd3de99d15f856bc80bfcf2aaa200832611798",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:92b8b62b8fdd6e4132087b4ee07a5a66bcbccf6f08a04bd5b89a2bacde7e3c28",
+      "digest": "sha256:3b797945546c9423a43d115ea7f34d4ed33dba2b222c15c441b7b05fb0fd873d",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -50,8 +50,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:c317198fc9a37d826d6ca8577ef2f4e38a37ccbc5a59b2c88532b93a80d9ee38"
+    "signed_digest": "sha256:0a7fefe3128c2c18aac03fcd04184dc2e1b478f671ff02c156d0746d59e98594"
   },
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:029d3e3a8893bad90cd42bca4f79c43d533c8972e1e145b914fd51356d1ab5a2"
+  "source_identity": "sha256:08cf205a682376c6df3a444513daac3458457dd8ee2aa01908fbc07650cfbd42"
 }

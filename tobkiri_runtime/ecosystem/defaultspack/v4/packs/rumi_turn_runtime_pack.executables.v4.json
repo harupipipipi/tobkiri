@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:92b8b62b8fdd6e4132087b4ee07a5a66bcbccf6f08a04bd5b89a2bacde7e3c28",
+  "source_identity": "sha256:3b797945546c9423a43d115ea7f34d4ed33dba2b222c15c441b7b05fb0fd873d",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -191,7 +191,7 @@
         {
           "contract_id": "tobkiri.action.turn.progress.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+          "revision_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
           "operation_id": "rumi_turn_runtime_pack.turn-progress",
           "input_schema": {
             "oneOf": [
@@ -483,117 +483,6 @@
                 "type": "object"
               }
             ],
-            "properties": {
-              "ai_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "conversation_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "conversation_revision": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "cursor": {
-                "maximum": 4096,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "event": {
-                "oneOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "delta": {
-                        "maxLength": 16384,
-                        "type": "string"
-                      },
-                      "type": {
-                        "enum": [
-                          "text_delta",
-                          "thinking_delta"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "delta"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "finish_reason": {
-                        "enum": [
-                          "stop",
-                          "length",
-                          "tool_calls",
-                          "end_turn",
-                          "max_tokens",
-                          "tool_use"
-                        ]
-                      },
-                      "type": {
-                        "const": "finish"
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "finish_reason"
-                    ],
-                    "type": "object"
-                  }
-                ]
-              },
-              "input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "parent_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "phase": {
-                "enum": [
-                  "ready",
-                  "begin",
-                  "bind",
-                  "claim",
-                  "publish"
-                ]
-              },
-              "producer": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "producer_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "progress_id": {
-                "pattern": "^[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "request_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "turn_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              }
-            },
             "type": "object"
           },
           "output_schema": {
@@ -1534,6 +1423,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:080800c89e5a184f097981939ea15f3f408cb6e5a5155b1e5b88759d0031a1ca",
-  "catalog_digest": "sha256:a03e0c2904119cea61c75a1631a656d168f104c62c110c3ed7fb449173938659"
+  "materialization_catalog_digest": "sha256:e9cf6e36fa6915adb01c2251067af58f10edadadb2caee8452e38cb30867eb05",
+  "catalog_digest": "sha256:93e292bffb0b876290068adb131800e272842f8ba0365591a7f876ff8baffb4d"
 }

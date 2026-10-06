@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:080800c89e5a184f097981939ea15f3f408cb6e5a5155b1e5b88759d0031a1ca",
+  "catalog_digest": "sha256:e9cf6e36fa6915adb01c2251067af58f10edadadb2caee8452e38cb30867eb05",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:029d3e3a8893bad90cd42bca4f79c43d533c8972e1e145b914fd51356d1ab5a2",
+  "source_identity": "sha256:08cf205a682376c6df3a444513daac3458457dd8ee2aa01908fbc07650cfbd42",
   "variants": [
     {
       "architecture": "any",
@@ -484,117 +484,6 @@
                 "type": "object"
               }
             ],
-            "properties": {
-              "ai_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "conversation_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "conversation_revision": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "cursor": {
-                "maximum": 4096,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "event": {
-                "oneOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "delta": {
-                        "maxLength": 16384,
-                        "type": "string"
-                      },
-                      "type": {
-                        "enum": [
-                          "text_delta",
-                          "thinking_delta"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "delta"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "finish_reason": {
-                        "enum": [
-                          "stop",
-                          "length",
-                          "tool_calls",
-                          "end_turn",
-                          "max_tokens",
-                          "tool_use"
-                        ]
-                      },
-                      "type": {
-                        "const": "finish"
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "finish_reason"
-                    ],
-                    "type": "object"
-                  }
-                ]
-              },
-              "input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "parent_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "phase": {
-                "enum": [
-                  "ready",
-                  "begin",
-                  "bind",
-                  "claim",
-                  "publish"
-                ]
-              },
-              "producer": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "producer_input_digest": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "progress_id": {
-                "pattern": "^[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "request_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              },
-              "turn_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                "type": "string"
-              }
-            },
             "type": "object"
           },
           "operation_id": "rumi_turn_runtime_pack.turn-progress",
@@ -654,7 +543,7 @@
             },
             "type": "object"
           },
-          "revision_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+          "revision_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

@@ -178,7 +178,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:9b76552e85afedae06828cdd632763e0a74eedc51a0cf12f641ae284d721828d",
+    "source_digest": "sha256:8e6c9c966b9e72bb733cd2732a95eecdc85836896265760fc419089b10e6334e",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -3676,7 +3676,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+        "semantics_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -3720,7 +3720,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+        "semantics_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -3742,7 +3742,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+        "semantics_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -4200,7 +4200,7 @@
       "operation_id": "rumi_turn_runtime_pack.turn-progress",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
+        "semantics_digest": "sha256:061042c5f75317016af490fd1bcf012dd39fb1dd3c31d09ccd156a1180de859d",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
