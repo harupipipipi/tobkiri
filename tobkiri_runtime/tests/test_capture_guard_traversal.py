@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
+
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 if not (RUNTIME_ROOT / "core_runtime").is_dir():
     RUNTIME_ROOT = RUNTIME_ROOT / "work/tobkiri_runtime"
@@ -52,6 +54,7 @@ def harness():
         "dispatch_holder": [SimpleNamespace(assert_current=capture)],
         "assert_current_capture": capture,
         "AuthorityDenied": PermissionError,
+        "saved_tool_entry_guards": SavedToolEntryGuardRegistry(),
         "_capture_guard_traversal": helper._capture_guard_traversal,
         "CapturedInvocationScopeV4": lambda envelope, guard, parent: SimpleNamespace(
             envelope=envelope, assert_current=guard, parent=parent
@@ -70,7 +73,10 @@ def harness():
     )
 
     def make(name):
-        envelope = SimpleNamespace(context=SimpleNamespace(caller_session_id=name))
+        envelope = SimpleNamespace(
+            context=SimpleNamespace(caller_session_id=name, request_id=name),
+            request_digest=f"capture-guard-{name}",
+        )
         scope = namespace["capture_invocation_scope"](envelope)
         parent[0] = scope
         return scope
