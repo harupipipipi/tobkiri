@@ -274,6 +274,90 @@ def _effect_classes(executable: Any) -> dict[tuple[str, str], str | None]:
     return result
 
 
+def _is_capability_only_resource_read(
+    operation: dict[str, Any],
+    functions: list[Any],
+    executable: Any,
+) -> bool:
+    """Recognize declared Host resource reads for lint, never runtime authority.
+
+    Host-extension is an execution boundary, not an operation effect. Resource
+    reads may expose captured Host state without declaring host execution as an
+    external effect. Require agreement across every owning Function and variant;
+    a missing declaration or a mixed read/write implementation fails closed.
+    """
+    ceiling = operation.get("effect_ceiling")
+    contract_id = operation.get("contract_reference")
+    operation_id = operation.get("operation_id")
+    if (
+        not isinstance(ceiling, list)
+        or not ceiling
+        or not all(
+            isinstance(effect, str)
+            and effect.startswith("capability:")
+            and len(effect) > len("capability:")
+            for effect in ceiling
+        )
+        or not isinstance(contract_id, str)
+        or re.fullmatch(r"tobkiri\.resource\.[a-z0-9._-]+\.v[1-9][0-9]*", contract_id)
+        is None
+        or not isinstance(executable, dict)
+        or not isinstance(executable.get("variants"), list)
+    ):
+        return False
+    owners = [
+        function.get("id")
+        for function in functions
+        if isinstance(function, dict)
+        and isinstance(function.get("operations"), list)
+        and operation_id in function["operations"]
+    ]
+    if (
+        not owners
+        or any(not isinstance(owner, str) for owner in owners)
+        or len(owners) != len(set(owners))
+        or owners != [operation.get("provider_id")]
+    ):
+        return False
+    for variant in executable["variants"]:
+        if not isinstance(variant, dict):
+            return False
+        entries = variant.get("operations")
+        if (
+            isinstance(entries, list)
+            and any(
+                isinstance(entry, dict) and entry.get("operation_id") == operation_id
+                for entry in entries
+            )
+            and variant.get("function_id") not in owners
+        ):
+            return False
+    for owner in owners:
+        variants = [
+            variant
+            for variant in executable["variants"]
+            if isinstance(variant, dict) and variant.get("function_id") == owner
+        ]
+        if not variants:
+            return False
+        for variant in variants:
+            entries = variant.get("operations")
+            if not isinstance(entries, list):
+                return False
+            matching = [
+                entry
+                for entry in entries
+                if isinstance(entry, dict) and entry.get("operation_id") == operation_id
+            ]
+            if (
+                len(matching) != 1
+                or matching[0].get("effect_class") != "read"
+                or matching[0].get("contract_id") != contract_id
+            ):
+                return False
+    return True
+
+
 def _declared_content_artifacts(document: dict[str, Any]) -> list[dict[str, Any]]:
     """Return Pack-owned artifacts other than the mandatory executable index."""
 
@@ -365,7 +449,9 @@ def _scan_pack(
             has_host_effect = isinstance(ceiling, list) and any(
                 isinstance(item, str) and item.startswith("host:") for item in ceiling
             )
-            if not has_host_effect:
+            if not has_host_effect and not _is_capability_only_resource_read(
+                operation, function_entries, executable
+            ):
                 diagnostics.append(
                     _diagnostic(
                         "pack-boundary.host-extension-without-external-effect",

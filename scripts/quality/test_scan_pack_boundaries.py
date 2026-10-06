@@ -539,3 +539,130 @@ def test_report_only_is_deterministic_and_does_not_create_baseline(
 
     assert first.read_bytes() == second.read_bytes()
     assert not baseline.exists()
+
+
+def _write_host_resource_read(root: Path) -> Path:
+    """Write a capability-only resource with matching executable declarations."""
+    pack = _pack("read-host", kind="host_extension")
+    contract_id = "tobkiri.resource.test.v1"
+    pack["operation_catalog"][0]["contract_reference"] = contract_id
+    pack["operation_catalog"][0]["provider_id"] = pack["functions"][0]["id"]
+    path = _write_pack(root, "read-host", pack)
+    executable_path = path.with_name("executables.v4.json")
+    executable = json.loads(executable_path.read_text(encoding="utf-8"))
+    executable["variants"][0]["operations"][0]["contract_id"] = contract_id
+    _write_json(executable_path, executable)
+    return path
+
+
+def test_capability_only_host_resource_read_is_not_an_external_effect(
+    scanner: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """Captured Host reads keep their exact capability ceiling and zero debt."""
+    _write_host_resource_read(tmp_path)
+    assert scanner.scan_repository(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "effect_class", ["pure", "write", "external_effect", "privileged", None]
+)
+def test_host_resource_non_read_still_requires_external_effect(
+    scanner: ModuleType,
+    tmp_path: Path,
+    effect_class: str | None,
+) -> None:
+    path = _write_host_resource_read(tmp_path)
+    executable_path = path.with_name("executables.v4.json")
+    executable = json.loads(executable_path.read_text(encoding="utf-8"))
+    executable["variants"][0]["operations"][0]["effect_class"] = effect_class
+    _write_json(executable_path, executable)
+    assert "pack-boundary.host-extension-without-external-effect" in _rules(
+        scanner, tmp_path
+    )
+
+
+@pytest.mark.parametrize(
+    "ceiling",
+    [
+        [],
+        ["capability:"],
+        ["network:example.com"],
+        ["capability:test.read", "secret:test"],
+    ],
+)
+def test_host_read_without_capability_only_ceiling_is_not_exempt(
+    scanner: ModuleType,
+    tmp_path: Path,
+    ceiling: list[str],
+) -> None:
+    path = _write_host_resource_read(tmp_path)
+    pack = json.loads(path.read_text(encoding="utf-8"))
+    pack["operation_catalog"][0]["effect_ceiling"] = ceiling
+    _write_json(path, pack)
+    assert "pack-boundary.host-extension-without-external-effect" in _rules(
+        scanner, tmp_path
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-index",
+        "missing-owner",
+        "unbound-owner",
+        "mixed-variants",
+        "missing-variant-operation",
+        "duplicate-operation",
+        "wrong-contract",
+        "action-contract",
+        "duplicate-owner",
+        "wrong-provider",
+        "foreign-variant",
+    ],
+)
+def test_host_read_requires_all_owner_and_variant_declarations_to_agree(
+    scanner: ModuleType,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    path = _write_host_resource_read(tmp_path)
+    pack = json.loads(path.read_text(encoding="utf-8"))
+    executable_path = path.with_name("executables.v4.json")
+    executable = json.loads(executable_path.read_text(encoding="utf-8"))
+    variant = executable["variants"][0]
+    if mutation == "missing-index":
+        executable_path.unlink()
+    elif mutation == "missing-owner":
+        pack["functions"] = []
+    elif mutation == "duplicate-owner":
+        pack["functions"].append(dict(pack["functions"][0]))
+    elif mutation == "wrong-provider":
+        pack["operation_catalog"][0]["provider_id"] = "other.function"
+    elif mutation == "foreign-variant":
+        other = json.loads(json.dumps(variant))
+        other["function_id"] = "other.function"
+        executable["variants"].append(other)
+    elif mutation == "unbound-owner":
+        pack["functions"].append({**pack["functions"][0], "id": "other.function"})
+    elif mutation in {"mixed-variants", "missing-variant-operation"}:
+        other = json.loads(json.dumps(variant))
+        other["operations"][0]["effect_class"] = "write"
+        if mutation == "missing-variant-operation":
+            other["operations"] = []
+        # Place the valid read last: a last-entry-wins map must not hide writes.
+        executable["variants"].insert(0, other)
+    elif mutation == "duplicate-operation":
+        variant["operations"].append(dict(variant["operations"][0]))
+    elif mutation == "wrong-contract":
+        variant["operations"][0]["contract_id"] = "tobkiri.resource.other.v1"
+    elif mutation == "action-contract":
+        contract_id = "tobkiri.action.test.v1"
+        pack["operation_catalog"][0]["contract_reference"] = contract_id
+        variant["operations"][0]["contract_id"] = contract_id
+    _write_json(path, pack)
+    if mutation != "missing-index":
+        _write_json(executable_path, executable)
+    assert "pack-boundary.host-extension-without-external-effect" in _rules(
+        scanner, tmp_path
+    )
