@@ -149,17 +149,18 @@ def progress_operation(
             or envelope.operation_id != "rumi_tool_broker_pack.tool-invoke"
         ):
             raise PermissionError("tool progress requires captured tool broker")
-        matches = [
-            binding
-            for binding in context.catalog_bindings
+        matches = []
+        for binding in context.catalog_bindings:
             if (
                 binding.operation.contract_id == envelope.contract_id
                 and binding.operation.operation_id == envelope.operation_id
                 and binding.operation.contract_version == "1.0.0"
                 and binding.principal_ref == envelope.target_principal
                 and binding.function.function_id == "rumi_tool_broker_pack.tool-broker.invoke"
-            )
-        ]
+                and binding not in matches
+            ):
+                # Several captured caller edges may pin the same full binding.
+                matches.append(binding)
         if len(matches) != 1:
             raise PermissionError("tool progress producer is not captured")
         expected = {"progress_id"} if action == "tool_bind" else {"progress_id", "cursor", "event"}

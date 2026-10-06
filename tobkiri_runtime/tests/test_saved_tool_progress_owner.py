@@ -161,3 +161,34 @@ def test_authenticated_stage_change_resets_cursor_but_same_stage_never_rewinds(o
         read(identity, 4)
     with pytest.raises(ValueError, match="cursor"):
         read("previous-stage", -1)
+
+
+def test_identical_captured_edges_preserve_one_tool_producer(owner):
+    """Repeated edges to an identical captured binding remain one producer."""
+    operation, payload, _, _, _, context, _ = owner
+    context.catalog_bindings = context.catalog_bindings * 2
+    assert operation("tool_bind") == {"bound": True}
+    assert operation("tool_publish", cursor=1, event={"type": "tool_started", **payload}) == {
+        "cursor": 1
+    }
+    assert operation(
+        "tool_publish",
+        cursor=2,
+        event={
+            "type": "tool_completed",
+            "tool_id": payload["tool_id"],
+            "tool_call_id": payload["tool_call_id"],
+            "status": "success",
+            "content": '{"status":"success","result":null,"error":null}',
+        },
+    ) == {"cursor": 2}
+
+
+def test_distinct_matching_captured_bindings_are_ambiguous(owner):
+    """A different complete route cannot collapse into the same producer."""
+    operation, _, _, _, _, context, _ = owner
+    original = context.catalog_bindings[0]
+    different = SimpleNamespace(**vars(original), route="different-route")
+    context.catalog_bindings = (original, different)
+    with pytest.raises(PermissionError, match="producer is not captured"):
+        operation("tool_bind")

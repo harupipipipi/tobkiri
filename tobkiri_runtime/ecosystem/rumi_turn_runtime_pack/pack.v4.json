@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:6414ad901aa099d01a01fa7dfc57e9ccf7abdb68979691cb83b3865595444163",
+      "digest": "sha256:24f38dfc2fb42b08ea8771dcfcefdc6330999040851d4a38f24dc69a1f649224",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +21,7 @@
       "path": "runtime/progress.py"
     },
     {
-      "digest": "sha256:52357b1ac0a724ec43537be316c47577986381075573c4f239d12f73e37b6bd4",
+      "digest": "sha256:8176630ff6454b47d268d4f3f782b82b5f5daad8e7c8a72786f46d64da139dd9",
       "kind": "sidecar",
       "path": "runtime/progress_host.py"
     },
@@ -194,9 +194,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:a2353383a19d8143ad93260c153a58abf1cfb80129ce1b5e58dc6be987e3a799",
-    "contract_catalog_digest": "sha256:78b3aa382a52facdb7f6523ec1e5a4054d7a71b57dd02ae393ade28cf9d0fc0c",
-    "source_identity": "sha256:38ebe72f081af2f25973627a16e206a0daac6a8a9a995955ea3dcaf0ac73c1a7"
+    "artifact_set_digest": "sha256:9bdfbcf8740340af73650819f03aaa57d716863c042aa0c5b316a38dc09a0eb8",
+    "contract_catalog_digest": "sha256:f66714a3cb63965e83dc3dc37fced92aec41d64fd8cb0787820d96ce60fa47ef",
+    "source_identity": "sha256:70ea3d5203ac4ba9c54ead199227889919aa94bfd0e29df14b07dc7f137fdaca"
   },
   "migration": {
     "compatibility": "read_only",
@@ -311,7 +311,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:a2353383a19d8143ad93260c153a58abf1cfb80129ce1b5e58dc6be987e3a799",
+    "artifact_digest": "sha256:9bdfbcf8740340af73650819f03aaa57d716863c042aa0c5b316a38dc09a0eb8",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -321,7 +321,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:38ebe72f081af2f25973627a16e206a0daac6a8a9a995955ea3dcaf0ac73c1a7",
+        "digest": "sha256:70ea3d5203ac4ba9c54ead199227889919aa94bfd0e29df14b07dc7f137fdaca",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -332,7 +332,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:38ebe72f081af2f25973627a16e206a0daac6a8a9a995955ea3dcaf0ac73c1a7",
+    "source_digest": "sha256:70ea3d5203ac4ba9c54ead199227889919aa94bfd0e29df14b07dc7f137fdaca",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
   },
