@@ -519,12 +519,12 @@
     {
       "path": "packs/rumi_default_tools_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:86d885616f0e223c5df7c563640aa9995e8d3ddeaed4ebbe865fd7b5fe4f2131"
+      "digest": "sha256:9cfd93489baeb8429b3ab7c6c17179c24a56409dd1837d6abc2e1acb3785e530"
     },
     {
       "path": "packs/rumi_default_tools_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:aeba79ef8075303ecccb9295eaf813db1c8cb1fda9a3f53f217122e95411cd8c"
+      "digest": "sha256:3008bf7d9cc3f4e4b24dfe08f2b0008a8ca46bb4f964af666183831cdf8f08a8"
     },
     {
       "path": "packs/rumi_desktop_host_service_pack.executables.v4.json",

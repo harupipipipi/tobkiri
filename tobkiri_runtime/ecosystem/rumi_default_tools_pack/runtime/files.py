@@ -132,7 +132,6 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
             ):
                 raise PermissionError("Selected workspace binding changed")
 
-        verify()
         result = client.invoke(
             FILE_INSPECT,
             FILE_OPERATION,

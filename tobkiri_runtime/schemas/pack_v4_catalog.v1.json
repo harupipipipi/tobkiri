@@ -8828,7 +8828,7 @@
             {
               "entrypoint_id": "files-read-operation",
               "id": "rumi_default_tools_pack.files-read-operation",
-              "implementation_digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965"
+              "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -9039,7 +9039,7 @@
         {
           "kind": "executable",
           "path": "runtime/files.py",
-          "digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965"
+          "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
         }
       ],
       "secrets": [],
@@ -9073,7 +9073,7 @@
           "operation_ids": [
             "rumi_default_tools_pack.files-read-operation"
           ],
-          "implementation_digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965"
+          "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d"
         }
       ]
     },

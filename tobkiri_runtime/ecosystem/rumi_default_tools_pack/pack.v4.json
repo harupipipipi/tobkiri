@@ -6,7 +6,7 @@
       "path": "domain/tool/calculator.py"
     },
     {
-      "digest": "sha256:19e0a0b77e3a3dbd1935ba6c006ed6d03eb19b9915fd902380bd524d2d44447e",
+      "digest": "sha256:382a8c280cd0b5f0961e2ac81f776c3031b80b0c327a58b78ff276ca46797a8b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +21,7 @@
       "path": "runtime/calculator.py"
     },
     {
-      "digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965",
+      "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
       "kind": "executable",
       "path": "runtime/files.py"
     },
@@ -200,7 +200,7 @@
     {
       "contract_revision_digest": "sha256:6ecce1a59332af01bd4e0d6416b37e9a680edcb24ea5903e769abd65cb743d8c",
       "id": "rumi_default_tools_pack.files-read",
-      "implementation_digest": "sha256:ac8da9bc9177dd3a86bdd43eb56aeb9038c730ca4066f4af13b09936463b1965",
+      "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_default_tools_pack.files-read-operation"
@@ -209,9 +209,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ae4b55bebadf652302bbbc629d6ad0713b70e2286c66884b0421ef5620da36f5",
-    "contract_catalog_digest": "sha256:bae681fe05124b3f8932fdb435413d605e54d4b4703433b8e5c02624d0f9e1eb",
-    "source_identity": "sha256:0b22291c5a48259c0458772a656523afd948ef6851aa9ff188050201f318ff9a"
+    "artifact_set_digest": "sha256:a181f942ff614655042b1facd5194b9ee4719c5169d1d18b42b01e6d880ef69e",
+    "contract_catalog_digest": "sha256:8526f30dad82d10b766ffad5ec07cfb5e829bcd11262c52e56a234bb8745ee78",
+    "source_identity": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -247,7 +247,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ae4b55bebadf652302bbbc629d6ad0713b70e2286c66884b0421ef5620da36f5",
+    "artifact_digest": "sha256:a181f942ff614655042b1facd5194b9ee4719c5169d1d18b42b01e6d880ef69e",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
     "kind": "host_extension",
@@ -257,7 +257,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:0b22291c5a48259c0458772a656523afd948ef6851aa9ff188050201f318ff9a",
+        "digest": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -268,7 +268,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0b22291c5a48259c0458772a656523afd948ef6851aa9ff188050201f318ff9a",
+    "source_digest": "sha256:2da466cef0026af77281506651bc65ce51bbe7913a851a69d0b829761ad8707d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
   },
