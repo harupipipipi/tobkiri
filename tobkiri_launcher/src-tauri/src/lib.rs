@@ -4230,6 +4230,7 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     let host_broker =
         HostBrokerRuntime::start(&config, Arc::clone(&debug_approval), app.handle().clone())
             .context("failed to start Viewer host broker")?;
+    config.host_broker_contract = host_broker.host_contract_values()?;
     let broker_attestation = host_broker.attestation_identity();
     record_startup_stage(&ctx.startup_stage, "host_broker_running");
     app.manage(host_broker.clone());

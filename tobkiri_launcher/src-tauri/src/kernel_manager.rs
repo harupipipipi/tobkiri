@@ -1095,6 +1095,7 @@ mod tests {
             log_dir: PathBuf::new(),
             kernel_port: listener.local_addr().unwrap().port(),
             dev_workspace_root: None,
+            host_broker_contract: None,
         };
         let (stop_server, stop_requested) = mpsc::channel();
         let server = std::thread::spawn(move || {

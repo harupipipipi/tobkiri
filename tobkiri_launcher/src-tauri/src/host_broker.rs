@@ -331,6 +331,43 @@ impl HostBrokerRuntime {
             })
     }
 
+    /// Capture credentials directly from this live broker, with its own pin.
+    pub(crate) fn host_contract_values(
+        &self,
+    ) -> Result<Option<crate::host_contract::HostBrokerContractValues>> {
+        let status = self
+            .inner
+            .status
+            .lock()
+            .map_err(|_| anyhow!("Launcher broker status unavailable"))?;
+        if !status.enabled {
+            return Ok(None);
+        }
+        if !status.available {
+            anyhow::bail!("Launcher broker unavailable");
+        }
+        let url = status
+            .url
+            .as_ref()
+            .context("Launcher broker URL unavailable")?;
+        let parsed = reqwest::Url::parse(url).context("invalid Launcher broker URL")?;
+        if parsed.scheme() != "http" || parsed.host_str() != Some(DEFAULT_HOST) {
+            anyhow::bail!("invalid Launcher broker origin");
+        }
+        let port = parsed.port().context("Launcher broker port unavailable")?;
+        let token = self
+            .inner
+            .token
+            .clone()
+            .context("Launcher broker token unavailable")?;
+        Ok(Some(crate::host_contract::HostBrokerContractValues::new(
+            port,
+            token,
+            self.inner.attestation.public_key_base64(),
+            self.inner.attestation.instance_nonce().to_owned(),
+        )?))
+    }
+
     pub(crate) fn attestation_identity(&self) -> BrokerAttestationIdentity {
         self.inner.attestation.clone()
     }
@@ -3626,6 +3663,7 @@ mod tests {
             log_dir: temp_dir.join("logs"),
             kernel_port: 8765,
             dev_workspace_root: None,
+            host_broker_contract: None,
         };
         (config, temp_dir)
     }
@@ -3687,6 +3725,51 @@ mod tests {
             headers,
             body: serde_json::to_vec(&body).unwrap(),
         }
+    }
+
+    #[test]
+    fn host_contract_capture_uses_live_broker_credentials_and_attestation() {
+        let (config, temp_dir) = test_config_with_approval_secret("test-secret");
+        let shared = test_shared(config.clone());
+        let runtime = HostBrokerRuntime {
+            inner: Arc::new(shared),
+        };
+        assert!(runtime.host_contract_values().unwrap().is_none());
+        {
+            let mut status = runtime.inner.status.lock().unwrap();
+            status.enabled = true;
+            status.available = true;
+            status.url = Some("http://127.0.0.1:9876".into());
+        }
+        let mut captured_config = config;
+        captured_config.host_broker_contract = runtime.host_contract_values().unwrap();
+        let identity = crate::host_contract::ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:broker-capture-test",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap();
+        crate::host_contract::write_contract(&captured_config, &identity, []).unwrap();
+        assert_eq!(
+            crate::host_contract::read_value(&captured_config, "viewer_broker_token").as_deref(),
+            Some("broker-token")
+        );
+        assert_eq!(
+            crate::host_contract::read_value(
+                &captured_config,
+                "viewer_broker_attestation_public_key"
+            ),
+            Some(runtime.inner.attestation.public_key_base64())
+        );
+        assert_eq!(
+            crate::host_contract::read_value(&captured_config, "viewer_broker_instance_nonce")
+                .as_deref(),
+            Some(runtime.inner.attestation.instance_nonce())
+        );
+        runtime.inner.status.lock().unwrap().available = false;
+        assert!(runtime.host_contract_values().is_err());
+        fs::remove_dir_all(temp_dir).unwrap();
     }
 
     #[test]

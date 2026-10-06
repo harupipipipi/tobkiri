@@ -1536,6 +1536,7 @@ mod tests {
             log_dir: PathBuf::from("/tmp/defaultspack-manager-test/logs"),
             kernel_port: 8765,
             dev_workspace_root: None,
+            host_broker_contract: None,
         }
     }
 

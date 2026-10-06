@@ -33,6 +33,8 @@ pub struct AppConfig {
     pub kernel_port: u16,
     /// Repo root when running against a development checkout.
     pub dev_workspace_root: Option<PathBuf>,
+    /// In-memory current Launcher broker capture for private Host contracts.
+    pub(crate) host_broker_contract: Option<crate::host_contract::HostBrokerContractValues>,
 }
 
 impl AppConfig {
@@ -144,6 +146,7 @@ impl AppConfig {
             log_dir,
             kernel_port: 8765,
             dev_workspace_root,
+            host_broker_contract: None,
         })
     }
 
@@ -590,6 +593,7 @@ mod tests {
             log_dir: PathBuf::from("/tmp/shared-app-data/logs"),
             kernel_port: 8765,
             dev_workspace_root: Some(workspace_root),
+            host_broker_contract: None,
         };
         let state_root = PathBuf::from("/tmp/owned-debug-supervisor");
 

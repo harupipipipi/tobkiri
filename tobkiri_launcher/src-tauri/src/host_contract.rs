@@ -17,6 +17,55 @@ use crate::config::AppConfig;
 
 pub(crate) const CONTRACT_ENV: &str = "TOBKIRI_HOST_CONTRACT_PATH";
 
+/// Current Launcher-owned broker material, never reconstructed from environment
+/// variables or persisted credentials. Debug output deliberately hides values.
+#[derive(Clone)]
+pub(crate) struct HostBrokerContractValues {
+    values: [(&'static str, String); 4],
+}
+
+impl std::fmt::Debug for HostBrokerContractValues {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("HostBrokerContractValues(<redacted>)")
+    }
+}
+
+impl HostBrokerContractValues {
+    /// Capture the live loopback broker and its matching attestation identity.
+    pub(crate) fn new(
+        port: u16,
+        token: String,
+        public_key: String,
+        instance_nonce: String,
+    ) -> Result<Self> {
+        if port == 0
+            || [&token, &public_key, &instance_nonce].iter().any(|value| {
+                value.is_empty()
+                    || value.trim() != value.as_str()
+                    || value.len() > 4096
+                    || value.chars().any(char::is_control)
+            })
+        {
+            anyhow::bail!("invalid current Launcher broker contract");
+        }
+        Ok(Self {
+            values: [
+                ("viewer_broker_url", format!("http://127.0.0.1:{port}")),
+                ("viewer_broker_token", token),
+                ("viewer_broker_attestation_public_key", public_key),
+                ("viewer_broker_instance_nonce", instance_nonce),
+            ],
+        })
+    }
+}
+
+const BROKER_CONTRACT_KEYS: [&str; 4] = [
+    "viewer_broker_url",
+    "viewer_broker_token",
+    "viewer_broker_attestation_public_key",
+    "viewer_broker_instance_nonce",
+];
+
 // These are SHA-256 digests of distinct, domain-separated bootstrap labels.
 // They are deliberately not a synthetic resolved Profile or plan; the
 // bootstrap contract exists only long enough for the first Host process to
@@ -136,6 +185,16 @@ fn write_contract_inner(
     for (name, value) in values {
         if !value.trim().is_empty() {
             merged_values.insert(name.to_string(), value);
+        }
+    }
+    // Broker credentials belong to the live Launcher instance. Never retain
+    // pins from a prior instance, even when the execution Profile is unchanged.
+    for key in BROKER_CONTRACT_KEYS {
+        merged_values.remove(key);
+    }
+    if let Some(broker) = &config.host_broker_contract {
+        for (key, value) in &broker.values {
+            merged_values.insert((*key).to_owned(), value.clone());
         }
     }
     let mut payload = Map::new();
@@ -325,6 +384,138 @@ mod tests {
         .unwrap()
     }
 
+    fn broker_values(token: &str) -> super::HostBrokerContractValues {
+        super::HostBrokerContractValues::new(
+            9876,
+            token.to_owned(),
+            format!("key-{token}"),
+            format!("nonce-{token}"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn current_broker_is_published_for_bootstrap_and_profile_transitions() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-broker-contract-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let mut config = test_config(&root);
+        config.host_broker_contract = Some(broker_values("first"));
+        let bootstrap_path = write_bootstrap_contract(&config, []).unwrap();
+        let bootstrap: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(bootstrap_path).unwrap()).unwrap();
+        assert_eq!(bootstrap["values"]["viewer_broker_token"], "first");
+        // Bootstrap material must still remain unavailable through the active
+        // identity reader; publishing it does not grant execution authority.
+        assert_eq!(read_value(&config, "viewer_broker_token"), None);
+        let first = identity("profile-a", "a", "active-");
+        write_contract(&config, &first, []).unwrap();
+        assert_eq!(
+            read_value(&config, "viewer_broker_url").as_deref(),
+            Some("http://127.0.0.1:9876")
+        );
+        assert_eq!(
+            read_value(&config, "viewer_broker_attestation_public_key").as_deref(),
+            Some("key-first")
+        );
+        assert_eq!(
+            read_value(&config, "viewer_broker_instance_nonce").as_deref(),
+            Some("nonce-first")
+        );
+        let second = identity("profile-b", "b", "next-");
+        write_contract(&config, &second, []).unwrap();
+        assert_eq!(read_identity(&config), Some(second));
+        assert_eq!(
+            read_value(&config, "viewer_broker_token").as_deref(),
+            Some("first")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(super::contract_path(&config))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+            assert_eq!(
+                std::fs::metadata(&config.user_data_dir)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn broker_rotation_overrides_persisted_and_caller_values_and_none_clears_them() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-broker-contract-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let mut config = test_config(&root);
+        let active = identity("profile-a", "a", "active-");
+        config.host_broker_contract = Some(broker_values("first"));
+        write_contract(&config, &active, []).unwrap();
+        config.host_broker_contract = Some(broker_values("rotated"));
+        write_contract(
+            &config,
+            &active,
+            [("viewer_broker_token", "caller-stale".into())],
+        )
+        .unwrap();
+        assert_eq!(
+            read_value(&config, "viewer_broker_token").as_deref(),
+            Some("rotated")
+        );
+        assert_eq!(
+            read_value(&config, "viewer_broker_instance_nonce").as_deref(),
+            Some("nonce-rotated")
+        );
+        config.host_broker_contract = None;
+        write_contract(
+            &config,
+            &active,
+            [("viewer_broker_token", "caller-stale".into())],
+        )
+        .unwrap();
+        for key in super::BROKER_CONTRACT_KEYS {
+            assert_eq!(read_value(&config, key), None);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn broker_capture_debug_hides_credentials_and_rejects_invalid_material() {
+        let broker = broker_values("private-token");
+        assert_eq!(
+            format!("{broker:?}"),
+            "HostBrokerContractValues(<redacted>)"
+        );
+        assert!(super::HostBrokerContractValues::new(
+            0,
+            "token".into(),
+            "key".into(),
+            "nonce".into()
+        )
+        .is_err());
+        assert!(super::HostBrokerContractValues::new(
+            8766,
+            "token\n".into(),
+            "key".into(),
+            "nonce".into()
+        )
+        .is_err());
+    }
+
     #[test]
     fn identity_rejects_a_profile_revision_reused_as_the_plan_digest() {
         let digest = format!("sha256:{}", "a".repeat(64));
@@ -440,6 +631,7 @@ mod tests {
             log_dir: root.join("logs"),
             kernel_port: 8765,
             dev_workspace_root: None,
+            host_broker_contract: None,
         }
     }
 }

@@ -4338,6 +4338,7 @@ mod tests {
             log_dir: root.join("Application Support/logs"),
             kernel_port: 8765,
             dev_workspace_root: None,
+            host_broker_contract: None,
         };
         package_fixture_application(&config, &source_checkout, &source_revision);
         (root, config)
@@ -4370,6 +4371,7 @@ mod tests {
             log_dir: root.join("logs"),
             kernel_port: 8765,
             dev_workspace_root: None,
+            host_broker_contract: None,
         };
         let legacy = serde_json::json!({
             "version": 1,
