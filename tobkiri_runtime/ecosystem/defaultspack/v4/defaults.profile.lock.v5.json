@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:43b3d42c5875f58113c1f4369958c2090a48dd541b9847016d094307d08cf06f",
-  "profile_definition_digest": "sha256:c1d8201e11425c67d76b762112fe97d99073560231feb0f446495dd788dde193",
+  "profile_revision": "sha256:498ada4f49d5180f81eea56a48dc5c58742f572b6c5958a31b01c0f776a5d3f2",
+  "profile_definition_digest": "sha256:91ca43493a4960b18b8ec5649e95d0c4aae7414a0c8729cc63b30b1dc5151d03",
   "catalog_revision": "sha256:af5c1a6022ca2c50ff8791a089e572abc9423860f53c88fdc2b4a4fa1d1ffbd3",
-  "bundle_digest": "sha256:794ffab88ec505f8d108aaf93ec62dc9d6af152fb919c931968e1ed07205c4c2",
+  "bundle_digest": "sha256:429f2781017c84dd27908fa8864ff237b01720ba688e9e2abb04c98bdc0ddfaa",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -1219,9 +1219,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:27f0965b61056fd9fcdf11fcee469c01ed05bea33e9f8f88b78f2f4104d6ee10",
+  "requested_edges_digest": "sha256:42f1a2e588ac62b65aa3e9f142e488b15f4d6f424f9680d30fc5f5db2f93256a",
   "constraints_digest": "sha256:e3ac22346058073e8701d94ae21fe2853096739f25eb868eb3aafe5f9c7603df",
   "closure_digest": "sha256:8b2d22fe0f73c7b100977744311aace19983fe7b155901f6317fc7a326d1810a",
-  "provenance_digest": "sha256:b627469a82fa68c390c940229d0304e6d15fc178f83befe013110c56ea7f9193",
-  "lock_digest": "sha256:1cdfb68843db89d62971ed9c6dab325ee026d4fea7fe6ffde9901d1ce3e4b23f"
+  "provenance_digest": "sha256:8efebb81c85ce9cf5eba6cbaa2d63de8445f4e8dbd2265c4af3f316372879c52",
+  "lock_digest": "sha256:10cf400320918ddef2544ee0b9aa3bdff9ec6a5ba72d4ce9eaa9e32e91944701"
 }

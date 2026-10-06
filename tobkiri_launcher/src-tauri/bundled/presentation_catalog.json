@@ -637,7 +637,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:ee769a3beecb46e332feef81d4e6f6510bd9a5879d15a27cf5ed2723760e549e",
+  "default_profile_digest": "sha256:0609d1aff11786d9ae6d7c22cf32e846bc0dc3baaaeffa378bb2525d08e32358",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
