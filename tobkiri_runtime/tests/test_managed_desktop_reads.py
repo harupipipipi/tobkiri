@@ -2,7 +2,10 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from types import ModuleType, SimpleNamespace
 from typing import Any, Mapping
 import pytest
@@ -25,6 +28,34 @@ presentation = load_candidate(
     "ecosystem/defaultspack/defaultspack/managed_desktop_presentation.py",
 )
 OPERATION = next(iter(owner.OPERATIONS))
+
+
+def test_legacy_registry_resolver_imports_with_only_the_kernel_root(
+    tmp_path: Path,
+) -> None:
+    """Cold Host capture does not depend on the Shell's legacy import path."""
+    root = Path(__file__).resolve().parents[1]
+    legacy = tmp_path / "legacy-sandbox"
+    environment = dict(os.environ)
+    environment["RUMI_DEFAULTSPACK_SANDBOX_STATE_DIR"] = str(legacy)
+    code = (
+        "import sys;sys.path.insert(0,sys.argv[1]);"
+        "from ecosystem.rumi_sandbox_runtime_pack.runtime.managed_desktops "
+        "import legacy_defaults_registry_path;"
+        "print(legacy_defaults_registry_path());"
+        "assert 'domain' not in sys.modules"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code, str(root)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    assert result.stdout.strip() == str(legacy / "sandboxes.json")
+    assert not legacy.exists()
 
 
 @pytest.fixture(autouse=True)

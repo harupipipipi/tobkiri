@@ -37,7 +37,10 @@ from .models import (
 )
 from .provider_registry import ProviderRegistry
 from .template_catalog import sandbox_template_by_id
-from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
+from ecosystem.defaultspack.domain.tool.normalizers import (
+    list_or_empty,
+    mapping_or_empty,
+)
 
 
 REGISTRY_SCHEMA_VERSION = 5

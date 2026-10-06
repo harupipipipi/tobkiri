@@ -4867,7 +4867,7 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "68bdee5969c9175af1bc286dceaa35d7b82e9e4e",
+    "observed_head_sha": "238d9ec336c008879541405f34aa97b31874b37f",
     "semantic_digest": "sha256:5763580b5d59f324d6dd08ccded32bce1f6a4e6e785ae5df5d3e50e63beb97bc",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
