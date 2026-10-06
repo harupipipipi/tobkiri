@@ -3355,7 +3355,7 @@ export function defaultspackApiFetch(
     : input;
   const headers = defaultspackApiHeaders(method, init.headers);
   if (isDefaultspackContractRoute(input)) {
-    headers.set("X-Tobkiri-Request-ID", crypto.randomUUID());
+    if (!headers.has("X-Tobkiri-Request-ID")) headers.set("X-Tobkiri-Request-ID", crypto.randomUUID());
   }
   return fetch(requestInput, {
     ...init,
@@ -3519,7 +3519,25 @@ export type RuntimeHealth = {
   profile_revision?: string;
   activation_id?: string;
   plan_digest?: string;
+  saved_turn_store_id?: string;
 };
+
+/** Only a request-bound, pre-execution Host receipt proves no saved effects. */
+export function isSavedTurnNotStartedProof(value: unknown, requestId: string): boolean {
+  const proof = objectRecord(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+    && proof?.host_operation_api_version === "io.tobkiri.host.operation.v1"
+    && proof.state === "error" && proof.code === "SAVED_TURN_NOT_STARTED"
+    && proof.retryable === false && Array.isArray(proof.write_set)
+    && proof.write_set.length === 0 && proof.request_id === requestId;
+}
+
+export class SavedTurnNotStartedError extends Error {
+  constructor(public readonly requestId: string) {
+    super("会話またはモデルが変更されたため送信は開始していません。下書きを確認して送信してください。");
+    this.name = "SavedTurnNotStartedError";
+  }
+}
 
 type ResponseShapeGuard<T> = (value: unknown) => value is T;
 
@@ -3553,6 +3571,10 @@ async function request<T>(
   const hostEnvelope = objectRecord(payload);
   if (hostEnvelope && typeof hostEnvelope.success === "boolean") {
     if (!response.ok || hostEnvelope.success !== true || hostEnvelope.error != null) {
+      const requestId = new Headers(init?.headers).get("X-Tobkiri-Request-ID");
+      if (response.status === 409 && requestId && isSavedTurnNotStartedProof(hostEnvelope.data, requestId)) {
+        throw new SavedTurnNotStartedError(requestId);
+      }
       throw new Error(explainDefaultspackApiError(
         response.status,
         typeof hostEnvelope.error === "string" ? { message: hostEnvelope.error } : undefined,
@@ -4352,7 +4374,19 @@ export const api = {
     };
   },
 
-  async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
+  async savedTurnNotStartedReceipt(requestId: string): Promise<boolean> {
+    const receipt = await request<Record<string, unknown>>(
+      withQuery(defaultspackContractRoute("api/runtime-surface/operation-status"), { request_id: requestId }),
+      { cache: "no-store" },
+    );
+    return receipt.operation_status_api_version === "io.tobkiri.control-operation-status.v1"
+      && receipt.request_id === requestId && receipt.state === "failed"
+      && receipt.operation_id === "rumi_turn_runtime_pack.turn-saved"
+      && receipt.contract_id === "tobkiri.action.turn.saved.v1"
+      && isSavedTurnNotStartedProof(receipt.result, requestId);
+  },
+
+  async startSavedTurn(value: SavedTurnRequest, options?: { requestId: string }): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
     if (Object.keys(input).some((key) => ![
@@ -4379,6 +4413,7 @@ export const api = {
     const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn"), {
       method: "POST",
       body: JSON.stringify({ request: input }),
+      headers: { "X-Tobkiri-Request-ID": options?.requestId ?? crypto.randomUUID() },
     });
     if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
       || result.turn?.id !== input.turn_id || result.turn.conversation_id !== input.conversation_id) {

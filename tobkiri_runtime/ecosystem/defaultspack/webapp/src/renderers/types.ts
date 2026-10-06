@@ -248,6 +248,16 @@ export type ComposerRendererProps = {
   steerStatus?: ComposerSteerStatus | null;
   steerBusy?: boolean;
   steerControlsReady?: boolean;
+  pendingRecovery?: {
+    message: string;
+    entries: Array<{
+      id: string;
+      label: string;
+      operationId?: string;
+      submittedText?: string;
+    }>;
+    onDetach?: () => void;
+  };
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
   suppressPopovers?: boolean;

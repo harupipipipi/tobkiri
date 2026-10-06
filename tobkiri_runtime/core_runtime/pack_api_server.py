@@ -62,7 +62,11 @@ from .panel_auth import PanelAuthBinding, PanelAuthManager, get_panel_auth_manag
 from .pack_control_v4 import RuntimeSurfaceFactory
 from .authority.v4_models import AuthorityDenied
 from .authority.v4 import AuthorityStore
-from tobkiri_host.errors import AmbiguousEffectError, HostCoreError
+from tobkiri_host.errors import (
+    AmbiguousEffectError,
+    HostCoreError,
+    SavedTurnNotStartedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +121,14 @@ class HTTPRuntimeErrorCode(str, Enum):
     TIMEOUT = "TIMEOUT"
     UNSUPPORTED_PLATFORM = "UNSUPPORTED_PLATFORM"
     INVALID_REQUEST = "INVALID_REQUEST"
+    SAVED_TURN_NOT_STARTED = "SAVED_TURN_NOT_STARTED"
     API_FAILURE = "API_FAILURE"
 
 
 _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
+    HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value: (
+        "The saved conversation changed or lacks a required model; execution did not start"
+    ),
     HTTPRuntimeErrorCode.INVALID_REQUEST.value: "The request is invalid",
     HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: "The active Profile is unavailable",
     HTTPRuntimeErrorCode.STALE_REVISION.value: "The Profile revision is stale",
@@ -137,6 +145,7 @@ _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
 }
 
 _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
+    HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value: 409,
     HTTPRuntimeErrorCode.INVALID_REQUEST.value: 400,
     HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: 409,
     HTTPRuntimeErrorCode.STALE_REVISION.value: 409,
@@ -208,10 +217,15 @@ def _exception_error_code(error: BaseException) -> str:
     host_code: str | None = None
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        if isinstance(current, SavedTurnNotStartedError):
+            return HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value
         captured_code = getattr(current, "code", None)
         if captured_code is not None:
             normalized = _public_error_code(captured_code)
-            if normalized != HTTPRuntimeErrorCode.API_FAILURE.value:
+            if normalized not in {
+                HTTPRuntimeErrorCode.API_FAILURE.value,
+                HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value,
+            }:
                 return normalized
         if isinstance(current, ControlReconciliationNotFoundError):
             return HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value
@@ -1509,6 +1523,10 @@ class PackAPIHandler(
                 target.operation_id,
                 payload,
             )
+            if result.get("code") == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value:
+                # No-start proof is emitted only from the owner exception
+                # path. A provider-controlled result cannot mint this proof.
+                result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
             safe_result = self._safe_contract_result(result)
             if operation_journal is not None and operation_record is not None:
                 operation_journal.finish_operation(
@@ -1531,6 +1549,16 @@ class PackAPIHandler(
             ValueError,
         ) as error:
             public_result = _public_error_result(_exception_error_code(error))
+            if public_result["code"] == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value:
+                # This ID is the immutable authenticated HTTP request, not the
+                # caller's turn ID. Its journal can prove a lost refusal reply.
+                if (
+                    target.contract_id == "tobkiri.action.turn.saved.v1"
+                    and target.operation_id == "rumi_turn_runtime_pack.turn-saved"
+                ):
+                    public_result["request_id"] = request_id
+                else:
+                    public_result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
             journal_error: BaseException | None = None
             uncertain_effect = isinstance(error, AmbiguousEffectError)
             if operation_journal is not None and operation_record is not None:
@@ -1660,7 +1688,15 @@ class PackAPIHandler(
         """Remove all provider-controlled detail from typed failure results."""
 
         if result.get("state") == "error":
-            return _public_error_result(result.get("code"))
+            safe = _public_error_result(result.get("code"))
+            request_id = result.get("request_id")
+            if (
+                safe["code"] == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value
+                and isinstance(request_id, str)
+                and _RequestReplayGuard._REQUEST_ID.fullmatch(request_id)
+            ):
+                safe["request_id"] = request_id
+            return safe
         return dict(result)
 
     def _send_contract_outcome(
@@ -2064,6 +2100,19 @@ class PackAPIHandler(
         )
         if identity is not None:
             health.update(identity.as_mapping())
+            journal = self.__class__._operation_journal
+            if journal is not None:
+                # The journal already captures the canonical Host data root.
+                # Hash only cache provenance; never expose the filesystem path
+                # or initialize execution state during a health read.
+                store_path = (
+                    journal.path.parent.parent / "packs"
+                    / "rumi_turn_runtime_pack" / "profiles"
+                    / identity.profile_id / "turns.sqlite3"
+                )
+                health["saved_turn_store_id"] = canonical_digest(
+                    ["tobkiri.saved-turn-store.v1", str(store_path.resolve())]
+                )
         manager = self.__class__._panel_auth_manager
         challenge_response = (
             manager.desktop_challenge_response(challenge) if manager is not None else ""

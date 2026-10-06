@@ -16,6 +16,7 @@ import pytest
 
 from core_runtime.control_reconciliation_v4 import (
     ControlReconciliationNotFoundError,
+    ControlReconciliationConflictError,
     ControlReconciliationStore,
 )
 from core_runtime.global_contracts.http_contract_dispatch import (
@@ -2379,6 +2380,12 @@ def test_health_is_public_and_typed(
         "profile_revision": dispatch.profile_revision,
         "activation_id": dispatch.activation_id,
         "plan_digest": dispatch.plan_digest,
+        "saved_turn_store_id": canonical_digest([
+            "tobkiri.saved-turn-store.v1",
+            str((server._operation_journal.path.parent.parent / "packs"
+                 / "rumi_turn_runtime_pack" / "profiles" / dispatch.profile_id
+                 / "turns.sqlite3").resolve()),
+        ]),
     }
 
 
@@ -3149,3 +3156,158 @@ def test_verified_panel_only_health_keeps_current_execution_identity(
     status, payload, _ = _request(server, "GET", "/health")
     assert status == 200
     assert "activation_id" not in payload["data"]
+
+
+def test_saved_admission_refusal_http_and_authenticated_journal_are_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lost typed no-start reply remains readable without redispatching."""
+    from urllib.parse import quote
+    from tobkiri_host.errors import SavedTurnNotStartedError
+
+    class RefusedDispatch(_Dispatch):
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, object],
+            **kwargs: object,
+        ) -> Mapping[str, object]:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            error = ProviderExecutionError("provider detail stays private")
+            error.__cause__ = SavedTurnNotStartedError(
+                "saved conversation revision changed before execution"
+            )
+            raise error
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
+    dispatch = RefusedDispatch()
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/test/saved",
+        presentation="identity",
+        route_namespace="test",
+        application_id="test",
+        targets=(
+            HTTPContractTarget(
+                contribution_id="turn.saved",
+                contract_id="tobkiri.action.turn.saved.v1",
+                operation_id="rumi_turn_runtime_pack.turn-saved",
+                provider_id="turn",
+                function_id="turn",
+            ),
+        ),
+    )
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,
+        contract_bindings=(binding,),
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+    )
+    monkeypatch.setattr(server, "_validate_contract_capture", lambda *a, **kw: None)
+    request_id = "12121212-1212-4212-8212-121212121212"
+    server.start()
+    try:
+        cookie, csrf, origin = _panel_session(server)
+        headers = {
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": request_id,
+        }
+        path = "/api/contracts/test/" + quote("POST /test/saved", safe="")
+        status, initial, _ = _request(server, "POST", path, body={}, headers=headers)
+        assert status == 409, (status, initial)
+        assert initial["data"]["code"] == "SAVED_TURN_NOT_STARTED"
+        assert initial["data"]["request_id"] == request_id
+        assert initial["data"]["retryable"] is False
+        assert initial["data"]["write_set"] == []
+        status, replay, _ = _request(server, "POST", path, body={}, headers=headers)
+        assert status == 409
+        assert replay == initial
+        assert len(dispatch.calls) == 1
+        session_id = dispatch.calls[0][2]["_session_id"]
+        record = server._operation_journal.operation_status(
+            request_id,
+            session_id=session_id,
+        )
+        assert record["state"] == "failed"
+        assert record["result"] == initial["data"]
+        with pytest.raises(ControlReconciliationConflictError, match="another session"):
+            server._operation_journal.operation_status(
+                request_id,
+                session_id="other-session",
+            )
+        spoofed_id = str(uuid.uuid4())
+        monkeypatch.setattr(
+            dispatch,
+            "invoke",
+            lambda *args, **kwargs: {
+                "state": "error",
+                "code": "SAVED_TURN_NOT_STARTED",
+                "request_id": spoofed_id,
+            },
+        )
+        status, spoofed, _ = _request(
+            server,
+            "POST",
+            path,
+            body={},
+            headers={**headers, "X-Tobkiri-Request-ID": spoofed_id},
+        )
+        assert status == 503
+        assert spoofed["data"]["code"] == "API_FAILURE"
+        assert "request_id" not in spoofed["data"]
+    finally:
+        server.stop()
+
+
+def test_generic_invalid_request_has_no_saved_no_start_proof() -> None:
+    """A missing turn or a generic failure cannot establish no execution."""
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    for error in (ValueError("invalid"), KeyError("saved turn is unavailable")):
+        result = _public_error_result(_exception_error_code(error))
+        assert result["code"] == "INVALID_REQUEST"
+        assert "request_id" not in result
+    spoofed = ValueError("untrusted refusal")
+    spoofed.code = "SAVED_TURN_NOT_STARTED"
+    assert _exception_error_code(spoofed) == "INVALID_REQUEST"
+
+
+def test_saved_store_health_identity_is_stable_and_never_creates_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache provenance follows the captured root, not sessions or env drift."""
+    from core_runtime.host_contract import ExecutionProfileIdentity
+
+    dispatch = _Dispatch()
+    identity = ExecutionProfileIdentity.from_source(dispatch)
+    monkeypatch.setattr(PackAPIHandler, "_panel_auth_manager", None)
+    monkeypatch.setattr(PackAPIHandler, "app_lifecycle_manager", None)
+    monkeypatch.setattr(
+        PackAPIHandler,
+        "_current_health_execution_identity",
+        lambda _self: identity,
+    )
+    handler = object.__new__(PackAPIHandler)
+    responses = []
+    handler._send_response = lambda response: responses.append(
+        json.loads(response.to_json())["data"]
+    )
+
+    def read(root: Path) -> str:
+        journal = ControlReconciliationStore(root / "control/reconciliation-v4.sqlite3")
+        monkeypatch.setattr(PackAPIHandler, "_operation_journal", journal)
+        handler._handle_health()
+        assert not root.exists()
+        return responses[-1]["saved_turn_store_id"]
+
+    first = read(tmp_path / "first")
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "unrelated"))
+    assert read(tmp_path / "first") == first
+    assert read(tmp_path / "second") != first
+    assert first.startswith("sha256:") and len(first) == 71
+    assert str(tmp_path) not in json.dumps(responses)

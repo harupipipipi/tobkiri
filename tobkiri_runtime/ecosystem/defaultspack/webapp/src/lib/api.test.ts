@@ -4997,3 +4997,15 @@ test("company task deletion uses the scoped DELETE route", async () => {
     method: "DELETE",
   });
 });
+
+test("saved-turn no-start proof rejects generic errors and mismatched request/effect claims", async () => {
+  const { isSavedTurnNotStartedProof } = await import("./api");
+  const requestId = "11111111-1111-4111-8111-111111111111";
+  const proof = { host_operation_api_version: "io.tobkiri.host.operation.v1", state: "error",
+    code: "SAVED_TURN_NOT_STARTED", retryable: false, write_set: [], request_id: requestId };
+  assert.equal(isSavedTurnNotStartedProof(proof, requestId), true);
+  for (const changed of [{ code: "INVALID_REQUEST" }, { request_id: "other" }, { write_set: ["conversation"] },
+    { retryable: true }, { state: "completed" }, { host_operation_api_version: "untrusted" }]) {
+    assert.equal(isSavedTurnNotStartedProof({ ...proof, ...changed }, requestId), false);
+  }
+});

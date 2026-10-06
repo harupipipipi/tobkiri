@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "81d786d33310651966e960dbcbdb49b1c893ec02127564e26fb30f007fda48f2",
+    "digest": "cd1ffe0b58888ec26a93a0fa72716b97a10c0dac40d17be5344597a7b4c0272f",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 6704,
-        "sha256": "25656def727fe4d5d23fabe46fb91c37f5e428feb6b7c619ec1d10657135d15f"
+        "size": 6782,
+        "sha256": "5ad0432ee4cfb87b23e7453e9c4c49b7d5788978f8539a1b33a65ff25fa73e26"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 415783,
-        "sha256": "69679337c17b6f8bdef1a513c36fa4440d595d6a77f2884d2fb40381951fae74"
+        "size": 423648,
+        "sha256": "d28515b9357a70de0310521291bcacc4018c7fe1a83dea7f238377cac09a83c7"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1370,13 +1370,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 185970,
-        "sha256": "5bc30470a0e5bf1b84936f540581ef1e73368d0fa1722d66f0c3366ec5a89dc2"
+        "size": 186766,
+        "sha256": "6b0a2ca0a4f80ae3de23b4d99e90d5ed99b06aececde31825c9fae019383e103"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 225894,
-        "sha256": "89eb4dbc0ed25ad6a9654902f120952ceb846228dc2851be78b25b6a74d00c1e"
+        "size": 227885,
+        "sha256": "684d25e88df56e05914be1243639acf07724b960a646ba7b0ee9d3c34535cd00"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1604,6 +1604,16 @@
         "sha256": "77b5260abf9e8b83fb1f1b19038bb2c59d3c922256282d49053f83ba6c9e65b8"
       },
       {
+        "path": "src/lib/conversationMutationBarrier.test.ts",
+        "size": 2746,
+        "sha256": "86440b7519f416fbe5b4264923b592f60f886539e83be85d963f37e28e7a71c8"
+      },
+      {
+        "path": "src/lib/conversationMutationBarrier.ts",
+        "size": 1164,
+        "sha256": "eea5b3853a98aed54dc524b81f721917321eff5182535f6a6d9ac4aa68346f14"
+      },
+      {
         "path": "src/lib/conversationSpotlight.test.ts",
         "size": 2419,
         "sha256": "e7c810db580bae09bd14e0661622a25a67a6f19e007665ea779b29be6f35fc5e"
@@ -1810,8 +1820,8 @@
       },
       {
         "path": "src/lib/optimisticSavedTurn.ts",
-        "size": 9777,
-        "sha256": "567401b57376fc1219b7e8c2d8f2c1be1edb32535cdf0a5dce6b0b8e8380231d"
+        "size": 9908,
+        "sha256": "ec9a27a6a554789c68698367605509d5b537497ebbef4625ba52460c80f0b4a8"
       },
       {
         "path": "src/lib/pendingChat.test.ts",
@@ -1820,8 +1830,8 @@
       },
       {
         "path": "src/lib/pendingChat.ts",
-        "size": 21704,
-        "sha256": "e8f95c5aab9b2caa68384ca01333d2cf9f7ac51716e38ed8fea17944e2f06253"
+        "size": 22041,
+        "sha256": "dbcce74e23d83eb8c017fdb11dfbf7717dbd0ce01efe293f0411c22ff791912f"
       },
       {
         "path": "src/lib/placement.test.ts",
@@ -1877,6 +1887,16 @@
         "path": "src/lib/registeredSlashCommands.ts",
         "size": 8833,
         "sha256": "6e25dea4522966f5f44cc2fed66b8cacfdc4fecb6eb8d9d120670a19c4bf7a46"
+      },
+      {
+        "path": "src/lib/scopedPendingChat.test.ts",
+        "size": 3092,
+        "sha256": "c8a86202e92ef86497a0f9454e26d9759a284fa5666fc0dc636985783d2cc121"
+      },
+      {
+        "path": "src/lib/scopedPendingChat.ts",
+        "size": 7315,
+        "sha256": "de8d5b656bf36defafc2c49f0097b12d9fa3208c58b44651ec1fdf2a183b9367"
       },
       {
         "path": "src/lib/settingsMode.test.ts",
@@ -1950,13 +1970,13 @@
       },
       {
         "path": "src/lib/toolActivity.test.ts",
-        "size": 22904,
-        "sha256": "6f10c5f12d50238feca99c5c9e07c82d60e766604369c103de2c031a15d942e7"
+        "size": 24080,
+        "sha256": "c325d481bcd094ca32e3bde377060532f0ffca4c4329c0914daffe4b19f6da96"
       },
       {
         "path": "src/lib/toolActivity.ts",
-        "size": 41890,
-        "sha256": "251529f81d9c5afd5caad6245906614d2162b64a9939602b598b9da9a16dff28"
+        "size": 42615,
+        "sha256": "a9db442963a4dedf472663e918d473c919ebbfe87e40c925408f279ed766f457"
       },
       {
         "path": "src/lib/toolPreviews.test.ts",
@@ -2095,13 +2115,13 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 85279,
-        "sha256": "5abee22b34b9d3339ff3caf0f084064ac76e04326c848c2311ab859c24d67edd"
+        "size": 87760,
+        "sha256": "11abd28650fa8338f87b4b2ea5bd7445f6f362464c23fa5ed5a4f8d6a8fb4be4"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 231689,
-        "sha256": "4ad144421dade712c203dc018d4adbdc9744bbaa544bdb80c1972fa9462c3eb8"
+        "size": 233871,
+        "sha256": "b9dc21c0eb7e93b0f3d7fd25d5c93de0a4919cd27ea9f36f0069cd8f31c2653c"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -2240,8 +2260,8 @@
       },
       {
         "path": "src/renderers/types.ts",
-        "size": 15449,
-        "sha256": "fc4905f4ba60b21b7dbd78bf44ecee950d40a45fb882c86f23363778d68f731d"
+        "size": 15650,
+        "sha256": "623dfcdef5c270fe02637db3335983a6aeb8bf56c5500a9022bd8b6b6ea9c77b"
       },
       {
         "path": "src/settings/controlCenter.test.ts",
@@ -2341,12 +2361,12 @@
     ]
   },
   "bundle": {
-    "digest": "9b9a363a2b65947f04ec9a526d9c17cf948f981f724f20d4cb088df740dc1453",
+    "digest": "e9e5859f24224cab7ec2b07c9867fc9337509b6e92e34094b5ac773dd30c9424",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 242747,
-        "sha256": "a6b27b63ec733069e2647ced1c266f271feb586c65cbb50e8d722d351507b1e5"
+        "size": 242874,
+        "sha256": "19e928fde2e490c7345c088d2cd1afe7449117a7ec6e363588788acfbf1ddc6c"
       },
       {
         "path": "shell-app.js",
@@ -2355,8 +2375,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2587688,
-        "sha256": "7a054c039a527294c72da01d6de55b44444ab03355d9960f4461f08a9a8981ed"
+        "size": 2597169,
+        "sha256": "29373d921980f1b7ca9c8350649aec811abf31b3f1a84ac612d118c6f08123b2"
       },
       {
         "path": "shell-icons.js",

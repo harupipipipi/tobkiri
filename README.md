@@ -232,6 +232,13 @@ chat's generating state into the selected chat's input.
 If a saved turn fails before either message is persisted, the error stays
 visible. If you have not changed the composer since sending and it is still
 empty, the submitted text is restored. It is never sent again automatically.
+If the conversation changes before execution starts, Tobkiri confirms that
+refusal and restores the submitted draft without leaving the input locked.
+When a send result cannot be confirmed, you can still edit a draft. The
+recovery notice lets you retain the unresolved request and leave its local
+waiting state; it does not cancel or resend the original request. Retained
+requests remain visible for reference. Pending requests from a different
+runtime data store are retained separately and do not lock the current chat.
 `PACKVM_HOST_CAPACITY_INSUFFICIENT`
 means the host needs more free disk space before a conversation VM can start;
 free space, then retry the restored message.

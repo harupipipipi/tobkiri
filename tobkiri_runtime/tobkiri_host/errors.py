@@ -41,6 +41,17 @@ class BackendUnavailableError(HostCoreError):
     code = "backend_unavailable"
 
 
+class SavedTurnNotStartedError(HostCoreError, ValueError):
+    """Owner prerequisite refusal before a saved turn is begun or dispatched.
+
+    Only the canonical saved owner raises this marker after reading its
+    prerequisites. Missing records and generic provider errors are not proof
+    that execution never started.
+    """
+
+    code = "saved_turn_not_started"
+
+
 class SavedTurnRejectedError(BackendUnavailableError):
     """A saved turn was definitively rejected before any guest-visible effect.
 

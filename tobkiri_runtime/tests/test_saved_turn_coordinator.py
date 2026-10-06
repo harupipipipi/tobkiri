@@ -183,6 +183,8 @@ def test_unavailable_prompt_rejects_before_claim_or_execution(
 
 @pytest.mark.parametrize("case", ["stale_revision", "missing_model", "blank_model"])
 def test_owned_prerequisites_reject_before_claim(tmp_path: Path, case: str) -> None:
+    from tobkiri_host.errors import SavedTurnNotStartedError
+
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     patch = (
@@ -196,7 +198,9 @@ def test_owned_prerequisites_reject_before_claim(tmp_path: Path, case: str) -> N
     if case != "stale_revision":
         session.initial["request"]["conversation_revision"] = 2
     before = session.conversations.path.read_bytes()
-    with pytest.raises(ValueError, match="revision changed|model reference is required"):
+    with pytest.raises(
+        SavedTurnNotStartedError, match="revision changed|model reference is required"
+    ):
         _run(store, session)
     assert not store.path.exists()
     assert session.calls == session.ai_calls == 0

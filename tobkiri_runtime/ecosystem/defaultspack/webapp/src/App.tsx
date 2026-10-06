@@ -1,3 +1,5 @@
+import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
+import { savedTurnStoreIdentity, useScopedPendingChat, type PendingRecoveryEntry } from "./lib/scopedPendingChat";
 import { chatMessageToUiMessage } from "./lib/chatUiMessage";
 import { FrontendViewSlot } from "./host/FrontendViewSlot";
 import { viewsForSlot, matchesViewReference, type CatalogViewReference, type ViewSlot } from "./host/catalogViewRegistry";
@@ -67,7 +69,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, SavedTurnNotStartedError, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SavedTurn, type SavedTurnGuidanceRequest, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -3121,10 +3123,18 @@ export function ChatApp() {
   const [pendingMentionAttachmentPaths, setPendingMentionAttachmentPaths] = useState<string[]>([]);
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
+  const recoveryDraftStateRef = useRef({ input, attachedFiles, droppedWidgets, composerEntityReferences });
+  recoveryDraftStateRef.current = { input, attachedFiles, droppedWidgets, composerEntityReferences };
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
-  const pendingStorageKey = `rumi-pending-chat-requests:${encodeURIComponent(runtimeProfileId)}`;
-  const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const savedTurnStoreId = savedTurnStoreIdentity(health?.saved_turn_store_id);
+  const conversationMutationBarrierRef = useRef(new ConversationMutationBarrier());
+  const savedTurnStoreIdRef = useRef(savedTurnStoreId);
+  savedTurnStoreIdRef.current = savedTurnStoreId;
+  const pendingStorage = useScopedPendingChat(runtimeProfileId, savedTurnStoreId);
+  const pendingRequests = pendingStorage.pending;
+  const setPendingRequests = pendingStorage.setPending;
   const pendingRequestsRef = useRef<Record<string, PendingChatRequest>>(pendingRequests);
+  pendingRequestsRef.current = pendingRequests;
   const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
   const [unwrittenSavedTurnDrafts, setUnwrittenSavedTurnDrafts] = useState<UnwrittenSavedTurnDraft[]>([]);
   const [optimisticSavedTurnOverlays, setOptimisticSavedTurnOverlays] = useState<OptimisticSavedTurnOverlay[]>([]);
@@ -3297,7 +3307,12 @@ export function ChatApp() {
     .filter((result) => !hiddenConversationIds.has(result.conversation_id));
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
-  const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
+  const ownedPendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
+  const pendingRequest = ownedPendingRequest;
+  const savedPendingRecoveryReady = Boolean(pendingRequest?.savedTurn
+    && pendingRequest.ownerTurnObserved !== true
+    && (pendingRequest.recoveryRequired === true
+      || activeSavedTurnSubmissionRef.current?.ticket.conversationId !== activeConversationId));
   const isConversationPending = Boolean(
     pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
   );
@@ -3665,6 +3680,26 @@ export function ChatApp() {
     setModelSteerStatus(null);
     setModelSteerBusy(false);
   }, [activeSteerRefreshContext]);
+  const previousSavedStoreIdRef = useRef(savedTurnStoreId);
+  useLayoutEffect(() => {
+    if (previousSavedStoreIdRef.current === savedTurnStoreId) return;
+    const previousStoreId = previousSavedStoreIdRef.current;
+    previousSavedStoreIdRef.current = savedTurnStoreId;
+    // Initial discovery precedes any permitted submission and must not fence bootstrap reads.
+    if (previousStoreId === null) return;
+    // This invalidates local presentation only; canonical execution is not cancelled.
+    savedTurnViewFenceRef.current.invalidate();
+    setSavedTurnViewEpoch(savedTurnViewFenceRef.current.capture().epoch);
+    activeSavedTurnSubmissionRef.current = null;
+    streamingConversationIdRef.current = null;
+    currentAbortControllerRef.current = null;
+    setIsGenerating(false);
+    setIsNewChatLaunching(false);
+    setSteerItems([]);
+    setModelSteerStatus(null);
+    setModelSteerBusy(false);
+    setOptimisticSavedTurnOverlays([]);
+  }, [savedTurnStoreId]);
   useLayoutEffect(() => {
     const viewFence = savedTurnViewFenceRef.current;
     if (viewFence.synchronize(activeWorkspaceTabId, activeConversationId)) {
@@ -4185,7 +4220,6 @@ export function ChatApp() {
     setPendingRequests((current) => {
       const next = updater(current);
       pendingRequestsRef.current = next;
-      writeJsonLocalStorage(pendingStorageKey, next);
       return next;
     });
   };
@@ -4829,23 +4863,6 @@ export function ChatApp() {
           step.id === id ? { ...step, status, ...(label ? { label } : {}) } : step
         )));
       };
-      const pendingConversationId = chatIdFromLocation();
-      if (pendingConversationId && isPendingInLocation()) {
-        // A reload can arrive through the pending URL after the transport has
-        // already committed the request. Keep the operation id persisted in
-        // local storage so a retry replays that logical send instead of
-        // creating a second user turn. The URL only carries the conversation
-        // id and therefore cannot reconstruct this identity by itself.
-        const storedPending = pendingRequests[pendingConversationId];
-        rememberPendingRequest({
-          ...storedPending,
-          conversationId: pendingConversationId,
-          startedAt: storedPending?.startedAt ?? Date.now(),
-          status: storedPending?.status ?? "Processing...",
-          toolNames: storedPending?.toolNames ?? [],
-          recoveredFromLocation: true,
-        });
-      }
       const backendBootstrap = refreshHealth("bootstrap").then(() => {
         updateStartupStep("backend", "ready", "バックエンドの接続状態を確認しました");
       });
@@ -5020,7 +5037,7 @@ export function ChatApp() {
   }, [spotlightFilter, spotlightQuery, spotlightResults.length]);
 
   useEffect(() => {
-    if (!activeConversationId || !isConversationPending) return;
+    if (!activeConversationId || !isConversationPending || !savedTurnStoreId) return;
     const latestKnown = latestActiveMessage;
     if (!pendingRequest?.savedTurn && shouldClearPendingAfterConversationRefresh(latestKnown, pendingRequest, Date.now())) {
       forgetPendingRequest(activeConversationId);
@@ -5033,7 +5050,8 @@ export function ChatApp() {
     let disposed = false;
     const pollViewTicket = savedTurnViewFenceRef.current.capture();
     const pollUiIsCurrent = () => (
-      !disposed && savedTurnViewFenceRef.current.matches(pollViewTicket)
+      !disposed && savedTurnStoreIdRef.current === savedTurnStoreId
+      && savedTurnViewFenceRef.current.matches(pollViewTicket)
     );
     const setCurrentSteerItems = (items: ConversationSteerItem[]) => {
       if (pollUiIsCurrent()) setSteerItems(items);
@@ -5053,7 +5071,34 @@ export function ChatApp() {
             const turns = await api.listSavedTurns(activeConversationId);
             if (!pollUiIsCurrent()) return;
             const roots = turns.filter((item) => item.id === pendingRequest.operationId);
-            if (roots.length === 0) return;
+            if (roots.length === 0) {
+              const notStarted = pendingRequest.hostRequestId
+                ? await api.savedTurnNotStartedReceipt(pendingRequest.hostRequestId).catch(() => false)
+                : false;
+              if (!pollUiIsCurrent()) return;
+              if (notStarted) {
+                discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
+                forgetPendingRequest(activeConversationId);
+                replaceChatIdInUrl(activeConversationId, false);
+                setIsGenerating(false);
+                const currentDraft = recoveryDraftStateRef.current;
+                if (!currentDraft.input.trim() && currentDraft.attachedFiles.length === 0
+                  && currentDraft.droppedWidgets.length === 0 && currentDraft.composerEntityReferences.length === 0
+                  && pendingRequest.submittedText) setInput(pendingRequest.submittedText);
+                setError("送信は開始していません。下書きを確認して送信してください。");
+                void refreshConversations(activeConversationId);
+              } else {
+                updatePendingRequests((current) => {
+                  const entry = current[activeConversationId];
+                  const status = "送信結果を照合中（自動再送なし）。実行結果は未確認です。";
+                  const recoveryRequired = entry?.recoveryRequired === true
+                    || Date.now() - pendingRequest.startedAt >= 15_000;
+                  return entry && (entry.status !== status || entry.recoveryRequired !== recoveryRequired)
+                    ? { ...current, [activeConversationId]: { ...entry, status, recoveryRequired } } : current;
+                });
+              }
+              return;
+            }
             if (roots.length !== 1 || roots[0].conversation_id !== activeConversationId
               || roots[0].guidance_parent_turn_id !== undefined
               || roots[0].guidance_source_turn_id !== undefined
@@ -5326,12 +5371,15 @@ export function ChatApp() {
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
           const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
-          if (existing?.status === status) return current;
+          const recoveryRequired = existing?.recoveryRequired === true
+            || Boolean(existing?.savedTurn && Date.now() - existing.startedAt >= 15_000);
+          if (existing?.status === status && existing?.recoveryRequired === recoveryRequired) return current;
           return existing ? {
             ...current,
             [activeConversationId]: {
               ...existing,
               status,
+              recoveryRequired,
             },
           } : current;
         });
@@ -5354,6 +5402,7 @@ export function ChatApp() {
     pendingMentionAttachmentPaths.length,
     pendingRequest,
     unwrittenSavedTurnDrafts,
+    savedTurnStoreId,
   ]);
 
   useEffect(() => {
@@ -5997,6 +6046,7 @@ export function ChatApp() {
   };
 
   const handleModelProfileSelect = (profileId: string) => {
+    if (isGeneratingForActiveView) return;
     const ticket = conversationViewLoaderRef.current.capture();
     updateModelSettings({ preferred_model: profileId });
     // New-conversation placeholders have no persisted conversation id yet, but
@@ -6005,7 +6055,9 @@ export function ChatApp() {
     // preferred model on the next render.
     setActiveConversation((current) => current ? { ...current, model: profileId } : current);
     if (activeConversationId) {
-      void api.updateConversation(activeConversationId, { model: profileId }, activeConversation?.conversation_revision).then((conversation) => {
+      const write = api.updateConversation(activeConversationId, { model: profileId }, activeConversation?.conversation_revision);
+      if (savedTurnStoreId) conversationMutationBarrierRef.current.record(savedTurnStoreId, activeConversationId, write);
+      void write.then((conversation) => {
         if (conversationViewLoaderRef.current.matches(ticket)) setActiveConversation(conversation);
         void refreshConversations(conversation.id, ticket);
       }).catch(console.error);
@@ -7892,6 +7944,10 @@ export function ChatApp() {
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
     if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGeneratingForActiveView) return;
+    if (!savedTurnStoreId) {
+      setError("送信の保存先を確認しています。下書きは保持されています。");
+      return;
+    }
     shouldFollowMessagesRef.current = true;
     if (activeConversationId) {
       conversationScrollState.set(activeConversationId, {
@@ -8040,8 +8096,10 @@ export function ChatApp() {
       clientId: optimisticOverlayClientId,
       ticket: submissionViewTicket,
     };
+    const submissionStoreId = savedTurnStoreId;
     const submissionUiIsCurrent = () => (
-      activeSavedTurnSubmissionRef.current?.clientId === optimisticOverlayClientId
+      savedTurnStoreIdRef.current === submissionStoreId
+      && activeSavedTurnSubmissionRef.current?.clientId === optimisticOverlayClientId
       && savedTurnViewFenceRef.current.matches(submissionViewTicket)
     );
     const retainInterruptedDraft = () => {
@@ -8107,6 +8165,11 @@ export function ChatApp() {
         return;
       }
       let conversation = activeConversation;
+      if (conversation) {
+        await conversationMutationBarrierRef.current.wait(submissionStoreId!, conversation.id);
+        conversation = await api.getConversation(conversation.id);
+        if (!submissionUiIsCurrent()) { retainInterruptedDraft(); return; }
+      }
       if (!conversation) {
         conversation = await api.createConversation({
           model: preferredModel || "stub/default",
@@ -8201,9 +8264,12 @@ export function ChatApp() {
       if (submissionViewTicket.conversationId !== conversation.id) {
         throw new Error("会話の選択が変わったため、保存付き送信は開始していません。");
       }
+      const hostRequestId = crypto.randomUUID();
       rememberPendingRequest({
         conversationId: conversation.id,
         operationId,
+        hostRequestId,
+        submittedText: inputForSubmit,
         ownerTurnObserved: false,
         requestFingerprint,
         savedTurn: true,
@@ -8239,26 +8305,30 @@ export function ChatApp() {
         thinking_level: activeProfile?.supports_thinking
           ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
           : undefined,
-      }).catch((startError: unknown) => {
+      }, { requestId: hostRequestId }).catch((startError: unknown) => {
         savedTurnStartRequestFailed = true;
         savedTurnStartRequestError = startError;
         throw startError;
       });
+      if (!submissionUiIsCurrent()) return;
       bindOptimisticSavedTurnOverlayToTurn(conversation.id, operationId, result.turn);
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
       const petSnapshot = await api.getSavedTurnEvents(operationId, conversation.id).catch(() => null);
+      if (!submissionUiIsCurrent()) return;
       const petContext = liveTaskContextRef.current;
       if (petSnapshot && petContext.profileId === runtimeProfileId && petContext.conversationId === conversation.id) {
         setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot: petSnapshot });
       }
       const snapshot = await api.getConversation(conversation.id);
+      if (!submissionUiIsCurrent()) return;
       const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
       if (snapshotState === "pending") {
         throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
       }
       const listedTurns = await api.listSavedTurns(conversation.id);
+      if (!submissionUiIsCurrent()) return;
       const guidanceChain = pendingSavedTurnChainForConversation(
         listedTurns,
         conversation.id,
@@ -8309,6 +8379,29 @@ export function ChatApp() {
         return;
       }
       if (savedSubmissionStarted && submittedConversationId) {
+        const owned = pendingRequestsRef.current[submittedConversationId];
+        if (submitError instanceof SavedTurnNotStartedError
+          && owned?.hostRequestId === submitError.requestId
+          && owned.operationId === savedTurnSubmissionAttempt?.turnId) {
+          discardOptimisticSavedTurnOverlay(optimisticOverlayClientId);
+          discardUnwrittenSavedTurnDraft(optimisticOverlayClientId);
+          forgetPendingRequest(submittedConversationId);
+          replaceChatIdInUrl(submittedConversationId, false);
+          // Draft editing is allowed while reconciling. Never overwrite a newer draft.
+          const currentDraft = recoveryDraftStateRef.current;
+          if (!currentDraft.input.trim() && currentDraft.attachedFiles.length === 0
+            && currentDraft.droppedWidgets.length === 0 && currentDraft.composerEntityReferences.length === 0) {
+            setInput(inputForSubmit);
+            setAttachedFiles(submittedAttachments);
+            setDroppedWidgets(droppedWidgetsForSubmit);
+          } else {
+            retainInterruptedDraft();
+          }
+          setRetryableSubmission(null);
+          setError(submitError.message);
+          void refreshConversations(submittedConversationId);
+          return;
+        }
         const acknowledgedStop = savedTurnStopAcknowledgementRef.current;
         if (savedTurnStartRequestFailed
           && savedTurnStartRequestError === submitError
@@ -8351,7 +8444,7 @@ export function ChatApp() {
         }
         updatePendingRequests((current) => {
           const entry = current[submittedConversationId!];
-          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
+          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）", recoveryRequired: true } } : current;
         });
         return;
       }
@@ -8646,6 +8739,41 @@ export function ChatApp() {
       steerStatus={modelSteerStatus}
       steerBusy={modelSteerBusy}
       steerControlsReady={steerControlsReady}
+      pendingRecovery={savedPendingRecoveryReady || pendingStorage.recovery.length ? {
+        message: pendingStorage.persistenceError
+          ? "送信記録をブラウザーに保存できません。この画面を閉じずに照合を続けてください。自動再送はしません。"
+          : pendingRequest?.savedTurn
+          ? "送信結果を照合中です。自動再送はしません。下書きは編集できます。"
+          : "以前の送信の実行結果は未確認です。履歴は保持されています。自動再送はしません。",
+        entries: pendingStorage.recovery.map((entry) => ({
+          id: entry.id,
+          label: `${entry.archived ? "保管済み・結果未確認" : "以前の環境の送信"} / ${conversations.find((conversation) => conversation.id === entry.request.conversationId)?.title ?? "会話の記録"}`,
+          operationId: entry.request.operationId,
+          submittedText: entry.request.submittedText,
+        })),
+        onDetach: savedPendingRecoveryReady
+          ? () => {
+            const entry: PendingRecoveryEntry | undefined = savedTurnStoreId && ownedPendingRequest ? {
+              id: `${savedTurnStoreId}:${ownedPendingRequest.conversationId}:${ownedPendingRequest.operationId ?? "unknown"}`,
+              storeId: savedTurnStoreId,
+              request: ownedPendingRequest,
+              archived: false,
+            } : undefined;
+            if (!entry) return;
+            pendingStorage.archive(entry);
+            discardOptimisticSavedTurnOverlayForRequest(entry.request.conversationId, entry.request.operationId ?? "");
+            activeSavedTurnSubmissionRef.current = null;
+            savedTurnViewFenceRef.current.invalidate();
+            setSavedTurnViewEpoch(savedTurnViewFenceRef.current.capture().epoch);
+            pendingRequestsRef.current = { ...pendingRequestsRef.current };
+            delete pendingRequestsRef.current[entry.request.conversationId];
+            if (entry.request.conversationId === activeConversationId) {
+              setIsGenerating(false);
+              replaceChatIdInUrl(activeConversationId!, false);
+              setError("照合待ちをこの端末の履歴に保管しました。実行の停止・取消や再送は行っていません。");
+            }
+          } : undefined,
+      } : undefined}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGeneratingForActiveView)}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}

@@ -1855,6 +1855,60 @@ test("composer stays visible but disables input and steer controls before a save
   assert.doesNotMatch(html, /追加指示を送る/);
 });
 
+test("unknown send recovery allows drafting while send and owner controls remain gated", () => {
+  for (const isNewConversation of [false, true]) {
+    const html = renderToolModeComposer({
+      input: "次の下書き",
+      isNewConversation,
+      isGenerating: true,
+      steerControlsReady: false,
+      pendingRecovery: {
+        message: "送信結果を確認できません。下書きは編集できます。",
+        entries: [{ id: "request-3", label: "結果未確認", submittedText: "使えるtool教えて" }],
+        onDetach: () => undefined,
+      },
+    });
+
+    assert.match(html, /data-composer-controls="recovery"/);
+    assert.match(html, /記録を残して待機を解除/);
+    assert.match(html, /元の送信の停止・再送は行いません。/);
+    assert.match(html, /使えるtool教えて/);
+    assert.match(html, />次の下書き<\/textarea>/);
+    assert.doesNotMatch(html, /textarea[^>]*(?:disabled|readonly)=/);
+    assert.match(html, /<button[^>]*aria-label="送信結果が未確認"[^>]*disabled=""/);
+    assert.doesNotMatch(html, /data-composer-controls="preparing"/);
+    assert.doesNotMatch(html, /aria-label="(?:追加指示を送る|生成を停止)"/);
+  }
+});
+
+test("retained requests from another store do not disable a current draft or expose untrusted markup", () => {
+  const html = renderToolModeComposer({
+    pendingRecovery: {
+      message: "以前の送信記録を保持しています。",
+      entries: [{ id: "old-request", label: "以前の環境", submittedText: "<script>sendAgain()</script>" }],
+    },
+  });
+
+  assert.match(html, /未確認の送信記録（1件）/);
+  assert.match(html, /&lt;script&gt;sendAgain\(\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.doesNotMatch(html, /textarea[^>]*disabled=/);
+  assert.match(html, /<button[^>]*aria-label="メッセージを送信"(?![^>]*disabled=)/);
+  assert.doesNotMatch(html, /記録を残して待機を解除/);
+});
+
+test("retained recovery records do not change controls for an observed active turn", () => {
+  const html = renderToolModeComposer({
+    isGenerating: true,
+    steerControlsReady: true,
+    pendingRecovery: { message: "以前の送信記録", entries: [{ id: "old-request", label: "以前の環境" }] },
+  });
+
+  assert.match(html, /aria-label="追加指示を送る"/);
+  assert.doesNotMatch(html, /textarea[^>]*disabled=/);
+  assert.doesNotMatch(html, /aria-label="送信結果が未確認"/);
+});
+
 test("composer renders the current steer above the main input", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {

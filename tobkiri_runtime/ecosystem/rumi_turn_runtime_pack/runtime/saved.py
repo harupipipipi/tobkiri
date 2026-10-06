@@ -11,6 +11,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
+from tobkiri_host.errors import SavedTurnNotStartedError
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
@@ -144,10 +145,14 @@ def execute_saved_turn(
             resolved_saved_prompt(prompt, prompt_id=prompt_id, profile_id=store.profile_id)
         revision = conversation.get("conversation_revision")
         if type(revision) is not int or revision != initial["request"]["conversation_revision"]:
-            raise ValueError("saved conversation revision changed before execution")
+            raise SavedTurnNotStartedError(
+                "saved conversation revision changed before execution"
+            )
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
-            raise ValueError("saved conversation model reference is required")
+            raise SavedTurnNotStartedError(
+                "saved conversation model reference is required"
+            )
     guard()
     begun = client.invoke(
         LIFECYCLE_CONTRACT,

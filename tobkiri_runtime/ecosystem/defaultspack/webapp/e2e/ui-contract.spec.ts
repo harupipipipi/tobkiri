@@ -540,6 +540,7 @@ type ApiMockOptions = {
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
   initialSelectedToolIds?: string[];
+  initialPendingStorage?: Record<string, unknown>;
   onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
   onSavedTurnRequest?: (payload: { request: SavedTurnRequest }) => void;
@@ -1088,18 +1089,19 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
   if (options.applicationChat) {
-    await page.route("**/health", (route) => fulfill(route, { status: "ok" }));
+    await page.route("**/health", (route) => fulfill(route, { status: "ok", saved_turn_store_id: `sha256:${"a".repeat(64)}` }));
   }
-  await page.addInitScript(() => {
+  await page.addInitScript(({ selectedToolIds, pendingStorage }: { selectedToolIds: string[]; pendingStorage?: Record<string, unknown> }) => {
     localStorage.clear();
     sessionStorage.clear();
     // The floating pet is covered by component tests. Keep contract-test
     // pointer targets deterministic while exercising chat controls.
     localStorage.setItem("tobkiri.task-pet.enabled.v2:defaults", "false");
+    if (pendingStorage) localStorage.setItem("rumi-pending-chat-v2:defaults", JSON.stringify(pendingStorage));
     if (selectedToolIds.length) {
       localStorage.setItem("rumi-selected-tool-ids", JSON.stringify(selectedToolIds));
     }
-  }, options.initialSelectedToolIds ?? []);
+  }, { selectedToolIds: options.initialSelectedToolIds ?? [], pendingStorage: options.initialPendingStorage });
   await page.addInitScript(() => {
     const fixtureWindow = window as Window & {
       __approvalRendererFixture?: {
@@ -3759,4 +3761,156 @@ test("checkpoint create selects the new snapshot and approved restore settles su
   await approvals.getByRole("button", { name: /許可|Approve/ }).click();
   await expect(checkpoints).toContainText("Restored checkpoint-2");
   await expect(checkpoints).not.toContainText("Approval required");
+});
+
+
+test("actual ChatApp retains missing owner root despite earlier completed reply and explicit local recovery never replays", async ({ page }) => {
+  const storeId = `sha256:${"a".repeat(64)}`;
+  await installDefaultspackApiMocks(page, { applicationChat: true, initialPendingStorage: { scopes: {
+    [storeId]: { "c-smoke": { conversationId: "c-smoke", operationId: "missing-third-turn",
+      savedTurn: true, ownerTurnObserved: true, startedAt: 100, status: "照合中", toolNames: [],
+      submittedText: "使えるtool教えて" } },
+  }, archive: [] } });
+  let reads = 0;
+  let writes = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turns") { reads += 1; return route.fulfill({ json: ok({ turns: [] }) }); }
+    if (target.startsWith("/api/chat/turn") && request.method() === "POST") {
+      writes += 1; return route.fulfill({ status: 500, json: { error: "unexpected mutation" } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/p/defaults/chat?chat=c-smoke&pending=1");
+  await expect.poll(() => reads).toBeGreaterThanOrEqual(3);
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  await expect(composer).toBeEnabled();
+  await composer.fill("A preserved new draft");
+  await composer.press("Enter");
+  expect(writes).toBe(0);
+  await page.getByRole("button", { name: "記録を残して待機を解除", exact: true }).click();
+  await expect(composer).toHaveValue("A preserved new draft");
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+  await page.getByText("未確認の送信記録（1件）", { exact: true }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("rumi-pending-chat-v2:defaults")!).archive[0].request.operationId)).toBe("missing-third-turn");
+  await expect(page.getByText("使えるtool教えて", { exact: true })).toBeVisible();
+  expect(writes).toBe(0);
+});
+
+test("actual ChatApp exact pre-execution refusal restores draft without another start", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let starts = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      return route.fulfill({ status: 409, json: { success: false, error: "execution did not start", data: {
+        host_operation_api_version: "io.tobkiri.host.operation.v1", state: "error",
+        code: "SAVED_TURN_NOT_STARTED", retryable: false, write_set: [],
+        request_id: request.headers()["x-tobkiri-request-id"],
+      } } });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: [] }) });
+    return route.fallback();
+  });
+  await page.goto("/p/defaults/chat?chat=c-smoke");
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  await composer.fill("A refused draft to preserve");
+  await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+  await expect.poll(() => starts).toBe(1);
+  await expect(composer).toHaveValue("A refused draft to preserve");
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "記録を残して待機を解除", exact: true })).toHaveCount(0);
+  expect(starts).toBe(1);
+});
+
+
+test("actual ChatApp switches saved stores without locking foreign pending or applying late old completion", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let storeId = `sha256:${"a".repeat(64)}`;
+  let healthReads = 0;
+  await page.route("**/health", (route) => { healthReads += 1; return route.fulfill({ json: ok({ status: "ok", saved_turn_store_id: storeId }) }); });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let starts = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      const input = request.postDataJSON().request;
+      await gate;
+      return route.fulfill({ json: ok({ status: "completed", turn: {
+        id: input.turn_id, conversation_id: input.conversation_id, status: "completed", revision: 2,
+      } }) });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: [] }) });
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat?chat=c-smoke");
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Store A original request");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    storeId = `sha256:${"b".repeat(64)}`;
+    const beforeHealth = healthReads;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => healthReads).toBeGreaterThan(beforeHealth);
+    await expect(composer).toBeEnabled();
+    await composer.fill("Store B untouched draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    await expect(page.getByText("未確認の送信記録（1件）", { exact: true })).toBeVisible();
+    const oldResponse = page.waitForResponse((response) => requestTarget(new URL(response.url())) === "/api/chat/turn");
+    release(); await oldResponse;
+    await expect(composer).toHaveValue("Store B untouched draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    expect(starts).toBe(1);
+  } finally { release(); }
+});
+
+test("actual ChatApp hung unregistered start becomes explicit recovery without replay and rejects its late completion", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let starts = 0;
+  let reads = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      const input = request.postDataJSON().request;
+      await gate;
+      return route.fulfill({ json: ok({ status: "completed", turn: {
+        id: input.turn_id, conversation_id: input.conversation_id, status: "completed", revision: 2,
+      } }) });
+    }
+    if (target === "/api/chat/turns") { reads += 1; return route.fulfill({ json: ok({ turns: [] }) }); }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat?chat=c-smoke");
+    await page.clock.install();
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Hung original draft");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    await expect(composer).toBeDisabled();
+    await expect(page.getByRole("button", { name: "記録を残して待機を解除", exact: true })).toHaveCount(0);
+    await page.clock.runFor(17_000);
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(composer).toBeEnabled();
+    await composer.fill("Newer local draft");
+    await composer.press("Enter");
+    expect(starts).toBe(1);
+    await page.getByRole("button", { name: "記録を残して待機を解除", exact: true }).click();
+    const response = page.waitForResponse((result) => requestTarget(new URL(result.url())) === "/api/chat/turn");
+    release(); await response;
+    await expect(composer).toHaveValue("Newer local draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    expect(starts).toBe(1);
+  } finally { release(); }
 });

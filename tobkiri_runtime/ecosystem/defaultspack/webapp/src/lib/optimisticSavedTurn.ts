@@ -37,6 +37,11 @@ export class SavedTurnViewFence {
     return true;
   }
 
+  /** Invalidates reads when the backing saved store changes in the same view. */
+  invalidate(): void {
+    this.epoch += 1;
+  }
+
   capture(): SavedTurnViewTicket {
     return {
       workspaceTabId: this.workspaceTabId,

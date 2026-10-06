@@ -309,6 +309,12 @@ export type PendingChatRequest = {
   */
   ownerTurnObserved?: boolean;
   requestFingerprint?: string;
+  /** The exact Host journal request for the start POST, distinct from turn ID. */
+  hostRequestId?: string;
+  /** Ownership remains unknown after a lost reply or a bounded registration wait. */
+  recoveryRequired?: boolean;
+  /** Submitted text retained for explicit recovery; never automatically replayed. */
+  submittedText?: string;
   startedAt: number;
   updatedAt?: number;
   status: string;
