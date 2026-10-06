@@ -1004,7 +1004,7 @@
     "rumi_scheduler_runtime_pack": "sha256:9baee24ac6fd8e3fd03cbc7522c2946962bb083f63e478747178dfb0aa6bf209",
     "rumi_shell_execute_pack": "sha256:3cab3eea6566ac40009b5247d8fcc4c4c80c043c181a29a868e30a073b92fec0",
     "rumi_shell_policy_pack": "sha256:79d2e386986658e2578c7568eb8442af8e94875b7268a77f7ef5444e361d7d78",
-    "rumi_tool_broker_pack": "sha256:93a8055b710cc89aaf19b778969d71629c78145bd1cc9ab29affdadc8fad31f6",
+    "rumi_tool_broker_pack": "sha256:6768169006a259da34cee06f8b6aeec9e2aa04ee890a65faa00a52b8ccd1de59",
     "rumi_tool_local_executor_pack": "sha256:45c00903d8ddf7eaf74ebbf65f1a632b5123eb6d0a642f9292f9ee670f767264",
     "rumi_tool_registry_pack": "sha256:5579625082fe537dbb960df5372f2751b20ba3914211b42424a9764f81df6e36",
     "rumi_tool_result_pack": "sha256:27d51b3d47bbac23529b9edad421737a6adedc8781fe7b6a665981cf34a8ea86",

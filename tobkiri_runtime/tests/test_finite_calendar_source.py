@@ -67,7 +67,8 @@ def calendar_source():
                     live[0] = True
                     with proof._registry._lock:
                         proof._children[child].future = future
-                    future.set_result(None)
+                    if not future.done():
+                        future.set_result(None)
                     proof.record_resource_drain(future)
         outer.set_result(None)
         parent.record_resource_drain(outer)

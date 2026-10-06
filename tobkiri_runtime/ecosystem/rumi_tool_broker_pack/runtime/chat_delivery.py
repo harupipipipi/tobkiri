@@ -243,6 +243,55 @@ def assert_delivery_effect_child(invocation: Any, held_scope: CapturedInvocation
     assert_delivery_child(ScopeView(scopes[2]), ScopeView(source_broker))
 
 
+def _delivery_saved_source(
+    scopes: list[CapturedInvocationScopeV4],
+    operations: list[tuple[str, str]],
+) -> CapturedInvocationScopeV4:
+    """Select the existing Saved owner or the exact live Calendar source join."""
+    if operations.count(SAVED) == 1:
+        return scopes[operations.index(SAVED)]
+    else:
+        from tobkiri_host.finite_chat_dispatch import (
+            _current,
+            _assert_saved_source_ancestry,
+        )
+
+        token = _current.get()
+        if token is None or not token.active or operations.count(SAVED) != 0:
+            raise PermissionError("independent saved branch source is unavailable")
+        parent, calendar = _assert_saved_source_ancestry(
+            token.scope,
+            token.source_proof,
+            token.owner,
+        )
+        if (
+            not calendar
+            or len(scopes) != 7
+            or scopes[4].envelope is not token.root
+            or scopes[5].envelope is not token.scope.envelope
+            or scopes[5].parent is not parent
+            or scopes[6] is not parent
+        ):
+            raise PermissionError("independent Calendar saved source changed")
+        from concurrent.futures import Future
+
+        proof = token.source_proof
+        if not proof.matches_invocation(token.root, *token.owner):
+            raise PermissionError("independent Calendar source broker unavailable")
+        with proof._registry._lock:
+            if not any(
+                child.envelope is token.root
+                and isinstance(child.future, Future)
+                and child.future.running()
+                and not child.completed
+                for child in proof._children.values()
+            ):
+                raise PermissionError(
+                    "independent Calendar source broker Future unavailable"
+                )
+        return token.scope
+
+
 def assert_delivery_saved_branch(invocation: Any, payload: Any) -> None:
     """Authenticate a direct approved delivery before minting its saved branch."""
     from core_runtime.owned_chat_message_approval_v4 import (
@@ -263,7 +312,6 @@ def assert_delivery_saved_branch(invocation: Any, payload: Any) -> None:
         operations[:5] != [EXECUTE, EFFECT, LOCAL, EXECUTOR, BROKER]
         or operations.count(BROKER) != 1
         or DELIVERY in operations
-        or operations.count(SAVED) != 1
     ):
         raise PermissionError("independent saved branch execution ancestry changed")
     execute = scopes[0]
@@ -280,7 +328,7 @@ def assert_delivery_saved_branch(invocation: Any, payload: Any) -> None:
     target_turn = "delivery:" + canonical_digest([
         request["profile_id"], delivery_id, target,
     ])[7:]
-    source_scope = scopes[operations.index(SAVED)]
+    source_scope = _delivery_saved_source(scopes, operations)
     source = source_scope.public_payload().get("request", {})
     holder = scopes[4].envelope
     source_owner = _delivery_owner(scopes)

@@ -22062,7 +22062,7 @@
         {
           "kind": "executable",
           "path": "runtime/chat_delivery.py",
-          "digest": "sha256:3aa83095d039645a727d1b8d0e9a1364bbd505548d425923d1c52bbce76a7613"
+          "digest": "sha256:b58425aec000613255312a0f411b4801bc3054773549ee814908cbab8fc26ee2"
         }
       ],
       "secrets": [],
