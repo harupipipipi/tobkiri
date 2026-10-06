@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import wraps
 import inspect
 import logging
 import threading
@@ -23,6 +24,20 @@ from .materialization import MaterializationCoordinator
 from .models import InvocationFrame, PackArtifact, RequestContext
 
 logger = logging.getLogger(__name__)
+
+
+def _scoped_profile_capture(
+    operation: Callable[..., Mapping[str, Any]],
+) -> Callable[..., Mapping[str, Any]]:
+    """Share only one request's Profile snapshot across nested Broker workers."""
+    @wraps(operation)
+    def scoped(*args: Any, **kwargs: Any) -> Mapping[str, Any]:
+        from core_runtime.bootstrap.profile_capture import profile_capture_scope
+
+        with profile_capture_scope():
+            return operation(*args, **kwargs)
+
+    return scoped
 
 
 def _selected_frontend_pack_closure(lock: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
@@ -276,6 +291,7 @@ class V4DispatchSession:
         if any(provider.get(key) != value for key, value in expected.items()):
             raise RuntimeError("selected Provider/backend metadata is stale or wrong")
 
+    @_scoped_profile_capture
     def invoke(
         self,
         contract_id: str,
