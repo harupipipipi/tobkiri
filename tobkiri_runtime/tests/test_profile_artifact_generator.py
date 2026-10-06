@@ -100,8 +100,11 @@ def test_saved_stop_caller_survives_profile_generation() -> None:
     rendered = _render(BUNDLE)
     profile = json.loads(rendered[_paths(BUNDLE)["compatibility"]])
     edges = [
-        edge for edge in profile["requested_edges"]
-        if edge["operation_id"] == "rumi_turn_runtime_pack.turn-stop"
+        edge
+        for edge in profile["requested_edges"]
+        if edge["caller_function_id"] == "shell.tauri.default"
+        and edge["contract_id"] == "tobkiri.action.turn.stop.v1"
+        and edge["operation_id"] == "rumi_turn_runtime_pack.turn-stop"
     ]
     assert len(edges) == 1
     assert edges[0]["caller_function_id"] == "shell.tauri.default"
