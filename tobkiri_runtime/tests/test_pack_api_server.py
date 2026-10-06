@@ -2498,9 +2498,13 @@ def test_panel_auth_shell_waits_for_dom_before_touching_body(
     assert document.startswith("<!doctype html>")
     event_boundary = "document.addEventListener('DOMContentLoaded',()=>{"
     assert event_boundary in document
-    assert document.index(event_boundary) < document.index("document.body.textContent")
-    assert document.count("document.body.textContent") == 2
-    assert document.endswith("</script>")
+    for dom_lookup in (
+        "document.getElementById('request')",
+        "document.getElementById('status')",
+        "document.getElementById('origin')",
+    ):
+        assert document.index(event_boundary) < document.index(dom_lookup)
+    assert document.endswith("</script></body></html>")
 
 
 def test_profile_screen_bootstrap_preserves_exact_captured_route(
@@ -2557,10 +2561,10 @@ def test_profile_screen_bootstrap_preserves_exact_captured_route(
         connection.close()
         assert response.status == 200
         assert 'location.replace("/p/defaults/chat")' in document
-        assert "v.data?.csrf_token||!v.data?.journal_scope" in document
+        assert "data?.csrf_token||!data?.journal_scope" in document
         assert (
             "sessionStorage.setItem('tobkiri-panel-journal-scope-v1',"
-            "v.data.journal_scope)"
+            "data.journal_scope)"
         ) in document
         assert code not in document
 
@@ -3185,7 +3189,7 @@ def test_saved_admission_refusal_http_and_authenticated_journal_are_exact(
     dispatch = RefusedDispatch()
     binding = FrontendContractBinding(
         method="POST",
-        path="/test/saved",
+        path="/api/test/saved",
         presentation="identity",
         route_namespace="test",
         application_id="test",
@@ -3216,7 +3220,7 @@ def test_saved_admission_refusal_http_and_authenticated_journal_are_exact(
             "X-Rumi-CSRF": csrf,
             "X-Tobkiri-Request-ID": request_id,
         }
-        path = "/api/contracts/test/" + quote("POST /test/saved", safe="")
+        path = "/api/contracts/test/" + quote("POST /api/test/saved", safe="")
         status, initial, _ = _request(server, "POST", path, body={}, headers=headers)
         assert status == 409, (status, initial)
         assert initial["data"]["code"] == "SAVED_TURN_NOT_STARTED"
