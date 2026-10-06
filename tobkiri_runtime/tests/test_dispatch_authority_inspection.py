@@ -171,7 +171,7 @@ def test_token_and_durable_authentication_fail_closed(dispatched, tamper):
         with store._lock, store._connection() as current:
             current.execute(
                 f"UPDATE invocation_leases SET {field}=? WHERE lease_id=?",
-                ("tampered", lease.lease_id),
+                ("tampered" if tamper == "stored_digest" else b"tampered", lease.lease_id),
             )
     with pytest.raises((AuthorityDenied, AuthorityStoreError)):
         store.inspect_dispatch_authority(token)
