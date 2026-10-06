@@ -21501,7 +21501,7 @@
         },
         {
           "path": "runtime/progress_host.py",
-          "digest": "sha256:35e6ce9b5f4e43d1d6ba5be917591d21b947ce899c6cccd50ef12bf4951708af",
+          "digest": "sha256:52357b1ac0a724ec43537be316c47577986381075573c4f239d12f73e37b6bd4",
           "kind": "sidecar"
         }
       ],

@@ -49,11 +49,18 @@ def owner(tmp_path, monkeypatch):
     context = SimpleNamespace(
         profile_id="profile", plan_digest="plan", security_epoch=1, catalog_bindings=(catalog,)
     )
-    client = SimpleNamespace(
-        invoke=lambda *args: {
-            "conversation": {"conversation_revision": 2, "current_node_id": "user"}
+
+    def conversation_read(contract, operation, request):
+        assert contract == progress_host.CONVERSATION
+        assert operation == progress_host.CONVERSATION_OPERATION
+        assert request == {
+            "profile_id": context.profile_id,
+            "operation": "get",
+            "conversation_id": "conversation",
         }
-    )
+        return {"conversation": {"conversation_revision": 2, "current_node_id": "user"}}
+
+    client = SimpleNamespace(invoke=conversation_read)
     invocation = SimpleNamespace(
         assert_current=lambda: None,
         parent_invocation=parent,

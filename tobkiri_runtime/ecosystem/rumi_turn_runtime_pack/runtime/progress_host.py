@@ -62,6 +62,7 @@ def progress_operation(
             CONVERSATION,
             CONVERSATION_OPERATION,
             {
+                "profile_id": context.profile_id,
                 "operation": "get",
                 "conversation_id": binding["conversation_id"],
             },
