@@ -178,7 +178,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:6b56e44835c69a47300a87ecdb66bd09e4b6b61a902333ba4d4c658db038753d",
+    "source_digest": "sha256:9b76552e85afedae06828cdd632763e0a74eedc51a0cf12f641ae284d721828d",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -3676,7 +3676,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -3698,7 +3698,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:f8ca29050f4fd70ecbd8badef2116edd530f6deb327c07dc8d558eb586c8db02",
+        "semantics_digest": "sha256:ebeb8fc8b1ba2d42cb2238993ecddb778cdb54768d4325bb213c10fb6384e2cd",
         "dimensions": {
           "contract": [
             "tobkiri.resource.turn.progress.v1"
@@ -3720,7 +3720,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -3742,7 +3742,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"
@@ -3874,7 +3874,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:f8ca29050f4fd70ecbd8badef2116edd530f6deb327c07dc8d558eb586c8db02",
+        "semantics_digest": "sha256:ebeb8fc8b1ba2d42cb2238993ecddb778cdb54768d4325bb213c10fb6384e2cd",
         "dimensions": {
           "contract": [
             "tobkiri.resource.turn.progress.v1"
@@ -4200,7 +4200,7 @@
       "operation_id": "rumi_turn_runtime_pack.turn-progress",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+        "semantics_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.progress.v1"

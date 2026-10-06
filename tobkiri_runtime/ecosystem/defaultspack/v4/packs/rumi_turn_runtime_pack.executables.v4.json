@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:5dd57463338b2fe388df39b848180a789383ec897d8523e5077f6acea4f75774",
+  "source_identity": "sha256:92b8b62b8fdd6e4132087b4ee07a5a66bcbccf6f08a04bd5b89a2bacde7e3c28",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -191,10 +191,9 @@
         {
           "contract_id": "tobkiri.action.turn.progress.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+          "revision_digest": "sha256:2a8bfa8221ac0a1063981c665c12439311457a32ff254639a5c3745f52675685",
           "operation_id": "rumi_turn_runtime_pack.turn-progress",
           "input_schema": {
-            "additionalProperties": false,
             "oneOf": [
               {
                 "additionalProperties": false,
@@ -364,6 +363,111 @@
                   },
                   "phase": {
                     "const": "publish"
+                  },
+                  "progress_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "progress_id",
+                  "cursor",
+                  "event"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "phase": {
+                    "const": "tool_bind"
+                  },
+                  "progress_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "progress_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "maximum": 2,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "event": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "arguments": {
+                            "type": "object"
+                          },
+                          "tool_call_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "tool_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "tool_started"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "tool_id",
+                          "tool_call_id",
+                          "arguments"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "success",
+                              "error"
+                            ]
+                          },
+                          "tool_call_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "tool_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "tool_completed"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "tool_id",
+                          "tool_call_id",
+                          "status",
+                          "content"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "phase": {
+                    "const": "tool_publish"
                   },
                   "progress_id": {
                     "pattern": "^[0-9a-f]{64}$",
@@ -574,7 +678,7 @@
         {
           "contract_id": "tobkiri.resource.turn.progress.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:f8ca29050f4fd70ecbd8badef2116edd530f6deb327c07dc8d558eb586c8db02",
+          "revision_digest": "sha256:ebeb8fc8b1ba2d42cb2238993ecddb778cdb54768d4325bb213c10fb6384e2cd",
           "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
           "input_schema": {
             "additionalProperties": false,
@@ -589,6 +693,10 @@
                 "maximum": 4096,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
               },
               "turn_id": {
                 "maxLength": 256,
@@ -727,6 +835,66 @@
                             "finish_reason"
                           ],
                           "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "arguments": {
+                              "type": "object"
+                            },
+                            "tool_call_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "tool_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "tool_started"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "tool_id",
+                            "tool_call_id",
+                            "arguments"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "status": {
+                              "enum": [
+                                "success",
+                                "error"
+                              ]
+                            },
+                            "tool_call_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "tool_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "tool_completed"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "tool_id",
+                            "tool_call_id",
+                            "status",
+                            "content"
+                          ],
+                          "type": "object"
                         }
                       ]
                     }
@@ -743,6 +911,10 @@
               "expires_at_ms": {
                 "minimum": 1,
                 "type": "integer"
+              },
+              "progress_id": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
               },
               "provider_complete": {
                 "type": "boolean"
@@ -762,7 +934,8 @@
               "cursor",
               "provider_complete",
               "expires_at_ms",
-              "canonical_turn_status"
+              "canonical_turn_status",
+              "progress_id"
             ],
             "type": "object"
           },
@@ -1361,6 +1534,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2aa89ec82d62ed2887912e4c38d56683c5c0d0f7361352e2270dd6f10caa12e8",
-  "catalog_digest": "sha256:100de5cd8d6ec694e6fc319c92bc330461438070ea5f7d2fffe068b5a393d9cb"
+  "materialization_catalog_digest": "sha256:080800c89e5a184f097981939ea15f3f408cb6e5a5155b1e5b88759d0031a1ca",
+  "catalog_digest": "sha256:a03e0c2904119cea61c75a1631a656d168f104c62c110c3ed7fb449173938659"
 }
