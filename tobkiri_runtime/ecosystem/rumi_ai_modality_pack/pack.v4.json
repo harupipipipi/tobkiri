@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:47a3042552654be1bad15466f8c00d5ad9498e38bac4e34b4bf5572f3df95809",
+      "digest": "sha256:106c79d1dd2c7c39900e2f313134dd4a4b292e5db6cf774b0042fa9673dd14ec",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "kind": "executable",
       "path": "runtime/gateway.py"
     }
@@ -50,7 +50,7 @@
     {
       "contract_revision_digest": "sha256:b166d234070e8597ca0855a841c1b8ab520e279b8bbb940f9708b8628ed35f0b",
       "id": "rumi_ai_modality_pack.ai-modality.embedding",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_modality_pack.ai-embedding"
@@ -60,7 +60,7 @@
     {
       "contract_revision_digest": "sha256:bc6ecd852106afe38fe5b5857137651e05ab83c8db7b3bb839ddaa7353db8311",
       "id": "rumi_ai_modality_pack.ai-modality.image",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_modality_pack.ai-image"
@@ -70,7 +70,7 @@
     {
       "contract_revision_digest": "sha256:6dac4dbb3ae65b790ff6adb7ba355ebcebcc4b891359b54f3a32ff7329a228e1",
       "id": "rumi_ai_modality_pack.ai-modality.speech",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_modality_pack.ai-speech"
@@ -80,7 +80,7 @@
     {
       "contract_revision_digest": "sha256:f9aa4d75acc78dca4de89c12775d2508227c4f9d4a11cf9bb4fe2daa65cb3a22",
       "id": "rumi_ai_modality_pack.ai-modality.transcribe",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_modality_pack.ai-transcribe"
@@ -89,9 +89,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:20fec8e481aa8e915ed34ee7ecb1be81f44367bd4e4b62745f6c13712ad7f70b",
-    "contract_catalog_digest": "sha256:6ea16979b2fc5ba09c99ea6fd1ae9e15a96741e98da46d7f26fe6a5a1ed62e12",
-    "source_identity": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34"
+    "artifact_set_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
+    "contract_catalog_digest": "sha256:38e7fb71af8eb407af263e999e8de78aebde8bc26aa81f09e60d0a901b129164",
+    "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
   },
   "migration": {
     "compatibility": "read_only",
@@ -153,7 +153,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:20fec8e481aa8e915ed34ee7ecb1be81f44367bd4e4b62745f6c13712ad7f70b",
+    "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
     "display_name": "Rumi AI Modality",
     "id": "rumi_ai_modality_pack",
     "kind": "host_extension",
@@ -163,7 +163,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34",
+        "digest": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -174,7 +174,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34",
+    "source_digest": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_modality_pack"
   },

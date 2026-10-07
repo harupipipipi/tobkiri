@@ -16,9 +16,9 @@ from core_runtime.global_contract_dispatch import (
 from core_runtime.host_provider_backend_v4 import (
     CapturedHostProviderV4,
     HostProviderCaptureContextV4,
-    HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.host_provider_function_v4 import SingleOperationHostFactoryV4
 
 _EMBEDDING_PROVIDER = "tobkiri.service.ai.provider.embedding.v1"
 _IMAGE_PROVIDER = "tobkiri.service.ai.provider.image.v1"
@@ -600,22 +600,10 @@ class ModalityGatewayHostFactoryV4:
     ) -> CapturedHostProviderV4:
         """Bind only one Plan-pinned modality Function and its provider edge."""
 
-        if not context.provider_bindings or any(
-            binding.function.function_id != self.function_id
-            or binding.operation.contract_id != self._contract_id
-            or binding.operation.operation_id != self._operation_id
-            for binding in context.provider_bindings
-        ):
-            raise PermissionError("modality gateway provider bindings are incomplete")
-
         def invoke(
-            operation_id: str,
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            if operation_id != self._operation_id:
-                raise PermissionError("modality gateway operation identity is invalid")
-            invocation.assert_current()
             # The gateway only fans out to one declared provider contract; it
             # never touches credential material or the Host transport itself.
             client = invocation.contract_client(
@@ -623,33 +611,14 @@ class ModalityGatewayHostFactoryV4:
                 consumer_pack_id="rumi_ai_modality_pack",
                 include_credentials=False,
             )
-            result = self._operation_factory(client)(self._operation_name, payload)
-            invocation.assert_current()
-            return result
+            return self._operation_factory(client)(self._operation_name, payload)
 
-        contributions: list[HostProviderContributionV4] = []
-        for binding in context.provider_bindings:
-            key = (
-                binding.operation.contract_id,
-                binding.operation.operation_id,
-                binding.principal_ref.value,
-            )
-            domain_id = context.domain_ids.get(key)
-            if domain_id is None:
-                raise PermissionError("modality gateway domain binding is unavailable")
-            contributions.append(
-                HostProviderContributionV4(
-                    contract_id=binding.operation.contract_id,
-                    contract_version=binding.operation.contract_version,
-                    operation_id=binding.operation.operation_id,
-                    principal_id=binding.principal_ref.value,
-                    artifact_digest=binding.artifact.digest,
-                    implementation_digest=binding.function.implementation_digest,
-                    domain_id=domain_id,
-                    invoke=invoke,
-                )
-            )
-        return CapturedHostProviderV4(tuple(contributions), lambda: None)
+        return SingleOperationHostFactoryV4(
+            function_id=self.function_id,
+            contract_id=self._contract_id,
+            operation_id=self._operation_id,
+            bind=lambda _context: invoke,
+        ).capture(context)
 
 
 HOST_PROVIDER_FACTORY = {

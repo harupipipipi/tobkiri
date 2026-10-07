@@ -3652,7 +3652,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.embedding",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -3666,7 +3666,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -3705,7 +3705,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.image",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -3719,7 +3719,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -3758,7 +3758,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.speech",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "additionalProperties": false,
@@ -3829,7 +3829,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "additionalProperties": false,
@@ -4059,7 +4059,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.transcribe",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "additionalProperties": false,
@@ -4155,7 +4155,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19735,7 +19735,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:cd3ccb70733602afae1759a876d27ae8b898a917e8e470c16f422b1e0feee9d8",
+    "input_digest": "sha256:77f14bd657402b6cc6405bf1557c4ee498f2ca82bb1ee9bd72a754f51007b102",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -20016,7 +20016,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:f73b0a74821f9a2f95640f0c2c18d283f46f0225dd615d2178e867893dfcc815",
+        "digest": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/artifact-manifest.json"
       },
@@ -20506,7 +20506,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:eef8bd970af3ee28e9e738267e5deeaa51495aad01b2911fb991975573991a68",
+        "digest": "sha256:66d8003c5fbf05d4949d0c4c29a238f88e007ca6ff3820b897d17e40b157e0df",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/rumi.pack.v3.json"
       },

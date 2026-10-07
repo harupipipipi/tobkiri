@@ -402,7 +402,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.embedding.v1",
       "id": "ai-embedding",
       "loader": "python",
@@ -410,7 +410,7 @@
       "symbol": "create_embedding_operation"
     },
     {
-      "artifact_hash": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.image.v1",
       "id": "ai-image",
       "loader": "python",
@@ -418,7 +418,7 @@
       "symbol": "create_image_operation"
     },
     {
-      "artifact_hash": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.audio.transcribe.v1",
       "id": "ai-transcribe",
       "loader": "python",
@@ -426,7 +426,7 @@
       "symbol": "create_audio_transcribe_operation"
     },
     {
-      "artifact_hash": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.audio.speech.v1",
       "id": "ai-speech",
       "loader": "python",
@@ -467,9 +467,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:20fec8e481aa8e915ed34ee7ecb1be81f44367bd4e4b62745f6c13712ad7f70b",
+            "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34"
+            "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -491,7 +491,7 @@
         "pack_identity": "rumi:ecosystem/rumi_ai_modality_pack",
         "provenance": {
           "build_identity": "rumi_ai_modality_pack:1.0.0",
-          "content_hash": "sha256:f73b0a74821f9a2f95640f0c2c18d283f46f0225dd615d2178e867893dfcc815",
+          "content_hash": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
           "signature": null,
           "trust_class": "local"
         },
@@ -521,7 +521,7 @@
       "owner": "rumi_ai_modality_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34"
+      "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
     }
   },
   "migration": {
@@ -568,7 +568,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_ai_modality_pack:1.0.0",
-    "content_hash": "sha256:f73b0a74821f9a2f95640f0c2c18d283f46f0225dd615d2178e867893dfcc815",
+    "content_hash": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
     "signature": null,
     "trust_class": "local"
   },

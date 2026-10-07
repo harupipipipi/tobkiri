@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_modality_pack",
-  "source_identity": "sha256:073aa17ac1604caf08e6671c08f2d00ca9e36e0d1321dbb8befcd2845bded5ca",
+  "source_identity": "sha256:bc061227dc4929600f7780462b8952a5c90414704ddfa59ce0df82ecd4b06b24",
   "variants": [
     {
       "variant_id": "rumi_ai_modality_pack.ai-modality.embedding.python",
       "function_id": "rumi_ai_modality_pack.ai-modality.embedding",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_ai_modality_pack.ai-modality.image.python",
       "function_id": "rumi_ai_modality_pack.ai-modality.image",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_ai_modality_pack.ai-modality.speech.python",
       "function_id": "rumi_ai_modality_pack.ai-modality.speech",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -258,7 +258,7 @@
       "variant_id": "rumi_ai_modality_pack.ai-modality.transcribe.python",
       "function_id": "rumi_ai_modality_pack.ai-modality.transcribe",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -447,6 +447,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:f324240a4831aed4bdf82af9df4c7a6e2163a257340e0068d1505d5634b85d91",
-  "catalog_digest": "sha256:f68045b808e5c352ea3b57f575a833bf1530141292661df13f80a372824451e6"
+  "materialization_catalog_digest": "sha256:0452d397d41c646865e9faa5cc5489edb2b0d2ca8df87a7ce0bac42ce32cb289",
+  "catalog_digest": "sha256:ad2bc2631e5a5b9cce2b4b02b43ff6a2a5f961e5f066e211467f452d2f489ac9"
 }

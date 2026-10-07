@@ -865,7 +865,7 @@
     "defaults-basepack": "sha256:50ca34f7382f1bd6ec9623998310f307b333806ff960376cdbab0576b37c74dc",
     "defaultspack": "sha256:e5721b00bbbbafcfd322b53d1612b2958ea99d8389e9709be299c85e056fcf8f",
     "rumi_ai_gateway_pack": "sha256:eeb5a7d5427acf276b2eb99796de614c7718a0bf4fc09479cda7dfa5ddd3e8aa",
-    "rumi_ai_modality_pack": "sha256:b4ece1219ceaf2e59f435aeffb971c1fe932acd266de4902b27f266585bdbda7",
+    "rumi_ai_modality_pack": "sha256:9be2ff358a3b6b817ac197f587c01c74733953645521b3b4107c34f20f29c703",
     "rumi_ai_pipeline_pack": "sha256:eb58ea9f100d769be12c4318dcf4618a5998db5f7434b06d7acaa66d5d90f248",
     "rumi_ai_routing_pack": "sha256:2796c42f77e9d25c6bf7a22ba549fb0ba4f74983cb1ea9e069fe4057e6bb6573",
     "rumi_ai_strategy_runtime_pack": "sha256:354eb133f59db08432f8c4bb7a697ee6bb885a6d3a6a2a89333276e90a11d6c2",

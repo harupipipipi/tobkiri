@@ -8,7 +8,7 @@
     {
       "path": "runtime/gateway.py",
       "role": "runtime",
-      "sha256": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc"
+      "sha256": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

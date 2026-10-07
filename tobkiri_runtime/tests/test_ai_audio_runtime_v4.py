@@ -1574,6 +1574,10 @@ def test_modality_gateway_captured_factory_validates_exact_bindings() -> None:
     )
     captured = factory.capture(
         SimpleNamespace(
+            profile_id="defaults",
+            plan_digest="sha256:plan",
+            security_epoch=1,
+            activation={"activation_id": "activation:fixture"},
             provider_bindings=(binding,),
             domain_ids={
                 (
@@ -1598,6 +1602,10 @@ def test_modality_gateway_captured_invoke_is_authority_scoped() -> None:
     )
     captured = factory.capture(
         SimpleNamespace(
+            profile_id="defaults",
+            plan_digest="sha256:plan",
+            security_epoch=1,
+            activation={"activation_id": "activation:fixture"},
             provider_bindings=(binding,),
             domain_ids={
                 (
@@ -1614,7 +1622,22 @@ def test_modality_gateway_captured_invoke_is_authority_scoped() -> None:
         [{"provider_instance_id": "p.audio.transcribe"}], {"text": "ok"}
     )
 
+    payload = {"model_profile_id": "profile.review-stt", "audio": _inline_audio()}
+
     class Invocation:
+        envelope = SimpleNamespace(
+            contract_id=_TRANSCRIBE_CONTRACT, contract_version="1.0.0",
+            operation_id="rumi_ai_modality_pack.ai-transcribe",
+            target_principal=binding.principal_ref,
+            target_domain=SimpleNamespace(value="fixture.domain"),
+            payload=payload,
+            context=SimpleNamespace(
+                profile_id="defaults", plan_digest="sha256:plan", security_epoch=1,
+                activation_id="activation:fixture",
+                activation_digest=canonical_digest({"activation_id": "activation:fixture"}),
+            ),
+        )
+
         def assert_current(self) -> None:
             calls.append("assert_current")
 
@@ -1624,10 +1647,7 @@ def test_modality_gateway_captured_invoke_is_authority_scoped() -> None:
 
     result = contribution.invoke(
         "rumi_ai_modality_pack.ai-transcribe",
-        {
-            "model_profile_id": "profile.review-stt",
-            "audio": _inline_audio(),
-        },
+        payload,
         Invocation(),
     )
 

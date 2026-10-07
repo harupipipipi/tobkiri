@@ -2384,7 +2384,7 @@
             {
               "entrypoint_id": "ai-speech",
               "id": "rumi_ai_modality_pack.ai-speech",
-              "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc"
+              "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59"
             }
           ],
           "owner": "rumi_ai_modality_pack",
@@ -2566,7 +2566,7 @@
             {
               "entrypoint_id": "ai-transcribe",
               "id": "rumi_ai_modality_pack.ai-transcribe",
-              "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc"
+              "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59"
             }
           ],
           "owner": "rumi_ai_modality_pack",
@@ -2757,7 +2757,7 @@
             {
               "entrypoint_id": "ai-embedding",
               "id": "rumi_ai_modality_pack.ai-embedding",
-              "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc"
+              "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59"
             }
           ],
           "owner": "rumi_ai_modality_pack",
@@ -2790,7 +2790,7 @@
             {
               "entrypoint_id": "ai-image",
               "id": "rumi_ai_modality_pack.ai-image",
-              "implementation_digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc"
+              "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59"
             }
           ],
           "owner": "rumi_ai_modality_pack",
@@ -2849,7 +2849,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:20971b8e96214665f86be2ef3f63803345575b104b9b3cd0ac395034d99674fc",
+          "digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "kind": "executable",
           "path": "runtime/gateway.py"
         }
