@@ -38,6 +38,9 @@ from tobkiri_host.contracts import OperationCatalog
 from tobkiri_protocol.bundle_catalog import BundledCatalog
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.validation import validate_file
+from acceptance.independent_extensions.composition.named_profile_observations import (
+    observe_named_profiles,
+)
 
 
 def _files(root: Path) -> dict[str, str]:
@@ -310,6 +313,14 @@ def observe(roots: list[Path], bundle_root: Path, artifact_root: Path) -> dict[s
                             routes_for_plan(external_plan, compiled),
                         ),
                     )
+            observations.extend(
+                observe_named_profiles(
+                    bundle_root=bundle_root,
+                    catalog=catalog,
+                    admitted_roots=dict(snapshot.roots),
+                    output_root=temp / "named",
+                )
+            )
             record("selection.unapproved", "deny", lambda: select(pack_ids, unapproved=pack_ids[0]))
             record("selection.unknown-contract", "deny", lambda: select(pack_ids, unknown=True))
             record("selection.duplicate-id", "deny", lambda: select((pack_ids[0], pack_ids[0])))

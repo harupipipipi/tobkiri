@@ -66,7 +66,7 @@ def test_selected_workflow_uses_real_compiler_without_authority_or_store_writes(
         assert authority.reservations == {} and authority.commit_count == 0
         assert invoker.requests == []
         catalog.value["operations"] = []
-        with pytest.raises(WorkflowValidationError, match="unavailable"):
+        with pytest.raises(WorkflowValidationError, match="not an exact active catalog operation"):
             compile_selected_workflow(engine, "example")
         catalog.value = Catalog().value
         catalog.value["operations"].append(catalog.value["operations"][0])
