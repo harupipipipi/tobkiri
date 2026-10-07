@@ -1,0 +1,157 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d3fb8b9c2518d1b6126f9dec846cbcd20a1b359c82127746f5fe202547db3829",
+      "kind": "asset",
+      "path": "catalog/runtime_matrix.yaml"
+    },
+    {
+      "digest": "sha256:8d50fd2fa7e24831a88fce2e092da0d98cac9ea6f65502278269721140a73bac",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
+      "kind": "executable",
+      "path": "runtime/managed_desktops.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.managed-desktops.v1",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ],
+      "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+      "id": "tobkiri.managed-desktops.read",
+      "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:0518afa6ed3cf1cb5d6cce27e78df5fdce92da2f2066a588e2c71be3f7dc2deb",
+    "artifact_set_digest": "sha256:7e4bfe31a70040abeb64036ed53c301d4a34d3f5ed4487fa944ccc1b6ba5d2c4",
+    "contract_catalog_digest": "sha256:77974905bc7823b58675bed5057fa71d345ae011b255ea205ddb6616f26b8742"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_sandbox_runtime_pack",
+      "rumi_sandbox_runtime_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "provider_id": "tobkiri.managed-desktops.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:b82f44cf3b826c71102259780fe7641e3be84fa88363fc33d4f545e1de5a3088",
+    "display_name": "Tobkiri Managed Desktops",
+    "id": "rumi_sandbox_runtime_pack",
+    "kind": "host_extension",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
+    "source_digest": "sha256:0518afa6ed3cf1cb5d6cce27e78df5fdce92da2f2066a588e2c71be3f7dc2deb",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:462aa755b79c3c839c9c60c8847b223828b14f028959fd7cb0abeae3d2aadb81",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:1eacd6885e3bfb42fcb12f2b16a1c27ea2e0031caf067b882f276c7414cd4c75",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:0518afa6ed3cf1cb5d6cce27e78df5fdce92da2f2066a588e2c71be3f7dc2deb"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri.managed-desktops.read",
+      "owner": "rumi_sandbox_runtime_pack",
+      "contract_reference": "tobkiri.resource.managed-desktops.v1",
+      "operations": [
+        "rumi_sandbox_runtime_pack.desktops-list",
+        "rumi_sandbox_runtime_pack.runtime-providers-read",
+        "rumi_sandbox_runtime_pack.runtime-doctor-read",
+        "rumi_sandbox_runtime_pack.sandbox-templates-read"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "desktop.read"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

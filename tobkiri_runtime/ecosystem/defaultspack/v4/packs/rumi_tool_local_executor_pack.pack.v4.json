@@ -1,0 +1,133 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:86836b95ae1ebb0c44dc3bc310122e8cb54b04db5580add7d72d8183188234c7",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:164d33af011f4edc2d93e6d2396219fca545b04cdab1f2309614de1470f46631",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_local_executor_pack.tool-local-execute"
+      ],
+      "revision_digest": "sha256:ed2eba5075751888f2889bcc404c72e63263c629a0d2a1aff043fade09b0c0eb"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:ed2eba5075751888f2889bcc404c72e63263c629a0d2a1aff043fade09b0c0eb",
+      "id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "implementation_digest": "sha256:164d33af011f4edc2d93e6d2396219fca545b04cdab1f2309614de1470f46631",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_local_executor_pack.tool-local-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:01c10bc75563469a812a3919a11c24cb697b72c231eae4ea1b4b711629d50c21",
+    "artifact_set_digest": "sha256:7059e2f70cbf11cb0cebac8c1c5dd45d02fd81a88f50ae73500d945f90e8876b",
+    "contract_catalog_digest": "sha256:ec621a51941b8d8d9049fc28f35b22465ab5e63eda48e3542309b90ee5ba6a78"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_local_executor_pack",
+      "rumi_tool_local_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_local_executor_pack.tool-local-execute",
+      "owner": "rumi_tool_local_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "provider_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:02d7a42e3b30d3be37fbdb0c7e4b620ddfe7f3ed407279cc0f60fdbb4685c27f",
+    "display_name": "Tobkiri Tool Local Executor",
+    "id": "rumi_tool_local_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_local_executor_pack/pack.v4.json",
+    "source_digest": "sha256:01c10bc75563469a812a3919a11c24cb697b72c231eae4ea1b4b711629d50c21",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:cb7b2b45eec8c4188b39d29f9552a06c9e057909de5a61d3607234fa259b3e0d",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:dd7c2f5390352a01c062ebded11f4e0270ee2e6f8537d1c058e963ce2890b436",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_tool_local_executor_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:01c10bc75563469a812a3919a11c24cb697b72c231eae4ea1b4b711629d50c21"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "owner": "rumi_tool_local_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_local_executor_pack.tool-local-execute"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.local.operation.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

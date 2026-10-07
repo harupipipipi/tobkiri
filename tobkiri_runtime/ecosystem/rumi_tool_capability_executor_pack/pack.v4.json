@@ -1,0 +1,114 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:4b2bb0130011c4b1c399eb1de6b22348f59424e9c6f1973140c266cd1d62b4f4",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_capability_executor_pack.tool-capability-execute"
+      ],
+      "revision_digest": "sha256:96ba9605d95950428119a955d2096ea1bc3cdd61088067a8e1121589d395cc87"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:96ba9605d95950428119a955d2096ea1bc3cdd61088067a8e1121589d395cc87",
+      "id": "rumi_tool_capability_executor_pack.tool-executor.capability",
+      "implementation_digest": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_capability_executor_pack.tool-capability-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:49e1d7c27e280ad3f47f4e46b3dfa6833a9ff94d12fe9fb161591eac05924bc4",
+    "contract_catalog_digest": "sha256:732a9f43a9c65d5b1f14d8356efc0310300482b3c64d3843aba71d4bfe9dd847",
+    "source_identity": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_capability_executor_pack",
+      "rumi_tool_capability_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "effect_ceiling": [
+        "capability:tool.execute",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_capability_executor_pack.tool-capability-execute",
+      "owner": "rumi_tool_capability_executor_pack",
+      "provider_id": "rumi_tool_capability_executor_pack.tool-executor.capability",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:49e1d7c27e280ad3f47f4e46b3dfa6833a9ff94d12fe9fb161591eac05924bc4",
+    "display_name": "Rumi Tool Capability Executor",
+    "id": "rumi_tool_capability_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_capability_executor_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_capability_executor_pack.tool-capability-execute"
+      ],
+      "owner": "rumi_tool_capability_executor_pack",
+      "provider_id": "rumi_tool_capability_executor_pack.tool-executor.capability"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

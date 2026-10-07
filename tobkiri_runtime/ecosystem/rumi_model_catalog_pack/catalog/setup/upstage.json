@@ -1,0 +1,122 @@
+{
+ "provider_id": "upstage",
+ "models": [
+  {
+   "model_id": "solar-mini",
+   "display_name": "solar-mini",
+   "type": "chat",
+   "context_window": 32768,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.15
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "solar-pro2",
+   "display_name": "solar-pro2",
+   "type": "reasoning",
+   "context_window": 65536,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 0.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "solar-pro3",
+   "display_name": "solar-pro3",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 0.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "solar-pro4",
+   "display_name": "Solar Pro 4",
+   "type": "reasoning",
+   "context_window": 524288,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  }
+ ]
+}

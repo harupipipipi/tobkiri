@@ -3,6 +3,8 @@ import type { ModelSearchResponse } from "../../../lib/api";
 export type ModelSearchPayload = {
   query: string;
   max_results: number;
+  provider_id?: string;
+  connection_id?: string;
 };
 
 export type ModelSearchApiClient = {
@@ -11,9 +13,13 @@ export type ModelSearchApiClient = {
 
 export function normalizeModelSearchPayload(payload: ModelSearchPayload): ModelSearchPayload {
   const maxResults = Number(payload.max_results);
+  const providerId = String(payload.provider_id ?? "").trim();
+  const connectionId = String(payload.connection_id ?? "").trim();
   return {
     query: String(payload.query ?? "").trim(),
     max_results: Number.isFinite(maxResults) && maxResults > 0 ? Math.floor(maxResults) : 30,
+    ...(providerId ? { provider_id: providerId } : {}),
+    ...(connectionId ? { connection_id: connectionId } : {}),
   };
 }
 

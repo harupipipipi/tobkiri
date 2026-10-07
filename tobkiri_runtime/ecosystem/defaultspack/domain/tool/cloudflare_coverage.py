@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any
 
 from domain.tool.service_catalog import infer_service_id
+from domain.tool.schema_adapter import mapping_or_empty
 
 
 CLOUDFLARE_BRIDGE_TOOL_CAPABILITIES: dict[str, tuple[str, ...]] = {
@@ -143,7 +144,10 @@ def cloudflare_tool_record(tool: dict[str, Any], *, record: dict[str, Any] | Non
 
 
 def cloudflare_tool_records(tools: list[dict[str, Any]], records: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
-    compact_records = records or [None] * len(tools)
+    if records is None:
+        compact_records: list[dict[str, Any] | None] = [None] * len(tools)
+    else:
+        compact_records = list(records)
     return [
         cloudflare_tool_record(tool, record=record if isinstance(record, dict) else None)
         for tool, record in zip(tools, compact_records)
@@ -215,7 +219,7 @@ def _tags(tool: dict[str, Any], record: dict[str, Any] | None) -> set[str]:
     if isinstance(record, dict):
         values.extend(record.get("tags") or [])
     values.extend(tool.get("tags") or [])
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     values.extend(metadata.get("tags") or [])
     category = str(tool.get("category") or metadata.get("category") or "").strip()
     if category:

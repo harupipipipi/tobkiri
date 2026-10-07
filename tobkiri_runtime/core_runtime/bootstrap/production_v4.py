@@ -1,0 +1,4060 @@
+"""Assemble the live Pack v4 composition from one active snapshot."""
+
+from __future__ import annotations
+
+import contextvars
+import json
+import math
+import os
+import secrets
+import stat
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Protocol
+
+from core_runtime.capture_guard_traversal_v4 import (
+    _capture_guard_traversal,
+    _check_shared_capture,
+)
+
+from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
+from tobkiri_host.admission import (
+    AdmissionEstimate,
+    DurableResourceLedger,
+    FairAdmissionQueue,
+    QueueScope,
+    ResourceAmount,
+    ResourceReservation,
+    dead_owner_reservation_ids,
+)
+from tobkiri_host.artifact_materialization import capture_materialized_artifact
+from tobkiri_host.authority_approval_window import (
+    AuthorityApprovalWindowController,
+)
+from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
+from tobkiri_host.broker import (
+    AdmissionTicket,
+    NestedCancellationProof,
+    RequestAdmissionPort,
+)
+from tobkiri_host.chat_approval_continuation import (
+    ChatApprovalContinuationController,
+)
+from tobkiri_host.composition import AuthorityCeilings
+from tobkiri_host.contracts import (
+    AdapterPlanner,
+    ResolvedOperationBinding,
+    StructuralAdapter,
+)
+from tobkiri_host.effects import InMemoryReconciliationStore
+from tobkiri_host.errors import BackendUnavailableError
+from tobkiri_host.interactive_effects import (
+    LateBoundInteractiveEffectPort,
+    PendingEffectController,
+)
+from tobkiri_host.materialization import MaterializationCoordinator
+from tobkiri_host.model_search import ModelSearchController
+from tobkiri_host.models import (
+    ArtifactVariant,
+    ContractOperation,
+    ExecutionKind,
+    FunctionArtifact,
+    OpaqueAuthorityRef,
+    PackageKind,
+    PackArtifact,
+    RequestContext,
+)
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationBinding,
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
+)
+from tobkiri_host.packvm_bridge_budget import PackVMBridgeBudgetRegistry
+from tobkiri_host.ports import (
+    AuthorityApprovalWindowOpenCommand,
+    InteractiveApprovalGetQuery,
+)
+from tobkiri_host.runtime import ProductionRuntimeV4, V4DispatchSession
+from tobkiri_host.workspace_mutation import (
+    HostWorkspaceMutationPort,
+    WorkspaceMutationBinding,
+    WorkspaceMutationCoordinator,
+)
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.platform_artifact import verify_platform_artifact
+from tobkiri_protocol.saved_conversation import (
+    SAVED_CONVERSATION_CONTRACT,
+    SAVED_CONVERSATION_OPERATION,
+    validate_saved_conversation_input,
+)
+from tobkiri_protocol.secure_persistence import (
+    SecureDirectory,
+    SecurePersistenceError,
+)
+
+from core_runtime.local_model_authority import (
+    LOCAL_REGISTRY_CONTRACT,
+    LocalModelInvocationBinding,
+    LocalModelRequest,
+    capture_local_model_binding,
+    create_local_model_transport,
+)
+from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
+from core_runtime.captured_wake_v4 import (
+    CapturedWakeDeclarationV4, CapturedWakeDriverV4, LateBoundWakePortV4,
+    close_captured_wake_drivers_v4,
+)
+from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
+
+from ..authority.pack_approval_binding import pack_approval_snapshot_digest
+from ..authority.v4 import (
+    ApprovalRecord,
+    AuthorityDenied,
+    AuthorityMode,
+    AuthorityScope,
+    AuthorityStore,
+    DomainBoundary,
+    ExecutionDomain,
+    FunctionPrincipal,
+    GrantLifetime,
+    GrantRecord,
+    HostExtensionTrustRecord,
+    ProviderAuthorityRecord,
+    authority_digest,
+)
+from ..credential_transport import (
+    AuthorizedEnvelopeCredentialTransport,
+    CredentialMaterialStoreFactory,
+)
+from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
+from ..global_contract_dispatch import (
+    GlobalContractClient,
+)
+from ..host_provider_backend_v4 import (
+    CapturedHostPackDataV4,
+    ExactHostProviderBackendV4,
+    HostProviderCaptureContextV4,
+    HostProviderInvocationContextV4,
+)
+from ..host_provider_data_v4 import HostProviderDataCaptureV4
+from ..invocation_scope_v4 import (
+    CapturedInvocationScopeV4, ParentInvocationScopesV4,
+    assert_dispatched_invocation, execution_session_id,
+)
+from ..host_provider_hooks_v4 import load_host_provider_factory
+from ..interactive_effect_coordinator import (
+    INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
+    INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID,
+    INTERACTIVE_EFFECT_SPECS,
+    CapturedInteractiveEffectRoute,
+    HostInteractiveEffectService,
+)
+from ..pack_catalog_backend_v4 import (
+    PackControlBackendV4,
+)
+from ..pack_control_v4 import (
+    CONTROL_PRESENTATION_CONTRACT,
+    PACK_CONTROL_CONTRACT,
+    RuntimeSurfaceFactory,
+    capture_pack_control_session,
+    capture_valid_pack_approval,
+)
+from ..panel_auth import (
+    PanelAuthBinding,
+    PanelAuthManager,
+    get_panel_auth_manager,
+)
+
+
+def _allow_unsigned_development_shell(catalog: Any) -> bool:
+    """Allow only the generated checkout Shell to omit a macOS signature."""
+
+    if os.environ.get("RUMI_ENVIRONMENT") != "development":
+        return False
+    runtime_root = Path(__file__).resolve().parents[2]
+    configured_app = os.environ.get("RUMI_APP_DIR")
+    artifact_root = catalog.artifact_root
+    if artifact_root is None:
+        return False
+    expected_artifacts = (
+        runtime_root.parent
+        / "tobkiri_launcher"
+        / "src-tauri"
+        / "target"
+        / "dev-defaults"
+        / "platform-artifacts"
+    )
+    bundled_artifacts = (
+        runtime_root / "bundled" / "dev-defaults" / "platform-artifacts"
+    )
+    try:
+        checkout_artifacts_match = (
+            expected_artifacts.is_dir()
+            and not expected_artifacts.is_symlink()
+            and artifact_root.resolve(strict=True)
+            == expected_artifacts.resolve(strict=True)
+        )
+        bundled_artifacts_match = (
+            bundled_artifacts.is_dir()
+            and not bundled_artifacts.is_symlink()
+            and artifact_root.resolve(strict=True)
+            == bundled_artifacts.resolve(strict=True)
+        )
+        configured_app_matches = (
+            configured_app is not None
+            and Path(configured_app).resolve(strict=True)
+            == runtime_root.resolve(strict=True)
+        )
+        return configured_app_matches and (
+            checkout_artifacts_match or bundled_artifacts_match
+        )
+    except OSError:
+        return False
+
+
+_CONTROL_CONTRACTS = {PACK_CONTROL_CONTRACT, CONTROL_PRESENTATION_CONTRACT}
+_PACKVM_BRIDGE_PROTOCOL = "io.tobkiri.packvm.bridge.v1"
+_PACKVM_BRIDGE_MAX_REQUEST_BYTES = 64 * 1024
+_PACKVM_BRIDGE_MAX_RESULT_BYTES = 512 * 1024
+_PACKVM_BRIDGE_MAX_HOPS = 16
+# Keep resource-axis defaults aligned with the bounded admission queue.  A
+# request reservation remains held while a verified provider performs a
+# nested Host dispatch, so ResourceAmount's constructor defaults of one slot
+# would reject valid nested work before the queue bounds are reached.
+_DEFAULT_RUNTIME_RESOURCE_SLOTS = 256
+_DEFAULT_PROFILE_RESOURCE_SLOTS = 64
+_REQUESTED_EDGE_AUTHORITY_MODES = frozenset({"profile_grant", "interactive_only"})
+
+
+class ActivationSnapshotLoader(Protocol):
+    """Application-provided verification of the persisted activation snapshot."""
+
+    def __call__(
+        self,
+        *,
+        active: object,
+        workspace: Path,
+        profile_id: str,
+        authority_store: AuthorityStore,
+        catalog: object,
+    ) -> object:
+        """Load the active snapshot using the app's verified Profile store."""
+
+
+class CapabilityBindingSnapshotFactory(Protocol):
+    """Application-owned capability snapshot projection for control reads."""
+
+    def __call__(
+        self,
+        binding: object,
+        *,
+        session: object,
+        catalog: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        """Return a serializable capability snapshot bound to this dispatch."""
+
+
+class CapabilityBindingSelector(Protocol):
+    """Application-owned selection of its capability HTTP binding."""
+
+    def __call__(self, bindings: tuple[object, ...]) -> object | None:
+        """Return one immutable application capability binding or ``None``."""
+
+
+@dataclass(frozen=True)
+class _CapturedPlanEdge:
+    """One Profile edge joined to its signed plan and verified target."""
+
+    key: tuple[str, str, str, str, str, str]
+    binding_key: tuple[str, str, str]
+    edge: Mapping[str, Any]
+    binding: Mapping[str, Any]
+    resolved_binding: ResolvedOperationBinding
+    caller: FunctionPrincipal
+    target: FunctionPrincipal
+    ceilings: AuthorityCeilings
+    authority_mode: str
+
+
+class _UnavailablePackVmBackend:
+    """Exact fail-closed registration for one missing PackVM backend."""
+
+    def __init__(self, backend_id: str) -> None:
+        self.status = BackendStatus(
+            backend_id=backend_id,
+            execution_kind=ExecutionKind.PACK_VM,
+            platform="any",
+            backend_digest=canonical_digest(
+                {
+                    "backend": backend_id,
+                    "state": "authenticated-supervisor-unavailable",
+                }
+            ),
+            production_enabled=False,
+            conformance_only=True,
+            unavailable_reason=(
+                "authenticated PackVM supervisor is not registered for the selected backend"
+            ),
+        )
+
+    def materialize(self, binding: Any, reservation_id: str) -> Any:
+        del binding, reservation_id
+        raise BackendUnavailableError(self.status.unavailable_reason or "backend unavailable")
+
+    def invoke(self, request: object) -> object:
+        del request
+        raise BackendUnavailableError(self.status.unavailable_reason or "backend unavailable")
+
+    def cancel(self, request_id: str) -> None:
+        del request_id
+
+    def terminate(self, domain_id: str) -> None:
+        del domain_id
+
+
+def _authenticated_packvm_backend(
+    backend_factory: Callable[[], ExecutionBackend | None] | None = None,
+) -> ExecutionBackend | None:
+    """Admit only a composition-verified production PackVM backend."""
+
+    if backend_factory is None:
+        return None
+
+    try:
+        backend = backend_factory()
+        status = getattr(backend, "status", None)
+        if (
+            backend is None
+            or status is None
+            or getattr(status, "execution_kind", None) is not ExecutionKind.PACK_VM
+            or getattr(status, "production_enabled", None) is not True
+            or getattr(status, "conformance_only", None) is not False
+            or not str(getattr(status, "backend_digest", "")).startswith("sha256:")
+        ):
+            return None
+        return backend
+    except Exception:
+        # This is a capability promotion boundary.  The Host must remain
+        # unavailable when any direct-VZ evidence, identity, or constructor
+        # check cannot be established; no alternate VM substrate is eligible.
+        return None
+
+
+class _NoAdapterExecution:
+    def execute(self, adapter: StructuralAdapter, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        raise RuntimeError(f"unexpected structural adapter: {adapter.adapter_id}")
+
+
+class _PlanAdmission(RequestAdmissionPort):
+    """Plan-bound Host admission with measured, durable reservations."""
+
+    def __init__(
+        self,
+        *,
+        profile_id: str,
+        activation_id: str,
+        plan: Mapping[str, Any],
+        state_path: Path,
+        confirmed_supervisor_release: Callable[
+            [Mapping[str, str], tuple[ResourceReservation, ...]], tuple[str, ...]
+        ]
+        | None = None,
+    ) -> None:
+        self._profile_id = profile_id
+        self._plan_digest = str(plan["plan_digest"])
+        policy = _admission_mapping(plan.get("admission_policy"))
+        host_memory = _host_memory_bytes()
+        runtime_limit = _positive_int(
+            policy.get("runtime_limit_bytes"),
+            default=max(host_memory, 64 * 1024 * 1024),
+        )
+        guard = _nonnegative_int(
+            policy.get("host_free_guard_bytes"),
+            default=max(16 * 1024 * 1024, runtime_limit // 10),
+        )
+        if guard >= runtime_limit:
+            raise AuthorityDenied("Host admission free-resource guard exceeds runtime limit")
+        profile_limit = _positive_int(
+            policy.get("profile_limit_bytes"),
+            default=runtime_limit - guard,
+        )
+        self._ledger = DurableResourceLedger(
+            runtime_limit=ResourceAmount(
+                memory_bytes=runtime_limit,
+                process_slots=_DEFAULT_RUNTIME_RESOURCE_SLOTS,
+                start_slots=_DEFAULT_RUNTIME_RESOURCE_SLOTS,
+            ),
+            host_free_guard=ResourceAmount(
+                memory_bytes=guard,
+                process_slots=0,
+                start_slots=0,
+            ),
+            profile_limits={
+                profile_id: ResourceAmount(
+                    memory_bytes=profile_limit,
+                    process_slots=_DEFAULT_PROFILE_RESOURCE_SLOTS,
+                    start_slots=_DEFAULT_PROFILE_RESOURCE_SLOTS,
+                )
+            },
+            state_path=state_path,
+            identity={
+                "profile_id": profile_id,
+                "profile_revision": str(plan["profile_revision"]),
+                "activation_id": activation_id,
+                "plan_digest": self._plan_digest,
+            },
+            confirmed_supervisor_release=confirmed_supervisor_release,
+        )
+        self._queue = FairAdmissionQueue(self._ledger)
+        self._policy = policy
+        self._binding_policies = {
+            (
+                str(item["contract_id"]),
+                str(item["operation_id"]),
+                canonical_digest(item["function_principal"]),
+            ): _admission_mapping(item.get("admission"))
+            for item in plan.get("bindings", ())
+        }
+
+    def estimate(
+        self,
+        context: RequestContext,
+        binding: ResolvedOperationBinding,
+        payload: Mapping[str, Any],
+    ) -> AdmissionEstimate:
+        if context.profile_id != self._profile_id or context.plan_digest != self._plan_digest:
+            raise AuthorityDenied("admission context is outside the captured plan")
+        policy = dict(self._policy)
+        policy.update(
+            self._binding_policies.get(
+                (
+                    binding.operation.contract_id,
+                    binding.operation.operation_id,
+                    binding.principal_ref.value,
+                ),
+                {},
+            )
+        )
+        measured = _measure_payload_bytes(payload)
+        upper_bound = _positive_int(
+            policy.get("declared_upper_bound_bytes"),
+            default=max(measured, 4096),
+        )
+        if measured > upper_bound:
+            raise AuthorityDenied("request exceeds the selected Provider resource bound")
+        return AdmissionEstimate(
+            measured_p95_bytes=measured,
+            declared_minimum_bytes=_nonnegative_int(
+                policy.get("declared_minimum_bytes"),
+                default=measured,
+            ),
+            runtime_floor_bytes=_nonnegative_int(
+                policy.get("runtime_floor_bytes"),
+                default=min(max(measured, 4096), upper_bound),
+            ),
+            profile_reservation_bytes=_nonnegative_int(
+                policy.get("profile_reservation_bytes"),
+                default=measured,
+            ),
+            backend_overhead_bytes=_nonnegative_int(
+                policy.get("backend_overhead_bytes"),
+                default=0,
+            ),
+            declared_upper_bound_bytes=upper_bound,
+            concurrency=_positive_int(policy.get("concurrency"), default=1),
+            disk_bytes=_nonnegative_int(policy.get("disk_bytes"), default=0),
+            detached=binding.variant.execution_kind is ExecutionKind.PACK_VM,
+        )
+
+    def acquire(
+        self,
+        scope: QueueScope,
+        estimate: AdmissionEstimate,
+        wait_timeout_seconds: float,
+    ) -> AdmissionTicket:
+        if wait_timeout_seconds <= 0:
+            raise TimeoutError("admission deadline expired")
+        reservation = self._queue.admit(
+            scope,
+            estimate.charge(),
+            wait_timeout_seconds=wait_timeout_seconds,
+            detached=estimate.detached,
+        )
+        return AdmissionTicket(reservation)
+
+    def release(self, ticket: AdmissionTicket) -> None:
+        self._ledger.release(ticket.reservation.reservation_id)
+
+
+def _admission_mapping(value: object) -> dict[str, Any]:
+    """Return bounded declarative admission metadata or an empty mapping."""
+
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _measure_payload_bytes(payload: Mapping[str, Any]) -> int:
+    """Measure a validated operation payload using the Broker's JSON profile.
+
+    Provider contracts may carry finite floating-point deadline values, while
+    ``canonical_json`` intentionally accepts only strict I-JSON values.  The
+    Broker request digest uses this JSON profile as well, so admission sizing
+    must measure the same serialized request without widening the accepted
+    value set to non-finite numbers or unsupported objects.
+    """
+
+    try:
+        return len(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8", errors="strict")
+        )
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise AuthorityDenied("request payload cannot be canonically measured") from error
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise AuthorityDenied("admission resource values must be positive integers")
+    return value
+
+
+def _nonnegative_int(value: object, *, default: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise AuthorityDenied("admission resource values must be non-negative integers")
+    return value
+
+
+def _host_memory_bytes() -> int:
+    """Measure the Host's physical memory without consulting a Pack."""
+
+    try:
+        pages = int(os.sysconf("SC_PHYS_PAGES"))
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+    except (AttributeError, OSError, ValueError):
+        return 0
+    return pages * page_size if pages > 0 and page_size > 0 else 0
+
+
+def _pack_root_identities(pack_roots: Mapping[str, Path]) -> dict[str, tuple[int, int]]:
+    """Reject symlinked roots and capture exact Pack-root identities.
+
+    Indexed artifacts are opened separately through the descriptor-relative,
+    no-follow materialization path.  Walking every unrelated file here would
+    make ordinary Pack assets (for example npm ``.bin`` links) part of the
+    execution authority without improving the selected artifact binding.
+    """
+
+    identities: dict[str, tuple[int, int]] = {}
+    for pack_id, root in sorted(pack_roots.items()):
+        try:
+            stat_result = root.lstat()
+        except OSError as exc:
+            raise AuthorityDenied(f"selected Pack root is unavailable: {pack_id}") from exc
+        if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISDIR(stat_result.st_mode):
+            raise AuthorityDenied(f"selected Pack root is unavailable: {pack_id}")
+        identities[pack_id] = (int(stat_result.st_dev), int(stat_result.st_ino))
+    return identities
+
+
+def _host_profile_catalog(
+    bundle_root: Path,
+    *,
+    authority_user_data: Path,
+) -> Any:
+    """Capture the Host catalog without dropping registry-owned Profiles.
+
+    ``BundledCatalog.load`` verifies the Host-global artifact inventory, but it
+    intentionally contains only packaged Profile documents.  Runtime capture
+    also needs the immutable successor definition selected by the Host
+    registry, especially after a Named Profile activation.  Keep both inputs
+    in one catalog snapshot so activation revalidation and dispatch cannot
+    disagree about Profile identity.
+    """
+
+    from .profile_capture import host_profile_catalog
+
+    return host_profile_catalog(
+        base_dir=authority_user_data,
+        bundle_root=bundle_root,
+        user_data_root=authority_user_data,
+    )
+
+
+def _shell_artifact(
+    catalog: Any,
+    shell_id: str,
+    selected_shell: Mapping[str, Any],
+) -> PackArtifact:
+    manifest = catalog.packs[shell_id]
+    definition = catalog.shells[str(selected_shell["provider_id"])]
+    selected_variants = [
+        item
+        for item in definition["launch"]["variants"]
+        if item["platform"] == selected_shell["platform"]
+        and item["architecture"] == selected_shell["architecture"]
+        and item["entrypoint_digest"] == selected_shell["executable_artifact_digest"]
+    ]
+    if definition.get("availability") != "verified" or len(selected_variants) != 1:
+        raise AuthorityDenied("captured Shell artifact variant is unavailable or ambiguous")
+    selected_variant = selected_variants[0]
+    if catalog.artifact_root is None:
+        raise AuthorityDenied("captured Shell artifact root is unavailable")
+    try:
+        verify_platform_artifact(
+            catalog.artifact_root,
+            selected_variant,
+            require_macos_code_signature=not _allow_unsigned_development_shell(catalog),
+        )
+    except ProtocolError as exc:
+        raise AuthorityDenied(f"captured Shell artifact verification failed: {exc}") from exc
+    functions: list[FunctionArtifact] = []
+    variants: list[ArtifactVariant] = []
+    for index, function in enumerate(manifest["functions"]):
+        contract = next(
+            item
+            for item in manifest["contracts"]
+            if item["revision_digest"] == function["contract_revision_digest"]
+        )
+        variant_id = f"{shell_id}.captured.{index}"
+        functions.append(
+            FunctionArtifact(
+                function_id=function["id"],
+                implementation_digest=function["implementation_digest"],
+                variant_id=variant_id,
+                operations=tuple(
+                    ContractOperation(
+                        contract_id=contract["contract_id"],
+                        contract_version="1.0.0",
+                        revision_digest=contract["revision_digest"],
+                        operation_id=operation_id,
+                        input_schema={"type": "object"},
+                        output_schema={"type": "object"},
+                    )
+                    for operation_id in function["operations"]
+                ),
+            )
+        )
+        variants.append(
+            ArtifactVariant(
+                variant_id=variant_id,
+                digest=selected_variant["entrypoint_digest"],
+                execution_kind=ExecutionKind.HOST_EXTENSION,
+                os=str(selected_variant["platform"]),
+                architecture=str(selected_variant["architecture"]),
+                runtime_abi="tobkiri-shell-v4",
+                backend="tobkiri.shell-host-v4",
+            )
+        )
+    return PackArtifact(
+        pack_id=shell_id,
+        version=manifest["pack"]["version"],
+        digest=manifest["pack"]["artifact_digest"],
+        publisher_lineage="tobkiri.repository",
+        package_kind=PackageKind.RUNTIME_TCB,
+        functions=tuple(functions),
+        variants=tuple(variants),
+    )
+
+
+def _operation_scope(
+    contract_id: str,
+    operation_id: str,
+    target: FunctionPrincipal,
+) -> AuthorityScope:
+    return AuthorityScope(
+        capability="operation.invoke",
+        semantics_digest=target.contract_revision_digest,
+        dimensions={
+            "contract": (contract_id,),
+            "operation": (operation_id,),
+        },
+    )
+
+
+def _committed_operation_scope(
+    edge: Mapping[str, Any], target: FunctionPrincipal
+) -> AuthorityScope:
+    """Materialize only the normalized scope committed by the ResolvedPlan."""
+
+    template = edge.get("requested_scope_template")
+    if not isinstance(template, Mapping):
+        raise AuthorityDenied("Profile requested scope is unavailable")
+    scope = AuthorityScope.from_dict(template)
+    exact = _operation_scope(str(edge["contract_id"]), str(edge["operation_id"]), target)
+    if not scope.is_subset_of(exact):
+        raise AuthorityDenied("Profile requested scope expands its exact operation edge")
+    return scope
+
+
+def _requested_edge_authority_mode(
+    edge: Mapping[str, Any],
+    binding: Mapping[str, Any],
+) -> str:
+    """Require Profile and ResolvedPlan policy fields to agree exactly."""
+
+    edge_mode = edge.get("authority_mode", "profile_grant")
+    binding_mode = binding.get("authority_mode", "profile_grant")
+    if (
+        edge_mode not in _REQUESTED_EDGE_AUTHORITY_MODES
+        or binding_mode not in _REQUESTED_EDGE_AUTHORITY_MODES
+        or edge_mode != binding_mode
+    ):
+        raise AuthorityDenied("ResolvedPlan edge authority mode changed")
+    return str(edge_mode)
+
+
+def _authority_ceilings_for_edge(
+    edge: Mapping[str, Any],
+    target: FunctionPrincipal,
+) -> AuthorityCeilings:
+    """Resolve the three independent authority axes for one Profile edge.
+
+    New plan producers may expose axis templates under ``authority_axes`` (or
+    the equivalent top-level names).  Older v4 Profiles contain one committed
+    operation scope; those records are converted into three independent
+    immutable objects for compatibility, while every new axis remains
+    constrained by the exact operation.  No axis is widened or inferred from
+    a provider name.
+    """
+
+    operation_scope = _committed_operation_scope(edge, target)
+    axis_templates = edge.get("authority_axes")
+    if not isinstance(axis_templates, Mapping):
+        axis_templates = {}
+
+    def axis_scope(name: str) -> AuthorityScope:
+        template = edge.get(f"{name}_scope_template")
+        if template is None:
+            template = axis_templates.get(name)
+        if template is None:
+            return AuthorityScope.from_dict(operation_scope.to_dict())
+        if not isinstance(template, Mapping):
+            raise AuthorityDenied(f"Profile authority axis {name} is invalid")
+        try:
+            selected = AuthorityScope.from_dict(template)
+        except Exception as exc:
+            raise AuthorityDenied(f"Profile authority axis {name} is invalid") from exc
+        if not selected.is_subset_of(operation_scope):
+            raise AuthorityDenied(f"Profile authority axis {name} expands its edge")
+        return selected
+
+    return AuthorityCeilings(
+        caller_effect=axis_scope("caller_effect"),
+        runtime_safety=axis_scope("runtime_safety"),
+        profile_admin=axis_scope("profile_admin"),
+    )
+
+
+def _execution_domain(
+    *,
+    domain_id: str,
+    principal: FunctionPrincipal,
+    active: Any,
+    boundary: DomainBoundary,
+    channel_seed: str,
+) -> ExecutionDomain:
+    activation = active.activation
+    return ExecutionDomain(
+        domain_id=domain_id,
+        profile_id=str(active.resolved.profile["profile_id"]),
+        activation_id=str(activation["activation_id"]),
+        boot_epoch=1,
+        process_identity=f"process.{domain_id}",
+        authenticated_channel_digest=authority_digest(
+            {
+                "channel": channel_seed,
+                "activation_id": activation["activation_id"],
+                "principal_id": principal.principal_id,
+            }
+        ),
+        sandbox_profile_digest=authority_digest(
+            {
+                "boundary": boundary.value,
+                "provider": principal.principal_id,
+                "network": "denied",
+                "process": "denied",
+            }
+        ),
+        resource_namespace=f"resource.{domain_id}",
+        principals=(principal,),
+        boundary=boundary,
+        security_epoch=int(activation["security_epoch"]),
+        fencing_token=int(activation["fencing_token"]),
+    )
+
+
+def _register_exact_domain(
+    store: AuthorityStore,
+    control: Any,
+    domain: ExecutionDomain,
+    *,
+    session_id: str,
+    principal: FunctionPrincipal,
+) -> None:
+    existing = store.get_domain(domain.domain_id)
+    if existing is None:
+        control.register_execution_domain(
+            domain,
+            session_id=session_id,
+            channel_digest=domain.authenticated_channel_digest,
+            principal_ref=OpaqueAuthorityRef(principal.principal_id),
+        )
+        return
+    if existing != domain:
+        raise AuthorityDenied("captured execution domain identity changed")
+    try:
+        session_domain, principal_id = store.resolve_authenticated_session(session_id)
+    except AuthorityDenied:
+        store.bind_authenticated_session(
+            session_id=session_id,
+            domain=domain,
+            channel_digest=domain.authenticated_channel_digest,
+            principal_id=principal.principal_id,
+        )
+        return
+    if session_domain != domain or principal_id != principal.principal_id:
+        raise AuthorityDenied("authenticated session identity changed")
+
+
+def _binding_principal(binding: ResolvedOperationBinding) -> FunctionPrincipal:
+    """Reconstruct the exact authority principal from verified binding data."""
+
+    return FunctionPrincipal(
+        parent_artifact_digest=binding.artifact.digest,
+        function_implementation_digest=binding.function.implementation_digest,
+        function_id=binding.function.function_id,
+        contract_revision_digest=binding.operation.revision_digest,
+        operation_id=binding.operation.operation_id,
+    )
+
+
+def _validate_host_provider_bindings(
+    function_id: str,
+    provider_bindings: tuple[ResolvedOperationBinding, ...],
+) -> str:
+    """Validate a complete Host Extension inventory before importing its hook."""
+
+    if not provider_bindings:
+        raise AuthorityDenied("Host Provider hook has no verified bindings")
+    artifact = provider_bindings[0].artifact
+    if artifact.package_kind is not PackageKind.HOST_EXTENSION:
+        raise AuthorityDenied("Host Provider hook requires a Host Extension package")
+    backend_ids = {variant.backend for variant in artifact.variants}
+    if len(backend_ids) != 1 or any(
+        variant.execution_kind is not ExecutionKind.HOST_EXTENSION for variant in artifact.variants
+    ):
+        raise AuthorityDenied("Host Provider hook artifact boundary is invalid")
+    for binding in provider_bindings:
+        if (
+            binding.artifact != artifact
+            or binding.artifact.package_kind is not PackageKind.HOST_EXTENSION
+            or binding.function.function_id != function_id
+            or binding.function not in artifact.functions
+            or binding.variant not in artifact.variants
+            or binding.function.variant_id != binding.variant.variant_id
+            or binding.operation not in binding.function.operations
+            or binding.variant.execution_kind is not ExecutionKind.HOST_EXTENSION
+            or binding.variant.backend not in backend_ids
+            or binding.principal_ref.value != _binding_principal(binding).principal_id
+        ):
+            raise AuthorityDenied("Host Provider hook verified identity is invalid")
+    return next(iter(backend_ids))
+
+
+def _load_verified_host_provider_factory(
+    pack_root: Path,
+    function_id: str,
+    provider_bindings: tuple[ResolvedOperationBinding, ...],
+) -> tuple[Any, str]:
+    """Import a hook only after its complete Host Extension identity is valid."""
+
+    backend_id = _validate_host_provider_bindings(function_id, provider_bindings)
+    return load_host_provider_factory(pack_root, provider_bindings[0]), backend_id
+
+
+def _host_extension_trust_record(
+    *,
+    active: Any,
+    binding: ResolvedOperationBinding,
+    valid_from: float,
+) -> HostExtensionTrustRecord:
+    """Create exact, activation-bound trust for one verified Host Extension Provider."""
+
+    principal = _binding_principal(binding)
+    _validate_host_provider_bindings(binding.function.function_id, (binding,))
+    activation = active.activation
+    identity_suffix = str(activation["activation_id"]).replace(":", ".")
+    principal_suffix = principal.principal_id.removeprefix("sha256:")[:24]
+    return HostExtensionTrustRecord(
+        trust_id=f"host-extension.{principal_suffix}.{identity_suffix}",
+        parent_artifact_digest=binding.artifact.digest,
+        publisher_lineage=binding.artifact.publisher_lineage,
+        provider_principal_ids=(principal.principal_id,),
+        trust_provenance_digest=canonical_digest(
+            {
+                "source": "verified-host-extension-artifact",
+                "plan_digest": activation["plan_digest"],
+                "artifact_digest": binding.artifact.digest,
+                "publisher_lineage": binding.artifact.publisher_lineage,
+                "provider_principal_id": principal.principal_id,
+            }
+        ),
+        security_epoch=int(activation["security_epoch"]),
+        valid_from=valid_from,
+    )
+
+
+def _commit_plan_authority(
+    store: AuthorityStore,
+    control: Any,
+    *,
+    active: Any,
+    caller: FunctionPrincipal,
+    target: FunctionPrincipal,
+    contract_id: str,
+    caller_publisher_lineage: str,
+    target_publisher_lineage: str,
+    target_domain: ExecutionDomain,
+    scope: AuthorityScope,
+    authority_label: str = "profile-edge",
+    authority_mode: str = "profile_grant",
+    pack_approval_revision: str | None = None,
+    host_extension_binding: ResolvedOperationBinding | None = None,
+) -> tuple[Any, Any | None]:
+    if authority_mode not in _REQUESTED_EDGE_AUTHORITY_MODES:
+        raise AuthorityDenied("Profile edge authority mode is invalid")
+    activation = active.activation
+    profile = active.resolved.profile
+    profile_identity = str(profile["profile_id"])
+    decided_at = datetime.fromisoformat(
+        str(activation["created_at"]).replace("Z", "+00:00")
+    ).timestamp()
+    identity_suffix = str(activation["activation_id"]).replace(":", ".")
+    contract_suffix = authority_digest({"contract_id": contract_id}).removeprefix("sha256:")[:24]
+    operation_suffix = target.operation_id.replace(".", "-")
+    caller_suffix = caller.principal_id.removeprefix("sha256:")[:24]
+    target_suffix = target.principal_id.removeprefix("sha256:")[:24]
+    authority_label = authority_label.replace("/", "-").replace(".", "-")
+    approval_identity = (
+        pack_approval_revision.removeprefix("sha256:")[:24]
+        if pack_approval_revision is not None
+        else identity_suffix
+    )
+    record_identity = (
+        f"{identity_suffix}.{approval_identity}"
+        if pack_approval_revision is not None
+        else identity_suffix
+    )
+    host_extension_trust = (
+        _host_extension_trust_record(
+            active=active,
+            binding=host_extension_binding,
+            valid_from=decided_at,
+        )
+        if host_extension_binding is not None
+        else None
+    )
+    provider = ProviderAuthorityRecord(
+        record_id=(
+            f"provider.{profile_identity}.{authority_label}."
+            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
+            f"{target_suffix}.{record_identity}"
+        ),
+        provider=target,
+        execution_domain_id=target_domain.domain_id,
+        execution_domain_identity_digest=target_domain.identity_digest,
+        scope=scope,
+        authority_mode=AuthorityMode.LEASE_ONLY,
+        security_epoch=int(activation["security_epoch"]),
+        trust_provenance_digest=canonical_digest(
+            {
+                "source": f"locked-{profile_identity}-profile",
+                "plan_digest": activation["plan_digest"],
+                "target": target.to_dict(),
+            }
+        ),
+        publisher_lineage=(
+            host_extension_trust.publisher_lineage
+            if host_extension_trust is not None
+            else target_publisher_lineage
+        ),
+        host_extension_id=(
+            host_extension_trust.trust_id if host_extension_trust is not None else "runtime-tcb"
+        ),
+        valid_from=decided_at,
+        host_broker_binding="tobkiri.request-broker.v4",
+    )
+    if authority_mode == "interactive_only":
+        interactive_existing = (
+            (
+                store.get_host_extension_trust(host_extension_trust.trust_id)
+                if host_extension_trust is not None
+                else None
+            ),
+            store.get_provider_authority(provider.record_id),
+        )
+        interactive_expected = (host_extension_trust, provider)
+        if interactive_existing == (None, None):
+            control.commit_provider_authority_bundle(
+                host_extension_trust=host_extension_trust,
+                provider_authorities=(provider,),
+            )
+        elif (
+            host_extension_trust is not None
+            and interactive_existing == (host_extension_trust, None)
+        ):
+            control.commit_provider_authority_bundle(
+                provider_authorities=(provider,),
+            )
+        elif interactive_existing != interactive_expected:
+            raise AuthorityDenied("Pack catalog authority snapshot changed")
+        return provider, None
+    # A Pack approval revision names the stable user decision, not one runtime
+    # activation.  The immutable Authority snapshot below is activation-bound,
+    # so every record in its bundle must use the activation generation as part
+    # of its durable identity.  This preserves prior rows without replaying or
+    # colliding with them when an unchanged Pack is activated again.
+    approval = ApprovalRecord(
+        approval_id=(
+            f"approval.{profile_identity}.{authority_label}."
+            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
+            f"{target_suffix}.{record_identity}"
+        ),
+        snapshot_digest=pack_approval_snapshot_digest(
+            profile_id=profile_identity,
+            activation_id=activation["activation_id"],
+            plan_digest=activation["plan_digest"],
+            profile_authority_digest=activation["profile_authority_snapshot_digest"],
+            security_epoch=activation["security_epoch"],
+            scope=scope.to_dict(),
+            approval_revision=pack_approval_revision,
+        ),
+        actor_id=(
+            "user.pack-approval"
+            if pack_approval_revision is not None
+            else f"user.{profile_identity}-confirmation"
+        ),
+        decision="approved",
+        decided_at=decided_at,
+        caller=caller,
+        target=target,
+        profile_id=str(profile["profile_id"]),
+        effect_bundle_digest=scope.digest,
+        security_epoch=int(activation["security_epoch"]),
+    )
+    grant = GrantRecord(
+        grant_id=(
+            f"grant.{profile_identity}.{authority_label}."
+            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
+            f"{target_suffix}.{record_identity}"
+        ),
+        caller=caller,
+        target=target,
+        profile_id=str(profile["profile_id"]),
+        activation_id=str(activation["activation_id"]),
+        profile_authority_digest=str(activation["profile_authority_snapshot_digest"]),
+        caller_publisher_lineage=caller_publisher_lineage,
+        target_publisher_lineage=provider.publisher_lineage,
+        scope=scope,
+        lifetime=GrantLifetime.PERSISTENT_PROFILE,
+        security_epoch=int(activation["security_epoch"]),
+        approval_id=approval.approval_id,
+        issued_at=decided_at,
+    )
+    existing = (
+        (
+            store.get_host_extension_trust(host_extension_trust.trust_id)
+            if host_extension_trust is not None
+            else None
+        ),
+        store.get_approval(approval.approval_id),
+        store.get_provider_authority(provider.record_id),
+        store.get_grant(grant.grant_id),
+    )
+    expected = (host_extension_trust, approval, provider, grant)
+    if existing == (None, None, None, None):
+        control.commit_approval_bundle(
+            approval,
+            host_extension_trust=host_extension_trust,
+            provider_authorities=(provider,),
+            grants=(grant,),
+        )
+    elif (
+        host_extension_trust is not None
+        and existing == (host_extension_trust, None, None, None)
+    ):
+        control.commit_approval_bundle(
+            approval,
+            provider_authorities=(provider,),
+            grants=(grant,),
+        )
+    elif existing != expected:
+        raise AuthorityDenied("Pack catalog authority snapshot changed")
+
+    return provider, grant
+
+
+def _packvm_approval_provenance(
+    *,
+    caller_artifact_digest: str,
+    target_pack_id: str,
+    optional_pack_ids: set[str],
+    pack_ids_by_artifact_digest: Mapping[str, set[str]],
+    approval_roots_by_pack: Mapping[str, set[str]] | None = None,
+) -> tuple[bool, str | None]:
+    """Resolve one unambiguous optional-Pack approval source for a PackVM edge."""
+
+    caller_pack_ids = pack_ids_by_artifact_digest.get(caller_artifact_digest, set())
+    if len(caller_pack_ids) != 1:
+        return False, None
+    caller_pack_id = next(iter(caller_pack_ids))
+    approval_pack_ids = {
+        pack_id for pack_id in (target_pack_id, caller_pack_id) if pack_id in optional_pack_ids
+    }
+    if not approval_pack_ids:
+        return True, None
+    covering_roots: set[str] | None = None
+    for pack_id in approval_pack_ids:
+        roots = (
+            {pack_id} if approval_roots_by_pack is None
+            else set(approval_roots_by_pack.get(pack_id, ()))
+        )
+        covering_roots = roots if covering_roots is None else covering_roots & roots
+    if not covering_roots or len(covering_roots) != 1:
+        return False, None
+    return True, next(iter(covering_roots))
+
+
+def _optional_pack_approval_roots(
+    catalog: Any, optional_pack_ids: set[str]
+) -> dict[str, set[str]]:
+    """Bind each optional member to its selected signed dependency roots.
+
+    Pack control approves roots, not the effective closure's dependency-only
+    members. Traverse the already verified catalog without inventing a new
+    caller edge or choosing among overlapping approval roots.
+    """
+    dependencies = {
+        pack_id: set(manifest["requirements"]["pack_dependencies"])
+        for pack_id, manifest in catalog.packs.items()
+    }
+    if not optional_pack_ids.issubset(dependencies):
+        raise AuthorityDenied("optional Pack dependency catalog is incomplete")
+    dependency_ids = {
+        dependency
+        for pack_id in optional_pack_ids
+        for dependency in dependencies[pack_id]
+        if dependency in optional_pack_ids
+    }
+    roots = optional_pack_ids - dependency_ids
+    coverage: dict[str, set[str]] = {pack_id: set() for pack_id in optional_pack_ids}
+    for root in sorted(roots):
+        pending = [root]
+        visited: set[str] = set()
+        while pending:
+            pack_id = pending.pop()
+            if pack_id in visited:
+                continue
+            visited.add(pack_id)
+            if pack_id not in dependencies:
+                raise AuthorityDenied("signed Pack dependency is unavailable")
+            if pack_id in coverage:
+                coverage[pack_id].add(root)
+            pending.extend(dependencies[pack_id] - visited)
+    return coverage
+
+
+def _static_profile_pack_ids(
+    catalog: Any,
+    profile_id: str,
+) -> frozenset[str]:
+    """Return the canonical Profile closure before optional Pack additions."""
+
+    definition = catalog.profiles.get(profile_id)
+    if definition is None:
+        raise AuthorityDenied("selected Profile is absent from the verified catalog")
+    selected = [str(item["pack_id"]) for item in definition["packs"]]
+    pending = list(selected)
+    while pending:
+        pack_id = pending.pop(0)
+        manifest = catalog.packs.get(pack_id)
+        if manifest is None:
+            raise AuthorityDenied("selected Profile dependency is absent from the verified catalog")
+        for dependency_id in manifest["requirements"]["pack_dependencies"]:
+            dependency = str(dependency_id)
+            if dependency not in selected:
+                selected.append(dependency)
+                pending.append(dependency)
+    return frozenset(selected)
+
+
+def _bridge_targets_by_outer_edge(
+    edges: tuple[_CapturedPlanEdge, ...],
+) -> dict[tuple[str, str, str, str, str, str], tuple[_CapturedPlanEdge, ...]]:
+    """Derive Host continuation targets from signed Profile edges only.
+
+    A PackVM may receive a bridge only to non-PackVM edges whose signed caller
+    is that PackVM Function. The guest may name a Contract only when the Plan
+    contains exactly one matching edge, or retain the legacy exact Contract
+    and operation target. Provider names, product IDs, and operation-only maps
+    cannot create a continuation capability.
+    """
+
+    result: dict[tuple[str, str, str, str, str, str], tuple[_CapturedPlanEdge, ...]] = {}
+    for outer in edges:
+        if outer.resolved_binding.variant.execution_kind is not ExecutionKind.PACK_VM:
+            continue
+        candidates = tuple(
+            candidate
+            for candidate in edges
+            if candidate.caller.principal_id == outer.target.principal_id
+            and candidate.resolved_binding.variant.execution_kind is not ExecutionKind.PACK_VM
+            and candidate.binding["contract_id"] not in _CONTROL_CONTRACTS
+        )
+        if candidates:
+            result[outer.key] = candidates
+    return result
+
+
+def _resolve_packvm_bridge_target(
+    candidates: tuple[_CapturedPlanEdge, ...],
+    target: object,
+) -> tuple[_CapturedPlanEdge, dict[str, str]]:
+    """Resolve a guest target only through one caller-bound captured Plan edge."""
+
+    if (
+        not isinstance(target, Mapping)
+        or set(target) not in (
+            {"contract_id"},
+            {"contract_id", "operation_id"},
+        )
+        or not isinstance(target.get("contract_id"), str)
+        or not target.get("contract_id")
+    ):
+        raise AuthorityDenied("PackVM capability bridge request is invalid")
+    requested_operation = target.get("operation_id")
+    if requested_operation is not None and (
+        not isinstance(requested_operation, str) or not requested_operation
+    ):
+        raise AuthorityDenied("PackVM capability bridge request is invalid")
+    matches = tuple(
+        edge
+        for edge in candidates
+        if edge.resolved_binding.operation.contract_id == target.get("contract_id")
+        and (
+            requested_operation is None
+            or edge.resolved_binding.operation.operation_id == requested_operation
+        )
+    )
+    if len(matches) != 1:
+        raise AuthorityDenied("PackVM capability bridge target is ambiguous")
+    return matches[0], {key: str(value) for key, value in target.items()}
+
+
+def _validate_packvm_bridge_continuation(
+    continuation: object,
+    *,
+    operation_id: str,
+    target: Mapping[str, str],
+    request_digest: str,
+) -> dict[str, Any]:
+    """Validate a legacy or bounded multi-hop PackVM continuation.
+
+    The Host independently binds every continuation to the captured outer
+    operation, the Plan-resolved target, and the canonical request digest.
+    Chain ordering and one-shot consumption are additionally enforced by the
+    PackVM backend; this boundary still rejects malformed predecessor and
+    state bindings before any nested Provider invocation occurs.
+    """
+
+    if not isinstance(continuation, Mapping):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    common = {
+        "kind": "tobkiri.packvm.continuation.v1",
+        "protocol": _PACKVM_BRIDGE_PROTOCOL,
+        "version": 1,
+        "operation_id": operation_id,
+        "nonce": continuation.get("nonce"),
+        "target": dict(target),
+        "request_digest": request_digest,
+    }
+    legacy_fields = set(common)
+    extended_fields = legacy_fields | {
+        "hop",
+        "max_hops",
+        "previous_result_digest",
+        "state",
+        "state_digest",
+    }
+    nonce = continuation.get("nonce")
+    if (
+        not isinstance(nonce, str)
+        or len(nonce) != 48
+        or any(character not in "0123456789abcdef" for character in nonce)
+        or any(continuation.get(key) != value for key, value in common.items())
+    ):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    if set(continuation) == legacy_fields:
+        return dict(continuation)
+    if set(continuation) != extended_fields:
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+
+    hop = continuation.get("hop")
+    max_hops = continuation.get("max_hops")
+    predecessor = continuation.get("previous_result_digest")
+    state = continuation.get("state")
+    state_digest = continuation.get("state_digest")
+
+    def valid_digest(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 71
+            and value.startswith("sha256:")
+            and all(character in "0123456789abcdef" for character in value[7:])
+        )
+
+    try:
+        state_bytes = canonical_json(dict(state)) if isinstance(state, Mapping) else ""
+        expected_state_digest = (
+            canonical_digest(dict(state)) if isinstance(state, Mapping) else None
+        )
+    except Exception as error:
+        raise AuthorityDenied(
+            "PackVM capability bridge continuation is invalid"
+        ) from error
+    if (
+        type(hop) is not int
+        or type(max_hops) is not int
+        or not 1 <= max_hops <= _PACKVM_BRIDGE_MAX_HOPS
+        or not 0 <= hop < max_hops
+        or (hop == 0 and predecessor is not None)
+        or (hop > 0 and not valid_digest(predecessor))
+        or not isinstance(state, Mapping)
+        or len(state_bytes) > _PACKVM_BRIDGE_MAX_REQUEST_BYTES
+        or not valid_digest(state_digest)
+        or state_digest != expected_state_digest
+    ):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    return dict(continuation)
+
+
+def _interactive_effect_coordinator_factory(
+    factories: tuple[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str], ...],
+) -> tuple[str, tuple[ResolvedOperationBinding, ...], Any, str] | None:
+    """Return the one exact coordinator Factory or reject a widened capture."""
+
+    selected = tuple(
+        item
+        for item in factories
+        if getattr(item[2], "requires_interactive_effect_port", False) is True
+    )
+    if len(selected) > 1:
+        raise AuthorityDenied("interactive effect coordinator is ambiguous")
+    if not selected:
+        return None
+    coordinator = selected[0]
+    bindings = coordinator[1]
+    if (
+        len(bindings) != 1
+        or coordinator[0] != bindings[0].function.function_id
+        or bindings[0].operation.contract_id != INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID
+        or bindings[0].operation.operation_id != INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID
+    ):
+        raise AuthorityDenied("interactive effect coordinator binding is invalid")
+    return coordinator
+
+
+def _captured_interactive_effect_routes(
+    edges: tuple[_CapturedPlanEdge, ...],
+    *,
+    coordinator_principal: OpaqueAuthorityRef,
+    dynamic_domain_ids: Mapping[tuple[str, str, str], str],
+) -> tuple[CapturedInteractiveEffectRoute, ...]:
+    """Build finite prepare/execute pairs from signed Profile edges only."""
+
+    routes: list[CapturedInteractiveEffectRoute] = []
+    for spec in INTERACTIVE_EFFECT_SPECS.values():
+        prepare_edges = tuple(
+            edge
+            for edge in edges
+            if edge.caller.principal_id == coordinator_principal.value
+            and edge.resolved_binding.operation.contract_id == spec.prepare_contract_id
+            and edge.resolved_binding.operation.operation_id == spec.prepare_operation_id
+        )
+        execute_edges = tuple(
+            edge
+            for edge in edges
+            if edge.caller.principal_id == coordinator_principal.value
+            and edge.resolved_binding.operation.contract_id == spec.execute_contract_id
+            and edge.resolved_binding.operation.operation_id == spec.execute_operation_id
+        )
+        if not prepare_edges and not execute_edges:
+            continue
+        if len(prepare_edges) != 1 or len(execute_edges) != 1:
+            raise AuthorityDenied("interactive effect route is ambiguous")
+        prepare_edge = prepare_edges[0]
+        execute_edge = execute_edges[0]
+        if (
+            prepare_edge.authority_mode != "profile_grant"
+            or execute_edge.authority_mode != "interactive_only"
+            or execute_edge.resolved_binding.artifact.package_kind is not PackageKind.HOST_EXTENSION
+            or execute_edge.resolved_binding.variant.execution_kind
+            is not ExecutionKind.HOST_EXTENSION
+        ):
+            raise AuthorityDenied("interactive effect route authority is invalid")
+        execute_key = (
+            execute_edge.resolved_binding.operation.contract_id,
+            execute_edge.resolved_binding.operation.operation_id,
+            execute_edge.target.principal_id,
+        )
+        if execute_key not in dynamic_domain_ids:
+            raise AuthorityDenied("interactive effect target domain is unavailable")
+        routes.append(
+            CapturedInteractiveEffectRoute(
+                spec=spec,
+                coordinator_principal=coordinator_principal,
+                execute_target_principal=OpaqueAuthorityRef(execute_edge.target.principal_id),
+                execute_ceiling=execute_edge.ceilings.caller_effect,
+            )
+        )
+    if not routes:
+        raise AuthorityDenied("interactive effect routes are unavailable")
+    return tuple(routes)
+
+
+def _nested_host_provider_session_id(envelope: Any) -> str:
+    """Derive a stable Host session for a Provider's nested contract calls.
+
+    The outer request ID intentionally does not participate: a panel performs
+    prepare, status, and resume as separate HTTP requests, but the durable
+    presentation owner must remain the same authenticated panel session.  The
+    caller session and Provider target are Host-generated envelope fields.
+    """
+
+    context = getattr(envelope, "context", None)
+    target = getattr(envelope, "target_principal", None)
+    caller_session_id = getattr(context, "caller_session_id", None)
+    target_principal_id = getattr(target, "value", None)
+    profile_id = getattr(context, "profile_id", None)
+    activation_id = getattr(context, "activation_id", None)
+    plan_digest = getattr(context, "plan_digest", None)
+    return _nested_host_provider_session_id_for(
+        caller_session_id=caller_session_id,
+        target_principal_id=target_principal_id,
+        profile_id=profile_id,
+        activation_id=activation_id,
+        plan_digest=plan_digest,
+    )
+
+
+def _nested_host_provider_session_id_for(
+    *,
+    caller_session_id: object,
+    target_principal_id: object,
+    profile_id: object,
+    activation_id: object,
+    plan_digest: object,
+) -> str:
+    """Derive one stable nested session solely from Host-authenticated fields."""
+
+    if (
+        not isinstance(caller_session_id, str)
+        or not caller_session_id
+        or not isinstance(target_principal_id, str)
+        or not target_principal_id
+        or not isinstance(profile_id, str)
+        or not isinstance(activation_id, str)
+        or not isinstance(plan_digest, str)
+    ):
+        raise AuthorityDenied("nested Host Provider session is unavailable")
+    return "session.host-provider." + canonical_digest(
+        {
+            "caller_session_id": caller_session_id,
+            "provider_principal_id": target_principal_id,
+            "profile_id": profile_id,
+            "activation_id": activation_id,
+            "plan_digest": plan_digest,
+        }
+    ).removeprefix("sha256:")
+
+
+def _recover_interactive_effect_controller(controller: PendingEffectController) -> None:
+    """Converge crash-interrupted pending effects before exposing the port."""
+
+    try:
+        controller.recover()
+    except Exception as error:
+        raise AuthorityDenied("interactive effect recovery is unavailable") from error
+
+
+def _provider_unavailable_bridge_result(
+    error: BaseException | None = None,
+) -> dict[str, Any]:
+    """Return the bounded error projection allowed across the guest boundary."""
+
+    del error
+    return {
+        "status": "error",
+        "error": {
+            "code": "PROVIDER_UNAVAILABLE",
+            "message": "The verified AI capability is unavailable.",
+        },
+    }
+
+
+def capture_production_dispatch(
+    active: Any,
+    *,
+    bundle_root: Path,
+    ecosystem_root: Path,
+    authority_store: AuthorityStore,
+    backends: BackendRegistry | None = None,
+    target_backend_digests: Mapping[str, str] | None = None,
+    packvm_provisioner: Any | None = None,
+    packvm_readiness_reader: Callable[[], Mapping[str, Any]] | None = None,
+    http_contract_bindings: tuple[Any, ...] = (),
+    activation_snapshot_loader: ActivationSnapshotLoader | None = None,
+    runtime_surface_factory: RuntimeSurfaceFactory | None = None,
+    capability_binding_snapshot_factory: CapabilityBindingSnapshotFactory | None = None,
+    capability_binding_selector: CapabilityBindingSelector | None = None,
+    credential_store_factory: CredentialMaterialStoreFactory | None = None,
+    acceptance_receipts: AcceptanceReceiptPort | None = None,
+    chat_continuation_approve: Callable[..., Mapping[str, Any]] | None = None,
+    chat_continuation_resume: Callable[..., Mapping[str, Any]] | None = None,
+    authority_approval_window_open: (
+        Callable[[str], Mapping[str, Any]] | None
+    ) = None,
+    panel_auth_manager: PanelAuthManager | None = None,
+    model_search: (
+        Callable[
+            [
+                Mapping[str, Any],
+                list[Mapping[str, Any]],
+                list[Mapping[str, Any]],
+                Mapping[str, Any],
+            ],
+            Mapping[str, Any],
+        ]
+        | None
+    ) = None,
+) -> V4DispatchSession:
+    """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
+
+    authority_path = authority_store.path.resolve()
+    if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
+        raise AuthorityDenied("Authority store path is not canonical")
+    authority_user_data = authority_path.parent.parent
+    profile_id = str(active.resolved.profile["profile_id"])
+    authority_workspace = authority_user_data / "workspaces" / profile_id
+    try:
+        catalog = _host_profile_catalog(
+            bundle_root,
+            authority_user_data=authority_user_data,
+        )
+        if activation_snapshot_loader is None:
+            raise AuthorityDenied("Profile activation loader is unavailable")
+        persisted_active: Any = activation_snapshot_loader(
+            active=active,
+            workspace=authority_workspace,
+            profile_id=profile_id,
+            authority_store=authority_store,
+            catalog=catalog,
+        )
+    except Exception as exc:
+        raise AuthorityDenied(
+            "Authority store is not bound to the captured Profile activation"
+        ) from exc
+    if (
+        dict(persisted_active.activation) != dict(active.activation)
+        or dict(persisted_active.resolved.profile) != dict(active.resolved.profile)
+        or dict(persisted_active.resolved.lock) != dict(active.resolved.lock)
+        or dict(persisted_active.resolved.plan) != dict(active.resolved.plan)
+    ):
+        raise AuthorityDenied("Authority store is not bound to the captured Profile activation")
+    active = persisted_active
+    from .external_profile_catalog import catalog_for_verified_active_profile
+
+    catalog = catalog_for_verified_active_profile(
+        catalog, active, user_data=authority_user_data,
+    )
+    activation_suffix = str(active.activation["fencing_token"])
+
+    profile = active.resolved.profile
+    lock = active.resolved.lock
+    plan = active.resolved.plan
+    shell_id = str(profile["shell"]["pack_id"])
+    shell = _shell_artifact(
+        catalog,
+        shell_id,
+        profile["shell"],
+    )
+    principals_by_function: dict[str, tuple[FunctionPrincipal, ...]] = {}
+    for function in shell.functions:
+        function_principals: list[FunctionPrincipal] = []
+        for operation in function.operations:
+            principal = FunctionPrincipal(
+                shell.digest,
+                function.implementation_digest,
+                function.function_id,
+                operation.revision_digest,
+                operation.operation_id,
+            )
+            function_principals.append(principal)
+        principals_by_function[function.function_id] = tuple(function_principals)
+    shell_principal_ids = frozenset(
+        principal.principal_id
+        for principals in principals_by_function.values()
+        for principal in principals
+    )
+    for binding in plan["bindings"]:
+        principal = FunctionPrincipal.from_dict(binding["function_principal"])
+        existing = list(principals_by_function.get(principal.function_id, ()))
+        if principal not in existing:
+            existing.append(principal)
+        principals_by_function[principal.function_id] = tuple(existing)
+
+    # Dispatch must follow the persisted immutable Profile, including exact
+    # operation edges contributed by an enabled/approved optional Pack.
+    edges = profile["requested_edges"]
+    binding_by_edge: dict[tuple[str, str, str], Mapping[str, Any]] = {}
+    for item in plan["bindings"]:
+        binding_key = (
+            str(item["caller_function_id"]),
+            str(item["contract_id"]),
+            str(item["operation_id"]),
+        )
+        if binding_key in binding_by_edge:
+            raise AuthorityDenied("ResolvedPlan contains a duplicate operation edge")
+        binding_by_edge[binding_key] = item
+
+    profile_id = str(profile["profile_id"])
+    activation_id = str(active.activation["activation_id"])
+    ceilings: dict[tuple[str, ...], AuthorityCeilings] = {}
+    edge_specs: list[
+        tuple[
+            Mapping[str, Any],
+            Mapping[str, Any],
+            FunctionPrincipal,
+            FunctionPrincipal,
+            AuthorityCeilings,
+            tuple[str, str, str, str, str, str],
+            str,
+        ]
+    ] = []
+    seen_binding_edges: set[tuple[str, str, str]] = set()
+    for edge in edges:
+        binding_key = (
+            str(edge["caller_function_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        binding = binding_by_edge.get(binding_key)
+        if binding is None:
+            raise AuthorityDenied("Profile edge is absent from the signed ResolvedPlan")
+        seen_binding_edges.add(binding_key)
+        callers = principals_by_function.get(binding_key[0], ())
+        if len(callers) != 1:
+            raise AuthorityDenied("Profile edge caller does not identify one principal")
+        caller = callers[0]
+        target = FunctionPrincipal.from_dict(binding["function_principal"])
+        if str(edge["target_provider_id"]) != target.function_id:
+            raise AuthorityDenied("Profile edge target differs from its ResolvedPlan binding")
+        scope = _committed_operation_scope(edge, target)
+        if binding["requested_scope_digest"] != canonical_digest(scope.to_dict()):
+            raise AuthorityDenied("ResolvedPlan requested scope binding changed")
+        authority_mode = _requested_edge_authority_mode(edge, binding)
+        axis_ceilings = _authority_ceilings_for_edge(edge, target)
+        authority_key = (
+            profile_id,
+            activation_id,
+            caller.principal_id,
+            target.principal_id,
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
+            raise AuthorityDenied("Profile edge authority is duplicated")
+        ceilings[authority_key] = axis_ceilings
+        edge_specs.append(
+            (
+                edge,
+                binding,
+                caller,
+                target,
+                axis_ceilings,
+                authority_key,
+                authority_mode,
+            )
+        )
+    if set(binding_by_edge) != seen_binding_edges:
+        raise AuthorityDenied("ResolvedPlan contains an edge outside the active Profile")
+
+    binding_pack_ids = {str(item["pack_id"]) for item in plan["bindings"]}
+    pack_roots = resolve_admitted_pack_roots(
+        tuple(sorted(binding_pack_ids)),
+        ecosystem_root,
+    )
+    captured_pack_root_identities = _pack_root_identities(pack_roots)
+
+    def artifact_resolver(binding: ResolvedOperationBinding) -> Any:
+        pack_id = binding.artifact.pack_id
+        root = pack_roots.get(pack_id)
+        expected_identity = captured_pack_root_identities.get(pack_id)
+        if root is None or expected_identity is None:
+            raise AuthorityDenied("resolved Pack artifact root is unavailable")
+        before = root.lstat()
+        if root.is_symlink() or (int(before.st_dev), int(before.st_ino)) != expected_identity:
+            raise AuthorityDenied("resolved Pack artifact root identity changed")
+        artifact = capture_materialized_artifact(root, binding)
+        after = root.lstat()
+        if root.is_symlink() or (int(after.st_dev), int(after.st_ino)) != expected_identity:
+            raise AuthorityDenied("resolved Pack artifact root changed during materialization")
+        return artifact
+
+    effective = {
+        str(item["identity"]): str(item["artifact_digest"]) for item in lock["effective_set"]
+    }
+    runtime = ProductionRuntimeV4.capture(
+        profile=profile,
+        lock=lock,
+        plan=plan,
+        activation=active.activation,
+        pack_roots=pack_roots,
+        supporting_artifacts=(shell,),
+        verified_effective_artifacts=effective,
+        authority_ceilings=ceilings,
+    )
+    resolved_binding_by_edge: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
+    for binding in plan["bindings"]:
+        binding_key = (
+            str(binding["caller_function_id"]),
+            str(binding["contract_id"]),
+            str(binding["operation_id"]),
+        )
+        resolved_binding = runtime.composition.catalog.resolve_pinned(
+            str(binding["contract_id"]),
+            str(binding["operation_id"]),
+        )
+        if resolved_binding.principal_ref.value != canonical_digest(binding["function_principal"]):
+            raise AuthorityDenied("ResolvedPlan target principal is not route-bound")
+        resolved_binding_by_edge[binding_key] = resolved_binding
+    catalog_bindings = tuple(resolved_binding_by_edge.values())
+    captured_edges = tuple(
+        _CapturedPlanEdge(
+            key=authority_key,
+            binding_key=(
+                str(binding["caller_function_id"]),
+                str(binding["contract_id"]),
+                str(binding["operation_id"]),
+            ),
+            edge=edge,
+            binding=binding,
+            resolved_binding=resolved_binding_by_edge[
+                (
+                    str(binding["caller_function_id"]),
+                    str(binding["contract_id"]),
+                    str(binding["operation_id"]),
+                )
+            ],
+            caller=caller,
+            target=target,
+            ceilings=axis_ceilings,
+            authority_mode=authority_mode,
+        )
+        for (
+            edge,
+            binding,
+            caller,
+            target,
+            axis_ceilings,
+            authority_key,
+            authority_mode,
+        ) in edge_specs
+    )
+    registered_backends = tuple((backends or BackendRegistry(())).registered)
+    owned_packvm_backends: tuple[Any, ...] = ()
+    owned_wasm_backends: tuple[Any, ...] = ()
+    if backends is None:
+        authenticated_backend = _authenticated_packvm_backend(packvm_provisioner)
+        if authenticated_backend is not None:
+            registered_backends += (authenticated_backend,)
+            owned_packvm_backends = (authenticated_backend,)
+        if any(
+            binding.variant.execution_kind is ExecutionKind.WASM
+            for binding in catalog_bindings
+        ):
+            try:
+                from tobkiri_host.wasm_backend import production_wasm_backend
+
+                wasm_backend = production_wasm_backend()
+                registered_backends += (wasm_backend,)
+                owned_wasm_backends = (wasm_backend,)
+            except Exception:
+                # A missing or unverified engine leaves the pinned binding
+                # unavailable and receives no domain or Authority records.
+                pass
+    target_backend_digests = dict(target_backend_digests or {})
+    from core_runtime.authority.policy_exact_grant import PolicyExactGrantKernel
+    from tobkiri_host.policy_exact_authority_adapter import PolicyExactAuthorityV4Adapter
+
+    policy_kernel = PolicyExactGrantKernel(
+        authority_store, runtime.composition.resolver, lease_ttl_seconds=300
+    )
+    policy_kernel.policy_roots = {}
+    authority_control = PolicyExactAuthorityV4Adapter(
+        policy_kernel, runtime.composition.resolver,
+    )
+    profile_edge_authority_records: dict[Any, tuple[Any, Any | None]] = {}
+
+    def unavailable_chat_continuation(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("chat approval continuation is unavailable")
+
+    chat_approval_continuation = ChatApprovalContinuationController(
+        approve=chat_continuation_approve or unavailable_chat_continuation,
+        resume=chat_continuation_resume or unavailable_chat_continuation,
+    )
+
+    def unavailable_approval_window(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("authority approval window is unavailable")
+
+    def bind_approval_window_presentation(
+        command: AuthorityApprovalWindowOpenCommand,
+    ) -> None:
+        """Record the owner-scoped presenter grant for the Launcher window.
+
+        The dedicated approval window is a separate webview surface with its
+        own cookie store, so its one-time ``?code=`` exchange mints a fresh
+        panel session.  Recording the grant only after the interactive
+        approval port proves this caller already is the request's
+        presentation owner lets that exact exchange resolve to the journal
+        session the request is bound to.  A caller that does not own the
+        request records nothing: the window's session then stays foreign and
+        presentation validation remains fail-closed.
+        """
+
+        context = command.context
+        try:
+            authority_control.get_interactive_approval(
+                InteractiveApprovalGetQuery(
+                    context=context,
+                    request_id=command.request_id,
+                )
+            )
+        except AuthorityDenied:
+            return
+        owner_principal = str(context.caller_principal.value)
+        owner_session = str(context.caller_session_id)
+        session_suffix = (
+            f".{owner_principal.removeprefix('sha256:')[:24]}"
+            f".{activation_suffix}"
+        )
+        if (
+            command.presentation_owner_principal_id != owner_principal
+            or command.presentation_owner_session_id != owner_session
+            or not owner_session.endswith(session_suffix)
+            or len(owner_session) <= len(session_suffix)
+        ):
+            raise AuthorityDenied("authority approval window owner is invalid")
+        manager = (
+            panel_auth_manager
+            if panel_auth_manager is not None
+            else get_panel_auth_manager()
+        )
+        manager.record_approval_presenter_grant(
+            command.request_id,
+            owner_session[: -len(session_suffix)],
+            PanelAuthBinding(
+                profile_id=str(context.profile_id),
+                profile_revision=str(context.profile_revision),
+                activation_id=str(context.activation_id),
+                plan_digest=str(context.plan_digest),
+                security_epoch=int(context.security_epoch),
+            ),
+        )
+
+    authority_approval_window = AuthorityApprovalWindowController(
+        open_window=authority_approval_window_open or unavailable_approval_window,
+        bind_presentation_owner=bind_approval_window_presentation,
+    )
+
+    def unavailable_model_search(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("model search is unavailable")
+
+    model_search_controller = ModelSearchController(
+        search_models=model_search or unavailable_model_search,
+    )
+    control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
+    control_backend: PackControlBackendV4 | None = None
+    control_session: Any | None = None
+    control_edges = tuple(
+        edge
+        for edge in captured_edges
+        if edge.resolved_binding.operation.contract_id in _CONTROL_CONTRACTS
+    )
+    if control_edges:
+
+        def load_active_profile() -> Any:
+            from .profile_capture import capture_active_profile
+
+            return capture_active_profile()
+
+        control_session = capture_pack_control_session(
+            active=active,
+            packvm_readiness_reader=packvm_readiness_reader,
+            active_profile_loader=load_active_profile,
+            bundle_root=bundle_root,
+            runtime_surface_factory=runtime_surface_factory,
+        )
+        for captured_edge in sorted(control_edges, key=lambda item: item.key):
+            if (
+                captured_edge.resolved_binding.artifact.package_kind
+                is not PackageKind.HOST_EXTENSION
+                or captured_edge.resolved_binding.variant.execution_kind
+                is not ExecutionKind.HOST_EXTENSION
+            ):
+                raise AuthorityDenied(
+                    "Host control binding must use the explicit Host Extension namespace"
+                )
+            key = (
+                captured_edge.resolved_binding.operation.contract_id,
+                captured_edge.resolved_binding.operation.operation_id,
+            )
+            operation_id = key[1]
+            target = captured_edge.target
+            target_suffix = target.principal_id.removeprefix("sha256:")[:24]
+            target_domain = _execution_domain(
+                domain_id=f"domain.provider.{target_suffix}.{activation_suffix}",
+                principal=target,
+                active=active,
+                boundary=DomainBoundary.DEDICATED_PROCESS,
+                channel_seed=f"host-control-provider:{key[0]}:{operation_id}",
+            )
+            _register_exact_domain(
+                authority_store,
+                authority_control,
+                target_domain,
+                session_id=(f"session.provider.host-control.{target_suffix}.{activation_suffix}"),
+                principal=target,
+            )
+            profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
+                authority_store,
+                authority_control,
+                active=active,
+                caller=captured_edge.caller,
+                target=target,
+                contract_id=key[0],
+                caller_publisher_lineage=shell.publisher_lineage,
+                target_publisher_lineage=captured_edge.resolved_binding.artifact.publisher_lineage,
+                target_domain=target_domain,
+                scope=captured_edge.ceilings.caller_effect,
+                authority_label="host-control",
+                authority_mode=captured_edge.authority_mode,
+            )
+            selected_target = (
+                target.principal_id,
+                target.function_implementation_digest,
+                target_domain.domain_id,
+            )
+            previous_target = control_targets.get(key)
+            if previous_target is not None and previous_target != selected_target:
+                raise AuthorityDenied("Host control operation target is ambiguous")
+            control_targets[key] = selected_target
+        backend_digest = canonical_digest(
+            {
+                "backend": "tobkiri.host-control.v4",
+                "targets": {
+                    f"{key[0]}::{key[1]}": list(target) for key, target in control_targets.items()
+                },
+                "profile_id": profile["profile_id"],
+                "plan_digest": plan["plan_digest"],
+                "security_epoch": active.activation["security_epoch"],
+            }
+        )
+        control_backend = PackControlBackendV4(
+            session=control_session,
+            targets=control_targets,
+            backend_digest=backend_digest,
+        )
+        target_backend_digests = {
+            **dict(target_backend_digests or {}),
+            **{target[0]: backend_digest for target in control_targets.values()},
+        }
+    captured_dynamic_approvals: dict[str, str] = {}
+    approved_host_binding_keys: set[tuple[str, str, str]] = set()
+    dynamic_domain_ids: dict[tuple[str, str, str], str] = {}
+    static_profile_pack_ids = _static_profile_pack_ids(catalog, profile_id)
+    optional_pack_ids = {
+        str(item["pack_id"])
+        for item in profile.get("packs", ())
+        if str(item["pack_id"]) not in static_profile_pack_ids
+    }
+    approval_roots_by_pack = _optional_pack_approval_roots(catalog, optional_pack_ids)
+    pack_ids_by_artifact_digest: dict[str, set[str]] = {}
+    for item in lock["effective_set"]:
+        pack_ids_by_artifact_digest.setdefault(
+            str(item["artifact_digest"]),
+            set(),
+        ).add(str(item["identity"]))
+    selected_backend_registry = BackendRegistry(registered_backends)
+    for captured_edge in sorted(captured_edges, key=lambda item: item.key):
+        if captured_edge.resolved_binding.operation.contract_id in _CONTROL_CONTRACTS:
+            continue
+        resolved_binding = captured_edge.resolved_binding
+        target = captured_edge.target
+        is_host_extension = resolved_binding.artifact.package_kind is PackageKind.HOST_EXTENSION
+        if is_host_extension:
+            _validate_host_provider_bindings(
+                resolved_binding.function.function_id,
+                (resolved_binding,),
+            )
+            target_domain = _execution_domain(
+                domain_id=(
+                    f"domain.provider.{target.principal_id.removeprefix('sha256:')[:24]}."
+                    f"{activation_suffix}"
+                ),
+                principal=target,
+                active=active,
+                boundary=DomainBoundary.DEDICATED_PROCESS,
+                channel_seed=(
+                    f"host-extension-provider:{resolved_binding.operation.contract_id}:"
+                    f"{resolved_binding.operation.operation_id}"
+                ),
+            )
+            _register_exact_domain(
+                authority_store,
+                authority_control,
+                target_domain,
+                session_id=(
+                    f"session.provider.host-extension."
+                    f"{target.principal_id.removeprefix('sha256:')[:24]}."
+                    f"{activation_suffix}"
+                ),
+                principal=target,
+            )
+            profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
+                authority_store,
+                authority_control,
+                active=active,
+                caller=captured_edge.caller,
+                target=target,
+                contract_id=resolved_binding.operation.contract_id,
+                caller_publisher_lineage=shell.publisher_lineage,
+                target_publisher_lineage=resolved_binding.artifact.publisher_lineage,
+                target_domain=target_domain,
+                scope=captured_edge.ceilings.caller_effect,
+                authority_label="profile-host-extension",
+                authority_mode=captured_edge.authority_mode,
+                host_extension_binding=resolved_binding,
+            )
+            approved_host_binding_keys.add(captured_edge.binding_key)
+            dynamic_domain_ids[
+                (
+                    resolved_binding.operation.contract_id,
+                    resolved_binding.operation.operation_id,
+                    target.principal_id,
+                )
+            ] = target_domain.domain_id
+            continue
+
+        if resolved_binding.variant.execution_kind not in {
+            ExecutionKind.PACK_VM,
+            ExecutionKind.WASM,
+        }:
+            continue
+        try:
+            backend = selected_backend_registry.select(resolved_binding)
+        except Exception:
+            # A selected isolated backend remains visible in the catalog but receives no
+            # domain, Grant, or Provider authority until its exact backend is
+            # authenticated and production-ready.
+            continue
+        if not callable(getattr(backend, "bind_target_domain_resolver", None)):
+            continue
+        provenance_valid, approval_pack_id = _packvm_approval_provenance(
+            caller_artifact_digest=captured_edge.caller.parent_artifact_digest,
+            target_pack_id=resolved_binding.artifact.pack_id,
+            optional_pack_ids=optional_pack_ids,
+            pack_ids_by_artifact_digest=pack_ids_by_artifact_digest,
+            approval_roots_by_pack=approval_roots_by_pack,
+        )
+        if not provenance_valid:
+            continue
+        pack_approval_revision: str | None = None
+        if approval_pack_id is not None:
+            try:
+                pack_approval = capture_valid_pack_approval(approval_pack_id)
+                pack_approval_revision = str(pack_approval["approval_revision"])
+            except Exception:
+                # A selected Pack can remain in an immutable historical Plan,
+                # but a missing, stale, corrupt, or revoked approval must never
+                # recreate runtime authority for it.
+                continue
+            captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
+        execution_kind = resolved_binding.variant.execution_kind
+        authority_label = (
+            "profile-pack-vm"
+            if execution_kind is ExecutionKind.PACK_VM
+            else "profile-wasm-component"
+        )
+        target_domain = _execution_domain(
+            domain_id=(
+                f"domain.provider.{target.principal_id.removeprefix('sha256:')[:24]}."
+                f"{activation_suffix}"
+            ),
+            principal=target,
+            active=active,
+            boundary=(
+                DomainBoundary.DEDICATED_PROCESS
+                if execution_kind is ExecutionKind.PACK_VM
+                else DomainBoundary.WASM_COMPONENT
+            ),
+            channel_seed=(
+                f"{execution_kind.value}-provider:{resolved_binding.operation.contract_id}:"
+                f"{resolved_binding.operation.operation_id}"
+            ),
+        )
+        _register_exact_domain(
+            authority_store,
+            authority_control,
+            target_domain,
+            session_id=(
+                f"session.provider.{execution_kind.value}."
+                f"{target.principal_id.removeprefix('sha256:')[:24]}."
+                f"{activation_suffix}"
+            ),
+            principal=target,
+        )
+        profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
+            authority_store,
+            authority_control,
+            active=active,
+            caller=captured_edge.caller,
+            target=target,
+            contract_id=resolved_binding.operation.contract_id,
+            caller_publisher_lineage=shell.publisher_lineage,
+            target_publisher_lineage=resolved_binding.artifact.publisher_lineage,
+            target_domain=target_domain,
+            scope=captured_edge.ceilings.caller_effect,
+            authority_label=authority_label,
+            authority_mode=captured_edge.authority_mode,
+            pack_approval_revision=pack_approval_revision,
+        )
+        target_backend_digests[target.principal_id] = backend.status.backend_digest
+
+    # An optional Pack approval is part of the captured runtime boundary even
+    # when its selected PackVM backend is unavailable.  The absence of a
+    # backend must suppress grants and providers, but it must not turn a
+    # mutable approval into an uncaptured dependency of this session.
+    for pack_id in sorted(optional_pack_ids):
+        if pack_id in captured_dynamic_approvals:
+            continue
+        try:
+            pack_approval = capture_valid_pack_approval(pack_id)
+        except Exception:
+            continue
+        captured_dynamic_approvals[pack_id] = str(pack_approval["approval_revision"])
+
+    def authority_target_domain(binding: ResolvedOperationBinding) -> str:
+        target_suffix = binding.principal_ref.value.removeprefix("sha256:")[:24]
+        domain_id = f"domain.provider.{target_suffix}.{activation_suffix}"
+        domain = authority_store.get_domain(domain_id)
+        if domain is None or not any(
+            principal.principal_id == binding.principal_ref.value for principal in domain.principals
+        ):
+            raise AuthorityDenied(
+                "production isolated target domain is not registered by Authority"
+            )
+        return domain_id
+
+    # The bridge is Host-owned and receives only an authenticated outer
+    # RequestEnvelope from the VZ supervisor.  The callback is intentionally
+    # closed over the immutable capture; it never accepts caller, profile,
+    # session, contract, provider, or plan identity from the guest.
+    dispatch_holder: list[V4DispatchSession] = []
+    bridge_targets = _bridge_targets_by_outer_edge(captured_edges)
+    bridge_budget_registry = PackVMBridgeBudgetRegistry()
+
+    def resolve_bridge_outer(outer_request: object) -> _CapturedPlanEdge:
+        """Resolve bridge authority only from the captured authenticated outer edge."""
+        deadline = getattr(outer_request, "deadline_monotonic", None)
+        cancellation = getattr(outer_request, "cancellation_requested", None)
+        if (
+            not isinstance(deadline, (int, float))
+            or isinstance(deadline, bool)
+            or not math.isfinite(deadline)
+            or deadline <= time.monotonic()
+            or type(cancellation) is not threading.Event
+            or cancellation.is_set()
+        ):
+            raise AuthorityDenied("PackVM capability bridge outer budget is invalid")
+        outer_context = getattr(outer_request, "context", None)
+        outer_target = getattr(
+            getattr(outer_request, "target_principal", None),
+            "value",
+            None,
+        )
+        outer_domain = getattr(
+            getattr(outer_request, "target_domain", None),
+            "value",
+            None,
+        )
+        outer_caller = getattr(
+            getattr(outer_context, "caller_principal", None),
+            "value",
+            None,
+        )
+        if not isinstance(outer_target, str):
+            raise AuthorityDenied("PackVM capability bridge target identity is invalid")
+        outer_edge = next(
+            (
+                edge
+                for edge in captured_edges
+                if edge.resolved_binding.operation.contract_id
+                == getattr(outer_request, "contract_id", None)
+                and edge.resolved_binding.operation.operation_id
+                == getattr(outer_request, "operation_id", None)
+                and edge.target.principal_id == outer_target
+                and edge.caller.principal_id == outer_caller
+            ),
+            None,
+        )
+        if outer_edge is None or outer_edge.key not in bridge_targets:
+            raise AuthorityDenied("PackVM capability bridge outer edge is not selected")
+        expected_target_domain = authority_target_domain(outer_edge.resolved_binding)
+        expected_target_backend_digest = target_backend_digests.get(outer_target)
+        if (
+            outer_target != outer_edge.target.principal_id
+            or outer_domain != expected_target_domain
+            or outer_caller != outer_edge.caller.principal_id
+            or getattr(outer_request, "contract_version", None)
+            != outer_edge.resolved_binding.operation.contract_version
+            or getattr(outer_context, "profile_id", None) != profile["profile_id"]
+            or getattr(outer_context, "profile_revision", "") not in {"", plan["profile_revision"]}
+            or getattr(outer_context, "activation_id", None) != active.activation["activation_id"]
+            or getattr(outer_context, "activation_digest", None)
+            != canonical_digest(active.activation)
+            or getattr(outer_context, "plan_digest", None) != plan["plan_digest"]
+            or getattr(outer_context, "security_epoch", None) != active.activation["security_epoch"]
+            or getattr(outer_context, "fencing_token", None) != active.activation["fencing_token"]
+            or getattr(outer_context, "profile_authority_digest", None)
+            != active.activation["profile_authority_snapshot_digest"]
+            or getattr(outer_context, "target_domain_id", None) != expected_target_domain
+            or getattr(outer_context, "target_backend_digest", None)
+            != expected_target_backend_digest
+        ):
+            raise AuthorityDenied("PackVM capability bridge outer identity is invalid")
+        return outer_edge
+
+    def invoke_bridge_provider(
+        outer_request: object,
+        outer_edge: _CapturedPlanEdge,
+        bridge_edge: _CapturedPlanEdge,
+        request: Mapping[str, Any],
+        *,
+        parent_cancellation_proof: NestedCancellationProof | None,
+        result_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Invoke the selected Provider with one Host session and original budget."""
+        outer_context = getattr(outer_request, "context", None)
+        if not dispatch_holder:
+            raise AuthorityDenied("PackVM capability bridge is not initialized")
+        dispatch = dispatch_holder[0]
+        dispatch.assert_current()
+        authority_target_domain(bridge_edge.resolved_binding)
+        if target_backend_digests.get(bridge_edge.target.principal_id) is None:
+            raise AuthorityDenied("PackVM capability bridge target is not ready")
+        request_id = getattr(outer_context, "request_id", None)
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 160:
+            raise AuthorityDenied("PackVM capability bridge request identity is invalid")
+        # This session identity is generated in the Host.  The guest nonce
+        # binds its continuation but never becomes an Authority session id.
+        bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
+        parent_deadline = getattr(outer_request, "deadline_monotonic", None)
+        if parent_deadline is None:
+            raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
+        parent_cancellation = getattr(outer_request, "cancellation_requested", None)
+        if type(parent_cancellation) is not threading.Event:
+            raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
+        bridge_authority_session_id = bind_nested_session(
+            bridge_session_id,
+            outer_edge.target.principal_id,
+            presentation_owner_for(outer_request),
+            parent_invocation=capture_invocation_scope(outer_request),
+        )
+        try:
+            from contextlib import nullcontext
+            from tobkiri_host.finite_chat_dispatch import finite_saved_chat_source
+            finite_source = (
+                finite_saved_chat_source(
+                    capture_invocation_scope(outer_request),
+                    parent_cancellation_proof,
+                    request,
+                    presentation_owner_for(outer_request),
+                )
+                if (bridge_edge.resolved_binding.operation.contract_id,
+                    bridge_edge.resolved_binding.operation.operation_id) == (
+                        "tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
+                and request.get("tool_id") == "chat_send_message"
+                else nullcontext()
+            )
+            with finite_source:
+                provider_result = dispatch.invoke(
+                    bridge_edge.resolved_binding.operation.contract_id,
+                    bridge_edge.resolved_binding.operation.operation_id,
+                    {**dict(request), "_session_id": bridge_session_id},
+                    parent_deadline_monotonic=parent_deadline,
+                    parent_cancellation=parent_cancellation,
+                    parent_cancellation_proof=parent_cancellation_proof,
+                    inline_parent_scope=capture_invocation_scope(outer_request),
+                )
+            if not isinstance(provider_result, Mapping):
+                raise TypeError("verified Provider capability returned a non-object")
+            if result_projector is not None:
+                provider_result = result_projector(provider_result)
+            result = {"status": "ok", "value": dict(provider_result)}
+            if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
+                raise ValueError("verified Provider capability result is too large")
+        except Exception as error:
+            # Do not project provider/backend details through the PackVM ABI.
+            # The guest receives a typed, bounded result it can safely render.
+            from .bridge_diagnostics import record_bridge_failure
+
+            record_bridge_failure(error)
+            result = _provider_unavailable_bridge_result(error)
+        finally:
+            release_nested_session(bridge_session_id, bridge_authority_session_id)
+        return result
+
+    def capability_bridge(
+        outer_request: object,
+        bridge_request: Mapping[str, Any],
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+    ) -> Mapping[str, Any]:
+        outer_edge = resolve_bridge_outer(outer_request)
+
+        expected_fields = {
+            "kind",
+            "protocol",
+            "version",
+            "target",
+            "request",
+            "request_digest",
+            "continuation",
+        }
+        target = bridge_request.get("target")
+        request = bridge_request.get("request")
+        continuation = bridge_request.get("continuation")
+        bridge_candidates = bridge_targets[outer_edge.key]
+        bridge_edge, expected_bridge_target = _resolve_packvm_bridge_target(
+            bridge_candidates,
+            target,
+        )
+        if (
+            set(bridge_request) != expected_fields
+            or bridge_request.get("kind") != "tobkiri.packvm.bridge.request.v1"
+            or bridge_request.get("protocol") != _PACKVM_BRIDGE_PROTOCOL
+            or bridge_request.get("version") != 1
+            or not isinstance(target, Mapping)
+            or dict(target) != expected_bridge_target
+            or not isinstance(request, Mapping)
+            or not isinstance(bridge_request.get("request_digest"), str)
+            or not isinstance(continuation, Mapping)
+        ):
+            raise AuthorityDenied("PackVM capability bridge request is invalid")
+
+        try:
+            if len(canonical_json(request)) > _PACKVM_BRIDGE_MAX_REQUEST_BYTES or bridge_request[
+                "request_digest"
+            ] != canonical_digest(request):
+                raise AuthorityDenied("PackVM capability bridge request is invalid")
+            runtime.composition.catalog.validate_input(
+                bridge_edge.resolved_binding,
+                request,
+            )
+        except AuthorityDenied:
+            raise
+        except Exception as error:
+            raise AuthorityDenied("PackVM capability bridge request is invalid") from error
+
+        checked_continuation = _validate_packvm_bridge_continuation(
+            continuation,
+            operation_id=outer_edge.resolved_binding.operation.operation_id,
+            target=expected_bridge_target,
+            request_digest=str(bridge_request["request_digest"]),
+        )
+        nonce = str(checked_continuation["nonce"])
+
+        budget_admission = bridge_budget_registry.admit(
+            outer_request,
+            bridge_edge.resolved_binding.operation.contract_id,
+            request,
+        )
+        result = invoke_bridge_provider(
+            outer_request,
+            outer_edge,
+            bridge_edge,
+            request,
+            parent_cancellation_proof=parent_cancellation_proof,
+        )
+        bridge_budget_registry.record(budget_admission, result)
+
+        response = {
+            "kind": "tobkiri.packvm.bridge.result.v1",
+            "protocol": _PACKVM_BRIDGE_PROTOCOL,
+            "version": 1,
+            "operation_id": outer_edge.resolved_binding.operation.operation_id,
+            "nonce": nonce,
+            "target": expected_bridge_target,
+            "request_digest": bridge_request["request_digest"],
+            "result": result,
+        }
+        response["result_digest"] = canonical_digest(response["result"])
+        if len(canonical_json(response)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
+            response["result"] = _provider_unavailable_bridge_result()
+            response["result_digest"] = canonical_digest(response["result"])
+        return response
+
+    from .saved_bridge import (
+        ALLOWED_TARGETS,
+        SavedBridgeCallbacks,
+        project_saved_ai_result,
+        project_saved_tool_result,
+    )
+
+    saved_bridge_cancellation_proof: contextvars.ContextVar[
+        NestedCancellationProof | None
+    ] = contextvars.ContextVar(
+        "saved_bridge_cancellation_proof",
+        default=None,
+    )
+
+    def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
+        outer_edge = resolve_bridge_outer(outer_request)
+        if (
+            outer_edge.resolved_binding.operation.contract_id != SAVED_CONVERSATION_CONTRACT
+            or outer_edge.resolved_binding.operation.operation_id != SAVED_CONVERSATION_OPERATION
+            or target not in ALLOWED_TARGETS
+        ):
+            raise AuthorityDenied("saved bridge outer operation is not selected")
+        candidates = tuple(
+            edge for edge in bridge_targets[outer_edge.key]
+            if (edge.resolved_binding.operation.contract_id,
+                edge.resolved_binding.operation.operation_id) == target
+        )
+        if len(candidates) != 1:
+            raise AuthorityDenied("saved bridge target is missing or ambiguous")
+        edge = candidates[0]
+        if not dispatch_holder:
+            raise AuthorityDenied("saved bridge dispatch is not initialized")
+        dispatch_holder[0].assert_current()
+        authority_target_domain(edge.resolved_binding)
+        if target_backend_digests.get(edge.target.principal_id) is None:
+            raise AuthorityDenied("saved bridge target backend is unavailable")
+        return edge
+
+    def require_saved_targets(outer_request: object, targets: tuple[tuple[str, str], ...]) -> None:
+        for target in targets:
+            saved_target(outer_request, target)
+
+    def saved_dispatch(
+        outer_request: object, target: tuple[str, str], payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        edge = saved_target(outer_request, target)
+        if "profile_id" in payload or "_session_id" in payload:
+            raise AuthorityDenied("saved bridge payload cannot select Host identity")
+        arguments = dict(payload)
+        if target[0] == "tobkiri.action.message.manage.v1" and payload.get("operation") == "append":
+            initial = getattr(outer_request, "payload", None)
+            if not isinstance(initial, Mapping):
+                raise AuthorityDenied("saved bridge initial input is missing")
+            arguments["operation"] = "append_saved"
+            arguments["saved_input"] = validate_saved_conversation_input(initial)
+        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1", "tobkiri.resource.workspace.v1"}:
+            arguments["profile_id"] = profile["profile_id"]
+        runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
+        return invoke_bridge_provider(
+            outer_request, resolve_bridge_outer(outer_request), edge, arguments,
+            parent_cancellation_proof=saved_bridge_cancellation_proof.get(),
+            result_projector=(
+                project_saved_ai_result
+                if target[0]
+                in {
+                    "tobkiri.service.ai.generate.v1",
+                    "tobkiri.service.ai.stream.v1",
+                    "tobkiri.service.ai.strategy.dispatch.v1",
+                }
+                else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
+            ),
+        )
+
+    def saved_stream_available(
+        outer_request: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> bool:
+        from tobkiri_protocol.turn_progress_v1 import (
+            AI_STREAM, ACTION, ACTION_OPERATION, RESOURCE, RESOURCE_OPERATION,
+        )
+        try:
+            require_saved_targets(outer_request, (
+                AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
+            ))
+            outcome = saved_dispatch(outer_request, (ACTION, ACTION_OPERATION), {"phase": "ready"})
+            value = outcome.get("value")
+            return outcome.get("status") == "ok" and isinstance(value, Mapping) and value.get("ready") is True
+        except (AuthorityDenied, PermissionError, RuntimeError, ValueError):
+            return False
+
+    saved_callbacks = SavedBridgeCallbacks(
+        saved_dispatch,
+        require_saved_targets,
+        saved_stream_available,
+    )
+
+    def saved_capability_bridge(
+        outer_request: object,
+        frame: Any,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+    ) -> Mapping[str, Any]:
+        token = saved_bridge_cancellation_proof.set(parent_cancellation_proof)
+        try:
+            return saved_callbacks(outer_request, frame)
+        finally:
+            saved_bridge_cancellation_proof.reset(token)
+
+    def saved_preflight(
+        outer_request: object,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+    ) -> None:
+        token = saved_bridge_cancellation_proof.set(parent_cancellation_proof)
+        try:
+            saved_callbacks.preflight(outer_request)
+        finally:
+            saved_bridge_cancellation_proof.reset(token)
+
+    saved_backend_ids = {
+        edge.resolved_binding.variant.backend for edge in captured_edges
+        if edge.resolved_binding.operation.contract_id == SAVED_CONVERSATION_CONTRACT
+        and edge.resolved_binding.operation.operation_id == SAVED_CONVERSATION_OPERATION
+        and edge.resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
+    }
+    packvm_backend_ids = {
+        edge.resolved_binding.variant.backend
+        for edge in captured_edges
+        if edge.resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
+    }
+    isolated_backend_ids = {
+        edge.resolved_binding.variant.backend
+        for edge in captured_edges
+        if edge.resolved_binding.variant.execution_kind
+        in {ExecutionKind.PACK_VM, ExecutionKind.WASM}
+    }
+    for registered_backend in registered_backends:
+        if registered_backend.status.backend_id not in isolated_backend_ids:
+            continue
+        binder = getattr(registered_backend, "bind_artifact_resolver", None)
+        if not callable(binder):
+            raise AuthorityDenied(
+                "production isolated backend cannot bind authenticated artifacts"
+            )
+        binder(artifact_resolver)
+        domain_binder = getattr(
+            registered_backend,
+            "bind_target_domain_resolver",
+            None,
+        )
+        if callable(domain_binder):
+            domain_binder(authority_target_domain)
+        bridge_binder = getattr(registered_backend, "bind_capability_bridge", None)
+        if bridge_targets and callable(bridge_binder):
+            bridge_binder(capability_bridge)
+        if registered_backend.status.backend_id in saved_backend_ids:
+            saved_binder = getattr(registered_backend, "bind_saved_capability_bridge", None)
+            if not callable(saved_binder):
+                raise AuthorityDenied("production PackVM backend cannot bind saved callbacks")
+            saved_binder(saved_capability_bridge, saved_preflight)
+    registered_backend_ids = {item.status.backend_id for item in registered_backends}
+    for backend_id in sorted(packvm_backend_ids - registered_backend_ids):
+        registered_backends += (_UnavailablePackVmBackend(backend_id),)
+    if control_backend is not None:
+        registered_backends += (control_backend,)
+    binding_by_function: dict[str, list[ResolvedOperationBinding]] = {}
+    for binding_key, resolved_binding in resolved_binding_by_edge.items():
+        if binding_key in approved_host_binding_keys:
+            provider_bindings = binding_by_function.setdefault(
+                resolved_binding.function.function_id,
+                [],
+            )
+            if resolved_binding not in provider_bindings:
+                provider_bindings.append(resolved_binding)
+    host_contributions_by_backend: dict[str, list[Any]] = {}
+    close_callbacks: list[Callable[[], None]] = []
+    cancellation_handles = OwnedCancellationHandles()
+    cancellation_roles: dict[str, tuple[str, str, str]] = {}
+    local_model_bindings: dict[str, LocalModelInvocationBinding] = {}
+    close_callbacks.append(cancellation_handles.close)
+    credential_store_binding = (
+        credential_store_factory(user_data_root=authority_user_data)
+        if credential_store_factory is not None
+        else None
+    )
+    principal_by_id = {
+        principal.principal_id: principal
+        for binding in plan["bindings"]
+        for principal in (FunctionPrincipal.from_dict(binding["function_principal"]),)
+    }
+    pack_by_principal = {
+        FunctionPrincipal.from_dict(binding["function_principal"]).principal_id: str(
+            binding["pack_id"]
+        )
+        for binding in plan["bindings"]
+    }
+    caller_session_bindings: dict[str, str] = {}
+    presentation_owner_bindings: dict[str, tuple[str, str]] = {}
+    presentation_owner_refcounts: dict[str, int] = {}
+    nested_session_refcounts: dict[str, int] = {}
+    parent_invocation_scopes = ParentInvocationScopesV4()
+    caller_session_bindings_lock = threading.RLock()
+
+    def authority_session_id(session_id: str, caller_principal_id: str) -> str:
+        """Derive the same Host authority-session identity for every call site."""
+
+        caller_identity_suffix = caller_principal_id.removeprefix("sha256:")[:24]
+        return f"{session_id}.{caller_identity_suffix}.{activation_suffix}"
+
+    def presentation_owner_for(envelope: Any) -> tuple[str, str]:
+        """Resolve the Host-preserved root owner for one nested invocation."""
+
+        context = envelope.context
+        with caller_session_bindings_lock:
+            inherited = presentation_owner_bindings.get(context.caller_session_id)
+        if inherited is not None:
+            return inherited
+        return context.caller_principal.value, context.caller_session_id
+
+    def retain_presentation_owner(session_id: str, owner: tuple[str, str]) -> None:
+        """Share one Host-derived owner across concurrent nested and resumed calls."""
+        with caller_session_bindings_lock:
+            if presentation_owner_bindings.get(session_id) not in {None, owner}:
+                raise AuthorityDenied("nested Host Provider owner binding changed")
+            presentation_owner_bindings[session_id] = owner
+            presentation_owner_refcounts[session_id] = (
+                presentation_owner_refcounts.get(session_id, 0) + 1
+            )
+
+    def release_presentation_owner(session_id: str) -> None:
+        with caller_session_bindings_lock:
+            remaining = presentation_owner_refcounts[session_id] - 1
+            if remaining:
+                presentation_owner_refcounts[session_id] = remaining
+            else:
+                presentation_owner_refcounts.pop(session_id)
+                presentation_owner_bindings.pop(session_id)
+
+    @contextmanager
+    def pending_effect_owner_scope(
+        context: RequestContext, principal_id: str, session_id: str,
+    ) -> Iterator[None]:
+        """Restore only the owner persisted by the Host pending-effect controller."""
+        retain_presentation_owner(context.caller_session_id, (principal_id, session_id))
+        try:
+            yield
+        finally:
+            release_presentation_owner(context.caller_session_id)
+
+    from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
+
+    saved_tool_entry_guards = SavedToolEntryGuardRegistry()
+    from core_runtime.policy_invocation_v4 import PolicyInvocationRegistry
+    policy_invocation_registry = PolicyInvocationRegistry()
+    from core_runtime.saved_tool_policy_selection_v4 import RetainedSelectionDispatchV4
+    policy_selection_dispatch = RetainedSelectionDispatchV4()
+
+    def capture_invocation_scope(envelope: Any) -> CapturedInvocationScopeV4:
+        with caller_session_bindings_lock:
+            parent = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
+        saved_tool_entry_guard = saved_tool_entry_guards.capture(envelope)
+
+        def guard() -> None:
+            with _capture_guard_traversal(assert_current_capture):
+                assert_dispatched_invocation(envelope, authority_store)
+                if saved_tool_entry_guard is not None:
+                    saved_tool_entry_guard()
+                if parent is not None:
+                    parent.assert_current()
+                if not dispatch_holder:
+                    raise AuthorityDenied("captured dispatch is unavailable")
+                dispatch_holder[0].assert_current()
+
+        return CapturedInvocationScopeV4(envelope, guard, parent)
+
+    def bind_nested_session(
+        session_id: str,
+        caller_principal_id: str,
+        presentation_owner: tuple[str, str],
+        parent_invocation: CapturedInvocationScopeV4 | None = None,
+    ) -> str:
+        """Atomically bind one stable nested session and retain concurrent users."""
+
+        resolved_session_id = authority_session_id(session_id, caller_principal_id)
+        with caller_session_bindings_lock:
+            existing_caller = caller_session_bindings.get(session_id)
+            if existing_caller not in {None, caller_principal_id}:
+                raise AuthorityDenied("nested Host Provider caller binding changed")
+            if parent_invocation is not None:
+                parent_invocation_scopes.retain(resolved_session_id, parent_invocation)
+            retain_presentation_owner(resolved_session_id, presentation_owner)
+            caller_session_bindings[session_id] = caller_principal_id
+            nested_session_refcounts[session_id] = (
+                nested_session_refcounts.get(session_id, 0) + 1
+            )
+        return resolved_session_id
+
+    def release_nested_session(session_id: str, resolved_session_id: str) -> None:
+        """Release one stable nested-session user without racing a peer call."""
+
+        with caller_session_bindings_lock:
+            release_presentation_owner(resolved_session_id)
+            parent_invocation_scopes.release(resolved_session_id)
+            remaining = nested_session_refcounts.get(session_id, 0) - 1
+            if remaining > 0:
+                nested_session_refcounts[session_id] = remaining
+                return
+            nested_session_refcounts.pop(session_id, None)
+            caller_session_bindings.pop(session_id, None)
+
+    @contextmanager
+    def retained_effect_resume_scope(scope: CapturedInvocationScopeV4, context: RequestContext) -> Any:
+        """Retain only this live coordinator dispatch across its approved execute."""
+        scope.assert_current()
+        if (scope.envelope.target_principal != context.caller_principal
+                or any(getattr(scope.envelope.context, field) != getattr(context, field)
+                       for field in ("profile_id", "profile_revision", "activation_id",
+                                     "activation_digest", "plan_digest", "profile_authority_digest",
+                                     "security_epoch", "fencing_token"))):
+            raise AuthorityDenied("effect execute capture or caller changed")
+        with caller_session_bindings_lock:
+            owner = presentation_owner_bindings.get(scope.envelope.context.caller_session_id)
+            if owner is None:
+                raise AuthorityDenied("effect execute owner is unavailable")
+            parent_invocation_scopes.retain(context.caller_session_id, scope)
+        try:
+            yield {
+                "execution_guard": scope.assert_current,
+                "inline_parent_scope": scope,
+                "parent_deadline_monotonic": scope.envelope.deadline_monotonic,
+                "cancellation_requested": scope.envelope.cancellation_requested,
+                "nested_cancellation_proof": nested_cancellation_proof_for(scope.envelope, owner[0], owner[1]),
+            }
+            scope.assert_current()
+        finally:
+            with caller_session_bindings_lock:
+                parent_invocation_scopes.release(context.caller_session_id)
+
+    class _InvocationSession:
+        """Bind nested dispatch to the authenticated provider invocation."""
+
+        def __init__(
+            self,
+            envelope: Any,
+            *,
+            presentation_owner: tuple[str, str],
+        ) -> None:
+            self._envelope = envelope
+            self._presentation_owner = presentation_owner
+            self.profile_id = str(profile["profile_id"])
+            self.plan_digest = str(plan["plan_digest"])
+            self.profile_revision = str(plan["profile_revision"])
+            self.activation_id = str(active.activation["activation_id"])
+
+        def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+            capture_invocation_scope(self._envelope).assert_current()
+            if not dispatch_holder:
+                raise AuthorityDenied("Host Provider dispatch is not initialized")
+            return dispatch_holder[0].provider_metadata(contract_id)
+
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, Any],
+            *,
+            version_range: str | None = None,
+        ) -> Mapping[str, Any]:
+            if not dispatch_holder:
+                raise AuthorityDenied("Host Provider dispatch is not initialized")
+            scope = capture_invocation_scope(self._envelope)
+            scope.assert_current()
+            independent_saved_cancellation = None
+            if (
+                (self._envelope.contract_id, self._envelope.operation_id)
+                == ("tobkiri.action.chat.message.delivery.v1", "rumi_turn_runtime_pack.chat-message-deliver")
+                and (contract_id, operation_id)
+                == ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+            ):
+                from ecosystem.rumi_tool_broker_pack.runtime.chat_delivery import (
+                    assert_delivery_saved_branch,
+                )
+                from types import SimpleNamespace
+                delivery_scope = SimpleNamespace(
+                    envelope=self._envelope,
+                    parent_invocation=scope.parent,
+                    assert_current=scope.assert_current,
+                    presentation_owner_principal_id=self._presentation_owner[0],
+                    presentation_owner_session_id=self._presentation_owner[1],
+                )
+                assert_delivery_saved_branch(delivery_scope, payload)
+                independent_saved_cancellation = threading.Event()
+            calendar_dispatch_branch = None
+            from tobkiri_host.calendar_dispatch_branch import (
+                CalendarDispatchBranch, is_calendar_effect_dispatch,
+            )
+            if is_calendar_effect_dispatch(self._envelope, contract_id, operation_id, payload):
+                key = ("rumi_job_action_broker_pack.job-action.broker", contract_id, operation_id)
+                selected = resolved_binding_by_edge.get(key)
+                if (selected is None or pack_by_principal.get(self._envelope.target_principal.value)
+                        != "rumi_job_action_broker_pack"
+                        or selected.function.function_id != "rumi_turn_runtime_pack.chat-saved-job-adapter"):
+                    raise AuthorityDenied("Calendar selected adapter is unavailable")
+                calendar_dispatch_branch = CalendarDispatchBranch(
+                    scope, cancellation_handles, self._presentation_owner, selected,
+                )
+            nested_session_id = execution_session_id(self._envelope)
+            nested_authority_session_id = bind_nested_session(
+                nested_session_id,
+                self._envelope.target_principal.value,
+                self._presentation_owner,
+                parent_invocation=scope,
+            )
+            try:
+                result = dispatch_holder[0].invoke(
+                    contract_id,
+                    operation_id,
+                    {**dict(payload), "_session_id": nested_session_id},
+                    version_range=version_range,
+                    parent_deadline_monotonic=self._envelope.deadline_monotonic,
+                    parent_cancellation=self._envelope.cancellation_requested,
+                    independent_saved_cancellation=independent_saved_cancellation,
+                    calendar_dispatch_branch=calendar_dispatch_branch,
+                    inline_parent_scope=scope,
+                    execution_guard=scope.assert_current,
+                    parent_cancellation_proof=nested_cancellation_proof_for(
+                        self._envelope,
+                        self._presentation_owner[0],
+                        self._presentation_owner[1],
+                    ),
+                )
+                scope.assert_current()
+                return result
+            except Exception as error:
+                log_nested_dispatch_failure(contract_id, operation_id, error)
+                raise
+            finally:
+                release_nested_session(nested_session_id, nested_authority_session_id)
+
+    class _HostInvocation(HostProviderInvocationContextV4):
+        """Expose only declared nested dispatch and one credential transport."""
+
+        def __init__(self, envelope: Any) -> None:
+            self._envelope = envelope
+            (
+                self._presentation_owner_principal_id,
+                self._presentation_owner_session_id,
+            ) = presentation_owner_for(envelope)
+            self._scope = capture_invocation_scope(envelope)
+            self._client: GlobalContractClient | None = None
+            self._client_binding: tuple[frozenset[str], str, bool] | None = None
+
+        @property
+        def envelope(self) -> Any:
+            return self._envelope
+
+        @property
+        def presentation_owner_principal_id(self) -> str:
+            return self._presentation_owner_principal_id
+
+        @property
+        def presentation_owner_session_id(self) -> str:
+            return self._presentation_owner_session_id
+
+        @property
+        def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
+            return self._scope.parent
+
+        def _assert_saved_tool_parent_scopes(
+            self, scopes: tuple[CapturedInvocationScopeV4, ...],
+        ) -> None:
+            """Prove supplied recipient joins against retained Host parents."""
+            self.assert_current()
+            if not scopes or self._scope.parent is not scopes[0]:
+                raise PermissionError("saved tool current parent scope changed")
+            original: CapturedInvocationScopeV4 | None = self._scope.parent
+            for scope in scopes:
+                if (not isinstance(scope, CapturedInvocationScopeV4)
+                        or scope is not original):
+                    raise PermissionError("saved tool retained parent scope changed")
+                scope.assert_current()
+                original = scope.parent
+
+        @property
+        def cancellation(self) -> OwnedCancellationBinding:
+            declaration = cancellation_roles.get(self._envelope.target_principal.value)
+            if declaration is None:
+                raise AuthorityDenied("Host Provider cancellation role is unavailable")
+            pack_id, group, role = declaration
+            return cancellation_handles.bind(
+                group=(pack_id, group), role=role, envelope=self._envelope,
+                owner_principal=self.presentation_owner_principal_id,
+                owner_session=self.presentation_owner_session_id,
+                guard=self.assert_current,
+            )
+
+        @property
+        def approved_interrupt(self) -> Any:
+            """Expose interruption only to exact currently approved delivery."""
+            from tobkiri_host.approved_interrupt import ApprovedInterruptBinding
+            from core_runtime.owned_chat_message_approval_v4 import assert_chat_message_interrupt_authority
+            if ((self._envelope.contract_id, self._envelope.operation_id) != (
+                    "tobkiri.action.chat.message.delivery.v1", "rumi_turn_runtime_pack.chat-message-deliver")
+                    or pack_by_principal.get(self._envelope.target_principal.value) != "rumi_turn_runtime_pack"):
+                raise AuthorityDenied("approved interrupt port is unavailable")
+            def authorize(state: Any) -> None:
+                _execute, owner = assert_chat_message_interrupt_authority(self, state)
+                if owner != self.presentation_owner_principal_id:
+                    raise AuthorityDenied("approved interrupt presentation owner changed")
+            return ApprovedInterruptBinding(registry=cancellation_handles, envelope=self._envelope,
+                presentation_owner_principal_id=self.presentation_owner_principal_id,
+                authorize=authorize, guard=self.assert_current)
+
+        @property
+        def scheduled_job_cancellation(self) -> Any:
+            """Expose exact selected occurrence stop only to JobBroker cancel."""
+            from tobkiri_host.scheduled_job_cancellation import (
+                ADAPTER, ScheduledJobCancellationBinding,
+            )
+            if (
+                (self._envelope.contract_id, self._envelope.operation_id) != ADAPTER
+                or pack_by_principal.get(self._envelope.target_principal.value)
+                != "rumi_turn_runtime_pack"
+                or cancellation_roles.get(self._envelope.target_principal.value)
+                != ("rumi_turn_runtime_pack", "saved-turn", "execute")
+            ):
+                raise AuthorityDenied("scheduled occurrence stop port is unavailable")
+            return ScheduledJobCancellationBinding(
+                registry=cancellation_handles, scope=self._scope,
+                guard=self.assert_current,
+            )
+
+        def contract_client(
+            self,
+            *,
+            allowed_contract_ids: frozenset[str],
+            consumer_pack_id: str,
+            include_credentials: bool = True,
+        ) -> GlobalContractClient:
+            expected_pack_id = pack_by_principal.get(self._envelope.target_principal.value)
+            if type(include_credentials) is not bool:
+                raise AuthorityDenied("Host Provider credential selection is invalid")
+            binding = (allowed_contract_ids, consumer_pack_id, include_credentials)
+            if expected_pack_id != consumer_pack_id:
+                raise AuthorityDenied("Host Provider consumer identity is invalid")
+            if self._client is not None:
+                if binding != self._client_binding:
+                    raise AuthorityDenied("Host Provider client binding changed")
+                return self._client
+            provider_principal = principal_by_id.get(self._envelope.target_principal.value)
+            if provider_principal is None:
+                raise AuthorityDenied("Host Provider principal is unavailable")
+            transport = (
+                AuthorizedEnvelopeCredentialTransport(
+                    envelope=self._envelope,
+                    provider_principal=provider_principal,
+                    store=credential_store_binding.store,
+                    authority_store=authority_store,
+                    current_security_epoch=lambda: authority_store.security_epoch,
+                    credential_key_version=credential_store_binding.key_version,
+                    consumer_pack_id=consumer_pack_id,
+                    parent_guard=self.assert_current,
+                )
+                if include_credentials and credential_store_binding is not None
+                else None
+            )
+            invocation_session = _InvocationSession(
+                self._envelope,
+                presentation_owner=(
+                    self._presentation_owner_principal_id,
+                    self._presentation_owner_session_id,
+                ),
+            )
+            local_binding = local_model_bindings.get(provider_principal.principal_id)
+            local_transport = create_local_model_transport(
+                envelope=self._envelope, principal=provider_principal,
+                authority_store=authority_store, user_data_root=authority_user_data,
+                registry_snapshot=lambda: invocation_session.invoke(
+                    LOCAL_REGISTRY_CONTRACT,
+                    local_binding.registry_operation_id,
+                    {"profile_id": profile_id},
+                ),
+                assert_current=self.assert_current,
+                binding=local_binding,
+            ) if (
+                local_binding is not None
+                and LOCAL_REGISTRY_CONTRACT in allowed_contract_ids
+            ) else None
+            self._client = GlobalContractClient(
+                session=invocation_session,
+                allowed_contract_ids=allowed_contract_ids,
+                consumer_pack_id=consumer_pack_id,
+                host_credential_transport=transport,
+                host_local_model_transport=local_transport,
+            )
+            self._client_binding = binding
+            return self._client
+
+        def assert_current(self) -> None:
+            """Fence durable coordination with actual lease and preserved ancestry."""
+            with _capture_guard_traversal(assert_current_capture):
+                self._scope.assert_current()
+                if (
+                    self._envelope.cancellation_requested.is_set()
+                    or self._envelope.deadline_monotonic <= time.monotonic()
+                ):
+                    raise AuthorityDenied("Host Provider invocation is no longer active")
+                if not dispatch_holder:
+                    raise AuthorityDenied("Host Provider dispatch is not initialized")
+                dispatch_holder[0].assert_current()
+
+    def invocation_context(envelope: Any) -> HostProviderInvocationContextV4:
+        return _HostInvocation(envelope)
+
+    try:
+        host_provider_state_root = SecureDirectory(authority_user_data / "host_provider_state").root
+    except (OSError, SecurePersistenceError) as exc:
+        raise AuthorityDenied("Host Provider state root is unavailable") from exc
+
+    from core_runtime.host_contract import ExecutionProfileIdentity
+    from core_runtime.project_directory_launcher import LauncherDirectoryPickerPort
+    from tobkiri_host.directory_picker import CapturedDirectoryPicker
+    from tobkiri_host.directory_selections import DirectorySelections
+
+    directory_selections = DirectorySelections()
+    directory_picker = CapturedDirectoryPicker(
+        LauncherDirectoryPickerPort(ExecutionProfileIdentity(
+            profile_id=str(profile["profile_id"]),
+            profile_revision=str(plan["profile_revision"]),
+            activation_id=str(active.activation["activation_id"]),
+            plan_digest=str(plan["plan_digest"]),
+        )), directory_selections,
+    )
+    from core_runtime.project_directory_port import ProjectDirectoryPort
+    directory_selection_port = ProjectDirectoryPort(directory_picker, directory_selections)
+    close_callbacks.append(directory_selection_port.close)
+
+    from core_runtime.saved_tool_capture_v4 import (
+        LOCAL_EXECUTOR_FUNCTION,
+        LateBoundSavedToolConsentPortV4,
+        optional_captured_consent_route,
+        assert_saved_tool_requested_mode,
+    )
+
+    saved_tool_consent_port = LateBoundSavedToolConsentPortV4()
+    saved_tool_mode_admission_holder: list[Callable[[Any], str]] = [
+        assert_saved_tool_requested_mode
+    ]
+
+    def saved_tool_mode_admission(invocation: Any) -> str:
+        return saved_tool_mode_admission_holder[0](invocation)
+    approval_policy_capabilities_holder: list[Any] = []
+
+    def project_approval_policy_capabilities(
+        invocation: Any, applicability: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        if len(approval_policy_capabilities_holder) != 1:
+            raise PermissionError("approval policy capabilities are not captured")
+        return approval_policy_capabilities_holder[0](invocation, applicability)
+
+    def host_provider_capture_context(
+        provider_bindings: tuple[ResolvedOperationBinding, ...],
+        *,
+        workspace_mutation_port: HostWorkspaceMutationPort | None,
+        interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
+        declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
+        wake_port: LateBoundWakePortV4 | None = None,
+        directory_port: ProjectDirectoryPort | None = None,
+        saved_tool_port: Callable[..., Mapping[str, Any]] | None = None,
+        saved_tool_mode_port: Callable[[Any], str] | None = None,
+        capabilities_port: Callable[..., Mapping[str, Any]] | None = None,
+        selected_tool_policy_port: Callable[[Any], Any] | None = None,
+        action_approval_policy_port: Any | None = None,
+    ) -> HostProviderCaptureContextV4:
+        """Build one narrow, activation-bound capture context for a Provider."""
+
+        return HostProviderCaptureContextV4(
+            profile_id=str(profile["profile_id"]),
+            plan_digest=str(plan["plan_digest"]),
+            security_epoch=int(active.activation["security_epoch"]),
+            activation=active.activation,
+            state_root=host_provider_state_root,
+            provider_bindings=provider_bindings,
+            catalog_bindings=catalog_bindings,
+            domain_ids=dynamic_domain_ids,
+            user_data_root=authority_user_data,
+            interactive_approval_port=authority_control,
+            chat_approval_continuation_port=chat_approval_continuation,
+            authority_approval_window_port=authority_approval_window,
+            model_search_port=model_search_controller,
+            interactive_effect_port=interactive_effect_port,
+            workspace_mutation_port=workspace_mutation_port,
+            directory_selection_port=directory_port,
+            declared_pack_data=declared_pack_data,
+            wake_port=wake_port,
+            saved_tool_consent_port=saved_tool_port,
+            saved_tool_mode_admission=saved_tool_mode_port,
+            action_approval_policy_capabilities_port=capabilities_port,
+            selected_tool_policy_port=selected_tool_policy_port,
+            action_approval_policy_port=action_approval_policy_port,
+        )
+
+    loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
+    for function_id, provider_bindings in sorted(binding_by_function.items()):
+        captured_bindings = tuple(provider_bindings)
+        factory, backend_id = _load_verified_host_provider_factory(
+            pack_roots[provider_bindings[0].artifact.pack_id],
+            function_id,
+            captured_bindings,
+        )
+        if factory is None:
+            continue
+        if factory.function_id != function_id:
+            raise AuthorityDenied("Host Provider hook Function identity changed")
+        loaded_host_factories.append((function_id, captured_bindings, factory, backend_id))
+        local_request = getattr(factory, "local_model_request", None)
+        if local_request is not None:
+            if type(local_request) is not LocalModelRequest:
+                raise AuthorityDenied("Host local model declaration is invalid")
+            for binding in captured_bindings:
+                principal = _binding_principal(binding)
+                matches = tuple(
+                    edge for edge in captured_edges
+                    if edge.caller == principal
+                    and edge.resolved_binding.operation.contract_id == LOCAL_REGISTRY_CONTRACT
+                    and edge.resolved_binding.operation.operation_id == local_request.registry_operation_id
+                )
+                if (
+                    binding.operation.contract_id != local_request.contract_id
+                    or len(matches) != 1
+                    or matches[0].target != _binding_principal(matches[0].resolved_binding)
+                    or principal.principal_id in local_model_bindings
+                ):
+                    raise AuthorityDenied("Host local model dependency binding is invalid")
+                local_model_bindings[principal.principal_id] = capture_local_model_binding(
+                    binding, matches[0].resolved_binding,
+                )
+        cancellation_group = getattr(factory, "cancellation_group", None)
+        if cancellation_group is not None:
+            role = getattr(factory, "cancellation_role", None)
+            if (
+                not isinstance(cancellation_group, str)
+                or not 0 < len(cancellation_group) <= 128
+                or role not in {"execute", "stop"}
+            ):
+                raise AuthorityDenied("Host Provider cancellation declaration is invalid")
+            for binding in captured_bindings:
+                cancellation_roles[binding.principal_ref.value] = (
+                    binding.artifact.pack_id, cancellation_group, role,
+                )
+
+    interactive_effect_coordinator = _interactive_effect_coordinator_factory(
+        tuple(loaded_host_factories)
+    )
+    interactive_effect_port: LateBoundInteractiveEffectPort | None = None
+    if interactive_effect_coordinator is not None:
+        interactive_effect_port = LateBoundInteractiveEffectPort()
+
+    workspace_binding_resolver: Callable[[str, str], WorkspaceMutationBinding] | None = None
+    for _function_id, captured_bindings, factory, _backend_id in loaded_host_factories:
+        resolver_capture = getattr(factory, "capture_workspace_binding_resolver", None)
+        if not callable(resolver_capture):
+            continue
+        if workspace_binding_resolver is not None:
+            raise AuthorityDenied("workspace mutation resolver is ambiguous")
+        candidate_resolver = resolver_capture(
+            host_provider_capture_context(
+                captured_bindings,
+                workspace_mutation_port=None,
+            )
+        )
+        if not callable(candidate_resolver):
+            raise AuthorityDenied("workspace mutation resolver is invalid")
+        workspace_binding_resolver = candidate_resolver
+
+    workspace_mutation_port = (
+        HostWorkspaceMutationPort(
+            WorkspaceMutationCoordinator(host_provider_state_root / "workspace_mutation"),
+            binding_resolver=workspace_binding_resolver,
+        )
+        if workspace_binding_resolver is not None
+        else None
+    )
+
+    from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
+
+    host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
+    captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
+                                   ResolvedOperationBinding]] = []
+    for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
+        declaration = getattr(factory, "wake_declaration", None)
+        if declaration is not None and (
+            type(declaration) is not CapturedWakeDeclarationV4 or len(captured_bindings) != 1
+        ):
+            raise AuthorityDenied("captured wake declaration is invalid")
+        wake_port = LateBoundWakePortV4() if declaration is not None else None
+        captured_provider = factory.capture(
+            host_provider_capture_context(
+                captured_bindings,
+                workspace_mutation_port=workspace_mutation_port,
+                declared_pack_data=host_provider_data.capture_for(factory),
+                interactive_effect_port=(
+                    interactive_effect_port
+                    if interactive_effect_coordinator is not None
+                    and factory is interactive_effect_coordinator[2]
+                    else None
+                ),
+                wake_port=wake_port,
+                saved_tool_port=(saved_tool_consent_port if
+                    factory.function_id == LOCAL_EXECUTOR_FUNCTION else None),
+                saved_tool_mode_port=(saved_tool_mode_admission if
+                    factory.function_id == LOCAL_EXECUTOR_FUNCTION else None),
+                selected_tool_policy_port=(policy_invocation_registry.capture_current if
+                    factory.function_id in {
+                        "rumi_default_tools_pack.file-create-tool",
+                        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+                    } else None),
+                action_approval_policy_port=(policy_selection_dispatch if
+                    factory.function_id == ("rumi_host_authority_bridge_pack"
+                                            ".host-authority.approval-policy") else None),
+                capabilities_port=(project_approval_policy_capabilities if
+                    factory.function_id == ("rumi_host_authority_bridge_pack"
+                                            ".host-authority.approval-policy-capabilities")
+                    else None),
+                directory_port=(directory_selection_port if
+                    factory.function_id in {
+                        "rumi_workspace_mount_pack.project-directory.service",
+                        "rumi_workspace_mount_pack.project-workspace-prepare.service",
+                    } else None),
+            )
+        )
+        expected_keys = {
+            (
+                binding.operation.contract_id,
+                binding.operation.operation_id,
+                binding.principal_ref.value,
+            )
+            for binding in captured_bindings
+        }
+        if {item.key for item in captured_provider.contributions} != expected_keys:
+            captured_provider.close()
+            raise AuthorityDenied("Host Provider hook contribution set is incomplete")
+        host_contributions_by_backend.setdefault(backend_id, []).extend(
+            captured_provider.contributions
+        )
+        close_callbacks.append(captured_provider.close)
+        if wake_port is not None and declaration is not None:
+            captured_wake_ports.append((wake_port, declaration, captured_bindings[0]))
+    for backend_id, contributions in sorted(host_contributions_by_backend.items()):
+        registered_backends += (
+            ExactHostProviderBackendV4(
+                tuple(contributions),
+                backend_id=backend_id,
+                profile_id=str(profile["profile_id"]),
+                plan_digest=str(plan["plan_digest"]),
+                security_epoch=int(active.activation["security_epoch"]),
+                invocation_context=invocation_context,
+            ),
+        )
+    backend_registry = BackendRegistry(registered_backends)
+    for binding in plan["bindings"]:
+        binding_key = (
+            str(binding["caller_function_id"]),
+            str(binding["contract_id"]),
+            str(binding["operation_id"]),
+        )
+        target = FunctionPrincipal.from_dict(binding["function_principal"])
+        resolved_binding = resolved_binding_by_edge[binding_key]
+        try:
+            selected_backend = backend_registry.select(resolved_binding)
+        except Exception:
+            selected_backend = None
+        selected_digest = (
+            selected_backend.status.backend_digest
+            if selected_backend is not None
+            else next(
+                (
+                    candidate.status.backend_digest
+                    for candidate in registered_backends
+                    if candidate.status.backend_id == resolved_binding.variant.backend
+                ),
+                None,
+            )
+        )
+        if selected_digest is not None:
+            previous_digest = target_backend_digests.get(target.principal_id)
+            if previous_digest is not None and previous_digest != selected_digest:
+                raise AuthorityDenied("selected Provider backend identity changed")
+            target_backend_digests[target.principal_id] = selected_digest
+    def confirmed_supervisor_release(
+        saved_identity: Mapping[str, str],
+        reservations: tuple[ResourceReservation, ...],
+    ) -> tuple[str, ...]:
+        """Return only reservations with an exact supervisor release proof.
+
+        Non-detached charges are owned by the supervisor process that
+        journaled them, so a dead recorded owner proves the charge is
+        reusable. Detached PackVM charges can outlive their owner and still
+        require exact interrupted-allocation reconciliation.
+        """
+
+        released: set[str] = set(dead_owner_reservation_ids(reservations))
+        recover = getattr(packvm_provisioner, "recover_interrupted_allocation", None)
+        current_fencing = int(active.activation["fencing_token"])
+        saved_activation_id = saved_identity.get("activation_id", "")
+        if (
+            not callable(recover)
+            or saved_identity.get("profile_id") != profile_id
+            or saved_activation_id == activation_id
+            or current_fencing <= 1
+            or not reservations
+            or any(item.profile_id != profile_id for item in reservations)
+        ):
+            return tuple(sorted(released))
+        activation_name = saved_activation_id.removeprefix("activation:")
+        if (
+            not activation_name
+            or len(activation_name) > 255
+            or Path(activation_name).name != activation_name
+        ):
+            return tuple(sorted(released))
+        try:
+            envelope = json.loads(
+                (
+                    authority_workspace
+                    / "activation"
+                    / "activations"
+                    / f"{activation_name}.json"
+                ).read_text(encoding="utf-8")
+            )
+            saved_activation = envelope["activation"]
+            saved_fencing = saved_activation["fencing_token"]
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return tuple(sorted(released))
+        if (
+            not isinstance(saved_activation, Mapping)
+            or type(saved_fencing) is not int
+            or saved_fencing < 1
+            or saved_fencing >= current_fencing
+            or any(
+                saved_activation.get(field) != saved_identity.get(field)
+                for field in (
+                    "profile_id",
+                    "profile_revision",
+                    "activation_id",
+                    "plan_digest",
+                )
+            )
+        ):
+            return tuple(sorted(released))
+        candidates = {
+            (
+                f"domain.provider."
+                f"{binding.principal_ref.value.removeprefix('sha256:')[:24]}."
+                f"{saved_fencing}",
+                item.reservation_id,
+                binding.function.implementation_digest,
+            )
+            for item in reservations
+            for binding in catalog_bindings
+            if binding.variant.execution_kind is ExecutionKind.PACK_VM
+        }
+        for domain_id, reservation_id, executable_digest in sorted(candidates):
+            if recover(
+                domain_id=domain_id,
+                reservation_id=reservation_id,
+                executable_digest=executable_digest,
+            ):
+                released.add(reservation_id)
+        return tuple(sorted(released))
+
+    broker = runtime.broker(
+        authority_store=authority_store,
+        adapters=AdapterPlanner(()),
+        adapter_executor=_NoAdapterExecution(),
+        backends=backend_registry,
+        materialization=MaterializationCoordinator(),
+        admission=_PlanAdmission(
+            profile_id=profile_id,
+            activation_id=activation_id,
+            plan=plan,
+            state_path=authority_workspace / "admission" / "reservations.json",
+            confirmed_supervisor_release=confirmed_supervisor_release,
+        ),
+        reconciliation=InMemoryReconciliationStore(),
+        authority_adapter=authority_control,
+        acceptance_receipts=acceptance_receipts,
+    )
+    activation_digest = canonical_digest(active.activation)
+    edge_candidates_by_operation: dict[tuple[str, str], list[_CapturedPlanEdge]] = {}
+    for captured_edge in captured_edges:
+        operation_key = (
+            captured_edge.resolved_binding.operation.contract_id,
+            captured_edge.resolved_binding.operation.operation_id,
+        )
+        edge_candidates_by_operation.setdefault(operation_key, []).append(captured_edge)
+
+    caller_sessions: set[str] = set()
+    caller_sessions_lock = threading.RLock()
+
+    def select_edge(
+        contract_id: str,
+        operation_id: str,
+        session_id: str,
+    ) -> _CapturedPlanEdge:
+        """Select one exact signed edge; never fall back by operation name."""
+
+        candidates = tuple(edge_candidates_by_operation.get((contract_id, operation_id), ()))
+        if not candidates:
+            raise AuthorityDenied("operation edge is outside the captured Profile")
+        with caller_session_bindings_lock:
+            bound_caller = caller_session_bindings.get(session_id)
+        if bound_caller is not None:
+            matches = tuple(edge for edge in candidates if edge.caller.principal_id == bound_caller)
+            if len(matches) != 1:
+                raise AuthorityDenied("authenticated nested caller edge is invalid")
+            return matches[0]
+        # An external panel session belongs to the captured Shell, never to
+        # an arbitrary Provider which happens to call the same operation.
+        # Nested Provider sessions above retain their exact Host binding.
+        shell_candidates = tuple(
+            edge for edge in candidates if edge.caller.principal_id in shell_principal_ids
+        )
+        if len(shell_candidates) != 1:
+            raise AuthorityDenied(
+                "operation does not identify one captured Shell caller edge"
+            )
+        return shell_candidates[0]
+
+    def context_for(contract_id: str, operation_id: str, session_id: str) -> RequestContext:
+        if not isinstance(session_id, str) or not session_id.strip() or len(session_id) > 512:
+            raise AuthorityDenied("authenticated session binding is invalid")
+        captured_edge = select_edge(contract_id, operation_id, session_id)
+        caller = captured_edge.caller
+        target = captured_edge.target
+        target_suffix = target.principal_id.removeprefix("sha256:")[:24]
+        # One authenticated panel session may invoke operations whose
+        # resolved Shell caller principals differ.  Authority session
+        # bindings are principal-specific, so include that exact caller in
+        # the Host-derived session identity instead of reusing a session
+        # already bound to another caller.
+        resolved_authority_session_id = authority_session_id(
+            session_id,
+            caller.principal_id,
+        )
+        caller_suffix = canonical_digest(
+            {
+                "session_id": resolved_authority_session_id,
+                "caller": caller.principal_id,
+            }
+        ).removeprefix("sha256:")[:24]
+        context = RequestContext(
+            request_id="request." + secrets.token_hex(16),
+            trace_id="trace." + secrets.token_hex(16),
+            caller_principal=OpaqueAuthorityRef(caller.principal_id),
+            profile_id=str(profile["profile_id"]),
+            activation_id=str(active.activation["activation_id"]),
+            activation_digest=activation_digest,
+            plan_digest=str(plan["plan_digest"]),
+            profile_revision=str(plan["profile_revision"]),
+            security_epoch=int(active.activation["security_epoch"]),
+            caller_session_id=resolved_authority_session_id,
+            caller_domain_id=f"domain.panel.{caller_suffix}.{activation_suffix}",
+            caller_boot_epoch=1,
+            target_domain_id=f"domain.provider.{target_suffix}.{activation_suffix}",
+            target_boot_epoch=1,
+            target_backend_digest=target_backend_digests.get(
+                target.principal_id,
+                canonical_digest(
+                    {
+                        "backend": "captured-but-not-materialized",
+                        "target": target.principal_id,
+                    }
+                ),
+            ),
+            profile_authority_digest=str(active.activation["profile_authority_snapshot_digest"]),
+            fencing_token=int(active.activation["fencing_token"]),
+            handle_namespace=f"activation.{target_suffix}",
+        )
+        with caller_sessions_lock:
+            if resolved_authority_session_id not in caller_sessions:
+                caller_domain = _execution_domain(
+                    domain_id=context.caller_domain_id,
+                    principal=caller,
+                    active=active,
+                    boundary=DomainBoundary.UNPRIVILEGED_WORKER,
+                    channel_seed=f"panel:{session_id}",
+                )
+                _register_exact_domain(
+                    authority_store,
+                    authority_control,
+                    caller_domain,
+                    session_id=resolved_authority_session_id,
+                    principal=caller,
+                )
+                caller_sessions.add(resolved_authority_session_id)
+        return context
+
+    providers: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    provider_keys: set[tuple[str, str, str]] = set()
+    for binding in plan["bindings"]:
+        binding_key = (
+            str(binding["caller_function_id"]),
+            str(binding["contract_id"]),
+            str(binding["operation_id"]),
+        )
+        resolved_binding = resolved_binding_by_edge[binding_key]
+        provider_key = (
+            resolved_binding.operation.contract_id,
+            resolved_binding.operation.operation_id,
+            resolved_binding.principal_ref.value,
+        )
+        if provider_key in provider_keys:
+            continue
+        provider_keys.add(provider_key)
+        backend_error: str | None = None
+        projected_backend: ExecutionBackend | None
+        try:
+            projected_backend = broker._backends.select(resolved_binding)
+        except Exception as error:
+            projected_backend = None
+            backend_error = str(error) or "production backend is unavailable"
+        function_principal = binding["function_principal"]
+        function_id = str(function_principal["function_id"])
+        pack_id = str(binding["pack_id"])
+        pack_manifest = catalog.packs.get(pack_id)
+        pack_identity = (
+            pack_manifest.get("pack")
+            if isinstance(pack_manifest, Mapping)
+            else None
+        )
+        if not isinstance(pack_identity, Mapping):
+            raise AuthorityDenied("selected Provider Pack identity is unavailable")
+        pack_display_name = pack_identity.get("display_name")
+        pack_description = pack_identity.get("description", "")
+        if not isinstance(pack_display_name, str) or not pack_display_name.strip():
+            raise AuthorityDenied("selected Provider Pack display name is invalid")
+        if not isinstance(pack_description, str):
+            raise AuthorityDenied("selected Provider Pack description is invalid")
+        provider_prefix = f"{pack_id}."
+        provider_instance_id = (
+            function_id.removeprefix(provider_prefix)
+            if function_id.startswith(provider_prefix)
+            else function_id
+        )
+        if not provider_instance_id:
+            raise AuthorityDenied("selected Provider instance identity is invalid")
+        providers.setdefault(binding["contract_id"], ())
+        providers[binding["contract_id"]] += (
+            {
+                "provider_id": function_id,
+                "provider_instance_id": provider_instance_id,
+                "pack_id": pack_id,
+                "pack_display_name": pack_display_name.strip(),
+                "pack_description": pack_description.strip(),
+                "function_id": function_id,
+                "principal_id": resolved_binding.principal_ref.value,
+                "implementation_digest": resolved_binding.function.implementation_digest,
+                "contract_id": binding["contract_id"],
+                "operation_id": binding["operation_id"],
+                "effect_class": resolved_binding.operation.effect_class.value,
+                "artifact_digest": binding["artifact_digest"],
+                **(
+                    {
+                        "backend_id": projected_backend.status.backend_id,
+                        "backend_digest": projected_backend.status.backend_digest,
+                    }
+                    if projected_backend is not None
+                    else {}
+                ),
+                **(
+                    {"backend_unavailable_reason": backend_error}
+                    if backend_error is not None
+                    else {}
+                ),
+                "profile_id": profile["profile_id"],
+                "profile_revision": plan["profile_revision"],
+                "activation_id": active.activation["activation_id"],
+                "plan_digest": plan["plan_digest"],
+            },
+        )
+
+    captured_activation = dict(active.activation)
+    captured_profile = dict(active.resolved.profile)
+    captured_lock = dict(active.resolved.lock)
+    captured_plan = dict(active.resolved.plan)
+
+    def assert_current_capture() -> None:
+        _check_shared_capture(_assert_current_capture)
+
+    def _assert_current_capture() -> None:
+        from ..pack_control_v4 import PackControlDenied
+        from .profile_capture import capture_active_profile
+
+        # Reuse only the explicit operation-local capture opened by the HTTP
+        # boundary or runtime-surface operation. Outside that scope this is
+        # still a fresh canonical capture on every assertion.
+        current = capture_active_profile()
+        if (
+            dict(current.activation) != captured_activation
+            or dict(current.resolved.profile) != captured_profile
+            or dict(current.resolved.lock) != captured_lock
+            or dict(current.resolved.plan) != captured_plan
+            or authority_store.security_epoch != int(captured_activation["security_epoch"])
+        ):
+            raise AuthorityDenied(
+                "captured Profile activation is stale",
+                code="stale_revision",
+            )
+        if _pack_root_identities(pack_roots) != captured_pack_root_identities:
+            raise AuthorityDenied(
+                "captured Pack filesystem identity changed",
+                code="digest_mismatch",
+            )
+        host_provider_data.assert_current()
+        for pack_id, approval_revision in captured_dynamic_approvals.items():
+            try:
+                current_approval = capture_valid_pack_approval(pack_id)
+            except PackControlDenied:
+                raise
+            except Exception as error:
+                raise AuthorityDenied("captured optional Pack approval is unavailable") from error
+            if current_approval.get("approval_revision") != approval_revision:
+                raise AuthorityDenied(
+                    "captured optional Pack approval changed",
+                    code="digest_mismatch",
+                )
+
+    if interactive_effect_port is not None and interactive_effect_coordinator is not None:
+        coordinator_binding = interactive_effect_coordinator[1][0]
+        coordinator_principal = OpaqueAuthorityRef(coordinator_binding.principal_ref.value)
+        routes = _captured_interactive_effect_routes(
+            captured_edges,
+            coordinator_principal=coordinator_principal,
+            dynamic_domain_ids=dynamic_domain_ids,
+        )
+
+        def context_for_interactive_effect(
+            route: CapturedInteractiveEffectRoute,
+            presentation_context: RequestContext,
+        ) -> RequestContext:
+            """Recreate the signed prepare caller for the execute-only edge."""
+
+            session_id = _nested_host_provider_session_id_for(
+                caller_session_id=presentation_context.caller_session_id,
+                target_principal_id=route.coordinator_principal.value,
+                profile_id=presentation_context.profile_id,
+                activation_id=presentation_context.activation_id,
+                plan_digest=presentation_context.plan_digest,
+            )
+            with caller_session_bindings_lock:
+                owner = presentation_owner_bindings.get(
+                    presentation_context.caller_session_id,
+                    (presentation_context.caller_principal.value, presentation_context.caller_session_id),
+                )
+            resolved_session_id = bind_nested_session(
+                session_id, route.coordinator_principal.value, owner,
+            )
+            try:
+                context = context_for(
+                    route.spec.execute_contract_id,
+                    route.spec.execute_operation_id,
+                    session_id,
+                )
+            finally:
+                release_nested_session(session_id, resolved_session_id)
+            expected_domain = dynamic_domain_ids.get(
+                (
+                    route.spec.execute_contract_id,
+                    route.spec.execute_operation_id,
+                    route.execute_target_principal.value,
+                )
+            )
+            if (
+                expected_domain is None
+                or context.caller_principal != route.coordinator_principal
+                or context.target_domain_id != expected_domain
+            ):
+                raise AuthorityDenied("interactive effect context binding changed")
+            return context
+
+        from tobkiri_host.typed_pending_effect_persistence import (
+            TypedPendingEffectPersistence,
+        )
+
+        from tobkiri_host.policy_effect_authorization import PolicyEffectAuthorizationAdapter
+        from core_runtime.owned_file_approval_v4 import assert_file_request_live
+
+        def authenticated_policy_root(selection_id: str) -> Any:
+            root = policy_kernel.policy_roots.get(selection_id)
+            if root is None:
+                raise AuthorityDenied("native selected policy root unavailable")
+            root.resolve_current()
+            return root
+
+        policy_effect_authorizations = PolicyEffectAuthorizationAdapter(
+            authority=authority_control, broker=broker,
+            root_for=authenticated_policy_root,
+            owned_file_guard=assert_file_request_live,
+        )
+
+        interactive_effect_controller = PendingEffectController(
+            persistence=TypedPendingEffectPersistence(authority_control),
+            approvals=authority_control,
+            policy_authorizations=policy_effect_authorizations,
+            coordinator_principal=coordinator_principal,
+            coordinator_publisher_lineage=coordinator_binding.artifact.publisher_lineage,
+            presentation_owner_scope=pending_effect_owner_scope,
+        )
+        _recover_interactive_effect_controller(interactive_effect_controller)
+        interactive_effect_port.bind(
+            HostInteractiveEffectService(
+                broker=broker,
+                controller=interactive_effect_controller,
+                policy_effect_authorization_port=policy_effect_authorizations,
+                routes=tuple(routes),
+                context_for_execute=context_for_interactive_effect,
+                resume_invocation_scope=retained_effect_resume_scope,
+                assert_current_capture=assert_current_capture,
+                profile_id=str(profile["profile_id"]),
+                activation_id=str(active.activation["activation_id"]),
+                plan_digest=str(plan["plan_digest"]),
+                security_epoch=int(active.activation["security_epoch"]),
+            )
+        )
+
+    def effect_scope_for(
+        contract_id: str,
+        operation_id: str,
+        _payload: Mapping[str, Any],
+        context: RequestContext | None = None,
+    ) -> Mapping[str, Any]:
+        """Return the caller-specific effect ceiling for one captured edge."""
+
+        candidates = tuple(edge_candidates_by_operation.get((contract_id, operation_id), ()))
+        if context is not None:
+            caller_id = context.caller_principal.value
+            candidates = tuple(edge for edge in candidates if edge.caller.principal_id == caller_id)
+        if len(candidates) != 1:
+            raise AuthorityDenied("operation effect edge is ambiguous or outside the Profile")
+        return candidates[0].ceilings.caller_effect.to_dict()
+
+    executor_bindings = tuple(
+        binding
+        for function_id, bindings, _factory, _backend_id in loaded_host_factories
+        if function_id == LOCAL_EXECUTOR_FUNCTION
+        for binding in bindings
+    )
+    consent_route = (optional_captured_consent_route(captured_edges, executor_bindings)
+                     if executor_bindings else None)
+    ask_saved_tool_execution = None
+    if consent_route is not None:
+        from tobkiri_host.saved_tool_consent import SavedToolConsentExecution
+        from tobkiri_host.saved_tool_context import NestedToolBinding
+        from tobkiri_host.consumed_tool_consent import ConsumedConsentVerifier
+
+        def bind_saved_tool_nested(
+            invocation: Any, contract_id: str, operation_id: str,
+            payload: Mapping[str, Any],
+        ) -> NestedToolBinding:
+            """Retain the same production ancestry until prepared execution ends."""
+            scope = capture_invocation_scope(invocation.envelope)
+            scope.assert_current()
+            session_id = execution_session_id(invocation.envelope)
+            owner = (invocation.presentation_owner_principal_id,
+                     invocation.presentation_owner_session_id)
+            authority_session_id = bind_nested_session(
+                session_id, invocation.envelope.target_principal.value, owner,
+                parent_invocation=scope,
+            )
+            try:
+                context = context_for(contract_id, operation_id, session_id)
+                ceiling = effect_scope_for(contract_id, operation_id, payload, context)
+                if context.caller_principal != executor_bindings[0].principal_ref:
+                    raise AuthorityDenied("saved tool nested caller changed")
+                return NestedToolBinding(
+                    context=context, ceiling=ceiling,
+                    caller_publisher_lineage=executor_bindings[0].artifact.publisher_lineage,
+                    cancellation_proof=nested_cancellation_proof_for(
+                        invocation.envelope, owner[0], owner[1],
+                    ),
+                    release=lambda: release_nested_session(
+                        session_id, authority_session_id,
+                    ),
+                    inline_parent_scope=scope,
+                )
+            except BaseException:
+                release_nested_session(session_id, authority_session_id)
+                raise
+
+        ask_saved_tool_execution = SavedToolConsentExecution(
+            broker=broker, authority=authority_control,
+            window=authority_approval_window,
+            consent_proof=ConsumedConsentVerifier(authority_store),
+            entry_guard_registry=saved_tool_entry_guards,
+            route=consent_route,
+            bind_nested=bind_saved_tool_nested,
+        )
+
+    from core_runtime.approval_policy_capabilities_v4 import (
+        HostApprovalPolicyCapabilitiesV4,
+    )
+    def approval_policy_conversation_membership(
+        invocation: Any, conversation_id: str, workspace_id: str,
+    ) -> bool:
+        invocation.assert_current()
+        client = invocation.contract_client(
+            allowed_contract_ids=frozenset({"tobkiri.resource.conversation.v1"}),
+            consumer_pack_id="rumi_host_authority_bridge_pack",
+            include_credentials=False,
+        )
+        result = client.invoke(
+            "tobkiri.resource.conversation.v1",
+            "rumi_conversation_store_pack.conversation-resource",
+            {"profile_id": str(profile["profile_id"]), "operation": "get",
+             "conversation_id": conversation_id},
+        )
+        invocation.assert_current()
+        return (isinstance(result, Mapping)
+                and isinstance(result.get("conversation"), Mapping)
+                and result["conversation"].get("id") == conversation_id
+                and isinstance(result["conversation"].get("metadata"), Mapping)
+                and result["conversation"]["metadata"].get("workspace_id") == workspace_id)
+
+    policy_projection = None
+    if (ask_saved_tool_execution is not None
+            and workspace_binding_resolver is not None
+            and authority_approval_window_open is not None):
+        from core_runtime.bootstrap.saved_tool_policy_composition_v4 import compose_saved_tool_policy_v4
+        from ecosystem.rumi_workspace_mount_pack.runtime.mounts import capture_selected_workspace_binding
+
+        def current_selected_workspace() -> Mapping[str, Any]:
+            assert_current_capture()
+            return capture_selected_workspace_binding(
+                str(profile["profile_id"]), user_data_root=authority_user_data,
+            )
+
+        def policy_owner_context(function_id: str) -> HostProviderCaptureContextV4:
+            matches = tuple(item for item in loaded_host_factories if item[0] == function_id)
+            if len(matches) != 1:
+                raise AuthorityDenied("reviewer captured owner source unavailable")
+            _, bindings_for_owner, owner_factory, _ = matches[0]
+            return host_provider_capture_context(
+                bindings_for_owner, workspace_mutation_port=workspace_mutation_port,
+                declared_pack_data=host_provider_data.capture_for(owner_factory),
+            )
+
+        def read_policy_conversation(invocation: Any, conversation_id: str) -> Mapping[str, Any]:
+            invocation.assert_current()
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({"tobkiri.resource.conversation.v1"}),
+                consumer_pack_id="rumi_tool_local_executor_pack", include_credentials=False,
+            )
+            result = client.invoke("tobkiri.resource.conversation.v1",
+                "rumi_conversation_store_pack.conversation-resource",
+                {"profile_id": str(profile["profile_id"]), "operation": "get",
+                 "conversation_id": conversation_id})
+            invocation.assert_current()
+            conversation = result.get("conversation") if isinstance(result, Mapping) else None
+            if not isinstance(conversation, Mapping):
+                raise AuthorityDenied("policy conversation resource unavailable")
+            return conversation
+
+        try:
+            composed_policy = compose_saved_tool_policy_v4(
+                broker=broker, authority=authority_control, store=authority_store,
+                kernel=policy_kernel, catalog=runtime.composition.catalog,
+                profile_id=str(profile["profile_id"]), edges=tuple(captured_edges),
+                bindings=tuple(catalog_bindings), window=authority_approval_window,
+                ask=ask_saved_tool_execution, bind_nested=bind_saved_tool_nested,
+                entry_guards=saved_tool_entry_guards,
+                policy_invocations=policy_invocation_registry,
+                selection_dispatch=policy_selection_dispatch,
+                read_conversation=read_policy_conversation,
+                resolve_workspace=workspace_binding_resolver,
+                selected_workspace=current_selected_workspace,
+                host_context=policy_owner_context, invocation_context=invocation_context,
+                bind_nested_session=bind_nested_session,
+                release_nested_session=release_nested_session,
+                context_for=context_for, effect_scope_for=effect_scope_for,
+                capture_invocation_scope=capture_invocation_scope,
+                nested_cancellation_proof_for=nested_cancellation_proof_for,
+                assert_current_capture=assert_current_capture,
+                authority_records=profile_edge_authority_records,
+                dispatch_capture={"profile_revision": str(plan["profile_revision"]),
+                    "plan_digest": str(plan["plan_digest"]),
+                    "activation_id": str(active.activation["activation_id"]),
+                    "security_epoch": int(active.activation["security_epoch"])},
+            )
+        except (AuthorityDenied, PermissionError, KeyError, LookupError):
+            # Optional topology does not prevent local-first startup or native ask.
+            saved_tool_consent_port.bind(ask_saved_tool_execution)
+        else:
+            saved_tool_consent_port.bind(composed_policy.execute)
+            saved_tool_mode_admission_holder[0] = composed_policy.admit
+            policy_projection = composed_policy.project
+    elif ask_saved_tool_execution is not None:
+        saved_tool_consent_port.bind(ask_saved_tool_execution)
+
+    approval_policy_capabilities_holder.append(HostApprovalPolicyCapabilitiesV4(
+        profile_id=str(profile["profile_id"]),
+        activation_id=str(active.activation["activation_id"]),
+        capture={"plan_digest": str(plan["plan_digest"]),
+                 "activation_digest": activation_digest,
+                 "security_epoch": int(active.activation["security_epoch"])},
+        assert_current_capture=assert_current_capture,
+        workspace_binding=workspace_binding_resolver,
+        policy_projection=policy_projection,
+        conversation_membership=approval_policy_conversation_membership,
+    ))
+
+    wake_drivers: list[CapturedWakeDriverV4] = []
+
+    def close_wake_drivers() -> None:
+        """Fence Host sources before any Broker shutdown or read restart."""
+        close_captured_wake_drivers_v4(wake_drivers)
+
+    dispatch = runtime.dispatch_session(
+        broker=broker,
+        context_for=context_for,
+        effect_scope_for=effect_scope_for,
+        providers=providers,
+        authority_control=authority_control,
+        current_capture_check=assert_current_capture,
+        owned_authority_store=authority_store,
+        close_callbacks=(
+            *close_callbacks,
+            *((workspace_mutation_port.close,) if workspace_mutation_port else ()),
+            *((control_session.close,) if control_session is not None else ()),
+            *tuple(
+                backend.close
+                for backend in (*owned_packvm_backends, *owned_wasm_backends)
+                if callable(getattr(backend, "close", None))
+            ),
+        ),
+        stop_callbacks=(
+            close_wake_drivers,
+            cancellation_handles.close,
+            *((control_session.cancel_pending_reads,) if control_session is not None else ()),
+        ),
+        before_close_callbacks=(close_wake_drivers,),
+    )
+    dispatch_holder.append(dispatch)
+    for wake_port, declaration, owner_binding in captured_wake_ports:
+        owner_id = owner_binding.principal_ref.value
+        candidates = tuple(edge for edge in captured_edges
+            if edge.caller.principal_id == owner_id
+            and edge.resolved_binding.operation.contract_id == declaration.contract_id
+            and edge.resolved_binding.operation.operation_id == declaration.operation_id)
+        # A declaration creates neither a selected edge nor a Grant. Missing
+        # or ambiguous routes keep only the unbound/unavailable public port.
+        if len(candidates) != 1:
+            continue
+        edge = candidates[0]
+        target_id = edge.target.principal_id
+        identity = {"profile_id": profile_id, "profile_revision": plan["profile_revision"],
+            "activation_id": activation_id, "activation_digest": activation_digest,
+            "plan_digest": plan["plan_digest"], "security_epoch": active.activation["security_epoch"],
+            "owner_artifact": owner_binding.artifact.digest,
+            "owner_implementation": owner_binding.function.implementation_digest,
+            "target_artifact": edge.resolved_binding.artifact.digest,
+            "target_implementation": edge.resolved_binding.function.implementation_digest}
+        state_key = canonical_digest({"profile_id": profile_id,
+            "function_id": owner_binding.function.function_id}).removeprefix("sha256:")
+
+        @contextmanager
+        def wake_context_scope(occurrence: str, *, caller_id: str = owner_id,
+                               fixed_declaration: CapturedWakeDeclarationV4 = declaration,
+                               fixed_target: str = target_id,
+                               session_key: str = state_key) -> Iterator[RequestContext]:
+            """Register a dedicated Host clock session for one fresh request."""
+            session_id = "wake-" + canonical_digest({"registration": session_key,
+                "occurrence": occurrence}).removeprefix("sha256:")
+            owner_session = authority_session_id(session_id, caller_id)
+            resolved_session = bind_nested_session(session_id, caller_id,
+                                                   (caller_id, owner_session))
+            try:
+                context = context_for(fixed_declaration.contract_id,
+                                      fixed_declaration.operation_id, session_id)
+                expected_domain = dynamic_domain_ids.get((fixed_declaration.contract_id,
+                    fixed_declaration.operation_id, fixed_target))
+                if (context.caller_principal.value != caller_id
+                        or expected_domain != context.target_domain_id):
+                    raise AuthorityDenied("captured wake session edge changed")
+                yield context
+            finally:
+                release_nested_session(session_id, resolved_session)
+
+        def wake_effect_scope(context: RequestContext, *,
+                              fixed: CapturedWakeDeclarationV4 = declaration) -> Mapping[str, Any]:
+            return effect_scope_for(fixed.contract_id, fixed.operation_id,
+                                    fixed.payload, context)
+
+        try:
+            wake_drivers.append(bind_production_wake_v4(
+                port=wake_port, declaration=declaration, owner_principal_id=owner_id,
+                target_principal_id=target_id,
+                state_path=host_provider_state_root / "wakes" / f"{state_key}.sqlite3",
+                identity=identity, broker=broker, authority=authority_control,
+                authority_store=authority_store, context_scope=wake_context_scope,
+                effect_scope=wake_effect_scope,
+                assert_current=assert_current_capture,
+            ))
+        except Exception:
+            dispatch.close()
+            raise
+    if control_session is not None and http_contract_bindings:
+        if capability_binding_selector is None:
+            dispatch.close()
+            raise AuthorityDenied("application capability binding selector is unavailable")
+        capability_binding = capability_binding_selector(http_contract_bindings)
+        if capability_binding is None or capability_binding not in http_contract_bindings:
+            dispatch.close()
+            raise AuthorityDenied("capability invocation binding is absent or ambiguous")
+
+        def capability_binding_reader() -> tuple[Mapping[str, object], Mapping[str, Any]]:
+            from ..pack_control_v4 import capture_pack_catalog_reader
+
+            if capability_binding_snapshot_factory is None:
+                raise AuthorityDenied("capability projection factory is unavailable")
+            catalog = capture_pack_catalog_reader().read()
+            capability = capability_binding_snapshot_factory(
+                capability_binding,
+                session=dispatch,
+                catalog=catalog,
+            )
+            return capability, catalog
+
+        control_session.bind_capability_reader(capability_binding_reader)
+    return dispatch
+
+
+__all__ = ["capture_production_dispatch"]

@@ -1,0 +1,273 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.scheduler.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:scheduler.control",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3456460f3d845259e4f4b5568d1c36ce4aa7c4316cd16635d2fd9dea0889be4b",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-control",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_scheduler_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_scheduler_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_scheduler_runtime_pack.scheduler.control",
+        "required_capabilities": [
+          "scheduler.control"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:cf57aea51e42b9b54319983e24d9512ea1653eb6a9a8c46d822c3f22d85ef879",
+      "schema_catalog": {
+        "sha256:3456460f3d845259e4f4b5568d1c36ce4aa7c4316cd16635d2fd9dea0889be4b": {
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "now_ms": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "operation": {
+              "enum": [
+                "tick",
+                "trigger",
+                "stop"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.scheduler.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:scheduler.observe"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:bd672d63e25abdc4ed640d04e537e8b2ab459112c1e435896230b86c4fc77093",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_scheduler_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_scheduler_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_scheduler_runtime_pack.scheduler.status",
+        "required_capabilities": [
+          "scheduler.observe"
+        ],
+        "security": "internal"
+      },
+      "revision_digest": "sha256:890fbb4e270e2305549f060847f102118b0a6ab467aef515875bcc6c599168c9",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:bd672d63e25abdc4ed640d04e537e8b2ab459112c1e435896230b86c4fc77093": {
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "const": "status"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.scheduler.clock.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:scheduler.clock.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:f9e72ffadd6446cf37d910ba660b0240d56732b8e121020428780321f2484e9b",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_scheduler_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_scheduler_runtime_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_scheduler_runtime_pack.scheduler.clock",
+        "required_capabilities": [
+          "scheduler.clock.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:557c748a38877dc71283915753a0d9d33ab0390c498c026c683acf5fa3db1923",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:f9e72ffadd6446cf37d910ba660b0240d56732b8e121020428780321f2484e9b": {
+          "additionalProperties": false,
+          "properties": {
+            "duration_ms": {
+              "maximum": 86400000,
+              "minimum": 60000,
+              "type": "integer"
+            },
+            "operation": {
+              "enum": [
+                "status",
+                "arm",
+                "disarm",
+                "renew"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_scheduler_runtime_pack",
+  "source_identity": "sha256:37e3db63baa7a36cb6321cb3446356dff896dff2cf5b4c0a902b57bcd520acaf"
+}

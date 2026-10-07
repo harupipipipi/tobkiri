@@ -6,31 +6,20 @@ PackAPIHandler のセットアップ API エンドポイントをテストする
 """
 
 import json
-import sys
-from pathlib import Path
+from io import BytesIO
 from unittest.mock import MagicMock
-
-# core_setup のパスを追加
-_CORE_SETUP_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "core_runtime"
-    / "core_pack"
-    / "core_setup"
-)
-if str(_CORE_SETUP_DIR) not in sys.path:
-    sys.path.insert(0, str(_CORE_SETUP_DIR))
 
 
 class TestCheckSetupStatus:
     """AppLifecycleManager.check_setup_status() のテスト"""
 
-    def test_needs_setup_when_no_profile(self, tmp_path):
-        """profile.json が無い -> needs_setup: True"""
+    def test_clean_home_runs_canonical_profile_transaction(self, tmp_path):
+        """A clean home is bootstrapped without a legacy setup Profile."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.check_setup_status()
         assert result["needs_setup"] is True
-        assert "reason" in result
+        assert result["setup_state"] == "profile_transaction_required"
 
     def test_not_needs_setup_when_profile_valid(self, tmp_path):
         """profile.json が有効 -> needs_setup: False"""
@@ -53,7 +42,12 @@ class TestCheckSetupStatus:
 
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.check_setup_status()
-        assert result["needs_setup"] is False
+        assert result["needs_setup"] is True
+        assert result["reason"] == "explicit_bootstrap_confirmation_required"
+        assert result["host_catalog_verified"] is True
+        assert result["profile_ceremony_available"] is False
+        assert result["defaults_bootstrap_required"] is True
+        assert result["launch_ready"] is False
 
     def test_setup_status_includes_runtime_readiness(self, tmp_path):
         from core_runtime.app_lifecycle_manager import (
@@ -84,16 +78,8 @@ class TestCompleteSetup:
             "username": "testuser",
             "language": "ja",
         })
-        assert result["success"] is True
-        assert result["errors"] == []
-
-        # profile.json が作成されたことを確認
-        profile_path = tmp_path / "user_data" / "settings" / "profile.json"
-        assert profile_path.exists()
-
-        # check_setup_status で検証
-        status = alm.check_setup_status()
-        assert status["needs_setup"] is False
+        assert result["success"] is False
+        assert result["setup_state"] == "profile_transaction_failed"
 
     def test_complete_setup_no_username(self, tmp_path):
         """username が空 -> エラー"""
@@ -136,7 +122,8 @@ class TestCompleteSetup:
             "icon": "/path/to/icon.png",
             "occupation": "Developer",
         })
-        assert result["success"] is True
+        assert result["success"] is False
+        assert result["setup_state"] == "profile_transaction_failed"
 
     def test_setup_status_no_auth_required(self):
         """/api/setup/status は認証前に処理されること。"""
@@ -160,29 +147,52 @@ class TestCompleteSetup:
         handler._send_response.assert_called_once()
         handler._check_auth.assert_not_called()
 
-    def test_setup_complete_no_auth_required(self):
-        """/api/setup/complete は認証前に処理されること。"""
+    def test_setup_complete_is_typed_retired_route_without_writes(self, tmp_path):
+        """The legacy completion route is 410 for every auth state and writes nothing."""
+        from core_runtime.app_lifecycle_manager import AppLifecycleManager
         from core_runtime.pack_api_server import PackAPIHandler
 
-        handler = object.__new__(PackAPIHandler)
-        handler.path = "/api/setup/complete"
-        handler.client_address = ("198.51.100.7", 12345)
-        handler._send_response = MagicMock()
-        handler._check_auth = MagicMock(side_effect=AssertionError("auth should not run"))
-        handler._check_rate_limit = MagicMock(return_value=True)
-        handler._is_pre_auth_route = MagicMock(return_value=True)
-        handler._parse_body = MagicMock(return_value={"username": "testuser", "language": "ja"})
-        PackAPIHandler.app_lifecycle_manager = MagicMock()
-        PackAPIHandler.app_lifecycle_manager.complete_setup.return_value = {
-            "success": True,
-            "errors": [],
-        }
-        PackAPIHandler.kernel = None
+        lifecycle = AppLifecycleManager(base_dir=tmp_path)
+        lifecycle.complete_setup = MagicMock(
+            side_effect=AssertionError("retired route must not capture a profile")
+        )
+        PackAPIHandler.app_lifecycle_manager = lifecycle
 
-        PackAPIHandler.do_POST(handler)
+        for authorization in (None, "Bearer authenticated-test-token"):
+            handler = object.__new__(PackAPIHandler)
+            handler.path = "/api/setup/complete"
+            handler.headers = {
+                "Content-Length": "2",
+                **({"Authorization": authorization} if authorization else {}),
+            }
+            handler.client_address = ("198.51.100.7", 12345)
+            handler._send_response = MagicMock()
+            handler._check_auth = MagicMock(
+                side_effect=AssertionError("retired barrier runs before auth")
+            )
+            handler._check_rate_limit = MagicMock(return_value=True)
+            handler._discard_request_body = MagicMock()
+            handler._parse_body = MagicMock(
+                side_effect=AssertionError("retired body must not be parsed")
+            )
 
-        handler._send_response.assert_called_once()
-        handler._check_auth.assert_not_called()
+            PackAPIHandler.do_POST(handler)
+
+            response, status = handler._send_response.call_args.args
+            assert status == 410
+            assert response.success is False
+            assert response.data == {
+                "state": "legacy_setup_retired",
+                "action": "install_defaults_profile",
+                "setup_api_version": "io.tobkiri.setup-state.v4",
+                "retired_route": "/api/setup/complete",
+                "write_set": [],
+            }
+            handler._check_auth.assert_not_called()
+            handler._parse_body.assert_not_called()
+
+        lifecycle.complete_setup.assert_not_called()
+        assert list(tmp_path.rglob("*")) == []
 
     def test_setup_packs_list_no_auth_required_during_initial_setup(self):
         from core_runtime.pack_api_server import PackAPIHandler
@@ -190,12 +200,10 @@ class TestCompleteSetup:
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/packs"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
-        handler._handle_builtin_public_get = MagicMock(return_value=False)
         handler._match_web_mount = MagicMock(return_value=None)
         handler._check_auth = MagicMock(side_effect=AssertionError("auth should not run"))
-        handler._parse_query = MagicMock(return_value={})
-        handler._dispatch_api_route = MagicMock(return_value=True)
+        handler._setup_list_packs = MagicMock(return_value={"packs": []})
+        handler._send_mapping_result = MagicMock()
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -205,7 +213,7 @@ class TestCompleteSetup:
         PackAPIHandler.do_GET(handler)
 
         handler._check_auth.assert_not_called()
-        handler._dispatch_api_route.assert_called_once_with("GET", "/api/setup/packs", query={})
+        handler._send_mapping_result.assert_called_once_with({"packs": []})
 
     def test_setup_packs_list_requires_auth_after_setup_completed(self):
         from core_runtime.pack_api_server import PackAPIHandler
@@ -213,11 +221,8 @@ class TestCompleteSetup:
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/packs"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
-        handler._handle_builtin_public_get = MagicMock(return_value=False)
         handler._match_web_mount = MagicMock(return_value=None)
         handler._check_auth = MagicMock(return_value=False)
-        handler._dispatch_api_route = MagicMock(return_value=True)
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -227,7 +232,6 @@ class TestCompleteSetup:
         PackAPIHandler.do_GET(handler)
 
         handler._check_auth.assert_called_once_with("GET", "/api/setup/packs")
-        handler._dispatch_api_route.assert_not_called()
 
     def test_setup_migration_status_no_auth_required_during_initial_setup(self):
         from core_runtime.pack_api_server import PackAPIHandler
@@ -235,12 +239,12 @@ class TestCompleteSetup:
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/migration/status"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
-        handler._handle_builtin_public_get = MagicMock(return_value=False)
         handler._match_web_mount = MagicMock(return_value=None)
         handler._check_auth = MagicMock(side_effect=AssertionError("auth should not run"))
-        handler._parse_query = MagicMock(return_value={})
-        handler._dispatch_api_route = MagicMock(return_value=True)
+        handler._setup_get_migration_status = MagicMock(
+            return_value={"error": "retired", "status_code": 410}
+        )
+        handler._send_mapping_result = MagicMock()
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -250,23 +254,22 @@ class TestCompleteSetup:
         PackAPIHandler.do_GET(handler)
 
         handler._check_auth.assert_not_called()
-        handler._dispatch_api_route.assert_called_once_with(
-            "GET",
-            "/api/setup/migration/status",
-            query={},
+        handler._send_mapping_result.assert_called_once_with(
+            {"error": "retired", "status_code": 410}
         )
 
-    def test_setup_migration_status_requires_auth_after_setup_completed(self):
+    def test_setup_migration_status_remains_retired_after_setup_completed(self):
         from core_runtime.pack_api_server import PackAPIHandler
 
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/migration/status"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
-        handler._handle_builtin_public_get = MagicMock(return_value=False)
         handler._match_web_mount = MagicMock(return_value=None)
-        handler._check_auth = MagicMock(return_value=False)
-        handler._dispatch_api_route = MagicMock(return_value=True)
+        handler._check_auth = MagicMock(side_effect=AssertionError("auth should not run"))
+        handler._setup_get_migration_status = MagicMock(
+            return_value={"error": "retired", "status_code": 410}
+        )
+        handler._send_mapping_result = MagicMock()
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -275,8 +278,10 @@ class TestCompleteSetup:
 
         PackAPIHandler.do_GET(handler)
 
-        handler._check_auth.assert_called_once_with("GET", "/api/setup/migration/status")
-        handler._dispatch_api_route.assert_not_called()
+        handler._check_auth.assert_not_called()
+        handler._send_mapping_result.assert_called_once_with(
+            {"error": "retired", "status_code": 410}
+        )
 
     def test_setup_pack_install_no_auth_required_only_during_initial_setup(self):
         from core_runtime.pack_api_server import PackAPIHandler
@@ -284,11 +289,14 @@ class TestCompleteSetup:
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/packs/install"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
         handler._check_auth = MagicMock(side_effect=AssertionError("auth should not run"))
-        handler._parse_body = MagicMock(return_value={"setup_pack_ids": ["defaultspack"]})
-        handler._parse_query = MagicMock(return_value={})
-        handler._dispatch_api_route = MagicMock(return_value=True)
+        body = {"install_defaults_profile": False}
+        handler._parse_body = MagicMock(return_value=body)
+        handler._setup_install_pack = MagicMock(
+            return_value={"error": "retired", "status_code": 410}
+        )
+        handler.wfile = BytesIO()
+        handler._send_mapping_result = MagicMock()
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -298,11 +306,9 @@ class TestCompleteSetup:
         PackAPIHandler.do_POST(handler)
 
         handler._check_auth.assert_not_called()
-        handler._dispatch_api_route.assert_called_once_with(
-            "POST",
-            "/api/setup/packs/install",
-            {"setup_pack_ids": ["defaultspack"]},
-            query={},
+        handler._setup_install_pack.assert_called_once_with(body)
+        handler._send_mapping_result.assert_called_once_with(
+            {"error": "retired", "status_code": 410}
         )
 
     def test_setup_pack_install_requires_auth_after_setup_completed(self):
@@ -311,10 +317,8 @@ class TestCompleteSetup:
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/packs/install"
         handler.client_address = ("198.51.100.7", 12345)
-        handler._check_rate_limit = MagicMock(return_value=True)
         handler._check_auth = MagicMock(return_value=False)
         handler._discard_request_body = MagicMock()
-        handler._dispatch_api_route = MagicMock(return_value=True)
         handler._send_response = MagicMock()
         PackAPIHandler.app_lifecycle_manager = MagicMock()
         PackAPIHandler.app_lifecycle_manager.check_setup_status.return_value = {
@@ -325,7 +329,6 @@ class TestCompleteSetup:
 
         handler._check_auth.assert_called_once_with("POST", "/api/setup/packs/install")
         handler._discard_request_body.assert_called_once()
-        handler._dispatch_api_route.assert_not_called()
 
 
 class TestHealthPayload:

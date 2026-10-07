@@ -82,7 +82,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
-                if let Err(error) = show_primary_window(&app) {
+                if let Err(error) = show_primary_window(app) {
                     error!("Failed to show Tobkiri Launcher window: {error}");
                 }
             }

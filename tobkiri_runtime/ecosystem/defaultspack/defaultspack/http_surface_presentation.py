@@ -1,0 +1,1093 @@
+"""Defaultspack-specific HTTP capability payload and UI projection rules."""
+
+from __future__ import annotations
+
+from tobkiri_protocol.saved_conversation import saved_guidance_context
+
+import re
+import time
+import uuid
+from pathlib import PurePosixPath
+from typing import Mapping
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+from referencing.exceptions import Unresolvable
+
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPCapabilitySnapshot,
+    HTTPContractBinding,
+    HTTPContractTarget,
+)
+from core_runtime.pack_api_server import (
+    ApplicationHTTPContractRequest,
+    CapabilitySnapshotReader,
+    DispatchSession,
+    WorkspaceBindingResolver,
+)
+from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+
+from .provider_status_presentation import present_provider_connection_status
+from .calendar_presentation import CALENDAR_TARGETS, normalize_calendar_payload
+
+from .chat_reference_presentation import (
+    CHAT_REFERENCE_TARGETS, normalize_chat_reference_read,
+)
+
+from .kanban_presentation import (
+    KANBAN_TARGETS, normalize_kanban_request, present_kanban_result,
+)
+from .managed_desktop_presentation import (
+    READ_TARGETS as MANAGED_DESKTOP_READ_TARGETS,
+    normalize_managed_desktop_read, present_managed_desktop_read,
+)
+from .model_profile_presentation import (
+    MODEL_PROFILE_LIST_TARGET,
+    MODEL_PROFILE_SAVE_TARGET,
+    normalize_model_profile_save,
+    present_model_profile_saved,
+    present_model_profiles,
+)
+from .conversation_list_presentation import (
+    CONVERSATION_LIST_TARGET,
+    present_conversation_list,
+)
+from .tool_catalog_presentation import TOOL_CATALOG_TARGET, present_tool_catalog
+from .conversation_create_presentation import (
+    CONVERSATION_CREATE_TARGET,
+    normalize_conversation_create,
+    present_conversation_created,
+)
+from .conversation_record_presentation import (
+    CONVERSATION_RECORD_TARGETS,
+    normalize_conversation_record,
+    present_conversation_record,
+    present_conversation_deleted,
+)
+from .workspace_presentation import (
+    WORKSPACE_GET_TARGET,
+    WORKSPACE_LIST_TARGET,
+    normalize_workspace_read,
+    present_workspace_list,
+    present_workspace_record,
+)
+from .turn_event_presentation import (
+    TURN_EVENT_TARGET,
+    normalize_turn_event_read,
+    present_turn_events,
+)
+from .turn_progress_presentation import (
+    TURN_PROGRESS_TARGET,
+    normalize_turn_progress_read,
+)
+from .chat_continuation_presentation import (
+    CHAT_CONTINUATION_TARGETS,
+    normalize_chat_continuation,
+    present_chat_continuation,
+)
+from .ai_strategy_presentation import present_ai_strategy_catalog
+from .v4_view_contract import (
+    validate_public_input,
+    validate_schema_declared_profile_targets,
+)
+
+_PROJECT_READ_TARGET = (
+    "defaults.projects.read", "tobkiri.resource.project.state.v1",
+    "tobkiri_ui_settings_pack.projects-read", "tobkiri.project.state.read",
+    "tobkiri.project.state.read",
+)
+_PROJECT_WRITE_TARGET = (
+    "defaults.projects.replace", "tobkiri.action.project.state.v1",
+    "tobkiri_ui_settings_pack.projects-replace", "tobkiri.project.state.replace",
+    "tobkiri.project.state.replace",
+)
+_MODEL_STATE_READ_TARGET = (
+    "defaults.ui.model-state.read", "tobkiri.resource.ui.model-state.v1",
+    "tobkiri_ui_settings_pack.model-state-read", "tobkiri.ui.model-state.read",
+    "tobkiri.ui.model-state.read",
+)
+_MODEL_STATE_WRITE_TARGET = (
+    "defaults.ui.model-state.write", "tobkiri.action.ui.model-state.v1",
+    "tobkiri_ui_settings_pack.model-state-write", "tobkiri.ui.model-state.write",
+    "tobkiri.ui.model-state.write",
+)
+_DIAGNOSTIC_READ_TARGET = (
+    "defaults.ui.recovery-diagnostic.read", "tobkiri.resource.ui.recovery-diagnostic.v1",
+    "tobkiri_ui_settings_pack.recovery-diagnostic-read", "tobkiri.ui.recovery-diagnostic.read",
+    "tobkiri.ui.recovery-diagnostic.read",
+)
+_DIAGNOSTIC_WRITE_TARGET = (
+    "defaults.ui.recovery-diagnostic.write", "tobkiri.action.ui.recovery-diagnostic.v1",
+    "tobkiri_ui_settings_pack.recovery-diagnostic-write", "tobkiri.ui.recovery-diagnostic.write",
+    "tobkiri.ui.recovery-diagnostic.write",
+)
+_CONNECTION_STATUS_TARGET = (
+    "defaults.connections.status.read", "tobkiri.resource.ai.provider.registry.v1",
+    "rumi_provider_registry_pack.provider-registry-resource",
+    "rumi_provider_registry_pack.provider-registry.resource",
+    "rumi_provider_registry_pack.provider-registry.resource",
+)
+_MODEL_SEARCH_TARGET = (
+    "defaults.ui.model-search.read", "tobkiri.resource.ui.model-search.v1",
+    "tobkiri_ui_settings_pack.model-search", "tobkiri.ui.model-search.read",
+    "tobkiri.ui.model-search.read",
+)
+# Client-supplied filter fields admitted by the model-search operation schema.
+# The captured Profile identity is appended by the Host, never by the client.
+_MODEL_SEARCH_FILTER_KEYS = frozenset(
+    {
+        "query",
+        "connection_id",
+        "type",
+        "model_type",
+        "requires",
+        "speed_tier",
+        "provider_id",
+        "provider",
+        "configured_only",
+        "local_only",
+        "min_knowledge_level",
+        "max_results",
+        "offset",
+    }
+)
+
+TURN_LIST_TARGET = (
+    "defaults.conversations.turn.list", "tobkiri.resource.turn.v1",
+    "rumi_turn_runtime_pack.turn-resource",
+    "rumi_turn_runtime_pack.turn-runtime.resource",
+    "rumi_turn_runtime_pack.turn-runtime.resource",
+)
+TURN_GUIDANCE_TARGET = (
+    "defaults.conversations.turn.steer", "tobkiri.action.turn.guidance.v1",
+    "rumi_turn_runtime_pack.turn-guidance",
+    "rumi_turn_runtime_pack.turn-runtime.guidance",
+    "rumi_turn_runtime_pack.turn-runtime.guidance",
+)
+_TURN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_GUIDANCE_KEYS = frozenset(
+    {
+        "prompt", "target_type", "target_id", "conversation_id",
+        "visible", "auto_send", "metadata",
+    }
+)
+
+
+_CONVERSATION_TARGET = (
+    "defaults.conversation.complete",
+    "conversation.turn.v1",
+    "complete",
+    "defaultspack.conversation",
+    "defaultspack.conversation",
+)
+_STARTUP_OPERATION_REQUIREMENTS = (
+    ("conversation.turn.v1", "complete"),
+    (
+        "tobkiri.resource.application.presentation.v1",
+        "defaultspack.presentation.read",
+    ),
+)
+_CAPABILITY_REQUEST_FIELDS = frozenset(
+    {
+        "request_id",
+        "expires_at",
+        "profile_id",
+        "profile_revision",
+        "activation_id",
+        "plan_hash",
+        "catalog_hash",
+        "contribution_id",
+        "owner_pack_id",
+        "contract_id",
+        "payload",
+    }
+)
+
+
+class DefaultspackHTTPPresentation:
+    """Interpret Defaultspack UI capability contracts after Host validation."""
+
+    def decode_request(
+        self,
+        binding: HTTPContractBinding,
+        *,
+        body: Mapping[str, object],
+        query: Mapping[str, object],
+        session: DispatchSession,
+        snapshot: HTTPCapabilitySnapshot,
+    ) -> ApplicationHTTPContractRequest | None:
+        """Verify the application capability envelope and select its target."""
+
+        if binding.path != "/api/ui/capability/invoke":
+            return None
+        if set(body) != _CAPABILITY_REQUEST_FIELDS:
+            return None
+        request_id = body.get("request_id")
+        expires_at = body.get("expires_at")
+        try:
+            request_id_valid = (
+                isinstance(request_id, str) and str(uuid.UUID(request_id)) == request_id
+            )
+        except ValueError:
+            request_id_valid = False
+        now = time.time()
+        expiry_valid = (
+            isinstance(expires_at, (float, int))
+            and not isinstance(expires_at, bool)
+            and now < float(expires_at) <= now + 60
+        )
+        if not request_id_valid or not expiry_valid:
+            return None
+        try:
+            session.assert_current()
+        except Exception:
+            return None
+        if (
+            body.get("profile_id") != getattr(session, "profile_id", None)
+            or body.get("profile_revision") != getattr(session, "profile_revision", None)
+            or body.get("activation_id") != getattr(session, "activation_id", None)
+            or body.get("plan_hash") != getattr(session, "plan_digest", None)
+            or body.get("catalog_hash") != snapshot.catalog_hash
+        ):
+            return None
+        nested = body.get("payload")
+        if not isinstance(nested, Mapping) or any(not isinstance(key, str) for key in nested):
+            return None
+        target = next(
+            (
+                candidate
+                for candidate in snapshot.targets
+                if candidate.contribution_id == body.get("contribution_id")
+                and candidate.contract_id == body.get("contract_id")
+                and candidate.owner_pack_id == body.get("owner_pack_id")
+            ),
+            None,
+        )
+        if target is None:
+            return None
+        return ApplicationHTTPContractRequest(
+            target=target,
+            payload={**dict(query), **dict(nested)},
+        )
+
+    def normalize_payload(
+        self,
+        target: HTTPContractTarget,
+        payload: Mapping[str, object],
+        *,
+        session: DispatchSession,
+        workspace_binding_resolver: WorkspaceBindingResolver | None,
+    ) -> Mapping[str, object]:
+        """Bind model reads and media paths to the captured Profile."""
+
+        identity = (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        )
+        if identity in CHAT_REFERENCE_TARGETS:
+            session.assert_current()
+            return normalize_chat_reference_read(
+                identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+
+        if identity in CALENDAR_TARGETS:
+            session.assert_current()
+            return normalize_calendar_payload(
+                identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+
+        if identity in {_PROJECT_READ_TARGET, _PROJECT_WRITE_TARGET}:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("Project state requires a captured Profile")
+            if identity == _PROJECT_READ_TARGET:
+                if payload:
+                    raise ValueError("Project read accepts no client identity")
+                return {"profile_id": profile_id}
+            allowed = {"projects", "expected_revision", "mutation_id", "migration_digest"}
+            if set(payload) - allowed or not {
+                "projects", "expected_revision", "mutation_id",
+            } <= set(payload):
+                raise ValueError("Project replace request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
+
+        if identity in {
+            _MODEL_STATE_READ_TARGET, _MODEL_STATE_WRITE_TARGET,
+            _DIAGNOSTIC_READ_TARGET, _DIAGNOSTIC_WRITE_TARGET,
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("UI state operation requires a captured Profile")
+            if identity in {_MODEL_STATE_READ_TARGET, _DIAGNOSTIC_READ_TARGET}:
+                if payload:
+                    raise ValueError("UI state read accepts no client identity")
+                return {"profile_id": profile_id}
+            allowed = (
+                {"kind", "value", "expected_revision", "mutation_id"}
+                if identity == _MODEL_STATE_WRITE_TARGET
+                else {"diagnostic", "expected_revision", "mutation_id"}
+            )
+            if set(payload) != allowed:
+                raise ValueError("UI state write request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
+
+        if identity == _CONNECTION_STATUS_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or payload:
+                raise ValueError("connection status requires captured identity")
+            return {"profile_id": profile_id}
+
+        if identity == _MODEL_SEARCH_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or set(payload) - _MODEL_SEARCH_FILTER_KEYS:
+                raise ValueError("model search request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
+
+        if identity in {
+            (
+                "defaults.provider-model-access.read",
+                "tobkiri.resource.ai.provider.registry.v1",
+                "rumi_provider_registry_pack.model-access-read",
+                "rumi_provider_registry_pack.model-access.read",
+                "rumi_provider_registry_pack.model-access.read",
+            ),
+            (
+                "defaults.provider-model-access.catalog",
+                "tobkiri.resource.ai.provider.registry.v1",
+                "rumi_provider_registry_pack.model-access-catalog",
+                "rumi_provider_registry_pack.model-access.catalog",
+                "rumi_provider_registry_pack.model-access.catalog",
+            ),
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            required = {"profile_id", "provider_instance_id"}
+            allowed = required | (
+                {"discovery_filters"} if identity[0].endswith(".catalog") else set()
+            )
+            if (
+                not profile_id
+                or payload.get("profile_id") != profile_id
+                or not required <= set(payload)
+                or set(payload) - allowed
+            ):
+                raise ValueError("model access scope is invalid")
+            return dict(payload)
+
+        if identity == (
+            "defaults.provider-model-access.save",
+            "tobkiri.service.interactive-effect.v1",
+            "interactive_effect.manage",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        ):
+            session.assert_current()
+            phase = payload.get("phase")
+            if phase == "prepare":
+                request = payload.get("request")
+                if (
+                    set(payload)
+                    not in (
+                        {"phase", "effect_kind", "request"},
+                        {"phase", "effect_kind", "request", "correlation_id"},
+                    )
+                    or payload.get("effect_kind") != "provider_model_access"
+                    or not isinstance(request, Mapping)
+                    or set(request)
+                    != {
+                        "profile_id",
+                        "provider_instance_id",
+                        "expected_revision",
+                        "model_access",
+                    }
+                    or not getattr(session, "profile_id", "")
+                    or request.get("profile_id") != session.profile_id
+                ):
+                    raise ValueError("model access save request is invalid")
+            elif phase == "lookup":
+                if (
+                    set(payload) != {"phase", "effect_kind", "correlation_id"}
+                    or payload.get("effect_kind") != "provider_model_access"
+                ):
+                    raise ValueError("model access lookup is invalid")
+            elif phase not in {"status", "resume", "cancel"} or set(payload) != {
+                "phase",
+                "effect_id",
+            }:
+                raise ValueError("model access save phase is invalid")
+            return dict(payload)
+        if target.contribution_id == "defaults.providers.configure":
+            phase = payload.get("phase")
+            if phase == "prepare":
+                if (
+                    set(payload) not in (
+                        {"phase", "effect_kind", "request"},
+                        {"phase", "effect_kind", "request", "correlation_id"},
+                    )
+                    or payload.get("effect_kind") != "provider_configure"
+                    or not isinstance(payload.get("request"), Mapping)
+                ):
+                    raise ValueError("provider configuration request is invalid")
+            elif phase == "lookup":
+                if (
+                    set(payload) != {"phase", "effect_kind", "correlation_id"}
+                    or payload.get("effect_kind") != "provider_configure"
+                ):
+                    raise ValueError("provider configuration lookup is invalid")
+            elif phase not in {"status", "resume", "cancel"} or set(payload) != {
+                "phase", "effect_id",
+            }:
+                raise ValueError("provider configuration phase is invalid")
+            return dict(payload)
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == MODEL_PROFILE_SAVE_TARGET:
+            session.assert_current()
+            return normalize_model_profile_save(payload)
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == (
+            "defaults.conversations.turn.read", "tobkiri.resource.turn.v1",
+            "rumi_turn_runtime_pack.turn-resource",
+            "rumi_turn_runtime_pack.turn-runtime.resource",
+            "rumi_turn_runtime_pack.turn-runtime.resource",
+        ):
+            turn_id = payload.get("turn_id")
+            if set(payload) != {"turn_id"} or not isinstance(turn_id, str) or (
+                not turn_id or len(turn_id) > 256 or turn_id.strip() != turn_id
+            ):
+                raise ValueError("turn read requires one stable turn ID")
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("turn read requires a captured Profile")
+            return {"profile_id": profile_id, "operation": "get", "turn_id": turn_id}
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == TURN_EVENT_TARGET:
+            session.assert_current()
+            return normalize_turn_event_read(
+                payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
+
+        if identity == TURN_PROGRESS_TARGET:
+            session.assert_current()
+            return normalize_turn_progress_read(payload)
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == TURN_LIST_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            conversation_id = payload.get("conversation_id")
+            if (
+                not profile_id
+                or set(payload) != {"conversation_id"}
+                or not isinstance(conversation_id, str)
+                or _TURN_ID.fullmatch(conversation_id) is None
+            ):
+                raise ValueError("turn list requires one stable conversation ID")
+            return {
+                "profile_id": profile_id,
+                "operation": "list",
+                "conversation_id": conversation_id,
+            }
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == TURN_GUIDANCE_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            turn_id = payload.get("turn_id")
+            revision = payload.get("expected_revision")
+            guidance_id = payload.get("guidance_id")
+            guidance = payload.get("guidance")
+            if (
+                not profile_id
+                or set(payload)
+                != {"turn_id", "expected_revision", "guidance_id", "guidance"}
+                or not isinstance(turn_id, str)
+                or _TURN_ID.fullmatch(turn_id) is None
+                or not isinstance(guidance_id, str)
+                or _TURN_ID.fullmatch(guidance_id) is None
+                or type(revision) is not int
+                or revision < 1
+                or not isinstance(guidance, Mapping)
+                or set(guidance) - {"chat_references", "tool_selection", "action_approval_mode"} != _GUIDANCE_KEYS
+            ):
+                raise ValueError("turn guidance request is invalid")
+            prompt = guidance.get("prompt")
+            conversation_id = guidance.get("conversation_id")
+            target_id = guidance.get("target_id")
+            metadata = guidance.get("metadata")
+            try:
+                guidance_size = len(canonical_json(dict(guidance)))
+            except (TypeError, ValueError) as error:
+                raise ValueError("turn guidance request is invalid") from error
+            if (
+                not isinstance(prompt, str)
+                or not prompt.strip()
+                or len(prompt.encode("utf-8")) > 20 * 1024
+                or guidance.get("target_type") != "conversation"
+                or not isinstance(conversation_id, str)
+                or _TURN_ID.fullmatch(conversation_id) is None
+                or target_id != conversation_id
+                or type(guidance.get("visible")) is not bool
+                or type(guidance.get("auto_send")) is not bool
+                or not isinstance(metadata, Mapping)
+                or guidance_size > 32 * 1024
+            ):
+                raise ValueError("turn guidance request is invalid")
+            guidance = {
+                **dict(guidance),
+                **saved_guidance_context(guidance, profile_id=profile_id),
+            }
+            return {
+                "profile_id": profile_id,
+                "turn_id": turn_id,
+                "expected_revision": revision,
+                "guidance_id": guidance_id,
+                "guidance": dict(guidance),
+            }
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) in CHAT_CONTINUATION_TARGETS:
+            session.assert_current()
+            return normalize_chat_continuation(payload)
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == (
+            "defaults.conversations.send", "tobkiri.action.turn.saved.v1",
+            "rumi_turn_runtime_pack.turn-saved",
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+        ):
+            request = payload.get("request")
+            if isinstance(request, Mapping) and "resolved_chat_references" in request:
+                raise ValueError("caller cannot provide resolved chat references")
+            return validate_saved_conversation_input(payload)
+
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) == (
+            "defaults.ui.preferences.write",
+            "tobkiri.action.ui.preferences.v1",
+            "tobkiri_ui_settings_pack.preferences-write",
+            "tobkiri.ui.preferences.write",
+            "tobkiri.ui.preferences.write",
+        ):
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or set(payload) != {"changes", "expected_revision"}:
+                raise ValueError("preferences write requires captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) in {
+            (
+                "defaults.commands.state.query",
+                "tobkiri.resource.command.state.v1",
+                "command.state.query",
+                "rumi_command_protocol_pack.command.state",
+                "rumi_command_protocol_pack.command.state",
+            ),
+            (
+                "defaults.commands.datasource.query",
+                "tobkiri.resource.command.datasource.v1",
+                "command.datasource.query",
+                "rumi_command_protocol_pack.command.datasource",
+                "rumi_command_protocol_pack.command.datasource",
+            ),
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("command query requires a captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) in {
+            (
+                "defaults.ui.settings.read",
+                "tobkiri.resource.ui.settings.v1",
+                "tobkiri_ui_settings_pack.settings-read",
+                "tobkiri.ui.settings.read",
+                "tobkiri.ui.settings.read",
+            ),
+            (
+                "defaults.ui.catalog.read",
+                "tobkiri.resource.ui.settings.v1",
+                "tobkiri_ui_settings_pack.catalog-read",
+                "tobkiri.ui.catalog.read",
+                "tobkiri.ui.catalog.read",
+            ),
+            (
+                "defaults.commands.catalog.read",
+                "tobkiri.resource.command.catalog.v1",
+                "command.catalog.read",
+                "rumi_command_protocol_pack.catalog.read",
+                "rumi_command_protocol_pack.catalog.read",
+            ),
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if (
+                not profile_id
+                or set(payload)
+                - ({"full"} if target.contribution_id == "defaults.ui.settings.read" else set())
+                or ("full" in payload and payload["full"] not in {True, "true"})
+            ):
+                raise ValueError("settings read requires captured identity")
+            return {"profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) == (
+            "defaults.commands.invoke",
+            "tobkiri.action.command.invoke.v1",
+            "command.invoke",
+            "rumi_command_protocol_pack.command.invoke",
+            "rumi_command_protocol_pack.command.invoke",
+        ):
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("command invocation requires a captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET, TOOL_CATALOG_TARGET}:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or payload:
+                raise ValueError("owner listing requires captured identity")
+            return {"profile_id": profile_id, "operation": "list"}
+        target_identity = (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        )
+        if target_identity in KANBAN_TARGETS:
+            session.assert_current()
+            return normalize_kanban_request(
+                target_identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+        if target_identity in MANAGED_DESKTOP_READ_TARGETS:
+            session.assert_current()
+            return normalize_managed_desktop_read(
+                target_identity, payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+        if target_identity in {WORKSPACE_LIST_TARGET, WORKSPACE_GET_TARGET}:
+            session.assert_current()
+            return normalize_workspace_read(
+                target_identity,
+                payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) == CONVERSATION_CREATE_TARGET:
+            session.assert_current()
+            return normalize_conversation_create(
+                payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
+        record_action = CONVERSATION_RECORD_TARGETS.get((
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ))
+        if record_action is not None:
+            session.assert_current()
+            return normalize_conversation_record(
+                record_action, payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
+        if not target.contribution_id.startswith("pack."):
+            return dict(payload)
+        if target.input_schema and target.contract_id != "tobkiri.service.media.inspect.v1":
+            session.assert_current()
+            validate_public_input(payload, allow_domain_profile_ids=True)
+            schema = strict_loads(target.input_schema)
+            validate_schema_declared_profile_targets(payload, schema)
+            normalized = dict(payload)
+            if "profile_id" in schema["properties"]:
+                profile_id = str(getattr(session, "profile_id", ""))
+                if not profile_id:
+                    raise ValueError("operation requires a captured Profile")
+                normalized["profile_id"] = profile_id
+            try:
+                Draft202012Validator(schema).validate(normalized)
+            except (ValidationError, Unresolvable, RecursionError) as exc:
+                raise ValueError("operation input schema rejected the payload") from exc
+            return normalized
+        if target.contract_id != "tobkiri.service.media.inspect.v1":
+            raise ValueError("dynamic Pack operation is not an approved media contract")
+        if payload.get("name") not in {
+            "document.parse",
+            "image.inspect",
+            "audio.inspect",
+            "recording.inspect",
+        }:
+            raise ValueError("media inspection operation is not selected")
+        raw_path = payload.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip() or "\x00" in raw_path:
+            raise ValueError("a workspace-relative path is required")
+        if "\\" in raw_path:
+            raise PermissionError("backslash paths are not accepted")
+        relative = PurePosixPath(raw_path.strip())
+        if relative.is_absolute() or ".." in relative.parts or "." in relative.parts:
+            raise PermissionError("a workspace-relative path is required")
+        if workspace_binding_resolver is None:
+            raise RuntimeError("Host workspace binding resolver is unavailable")
+        profile_id = str(getattr(session, "profile_id", ""))
+        binding = dict(workspace_binding_resolver(profile_id))
+        normalized = dict(payload)
+        normalized["path"] = relative.as_posix()
+        normalized["profile_id"] = profile_id
+        normalized["workspace_id"] = binding["workspace_id"]
+        normalized["require_selected"] = True
+        normalized["_workspace_binding"] = binding
+        return normalized
+
+    def requires_operation_ready(self, target: HTTPContractTarget) -> bool:
+        """Leave the declarative conversation route bindable while unavailable.
+
+        Its Broker invocation still performs the Host-owned Plan, activation,
+        grant, and backend readiness checks.  This only permits the desktop
+        to render a capture-verified route with its unavailable state.
+        """
+
+        return not _is_conversation(target)
+
+    def startup_operation_requirements(self) -> tuple[tuple[str, str], ...]:
+        """Declare the finite dependencies used by chat, commands, and settings.
+
+        These operations are exact active-Profile selections, not client input.
+        The Host checks them before the desktop chat opens without invoking the
+        operations or changing approval or PackVM state.
+        """
+
+        return _STARTUP_OPERATION_REQUIREMENTS
+
+    def present_result(
+        self,
+        binding: HTTPContractBinding,
+        result: Mapping[str, object],
+        *,
+        session: DispatchSession | None,
+        routes: Mapping[tuple[str, str], HTTPContractBinding],
+        capability_snapshot: CapabilitySnapshotReader,
+    ) -> Mapping[str, object]:
+        """Attach Defaultspack UI contributions to the committed catalog result."""
+
+        if (
+            binding.presentation == "broker_result"
+            and getattr(binding, "method", None) == "GET"
+            and getattr(binding, "path", None) == "/api/connections/status"
+            and len(binding.targets) == 1
+        ):
+            target = binding.targets[0]
+            identity = (
+                target.contribution_id, target.contract_id, target.operation_id,
+                target.provider_id, target.function_id,
+            )
+            if identity == _CONNECTION_STATUS_TARGET:
+                return present_provider_connection_status(result)
+        if binding.presentation == "model_profile_list":
+            return present_model_profiles(result)
+        if binding.presentation == "model_profile_saved":
+            return present_model_profile_saved(result)
+        if binding.presentation == "conversation_list":
+            return present_conversation_list(result)
+        if binding.presentation == "tool_catalog":
+            return present_tool_catalog(result, session=session)
+        if binding.presentation == "conversation_created":
+            return present_conversation_created(result)
+        if binding.presentation == "conversation_record":
+            return present_conversation_record(
+                result, profile_id=str(getattr(session, "profile_id", ""))
+            )
+        if binding.presentation == "conversation_deleted":
+            return present_conversation_deleted(result)
+        if binding.presentation in {"kanban_list", "kanban_board"}:
+            target = binding.targets[0]
+            return present_kanban_result((
+                target.contribution_id, target.contract_id, target.operation_id,
+                target.provider_id, target.function_id,
+            ), result)
+        if binding.presentation == "managed_desktop_read":
+            return present_managed_desktop_read(result)
+        if binding.presentation == "workspace_list":
+            return present_workspace_list(result)
+        if binding.presentation == "workspace_record":
+            return present_workspace_record(result)
+        if binding.presentation == "turn_events":
+            return present_turn_events(result)
+        if binding.presentation == "chat_continuation":
+            return present_chat_continuation(result)
+        if binding.presentation == "ai_strategy_catalog":
+            return present_ai_strategy_catalog(result, session=session)
+        if binding.presentation != "dynamic_pack_catalog":
+            return dict(result)
+        capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))
+        snapshot = (
+            capability_snapshot(capability_binding, catalog=result)
+            if capability_binding is not None
+            else HTTPCapabilitySnapshot(
+                catalog_hash=canonical_digest({"contributions": []}), targets=()
+            )
+        )
+        # Display declarations come from the selected Application's verified
+        # map. They never add an operation to the invocation snapshot.
+        entries = []
+        selected_route = ""
+        if session is not None and binding.frontend_entries:
+            session.assert_current()
+            declaration = strict_loads(binding.frontend_entries)
+            entries = declaration["entries"]
+            selected_entry_id = str(
+                getattr(session, "frontend_entry_id", "")
+                or declaration["default_entry_id"]
+            )
+            selected = [
+                entry for entry in entries
+                if entry["entry_id"] == selected_entry_id
+            ]
+            if len(selected) != 1:
+                raise RuntimeError(
+                    "captured Profile frontend entry is unavailable in the Application"
+                )
+            selected_route = str(selected[0]["route"])
+        builtins = [
+            _frontend_entry(entry, index, binding, session)
+            for index, entry in enumerate(entries)
+        ] + [
+            _action_contribution(target, index, session)
+            for index, target in enumerate(snapshot.targets)
+        ]
+        pack_routes, pack_diagnostics, quarantined_pack_ids = (
+            _selected_pack_frontend_routes(session, builtins)
+        )
+        return {
+            **dict(result),
+            "dynamic_host": {
+                "version": "rumi.ui.contribution.v1",
+                "profile_id": str(getattr(session, "profile_id", "")),
+                "profile_revision": str(getattr(session, "profile_revision", "")),
+                "activation_id": str(getattr(session, "activation_id", "")),
+                "plan_hash": str(getattr(session, "plan_digest", "")),
+                "selected_entry_route": selected_route,
+                "contributions": builtins + pack_routes,
+                "diagnostics": _diagnostics(result, session) + pack_diagnostics,
+                "quarantined_pack_ids": quarantined_pack_ids,
+                "catalog_hash": snapshot.catalog_hash,
+            },
+        }
+
+
+def _selected_pack_frontend_routes(
+    session: DispatchSession | None,
+    occupied: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, str]], list[str]]:
+    """Bind optional Pack display declarations to the live Host activation."""
+    if session is None:
+        return [], [], []
+    closure = getattr(session, "selected_pack_closure", ())
+    if not closure:
+        return [], [], []
+    from .v4_frontend_contributions import project_selected_declarative_routes
+
+    try:
+        projected = project_selected_declarative_routes(
+            closure,
+            occupied,
+            profile_id=str(session.profile_id),
+            profile_revision=str(session.profile_revision),
+            activation_id=str(session.activation_id),
+            plan_digest=str(session.plan_digest),
+        )
+        if any(projected):
+            session.assert_current()
+        return projected
+    except Exception as exc:
+        # The sealed Application remains usable; no unverified optional Pack
+        # route is ever advertised after a failed capture or verification.
+        return [], [{
+            "code": "v4_frontend_capture_unavailable",
+            "severity": "error",
+            "message": f"Selected Pack frontend is unavailable: {type(exc).__name__}",
+        }], []
+
+
+def _is_conversation(target: HTTPContractTarget) -> bool:
+    return (
+        target.contribution_id,
+        target.contract_id,
+        target.operation_id,
+        target.provider_id,
+        target.function_id,
+    ) == _CONVERSATION_TARGET
+
+
+def _frontend_entry(
+    entry: Mapping[str, object],
+    priority: int,
+    binding: HTTPContractBinding,
+    session: DispatchSession | None,
+) -> dict[str, object]:
+    profile_id = str(getattr(session, "profile_id", ""))
+    profile_revision = str(getattr(session, "profile_revision", ""))
+    activation_id = str(getattr(session, "activation_id", ""))
+    plan_digest = str(getattr(session, "plan_digest", ""))
+    return {
+        "contribution_id": entry["contribution_id"],
+        "kind": "route",
+        "mode": "application_builtin",
+        "label": entry["label"],
+        "priority": priority,
+        "owner_pack_id": binding.route_namespace,
+        "owner_pack_hash": binding.artifact_digest,
+        "build_identity": binding.application_id,
+        "resolved_profile_id": profile_id,
+        "resolved_profile_revision": profile_revision,
+        "resolved_activation_id": activation_id,
+        "resolved_plan_hash": plan_digest,
+        "descriptor_hash": canonical_digest(
+            {
+                "entry": dict(entry),
+                "application_id": binding.application_id,
+                "artifact_digest": binding.artifact_digest,
+            }
+        ),
+        "route": entry["route"],
+        "route_match": entry["match"],
+        "implementation": entry["implementation"],
+        "localization": {},
+        "accessibility": {
+            "name": entry["label"],
+            "keyboard": True,
+        },
+    }
+
+
+def _action_contribution(
+    target: HTTPContractTarget,
+    priority: int,
+    session: DispatchSession | None,
+) -> dict[str, object]:
+    """Project an admitted capability without inventing a screen for it."""
+    identity = {
+        "contribution_id": target.contribution_id,
+        "operation_id": target.operation_id,
+        "provider_id": target.provider_id,
+        "function_id": target.function_id,
+        "action_contract": target.contract_id,
+        "read_only": target.read_only,
+        "owner_pack_id": target.owner_pack_id,
+        "owner_pack_hash": target.artifact_digest,
+    }
+    return {
+        **identity,
+        "kind": "action",
+        "mode": "declarative",
+        "label": target.operation_id,
+        "priority": priority,
+        "build_identity": target.function_id,
+        "resolved_profile_id": str(getattr(session, "profile_id", "")),
+        "resolved_profile_revision": str(getattr(session, "profile_revision", "")),
+        "resolved_activation_id": str(getattr(session, "activation_id", "")),
+        "resolved_plan_hash": str(getattr(session, "plan_digest", "")),
+        "descriptor_hash": canonical_digest(identity),
+        "localization": {},
+        "accessibility": {"name": target.operation_id, "keyboard": True},
+    }
+
+
+def _diagnostics(
+    catalog: Mapping[str, object],
+    session: DispatchSession | None,
+) -> list[dict[str, str]]:
+    packs = catalog.get("packs")
+    if session is None or not isinstance(packs, list):
+        return []
+    diagnostics: list[dict[str, str]] = []
+    for pack in packs:
+        if not isinstance(pack, Mapping) or pack.get("enabled") is not True:
+            continue
+        pack_id = str(pack.get("pack_id") or "")
+        operations = pack.get("operations")
+        if not isinstance(operations, list):
+            continue
+        for operation in operations:
+            if not isinstance(operation, Mapping) or operation.get("invokable") is not True:
+                continue
+            contract_id = str(operation.get("contract_id") or "")
+            operation_id = str(operation.get("operation_id") or "")
+            provider_id = str(operation.get("provider_id") or "")
+            for provider in session.provider_metadata(contract_id):
+                if (
+                    provider.get("provider_id") == provider_id
+                    and provider.get("operation_id") == operation_id
+                    and provider.get("profile_id") == getattr(session, "profile_id", None)
+                    and provider.get("profile_revision")
+                    == getattr(session, "profile_revision", None)
+                    and provider.get("activation_id") == getattr(session, "activation_id", None)
+                    and provider.get("plan_digest") == getattr(session, "plan_digest", None)
+                    and provider.get("backend_unavailable_reason")
+                ):
+                    diagnostics.append(
+                        {
+                            "code": "production_backend_unavailable",
+                            "severity": "error",
+                            "owner_pack_id": pack_id,
+                            "contribution_id": f"pack.{pack_id}.{operation_id}",
+                            "message": str(provider["backend_unavailable_reason"]),
+                        }
+                    )
+    return diagnostics
+
+
+__all__ = ["DefaultspackHTTPPresentation"]

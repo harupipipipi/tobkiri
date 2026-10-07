@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -429,9 +430,37 @@ def test_persist_turn_writes_canonical_chat_store_messages(tmp_path, monkeypatch
         "RUMI_DEFAULTSPACK_CHAT_STORE_PATH",
         str(tmp_path / "chat" / "conversations.json"),
     )
-    from ecosystem.defaultspack.blocks.chat.persist_turn import run
+    from domain.chat import store as facade
     from domain.chat.store import ChatStore
+    from ecosystem.defaultspack.blocks.chat.persist_turn import run
+    from ecosystem.rumi_conversation_store_pack.runtime.store import (
+        ConversationStore,
+    )
 
+    owner = ConversationStore("default", user_data_root=tmp_path)
+
+    def invoke(contract_id: str, operation: str, payload: dict[str, Any]) -> Any:
+        if contract_id == facade.CONVERSATION:
+            if operation == "list":
+                return owner.snapshot()
+            if operation == "get":
+                return owner.get(str(payload.get("conversation_id") or ""))
+        if contract_id == facade.CONVERSATION_MANAGE and operation == "create":
+            return owner.create(
+                payload["conversation"],
+                expected_revision=int(payload["expected_revision"]),
+            )
+        if contract_id == facade.MESSAGE_MANAGE and operation == "append":
+            return owner.append_message(
+                str(payload["conversation_id"]),
+                payload["message"],
+                expected_conversation_revision=int(
+                    payload["expected_conversation_revision"]
+                ),
+            )
+        raise AssertionError(f"unexpected contract call: {contract_id}/{operation}")
+
+    monkeypatch.setattr(facade, "_invoke", invoke)
     store = ChatStore()
     conversation = store.create_conversation(model="stub/default")
 

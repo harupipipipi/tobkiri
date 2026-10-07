@@ -7,18 +7,38 @@ import unittest
 from pathlib import Path
 
 from audit_frontend_uiux import (
+    AuditPolicy,
     AuditConfigurationError,
     BaselineEntry,
     ChangedLineMap,
     _apply_baseline,
+    _is_excluded,
     _parse_diff,
     load_baseline,
+    load_policy,
     scan_text,
     should_fail,
 )
 
 
 class FrontendUiUxAuditTests(unittest.TestCase):
+    def test_production_policy_excludes_unit_fixtures_not_components(self) -> None:
+        policy = load_policy(Path(__file__).with_name("frontend_uiux_policy.json"))
+        root = Path("tobkiri_launcher/frontend/src/components/ui")
+        self.assertTrue(_is_excluded(root / "Button.test.tsx", policy))
+        self.assertFalse(_is_excluded(root / "Button.tsx", policy))
+
+    def test_generated_bundle_glob_does_not_exclude_authored_source(self) -> None:
+        policy = AuditPolicy(
+            source_roots=("app",),
+            extensions=frozenset({".js"}),
+            exclude_path_parts=frozenset(),
+            exclude_globs=("app/web/assets/**",),
+        )
+
+        self.assertTrue(_is_excluded(Path("app/web/assets/app-hash.js"), policy))
+        self.assertFalse(_is_excluded(Path("app/frontend/src/App.js"), policy))
+
     def test_detects_high_risk_transport_and_noop_button(self) -> None:
         source = '''
 export function Example() {
@@ -34,6 +54,136 @@ export function Example() {
         source = '<button type="button" onClick={() => run()}>Run</button>'
         rules = {item.rule for item in scan_text("src/Example.tsx", source)}
         self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_click_after_drag_expression_is_not_truncated_at_arrow(self) -> None:
+        for drag in (
+            "onDragStart={(event) => handleDrag(event, item)}",
+            "onDragStart={(event) => { handleDrag(event, {id: item.id}); }}",
+            'onDragStart={(event) => { if (event.x > 0) handleDrag(event); }}',
+            'onDragStart={(event) => { /* > } */ handleDrag(event); }}',
+            'onDragStart={(event) => { // > }\n handleDrag(event); }}',
+        ):
+            for attrs in (f'{drag} onClick={{select}}', f'onClick={{select}} {drag}'):
+                with self.subTest(attrs=attrs):
+                    source = f'<button type="button" {attrs}>Select</button>'
+                    rules = {item.rule for item in scan_text("src/History.tsx", source)}
+                    self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_greater_than_inside_quoted_attributes_does_not_end_tag(self) -> None:
+        for value in ('title="a > b"', "title='a > b'", 'title={`a > ${value}`}'):
+            with self.subTest(value=value):
+                rules = {item.rule for item in scan_text("src/History.tsx", f'<button {value} onClick={{select}}>Select</button>')}
+                self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_draggable_button_without_click_still_fails_with_full_span(self) -> None:
+        source = '<button\n onDragStart={(event) => { drag(event); }}\n title="a > b"\n>Drag only</button>'
+        findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual((findings[0].line, findings[0].end_line), (1, 4))
+
+    def test_regex_templates_and_jsx_quotes_do_not_hide_missing_handlers(self) -> None:
+        for attrs in (
+            r'title={/\{/.test(value) ? "Yes" : "No"}',
+            'title={`value ${`brace {`}`}',
+            r'title="C:\"',
+            'onDragStart={() => log("onClick")}',
+            'onDragStart={() => { /* onClick */ drag(); }}',
+            'onDragStart={() => { if (ok) /}}/.test(value); log("onClick"); }}',
+            'title="disabled onClick"',
+        ):
+            with self.subTest(attrs=attrs):
+                source = f'<button {attrs}>Missing</button>'
+                findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+                self.assertEqual(len(findings), 1)
+                self.assertEqual(findings[0].source_fragment, f'<button {attrs}>')
+
+    def test_regex_braces_and_comparison_before_click_are_not_tag_boundaries(self) -> None:
+        source = '<button data-v={/}/.test(value) && value > 0} onClick={select}>Select</button>'
+        findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+        self.assertEqual(findings, [])
+
+    def test_conservative_fallback_retains_known_handler_and_spread_names(self) -> None:
+        for attrs in (
+            'onClick={() => { const x = number++ / 2; act(x); }}',
+            r'onClick={() => { if (ok) /\{/.test(value); }}',
+            'onClick={() => render(<span>Text</span>)}',
+            '{...getProps(() => render(<span>Text</span>))}',
+        ):
+            with self.subTest(attrs=attrs):
+                findings = [item for item in scan_text("src/History.tsx", f'<button {attrs}>Action</button>') if item.rule == "ux.enabled-noop-button"]
+                self.assertEqual(findings, [])
+
+    def test_qr_import_and_type_field_are_not_a_secret_payload(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+type MobilePairQrPayload = { pickupSecret: string };
+const qr = QRCode.toDataURL("value");
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertNotIn("security.plaintext-secret-qr", rules)
+
+    def test_expiring_mobile_pairing_secret_is_allowed(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = {
+  kind: "rumi_mobile_pair_v1",
+  pickupSecret: pairing.pickup_secret,
+  expiresAt: pairing.expires_at,
+};
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertNotIn("security.plaintext-secret-qr", rules)
+
+    def test_qr_secret_still_requires_the_pairing_contract(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = { kind: "custom", pickupSecret: reusableSecret };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_qr_api_key_is_still_reported(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = { kind: "custom", apiKey: configuredApiKey };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_direct_qr_encoder_secret_is_still_reported(self) -> None:
+        source = 'QRCode.toDataURL(apiKey);'
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_flutter_qr_encoder_secret_is_still_reported(self) -> None:
+        source = 'QrImage(data: accessToken);'
+        rules = {item.rule for item in scan_text("src/Pairing.dart", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_quoted_qr_secret_field_is_still_reported(self) -> None:
+        source = '''
+const qrPayload = { "apiKey": configuredApiKey };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_scripted_inline_document_requires_review(self) -> None:
+        source = '<iframe sandbox="allow-scripts" srcDoc={untrustedHtml} />'
+        rules = {item.rule for item in scan_text("src/Example.tsx", source)}
+        self.assertIn("security.scripted-inline-document", rules)
+
+    def test_opaque_origin_external_frame_is_not_an_inline_document(self) -> None:
+        source = '<iframe src={isolatedPackUrl} sandbox="allow-scripts" />'
+        rules = {item.rule for item in scan_text("src/Example.tsx", source)}
+        self.assertNotIn("security.scripted-inline-document", rules)
 
     def test_icon_button_requires_name(self) -> None:
         source = '<button type="button" onClick={close}><X size={16} /></button>'

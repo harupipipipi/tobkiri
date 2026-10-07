@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tobkiri.action.surface.resource.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "operation": {"enum": ["acquire", "exchange"]},
+    "kind": {"enum": ["file", "image", "audio"]},
+    "selection_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"}
+  },
+  "required": ["operation", "kind"],
+  "oneOf": [
+    {"properties": {"operation": {"const": "acquire"}}, "not": {"required": ["selection_id"]}},
+    {"properties": {"operation": {"const": "exchange"}}, "required": ["selection_id"]}
+  ]
+}

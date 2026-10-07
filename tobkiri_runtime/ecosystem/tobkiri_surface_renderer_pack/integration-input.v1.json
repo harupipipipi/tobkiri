@@ -1,0 +1,64 @@
+{
+  "schema": "tobkiri.pack-integration-input.v1",
+  "pack_catalog_record": {
+    "pack_id": "tobkiri_surface_renderer_pack",
+    "authority": "v4-authoritative",
+    "display_name": "Tobkiri Surface Renderers",
+    "description": "Optional inert renderer API manifests selecting the Application shipped semantic standard and compact implementations.",
+    "version": "1.0.0",
+    "kind": "normal_sandbox",
+    "dependencies": {},
+    "capabilities": [],
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "secrets": [],
+    "execution_boundary": "declarative_only",
+    "approval_policy": "none",
+    "workspace_boundary": "none",
+    "legacy_ids": [],
+    "legacy_operations": [],
+    "migration": {
+      "removal_wave": 0,
+      "sunset_at": "2027-12-31"
+    },
+    "provided_contracts": [],
+    "required_contracts": [],
+    "runtime_artifacts": [
+      {
+        "path": "frontend/contributions/standard.json",
+        "kind": "ui.contribution",
+        "digest": "sha256:7377967d3a5ba624cbc0443a2e7311f971ceae4e79540e43cf3cb78e0733d18d"
+      },
+      {
+        "path": "frontend/contributions/compact.json",
+        "kind": "ui.contribution",
+        "digest": "sha256:72df438c365d1687a88c0f1e731d7094b93de5aeeb6544742543d601fb72d022"
+      }
+    ],
+    "source_evidence": [
+      {
+        "path": "ecosystem/tobkiri_surface_renderer_pack/frontend/contributions/standard.json",
+        "digest": "sha256:7377967d3a5ba624cbc0443a2e7311f971ceae4e79540e43cf3cb78e0733d18d",
+        "rule_id": "reviewed-surface-renderer-api-v1"
+      },
+      {
+        "path": "ecosystem/tobkiri_surface_renderer_pack/frontend/contributions/compact.json",
+        "digest": "sha256:72df438c365d1687a88c0f1e731d7094b93de5aeeb6544742543d601fb72d022",
+        "rule_id": "reviewed-surface-renderer-api-v1"
+      }
+    ]
+  },
+  "ui_contributions": [
+    "frontend/contributions/standard.json",
+    "frontend/contributions/compact.json"
+  ],
+  "requested_default_selection": "optional; absent/disabled/unknown selected renderer remains unavailable; no installed claim",
+  "source_format": "declarative-artifacts-only; no executable source fixture entry and no Host factory",
+  "executable_source": {
+    "pack_id": "tobkiri_surface_renderer_pack",
+    "contracts": [],
+    "functions": []
+  }
+}
