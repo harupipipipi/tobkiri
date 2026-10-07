@@ -1774,7 +1774,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     if completion == "calculator":
         from core_runtime.authority.ui_operator import sign_ui_operator
         from core_runtime.authority.v4 import interactive_confirmation_digest
-        from ecosystem.rumi_default_tools_pack.runtime import calculator
+        from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
         from tobkiri_host.authority_approval_window import (
             AuthorityApprovalWindowController,
         )
@@ -1846,17 +1846,30 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             observe_window,
         )
         native_window = decide_native
-        original_calculate = calculator.calculate
+        original_provider = ExactHostProviderBackendV4.invoke
 
-        def observe_calculate(expression: str) -> int | float:
-            """Count actual Calculator provider execution, excluding preflight."""
+        def observe_provider(self, request: RequestEnvelope) -> ProviderOutcome:
+            """Observe the actual captured provider, including its original guards."""
 
-            assert len(native_decisions) == 1
-            result = original_calculate(expression)
-            calculator_effects.append((expression, result))
+            is_calculator = (request.contract_id, request.operation_id) == (
+                "tobkiri.service.tool.local.operation.v1",
+                "rumi_default_tools_pack.calculator-evaluate",
+            )
+            if is_calculator:
+                assert len(native_decisions) == 1
+                assert request.payload == {
+                    "tool_id": "calculator",
+                    "tool_call_id": "calc-1",
+                    "arguments": {"expression": "6*7"},
+                }
+            result = original_provider(self, request)
+            if is_calculator:
+                assert isinstance(result, ProviderOutcome)
+                assert isinstance(result.payload, Mapping)
+                calculator_effects.append(dict(result.payload))
             return result
 
-        monkeypatch.setattr(calculator, "calculate", observe_calculate)
+        monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observe_provider)
         original_consent = SavedToolConsentExecution.__call__
 
         def observe_consent(self, invocation, execution, payload):
@@ -2197,7 +2210,6 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert len(native_commands) == len(native_decisions) == 1
             assert tuple(native_commands) == tuple(native_decisions)
             assert approvals_before_repeat == tuple(native_decisions)
-            assert calculator_effects == [("6*7", 42)]
             assert len(tool_requests) == 1
             assert tool_requests[0]["tool_id"] == "calculator"
             assert tool_requests[0]["tool_call_id"] == "calc-1"
@@ -2208,6 +2220,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert tool_results[0]["status"] == "success"
             assert tool_results[0]["result"] == "Calculated: 6*7 = 42"
             assert tool_results[0]["is_error"] is False
+            assert calculator_effects == [{
+                "result": "Calculated: 6*7 = 42",
+                "is_error": False,
+                "widget": None,
+            }]
         elif completion not in {"auto", "incremental"}:
             assert "tools" not in ai_calls[0]
         if completion in {"auto", "incremental", "calculator"}:
