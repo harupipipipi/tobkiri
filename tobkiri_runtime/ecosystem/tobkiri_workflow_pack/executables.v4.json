@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:da70e9892b7c10d4e716add58385eecd28203197d0c86834214bbf25d522c9c5",
+  "catalog_digest": "sha256:7c6942e97040a5aae0dfd1523e7fc97f5998fecbc68b01ff176ec46e02a592ab",
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:ead65fdbcbf284f0249d05a84c6a2ff4a0d2cfb9e8b58bd661a3938f819cfc58",
+  "source_identity": "sha256:f1de9ff244ea085ba6b8153355d764f13542e73be20b97e3bb6226e7f995af9d",
   "variants": [
     {
       "architecture": "any",
@@ -53,7 +53,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -96,7 +96,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -139,7 +139,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -182,7 +182,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -225,7 +225,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -268,7 +268,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -311,7 +311,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -354,7 +354,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -397,7 +397,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -440,7 +440,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -483,7 +483,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -526,7 +526,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -569,7 +569,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -612,7 +612,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -655,7 +655,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -698,7 +698,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -741,7 +741,50 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "run.selected",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -784,7 +827,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -827,7 +870,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -870,7 +913,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

@@ -27,6 +27,7 @@ WORKFLOW_OPERATIONS = (
     "run.pause",
     "run.reconcile-recovery",
     "run.resume",
+    "run.selected",
     "run.step.execute",
     "run.step.resume",
     "run.step.retry",
@@ -62,6 +63,7 @@ class WorkflowProviderV4:
             "run.pause": self._pause,
             "run.reconcile-recovery": self._reconcile,
             "run.resume": self._resume,
+            "run.selected": self._selected,
             "run.step.execute": self._execute,
             "run.step.resume": self._execute,
             "run.step.retry": self._retry,
@@ -144,6 +146,11 @@ class WorkflowProviderV4:
             "run": self._engine.store.get_run(run_id),
             "attempts": self._engine.store.list_attempts(run_id),
         }
+
+    def _selected(self, payload: Mapping[str, Any]) -> Any:
+        from .selected_run import run_selected
+
+        return run_selected(self._engine, payload)
 
     def _execute(self, payload: Mapping[str, Any]) -> Any:
         return self._engine.execute_step(

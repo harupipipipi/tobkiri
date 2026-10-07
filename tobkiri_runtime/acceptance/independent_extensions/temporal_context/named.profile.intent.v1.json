@@ -30,11 +30,48 @@
       "artifact_digest": null,
       "pack_id": "acceptance.temporal.context",
       "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_workflow_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_conversation_store_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_turn_runtime_pack",
+      "role": "provider"
     }
   ],
   "profile_authority_snapshot_digest": null,
   "profile_id": "acceptance.temporal.named",
-  "requested_edges": [],
+  "requested_edges": [
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "contract_id": "tobkiri.workflow.v4",
+      "operation_id": "run.selected",
+      "requested_scope_template": {},
+      "target_provider_id": "tobkiri.workflow.provider"
+    },
+    {
+      "caller_function_id": "tobkiri.workflow.provider",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {},
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "tobkiri.workflow.provider",
+      "contract_id": "acceptance.temporal.context.v1",
+      "operation_id": "timing.project.owner",
+      "requested_scope_template": {},
+      "target_provider_id": "acceptance.temporal.context.reduce"
+    }
+  ],
   "shell": {
     "architecture": "arm64",
     "artifact_digest": null,

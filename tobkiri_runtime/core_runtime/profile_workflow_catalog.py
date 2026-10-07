@@ -88,8 +88,8 @@ def selected_workflow_definitions() -> tuple[dict[str, Any], ...]:
     return tuple(result[key] for key in sorted(result))
 
 
-def compile_selected_workflow(engine: WorkflowEngineV4, definition_id: str) -> dict[str, Any]:
-    """Use the real engine to bind one selected source to its captured catalog.
+def selected_workflow_document(engine: WorkflowEngineV4, definition_id: str) -> dict[str, Any]:
+    """Bind and validate one selected source against its captured catalog.
 
     The engine must come from the Host's normal captured Workflow provider.
     Validation/compile-preview checks exact Contract/Operation/Function pins
@@ -129,5 +129,11 @@ def compile_selected_workflow(engine: WorkflowEngineV4, definition_id: str) -> d
                     "workflow_api_version": "io.tobkiri.workflow.v4",
                     "steps": steps,
                 }
-            return engine.compile_preview(document)
+            engine.compile_preview(document)
+            return document
     raise ValueError("Workflow definition is outside the captured Profile selection")
+
+
+def compile_selected_workflow(engine: WorkflowEngineV4, definition_id: str) -> dict[str, Any]:
+    """Compile selected immutable source without storing or executing it."""
+    return engine.compile_preview(selected_workflow_document(engine, definition_id))

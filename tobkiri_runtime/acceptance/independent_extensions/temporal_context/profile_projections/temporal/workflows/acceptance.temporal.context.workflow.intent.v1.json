@@ -1,19 +1,35 @@
 {
   "max_concurrency": 1,
-  "name": "Tobkiri temporal reducer source intent",
+  "name": "Tobkiri owner-bound timing context",
   "steps": [
     {
-      "id": "temporal.reduce",
+      "id": "owner",
+      "request": {
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "contract_revision_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "input": {
+          "conversation_id": "${inputs.conversation_id}",
+          "operation": "get",
+          "profile_id": "${inputs.profile_id}"
+        },
+        "operation_id": "rumi_conversation_store_pack.conversation-resource"
+      }
+    },
+    {
+      "depends_on": [
+        "owner"
+      ],
+      "id": "context",
       "request": {
         "contract_id": "acceptance.temporal.context.v1",
-        "contract_revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
+        "contract_revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
         "function_id": "acceptance.temporal.context.reduce",
         "input": {
-          "event": "${inputs.event}",
-          "namespace": "${inputs.namespace}",
-          "state": "${inputs.state}"
+          "owner_snapshot": "${steps.owner.output.value.conversation}",
+          "profile_id": "${inputs.profile_id}"
         },
-        "operation_id": "temporal.reduce"
+        "operation_id": "timing.project.owner"
       }
     }
   ],

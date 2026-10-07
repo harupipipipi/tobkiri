@@ -1,0 +1,22 @@
+{
+  "evidence_kind": "public_source_application_compilation_and_isolated_stdio_session",
+  "application_id": "acceptance.cli.application",
+  "application_artifact_digest": "sha256:5853d43f670fb908178356c33c40d4eb9ec9f6fe9c9f02030a500963b53e4975",
+  "application_executable_catalog_digest": "sha256:196756a454c4a627c017eb9735e70b2be53765e175eca12a840ec64a2300e382",
+  "source_archive_file": "cli-frontend-source.pyz",
+  "source_archive_digest": "sha256:04a29e81330a35a9d1848e5f1565b5d0d96f9a76052e671ce2d5493d8cc62aff",
+  "source_archive_bundles_interpreter": false,
+  "source_archive_verified_native_shell": false,
+  "cli_profile_source_lock_digest": "sha256:d8e97bd457ffdf79152dcb6faded214837c60d88c45fb2fe81a6912cf784fb5e",
+  "cli_profile_revision": "sha256:adcefc2cba2cc08658a9def38c89e8e79c0be904e77d1504a413b46a236af996",
+  "activation_authority": "unbound",
+  "template_bundle_lock_file_sha256": "sha256:b1900336542ac80267f8131032c37910129e339deb3da81321f3db88a97a2277",
+  "frontend_tests_passed": 13,
+  "total_author_tests_passed": 47,
+  "session_test_kind": "isolated loopback protocol fixture, not Host approval or VM",
+  "production_broker_execution": false,
+  "production_packvm_execution": false,
+  "native_shell_launch": false,
+  "product_cli_frontend_replaced": false,
+  "remaining_gap": "verified prebuilt CLI Shell and ordinary trusted packaging/install/local-auth/activation"
+}

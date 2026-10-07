@@ -11,6 +11,7 @@ def render_intent(*, base_pack_id: str, baseline_packs: list[dict[str, Any]],
                   temporal_selected: bool = True,
                   projection_selected: bool = True,
                   temporal_pack_id: str = "acceptance.temporal.context",
+                  temporal_function_id: str | None = None,
                   projection_root: str = "profile_projections/temporal",
                   shell: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return an unresolved selection; caller supplies public catalog identities.
@@ -26,7 +27,7 @@ def render_intent(*, base_pack_id: str, baseline_packs: list[dict[str, Any]],
     edges = []
     if temporal_selected:
         edges.append({"caller_function_id": caller_function_id,
-                      "target_provider_id": f"{temporal_pack_id}.provider",
+                      "target_provider_id": temporal_function_id or f"{temporal_pack_id}.reduce",
                       "contract_id": f"{temporal_pack_id}.v1",
                       "operation_id": "temporal.reduce",
                       "requested_scope_template": {}})
@@ -51,12 +52,14 @@ def render_intent(*, base_pack_id: str, baseline_packs: list[dict[str, Any]],
 
 def render_tauri_intent(*, profile_id: str = "acceptance.temporal.named",
                         temporal_pack_id: str = "acceptance.temporal.context",
+                        temporal_function_id: str | None = None,
                         temporal_selected: bool = True,
                         projection_selected: bool = True) -> dict[str, Any]:
     """Select published Tauri source artifacts and an exact Pack-origin subtree.
 
-    No caller edge is invented: catalog availability and Flow execution are
-    separate. Shell remains build_required in this source-only template.
+    Requested edges use the documented saved bridge, Workflow provider, owner
+    resource and pure context Operation. Compilation is separate from execution;
+    Shell remains build_required in this source-only template.
     """
     intent = render_intent(
         base_pack_id="defaults-basepack",
@@ -64,7 +67,7 @@ def render_tauri_intent(*, profile_id: str = "acceptance.temporal.named",
                          "artifact_digest": None, "role": "application"}],
         caller_function_id="unused.caller", profile_id=profile_id,
         temporal_selected=temporal_selected, projection_selected=False,
-        temporal_pack_id=temporal_pack_id,
+        temporal_pack_id=temporal_pack_id, temporal_function_id=temporal_function_id,
         shell={"provider_id": "shell.tauri.default",
                "pack_id": "shell.tauri.default", "artifact_digest": None,
                "executable_artifact_digest": None, "definition_revision": None,
@@ -72,6 +75,29 @@ def render_tauri_intent(*, profile_id: str = "acceptance.temporal.named",
                "architecture": "arm64"},
     )
     intent["requested_edges"] = []
+    if temporal_selected and projection_selected:
+        intent["packs"].extend([
+            {"pack_id": "tobkiri_workflow_pack", "artifact_digest": None,
+             "role": "provider"},
+            {"pack_id": "rumi_conversation_store_pack", "artifact_digest": None,
+             "role": "provider"},
+            {"pack_id": "rumi_turn_runtime_pack", "artifact_digest": None,
+             "role": "provider"},
+        ])
+        for caller, provider, contract, operation in [
+            ("rumi_turn_runtime_pack.turn-runtime.saved", "tobkiri.workflow.provider",
+             "tobkiri.workflow.v4", "run.selected"),
+            ("tobkiri.workflow.provider",
+             "rumi_conversation_store_pack.conversation-store.resource",
+             "tobkiri.resource.conversation.v1",
+             "rumi_conversation_store_pack.conversation-resource"),
+            ("tobkiri.workflow.provider", temporal_function_id or f"{temporal_pack_id}.reduce",
+             f"{temporal_pack_id}.v1", "timing.project.owner"),
+        ]:
+            intent["requested_edges"].append({
+                "caller_function_id": caller, "target_provider_id": provider,
+                "contract_id": contract, "operation_id": operation,
+                "requested_scope_template": {}})
     if projection_selected:
         intent["content_projections"] = [{
             "projection_id": "acceptance.temporal.rules", "kind": "profile_content",

@@ -1,2 +1,5 @@
 # Reproducible formal source release; retained on disk for verification.
 /named-profile-release/
+/cli-profile-release/
+/cli-frontend-source.pyz
+/native-build/

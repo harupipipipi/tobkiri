@@ -43,7 +43,7 @@ class NamedProfileTests(unittest.TestCase):
             self.assertEqual(projection["source_artifact_digest"],
                              manifest["pack"]["artifact_digest"])
             self.assertEqual(projection["source_pack_id"], "acceptance.temporal.context")
-            self.assertEqual(projection["file_count"], 3)
+            self.assertEqual(projection["file_count"], 4)
             lock = json.loads((release / "authored.profile.lock.v5.json").read_text())
             self.assertEqual(lock["activation_authority"], "unbound")
 
@@ -78,6 +78,7 @@ class NamedProfileTests(unittest.TestCase):
             function_id = "independent.temporal.function"
             pack = build(Path(tmp) / "pack", pack_id, function_id)
             intent = render_tauri_intent(temporal_pack_id=pack_id,
+                                        temporal_function_id=function_id,
                                         profile_id="independent.temporal.named")
             release = self.release(Path(tmp) / "release", pack, intent)
             profile = json.loads((release / "authored.profile.v5.json").read_text())
@@ -87,12 +88,12 @@ class NamedProfileTests(unittest.TestCase):
                              ["function_id"], function_id)
             workflow = json.loads((pack / f"content/workflows/{pack_id}.workflow.intent.v1.json")
                                   .read_text())
-            request = workflow["steps"][0]["request"]
+            request = workflow["steps"][1]["request"]
             contract = json.loads((pack / "contracts.v4.json").read_text())["contracts"][0]
             self.assertEqual(request["contract_id"], contract["contract_id"])
             self.assertEqual(request["contract_revision_digest"],
                              contract["revision_digest"])
-            self.assertEqual(request["operation_id"], "temporal.reduce")
+            self.assertEqual(request["operation_id"], "timing.project.owner")
             self.assertEqual(request["function_id"], function_id)
             self.assertNotIn("function_principal_id", request)
             flow = yaml.safe_load((pack / "content/flows/acceptance.temporal.turn.flow.yaml")

@@ -55,6 +55,7 @@ def build_python_pack(
     contracts: Sequence[Mapping[str, Any]],
     functions: Sequence[PythonPackFunction],
     assets: Mapping[str, bytes] | None = None,
+    application: bool = False,
 ) -> Path:
     """Create a new unsigned Normal Pack and run the real artifact compiler.
 
@@ -75,6 +76,8 @@ def build_python_pack(
         if ancestor.is_symlink():
             raise PackAuthoringError("target ancestors must not be symlinks")
     functions = tuple(sorted(functions, key=lambda item: item.function_id))
+    if type(application) is not bool or (application and len(functions) != 1):
+        raise PackAuthoringError("Application authoring requires one pure Function")
     captured_contracts = json.loads(_json_bytes(list(contracts)))
     contract_by_id: dict[str, dict[str, Any]] = {}
     for contract in captured_contracts:
@@ -216,6 +219,8 @@ def build_python_pack(
         "files": {name: _file_digest(value) for name, value in sorted(files.items())},
         "authority": "none",
     }
+    if application:
+        source["kind"] = "application"
     source_identity = canonical_digest(source)
     files["authoring-source.v1.json"] = _json_bytes(source)
     contracts_document = {
@@ -268,7 +273,7 @@ def build_python_pack(
         "pack": {
             "id": pack_id,
             "version": version,
-            "kind": "normal_sandbox",
+            "kind": "application" if application else "normal_sandbox",
             "artifact_digest": artifact_set_digest,
             "display_name": display_name,
         },

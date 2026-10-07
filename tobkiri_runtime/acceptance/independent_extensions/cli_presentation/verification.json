@@ -1,6 +1,6 @@
 {
   "evidence_kind": "public_producer_actual_compiler_and_local_source_tests",
-  "tests_passed": 25,
+  "tests_passed": 47,
   "public_producer": "core_runtime.pack_authoring.build_python_pack",
   "public_compiler": "tobkiri_host.artifact_compiler.compile_pack_root",
   "pack_id": "acceptance.cli.presentation",
@@ -16,7 +16,7 @@
   "production_broker_execution": false,
   "production_packvm_execution": false,
   "product_cli_frontend_replaced": false,
-  "remaining_public_integration": "explicit complete CLI Application/Shell presentation binding",
+  "remaining_public_integration": "native prebuilt candidate built and ad-hoc verified; trusted Shell packaging/install/activation/actual Host and VM acceptance remain",
   "unperformed_host_checks": [
     "signed_admission",
     "approval_and_activation",
@@ -41,5 +41,9 @@
     "duplicate_id_denial"
   ],
   "named_profile_provenance_digest": "sha256:33427b1a84564811896080658935e59c349e55d19188275a6dff512a0f9fe7cc",
-  "template_bundle_lock_file_sha256": "sha256:6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba"
+  "template_bundle_lock_file_sha256": "sha256:6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba",
+  "cli_frontend_source_tests": 13,
+  "cli_frontend_source_receipt": "cli-frontend-source-receipt.json",
+  "native_cli_executable_tests": 9,
+  "native_cli_receipt": "native-cli-receipt.json"
 }

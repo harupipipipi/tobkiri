@@ -51,6 +51,7 @@ from tobkiri_protocol.conversation_context import (
 )
 
 from ..authority.v4 import AuthorityDenied
+from .profile_context_workflow import WORKFLOW_TARGET, selected_timing_context
 
 _WORKSPACE_PIN: ContextVar[SavedWorkspacePins | None] = ContextVar(
     "saved_workspace_pin", default=None,
@@ -94,6 +95,7 @@ ALLOWED_TARGETS = (
     *TOOL_TARGETS,
     PROMPT_TARGET, WORKSPACE_TARGET,
     AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
+    WORKFLOW_TARGET,
 )
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
@@ -199,6 +201,7 @@ def _messages(
     *,
     flatten_text_blocks: bool = False,
     system_prompt: Mapping[str, str] | None = None,
+    timing_context: tuple[bool, Mapping[str, Any] | None] = (False, None),
 ) -> list[dict[str, Any]]:
     """Independently constrain the selected owner history to resolved text."""
     _require_resolved_context(conversation)
@@ -212,7 +215,7 @@ def _messages(
         if system_prompt is not None and system_prompt["body"]
         else []
     )
-    task_gap = active_task_gap_context(conversation)
+    task_gap = timing_context[1] if timing_context[0] else active_task_gap_context(conversation)
     if task_gap is not None:
         prefix.append({"role": "system", "content": task_gap_prompt(task_gap)})
     messages = conversation.get("messages")
@@ -823,7 +826,13 @@ class SavedBridgeCallbacks:
                 if key != "system_prompt_digest"
             }
             arguments["messages"] = [
-                *_messages(conversation, system_prompt=prompt),
+                *_messages(
+                    conversation, system_prompt=prompt,
+                    timing_context=selected_timing_context(
+                        outer, conversation, dispatch=self._dispatch,
+                        read_owner=lambda: self._read_conversation(outer, conversation["id"]),
+                    ),
+                ),
                 *saved_task_context_messages(request),
                 *saved_chat_reference_messages(request),
                 *trace,

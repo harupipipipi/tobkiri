@@ -15,6 +15,17 @@
           "operation_id": "temporal.reduce",
           "output_schema_digest": "sha256:b9e579f31c1d03b8dcb445a13e2bc8963ea04af3e008f7c2ac832a526a9ded4e",
           "scope_semantics": "declarative"
+        },
+        {
+          "effect_ceiling": [],
+          "error_schema_digest": "sha256:4a39ca524ba3f1b49f4f77903b94477d045e71f1c15c26db957a9817b57aa8f7",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:63a291f1b1aac812623fc3b9eed721e2684c00382d145e9aa515fd6fb5705455",
+          "operation_id": "timing.project.owner",
+          "output_schema_digest": "sha256:e1a36e84c7917b40ecbebd2739c639dc6cd1ddee130c3374f547715f71f4c031",
+          "scope_semantics": "declarative"
         }
       ],
       "owner": "acceptance.temporal.context",
@@ -24,9 +35,9 @@
         "generator_version": "0.1.0",
         "normative": false,
         "repository_commit": "working-tree",
-        "repository_tree": "290e4ea7a653837e2f7e6704ed0bc8e98fd35a3c6d44a48df90862160a7d7f26",
+        "repository_tree": "3b16dcdcdabe649a71320e9b4e827c6d89fc60ed6dae061f834141036208d041",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:290e4ea7a653837e2f7e6704ed0bc8e98fd35a3c6d44a48df90862160a7d7f26",
+        "source_digest": "sha256:3b16dcdcdabe649a71320e9b4e827c6d89fc60ed6dae061f834141036208d041",
         "source_kind": "generated",
         "source_path": "author_contract.py"
       },
@@ -39,7 +50,7 @@
         "required_capabilities": [],
         "security": "internal"
       },
-      "revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
+      "revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
       "schema_catalog": {
         "sha256:4a39ca524ba3f1b49f4f77903b94477d045e71f1c15c26db957a9817b57aa8f7": {
           "additionalProperties": false,
@@ -54,6 +65,24 @@
           },
           "required": [
             "code"
+          ],
+          "type": "object"
+        },
+        "sha256:63a291f1b1aac812623fc3b9eed721e2684c00382d145e9aa515fd6fb5705455": {
+          "additionalProperties": false,
+          "properties": {
+            "owner_snapshot": {
+              "type": "object"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "owner_snapshot"
           ],
           "type": "object"
         },
@@ -245,6 +274,82 @@
             "internal_temporal_context"
           ],
           "type": "object"
+        },
+        "sha256:e1a36e84c7917b40ecbebd2739c639dc6cd1ddee130c3374f547715f71f4c031": {
+          "additionalProperties": false,
+          "properties": {
+            "active_user_message_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "context": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "completion_message_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "current_user_message_at": {
+                      "maxLength": 64,
+                      "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "elapsed_seconds": {
+                      "minimum": 3600,
+                      "type": "integer"
+                    },
+                    "previous_task_completed_at": {
+                      "maxLength": 64,
+                      "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "version": {
+                      "const": "tobkiri.conversation-lifecycle.v1"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "completion_message_id",
+                    "previous_task_completed_at",
+                    "current_user_message_at",
+                    "elapsed_seconds"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "conversation_revision": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "internal_context_api_version": {
+              "const": "io.tobkiri.saved-internal-context.v1"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "internal_context_api_version",
+            "profile_id",
+            "conversation_id",
+            "conversation_revision",
+            "active_user_message_id",
+            "context"
+          ],
+          "type": "object"
         }
       },
       "status": "draft",
@@ -252,5 +357,5 @@
     }
   ],
   "pack_id": "acceptance.temporal.context",
-  "source_identity": "sha256:b74d3808b51a771a1214b4c4c5383b7c1e9faa5a2ceeb846723321f05b825a6c"
+  "source_identity": "sha256:e8e9495320e1241e29a37bf0a945e1a1a0ce846445232d1792069626cba89f0d"
 }

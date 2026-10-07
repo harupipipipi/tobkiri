@@ -36,10 +36,10 @@ The SDK projections do not authenticate arbitrary mappings supplied by callers.
 
 This independent reducer still receives caller-supplied namespace/event/snapshot
 values. Its selected Workflow source and successful compiler checks do not turn
-those values into authenticated owner evidence. The remaining work is connecting
-the independent selected Workflow to the existing trusted owner and native
-saved-turn/request context bridge, preserving unchanged user text and existing
-tool/approval policy. Reuse the owner's durable completion baseline; do not replace
+those values into authenticated owner evidence. The owner-read/dependent typed-context Workflow and selected timing binding are
+now publicly authored. Remaining verification is executing this composition
+through the captured owner and native saved-turn/request bridge, preserving
+unchanged user text and existing tool/approval policy. Reuse the owner's durable completion baseline; do not replace
 that path with a second timestamp store.
 
 The author has verified public schemas, deterministic Pack builds, actual source

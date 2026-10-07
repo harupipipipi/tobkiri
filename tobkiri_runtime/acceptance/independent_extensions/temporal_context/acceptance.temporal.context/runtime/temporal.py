@@ -91,6 +91,59 @@ def run(context: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
 
 def tobkiri_packvm_invoke(operation_id: str, payload: dict) -> dict:
     """Invoke the exact pure reducer using the documented PackVM Python ABI."""
-    if operation_id != "temporal.reduce":
-        raise ValueError("unknown operation")
-    return transition(payload)
+    if operation_id == "temporal.reduce":
+        return transition(payload)
+    if operation_id == "timing.project.owner":
+        return project_owner_timing(payload)
+    raise ValueError("unknown operation")
+
+
+def project_owner_timing(payload: dict[str, Any]) -> dict[str, Any]:
+    """Project supplied owner shape; captured execution establishes its provenance.
+
+    This stateless implementation mirrors the public active_task_gap_context
+    projection using only stdlib. It does not authenticate a caller's snapshot,
+    confirm a turn, persist a baseline, or grant execution authority.
+    """
+    if not isinstance(payload, dict) or set(payload) != {"profile_id", "owner_snapshot"}:
+        raise ValueError("unexpected timing input fields")
+    profile = payload["profile_id"]
+    owner = payload["owner_snapshot"]
+    if not isinstance(profile, str) or not profile or len(profile) > 256:
+        raise ValueError("invalid profile identity")
+    if not isinstance(owner, dict):
+        raise ValueError("owner snapshot must be an object")
+    conversation = owner.get("id")
+    revision = owner.get("conversation_revision")
+    lifecycle = owner.get("lifecycle")
+    if (not isinstance(conversation, str) or not conversation
+            or type(revision) is not int or revision < 1
+            or not isinstance(lifecycle, dict)):
+        raise ValueError("invalid owner identity or revision")
+    active = lifecycle.get("active_user_message_id")
+    if not isinstance(active, str) or not active:
+        raise ValueError("missing active owner receipt")
+    context = None
+    completed = lifecycle.get("resumed_completed_at_ms")
+    received = lifecycle.get("active_user_received_at_ms")
+    messages = owner.get("messages")
+    if (lifecycle.get("version") == "tobkiri.conversation-lifecycle.v1"
+            and lifecycle.get("state") == "running"
+            and type(completed) is int and type(received) is int
+            and completed >= 0 and received - completed >= 3_600_000
+            and isinstance(messages, list)
+            and any(isinstance(message, dict) and message.get("id") == active
+                    and message.get("role") == "user" for message in messages)):
+        context = {
+            "version": "tobkiri.conversation-lifecycle.v1",
+            "completion_message_id": lifecycle.get("completion_message_id"),
+            "previous_task_completed_at": datetime.fromtimestamp(
+                completed / 1000, timezone.utc).isoformat(),
+            "current_user_message_at": datetime.fromtimestamp(
+                received / 1000, timezone.utc).isoformat(),
+            "elapsed_seconds": (received - completed) // 1000,
+        }
+    return {"internal_context_api_version": "io.tobkiri.saved-internal-context.v1",
+            "profile_id": profile, "conversation_id": conversation,
+            "conversation_revision": revision, "active_user_message_id": active,
+            "context": context}

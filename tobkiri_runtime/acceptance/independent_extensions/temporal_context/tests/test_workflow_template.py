@@ -21,20 +21,20 @@ class WorkflowTemplateTests(unittest.TestCase):
                             "profile_workflow_intent_v1.schema.json").read_text())
         template = workflow_template()
         Draft202012Validator(schema).validate(template)
-        request = template["steps"][0]["request"]
+        request = template["steps"][1]["request"]
         self.assertEqual(request["function_id"], "acceptance.temporal.context.reduce")
         self.assertNotIn("function_principal_id", request)
-        self.assertEqual(request["input"]["state"], "${inputs.state}")
+        self.assertEqual(request["input"]["owner_snapshot"],
+                         "${steps.owner.output.value.conversation}")
         # Concrete input remains untrusted source data, never lifecycle evidence.
-        payload = {"namespace": "fixture", "state": {}, "event": {
-            "id": "e1", "sequence": 1, "kind": "user.received",
-            "at": "2026-10-08T00:00:00Z"}}
+        payload = {"operation": "get", "profile_id": "fixture",
+                   "conversation_id": "chat"}
         bound = render_workflow(payload=payload)
         Draft202012Validator(schema).validate(bound)
-        self.assertEqual(bound["steps"][0]["request"]["function_id"],
+        self.assertEqual(bound["steps"][1]["request"]["function_id"],
                          "acceptance.temporal.context.reduce")
-        payload["namespace"] = "changed"
-        self.assertEqual(bound["steps"][0]["request"]["input"]["namespace"], "fixture")
+        payload["profile_id"] = "changed"
+        self.assertEqual(bound["steps"][0]["request"]["input"]["profile_id"], "fixture")
 
     def test_invalid_function_id_and_input_are_rejected(self):
         with self.assertRaises(ValueError):
@@ -43,7 +43,7 @@ class WorkflowTemplateTests(unittest.TestCase):
             render_workflow(payload=[])
         workflow = workflow_template(function_id="renamed.function",
                                      pack_id="renamed.temporal.pack")
-        self.assertEqual(workflow["steps"][0]["request"]["function_id"],
+        self.assertEqual(workflow["steps"][1]["request"]["function_id"],
                          "renamed.function")
 
 

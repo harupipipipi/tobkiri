@@ -103,3 +103,11 @@ None of these source resources proves a reducer receives trusted lifecycle event
 selection likewise does not establish a typed internal model-input channel.
 Use the public Flow/prompt format documentation to author actual catalog
 records. Those runtime behaviors require separate verification.
+
+For `requested_edges`, `caller_function_id` and `target_provider_id` identify
+selected executable Function IDs (the public manifest `functions[].id` and
+executable catalog `variants[].function_id`), respectively. A Contract's
+`provider_id` display/declaration identity is not an executable alias and may
+differ. Source edge compilation requires exactly one selected executable
+Function covering the exact Contract/Operation. Use the declared Function ID;
+do not invent a principal or resolve a Contract label as an alias.

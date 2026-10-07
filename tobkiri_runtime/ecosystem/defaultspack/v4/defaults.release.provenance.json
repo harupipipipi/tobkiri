@@ -1210,11 +1210,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
-      "digest": "sha256:6971270d703f7c384abcb7ec220607726f9e969e219bfa2e5f0b7ae0d34ebb64"
+      "digest": "sha256:a8b133918a3be9a20cf78ae1e048699a6a970fbb68bc512fc8d2c4c28c83fcd0"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.pack.v4.json",
-      "digest": "sha256:e59853a82ec53b7da648ad7094fef425b15b9aadedc348d011e380534cd0d4d0"
+      "digest": "sha256:1c12fe9d70b29157a8ab7445c3b429076ba3d2cbeb7baa944204a936412cb7a1"
     },
     {
       "path": "ecosystem/defaultspack/v4/shell.cli.default.shell.v1.json",
@@ -1258,7 +1258,7 @@
     },
     {
       "path": "tobkiri_protocol/schemas/cli_io_v1.schema.json",
-      "digest": "sha256:158d24717c24b04b066acc21d5284eca322931c9ce125466a8bdd2be78c1a982"
+      "digest": "sha256:b0122673a61aac407e31ac05c37b2d4986181bc031ad4d2e451e24cd77e7135e"
     },
     {
       "path": "tobkiri_protocol/schemas/common_v1.schema.json",
@@ -1421,7 +1421,7 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba",
+    "bundle_digest": "sha256:4c2e74f45e8894e919f45ce0392170c4782aace5e02e406ff5fe7e4fd836562a",
     "catalog_revision": "sha256:63bdd165a21788078d6b13a0c6cf30f501b1deec30a353073c991f9eabb81a38",
     "closure_digest": "sha256:19c8cc9fdf1540a19d051cb0a30d9b074f36d8a9908f542d3dcd106109758b38"
   },
@@ -1432,8 +1432,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:c82cf506259fdbd4ded4e779d196d36e6210f9a7c87ab03b85e4c0f99d53230f"
+      "digest": "sha256:99882e0c920c37dcc157fada0809015c661cd8e371f2b14bd981479f53a5fc23"
     }
   ],
-  "release_digest": "sha256:c704f8c64b10cbaad5e6bdb30c8ba30070cdf0200cf654def0d7f6427a514f36"
+  "release_digest": "sha256:c883229ff5bdd833c98f9ea37cd855738724b1b17d98e20be6eaa1741eefce06"
 }

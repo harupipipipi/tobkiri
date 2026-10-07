@@ -1,9 +1,14 @@
 {
-  "artifact_set_digest": "sha256:d12ebf0b2b89e28741f1cf7a48319e7c3961bd67204b5a88c24d96843b2949b6",
+  "artifact_set_digest": "sha256:fecc8d703c657e2e8b83a026dd424d855dad098f3fb6fead7ecdb896ad75b403",
   "artifacts": [
     {
-      "digest": "sha256:738ae4a6d481c8de733a9e320172f58c2c2a1fcd8669a3a9c596546e311c2ff1",
+      "digest": "sha256:6e5420f6e4de0859353e51923cc65f0950da991d371c6ac5c52443290c0cf4df",
       "path": "authoring-source.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:fc08e913120cfc15e1a84aeac45423e2f37dae25938b6742f35ca355fa9afb00",
+      "path": "content/contexts/acceptance.temporal.rules.conversation-context.v1.json",
       "role": "sidecar"
     },
     {
@@ -17,27 +22,27 @@
       "role": "sidecar"
     },
     {
-      "digest": "sha256:7b586ef644c940c93dcae08d2e049f804983ecb5a281e5c034487c47e0b9813c",
+      "digest": "sha256:d41bd0216e7246c96d69f9f80ba596247cebb6b9b40b148878ba49d308e99536",
       "path": "content/workflows/acceptance.temporal.context.workflow.intent.v1.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:af7b18e18dd3d8dd362bd8b7da8109883df6f9ad113a25f28c393b7a9994d95b",
+      "digest": "sha256:7456f281c10741c5f2d0f42ed6fdc59bdcec7a35ec7e2719d3cf6c1d4e8bb970",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:ee4a058a49d06a77f176fcc3810fdada106750e5f4bbaf680ecd1e03cfbaac16",
+      "digest": "sha256:62532b94950ecab70dfd385296667f83d35854de6d1d0929036cdbe472d8fa2d",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:8d5651cc55d31b3f27087ffed53cd4fbda345307612fd3d2fb633ad626fb09b2",
+      "digest": "sha256:9462eca932dfca276722c3e8cd671866de0822a5809e6db9b1cd75d570eff2b0",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+      "digest": "sha256:11799f15a71027f04c76fb6128080c2ef87a12807b0621a8743e8d641b4bb869",
       "path": "runtime/temporal.py",
       "role": "runtime"
     }
@@ -45,8 +50,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:aa3ddae37fa59a24ae36a8befe915751c60b7ce321ccd8c1be326590ecb72ab2"
+    "signed_digest": "sha256:e193f204d6602281d0aba20ca7edfbebc990c1fb5fc4db169a264cc0b7eb534c"
   },
   "pack_id": "acceptance.temporal.context",
-  "source_identity": "sha256:b74d3808b51a771a1214b4c4c5383b7c1e9faa5a2ceeb846723321f05b825a6c"
+  "source_identity": "sha256:e8e9495320e1241e29a37bf0a945e1a1a0ce846445232d1792069626cba89f0d"
 }

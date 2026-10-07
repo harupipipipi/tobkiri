@@ -1,17 +1,17 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:2d42a393ac806024f16e1411481f5aa40c89526f7d2fc314f6335d5aecbb8869",
+      "digest": "sha256:e37ee0ec0ceb84603b71f5321dfbf782836cabc09bd54748ac3d08a5fc024ba0",
       "kind": "asset",
       "path": "backend-integrity.v4.json"
     },
     {
-      "digest": "sha256:5bcea13617ae83561bfb06e25696ece960cec7bf526a2be7cbc87ecc7e6304f5",
+      "digest": "sha256:cbf2c1dad9afbcf3881e6dbdf1a08f8cf9c675a38f2c7448fd77f4dac55ba2c4",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:26cef1a25d1184d03285cf1a261372e73cf47d9a4ff0b65cee1acf55366fdb86",
+      "digest": "sha256:485ff06608e706767c16c597fcd79ace48aa5d22ea000dc07eba27b548a4abe4",
       "kind": "asset",
       "path": "frontend_contract_map.v4.json"
     },
@@ -67,16 +67,17 @@
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
+        "run.selected",
         "run.step.execute",
         "run.step.resume",
         "run.step.retry"
       ],
-      "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31"
+      "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+      "contract_revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
       "id": "tobkiri.workflow.provider",
       "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
       "isolation": "dedicated_process",
@@ -98,6 +99,7 @@
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
+        "run.selected",
         "run.step.execute",
         "run.step.resume",
         "run.step.retry"
@@ -106,9 +108,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f346336dc6ad8ff9d9263186b4a0289add47850e4b8fe9a34a98dc77147e046a",
-    "contract_catalog_digest": "sha256:bafd0b60811b9035eacf61024b6a598eaa6497eafc3ff15e91b40d3b532c43ec",
-    "source_identity": "sha256:ead65fdbcbf284f0249d05a84c6a2ff4a0d2cfb9e8b58bd661a3938f819cfc58"
+    "artifact_set_digest": "sha256:9b33aa14464b7559c254832c1ebe8cd261c4b77c93ea02af96841f7f36c52d97",
+    "contract_catalog_digest": "sha256:002eecb9bc1f5c4a782485b42efd0fff6af49a6b68739b982dc6c42c101ce016",
+    "source_identity": "sha256:f1de9ff244ea085ba6b8153355d764f13542e73be20b97e3bb6226e7f995af9d"
   },
   "migration": {
     "compatibility": "none",
@@ -346,6 +348,19 @@
         "capability:workflow.step.authority.reserve",
         "host:brokered-execution"
       ],
+      "operation_id": "run.selected",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
       "operation_id": "run.step.execute",
       "owner": "tobkiri_workflow_pack",
       "provider_id": "tobkiri.workflow.provider",
@@ -379,7 +394,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f346336dc6ad8ff9d9263186b4a0289add47850e4b8fe9a34a98dc77147e046a",
+    "artifact_digest": "sha256:9b33aa14464b7559c254832c1ebe8cd261c4b77c93ea02af96841f7f36c52d97",
     "display_name": "Tobkiri Workflow Pack",
     "id": "tobkiri_workflow_pack",
     "kind": "host_extension",
@@ -389,7 +404,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:ead65fdbcbf284f0249d05a84c6a2ff4a0d2cfb9e8b58bd661a3938f819cfc58",
+        "digest": "sha256:f1de9ff244ea085ba6b8153355d764f13542e73be20b97e3bb6226e7f995af9d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -400,7 +415,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:ead65fdbcbf284f0249d05a84c6a2ff4a0d2cfb9e8b58bd661a3938f819cfc58",
+    "source_digest": "sha256:f1de9ff244ea085ba6b8153355d764f13542e73be20b97e3bb6226e7f995af9d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_workflow_pack"
   },
@@ -425,6 +440,7 @@
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
+        "run.selected",
         "run.step.execute",
         "run.step.resume",
         "run.step.retry"

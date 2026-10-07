@@ -79,6 +79,41 @@ def render(pack_id: str = "acceptance.temporal.context") -> dict:
                     "failure": "fail_closed", "isolation": "sandbox",
                     "required_capabilities": [], "lifecycle": {}},
                 "provenance": provenance}
+    timing_input = {"type": "object", "additionalProperties": False,
+                    "required": ["profile_id", "owner_snapshot"],
+                    "properties": {"profile_id": {"type": "string", "minLength": 1,
+                                                  "maxLength": 256},
+                                   "owner_snapshot": {"type": "object"}}}
+    timing_context = {"type": "object", "additionalProperties": False,
+                      "required": ["version", "completion_message_id",
+                                   "previous_task_completed_at",
+                                   "current_user_message_at", "elapsed_seconds"],
+                      "properties": {
+                          "version": {"const": "tobkiri.conversation-lifecycle.v1"},
+                          "completion_message_id": {"type": ["string", "null"]},
+                          "previous_task_completed_at": offset_time,
+                          "current_user_message_at": offset_time,
+                          "elapsed_seconds": {"type": "integer", "minimum": 3600}}}
+    timing_output = {"type": "object", "additionalProperties": False,
+                     "required": ["internal_context_api_version", "profile_id",
+                                  "conversation_id", "conversation_revision",
+                                  "active_user_message_id", "context"],
+                     "properties": {
+                         "internal_context_api_version": {
+                             "const": "io.tobkiri.saved-internal-context.v1"},
+                         "profile_id": {"type": "string", "minLength": 1},
+                         "conversation_id": {"type": "string", "minLength": 1},
+                         "conversation_revision": {"type": "integer", "minimum": 1},
+                         "active_user_message_id": {"type": "string", "minLength": 1},
+                         "context": {"oneOf": [{"type": "null"}, timing_context]}}}
+    contract["schema_catalog"].update({canonical_digest(schema): schema
+                                       for schema in [timing_input, timing_output]})
+    contract["operations"].append({
+        "operation_id": "timing.project.owner",
+        "input_schema_digest": canonical_digest(timing_input),
+        "output_schema_digest": canonical_digest(timing_output),
+        "error_schema_digest": digest(error), "effect_ceiling": [],
+        "scope_semantics": "declarative", "idempotency": {"mode": "none"}})
     contract["revision_digest"] = canonical_digest({
         key: value for key, value in contract.items()
         if key not in {"revision_digest", "provenance"}

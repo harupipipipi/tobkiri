@@ -1,0 +1,47 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "defaults-basepack",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "display_name": "Tobkiri independent CLI transcript",
+  "intent_api_version": "io.tobkiri.profile-intent.v1",
+  "mode": "interactive",
+  "packs": [
+    {
+      "artifact_digest": null,
+      "pack_id": "acceptance.cli.application",
+      "role": "application"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "acceptance.cli.presentation",
+      "role": "provider"
+    }
+  ],
+  "profile_authority_snapshot_digest": null,
+  "profile_id": "independent.cli.transcript",
+  "requested_edges": [
+    {
+      "caller_function_id": "shell.cli.default",
+      "contract_id": "acceptance.presentation.transcript.v1",
+      "operation_id": "acceptance.presentation.render",
+      "requested_scope_template": {},
+      "target_provider_id": "acceptance.cli.presentation.render"
+    }
+  ],
+  "shell": {
+    "architecture": "arm64",
+    "artifact_digest": null,
+    "contract_id": "app.shell.v1",
+    "definition_revision": null,
+    "executable_artifact_digest": null,
+    "pack_id": "shell.cli.default",
+    "platform": "macos",
+    "provider_id": "shell.cli.default"
+  },
+  "state": "needs_resolution"
+}

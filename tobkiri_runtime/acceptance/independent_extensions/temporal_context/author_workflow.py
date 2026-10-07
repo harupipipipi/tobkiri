@@ -1,4 +1,4 @@
-"""Author exact selected Workflow intent without guessing a runtime principal."""
+"""Author an owner-read/typed-context Workflow using published exact bindings."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -6,35 +6,42 @@ from typing import Any
 
 from author_contract import render
 
+OWNER_REVISION = "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156"
+
 
 def workflow_template(*, pack_id: str = "acceptance.temporal.context",
                       function_id: str | None = None) -> dict[str, Any]:
-    """Pin exact source Function; lifecycle inputs remain supplied and untrusted.
-
-    Only the selected compiler can match the actual captured operation palette
-    and obtain its unique principal. This declaration creates no authority.
-    """
+    """Pin exact Functions; only captured owner execution establishes provenance."""
     contract = render(pack_id)
-    selected_function = function_id if function_id is not None else f"{pack_id}.reduce"
-    if not isinstance(selected_function, str) or not selected_function:
+    selected = function_id if function_id is not None else f"{pack_id}.reduce"
+    if not isinstance(selected, str) or not selected:
         raise ValueError("exact canonical Function ID is required")
     return {"workflow_intent_api_version": "io.tobkiri.profile-workflow-intent.v1",
-            "name": "Tobkiri temporal reducer source intent", "max_concurrency": 1,
-            "steps": [{"id": "temporal.reduce", "request": {
-                "contract_id": contract["contract_id"],
-                "contract_revision_digest": contract["revision_digest"],
-                "operation_id": "temporal.reduce", "function_id": selected_function,
-                "input": {"namespace": "${inputs.namespace}",
-                          "state": "${inputs.state}", "event": "${inputs.event}"},
-            }}]}
+            "name": "Tobkiri owner-bound timing context", "max_concurrency": 1,
+            "steps": [
+                {"id": "owner", "request": {
+                    "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+                    "contract_id": "tobkiri.resource.conversation.v1",
+                    "contract_revision_digest": OWNER_REVISION,
+                    "operation_id": "rumi_conversation_store_pack.conversation-resource",
+                    "input": {"operation": "get", "profile_id": "${inputs.profile_id}",
+                              "conversation_id": "${inputs.conversation_id}"}}},
+                {"id": "context", "depends_on": ["owner"], "request": {
+                    "contract_id": contract["contract_id"],
+                    "contract_revision_digest": contract["revision_digest"],
+                    "operation_id": "timing.project.owner", "function_id": selected,
+                    "input": {"profile_id": "${inputs.profile_id}", "owner_snapshot":
+                              "${steps.owner.output.value.conversation}"}}}]}
 
 
 def render_workflow(*, payload: dict[str, Any],
                     pack_id: str = "acceptance.temporal.context",
                     function_id: str | None = None) -> dict[str, Any]:
-    """Render source input without authenticating lifecycle or resolving authority."""
-    if not isinstance(payload, dict):
-        raise ValueError("operation input must be an object")
+    """Render explicit owner-read input without resolving or authenticating authority."""
+    if (not isinstance(payload, dict)
+            or set(payload) != {"operation", "profile_id", "conversation_id"}
+            or payload["operation"] != "get"):
+        raise ValueError("documented owner-read fields are required")
     workflow = workflow_template(pack_id=pack_id, function_id=function_id)
     workflow["steps"][0]["request"]["input"] = deepcopy(payload)
     return workflow

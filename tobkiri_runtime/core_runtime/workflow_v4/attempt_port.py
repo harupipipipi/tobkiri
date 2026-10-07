@@ -39,6 +39,7 @@ class WorkflowAttemptDeclarationV4:
     operation_ids: tuple[str, ...] = (
         "run.advance",
         "run.cancel",
+        "run.selected",
         "run.step.execute",
         "run.step.resume",
         "run.step.retry",
@@ -54,6 +55,7 @@ class WorkflowAttemptDeclarationV4:
             != (
                 "run.advance",
                 "run.cancel",
+                "run.selected",
                 "run.step.execute",
                 "run.step.resume",
                 "run.step.retry",

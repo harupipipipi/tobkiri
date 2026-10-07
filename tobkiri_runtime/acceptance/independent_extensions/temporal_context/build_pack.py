@@ -26,6 +26,12 @@ def build(output: Path, pack_id: str = "acceptance.temporal.context",
         "acceptance.temporal.context", pack_id).encode()
               for name, body in assets.items()}
     assets.pop("content/workflows/acceptance.temporal.context.workflow.intent.v1.json", None)
+    assets["content/contexts/acceptance.temporal.rules.conversation-context.v1.json"] = (
+        json.dumps({"context_binding_api_version":
+                    "io.tobkiri.conversation-context-binding.v1",
+                    "kind": "timing.task_gap", "workflow_id": pack_id,
+                    "output_step_id": "context"}, sort_keys=True, indent=2) + "\n"
+    ).encode()
     assets[f"content/workflows/{pack_id}.workflow.intent.v1.json"] = (
         json.dumps(workflow_template(pack_id=pack_id, function_id=selected_function), sort_keys=True, indent=2)
         + "\n").encode()
@@ -34,7 +40,7 @@ def build(output: Path, pack_id: str = "acceptance.temporal.context",
         display_name="Tobkiri temporal context", contracts=[contract],
         functions=[PythonPackFunction(
             function_id=selected_function,
-            contract_id=contract["contract_id"], operation_ids=("temporal.reduce",),
+            contract_id=contract["contract_id"], operation_ids=("temporal.reduce", "timing.project.owner"),
             implementation_path="runtime/temporal.py",
             source=(ROOT / "source/temporal.py").read_bytes(),
         )], assets=assets,

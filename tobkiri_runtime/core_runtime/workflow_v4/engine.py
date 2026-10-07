@@ -31,9 +31,9 @@ from .protocols import (
     InputValidator,
 )
 from .store import WorkflowStoreV4
+from .templates import references, resolve
 
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
-_TEMPLATE = re.compile(r"^\$\{inputs\.([a-z][a-z0-9_.-]*)\}$")
 _ALLOWED_WHEN = re.compile(
     r"^(?:true|false|inputs\.[a-z][a-z0-9_.-]*\s*(?:==|!=)\s*"
     r"(?:true|false|null|-?[0-9]+|'[^']{0,256}'))$"
@@ -157,6 +157,15 @@ class WorkflowEngineV4:
                 errors.append(f"steps[{index}].depends_on must be a string array")
             else:
                 dependencies[step_id] = list(depends_on)
+                try:
+                    output_steps = {
+                        parent for source, parent, _path in references(request.get("input", {}))
+                        if source == "steps"
+                    }
+                    if not output_steps.issubset(depends_on):
+                        errors.append(f"step {step_id} output references require direct dependencies")
+                except WorkflowValidationError as error:
+                    errors.append(str(error))
         for step_id, parents in dependencies.items():
             unknown = set(parents) - ids
             if unknown or step_id in parents:
@@ -703,7 +712,25 @@ class WorkflowEngineV4:
         binding = bindings.get(key)
         if binding is None:
             raise WorkflowDenied("compiled Contract operation is no longer active")
-        input_value = self._resolve_templates(source.get("input", {}), run["inputs"])
+        outputs: dict[str, Mapping[str, Any]] = {}
+        referenced = {
+            parent for kind, parent, _path in references(source.get("input", {}))
+            if kind == "steps"
+        }
+        if not referenced.issubset(step["depends_on"]):
+            raise WorkflowDenied("compiled output reference is outside step dependencies")
+        attempts = self.store.list_attempts(run["run_id"]) if referenced else []
+        for parent in referenced:
+            succeeded = [
+                attempt for attempt in attempts
+                if attempt["step_id"] == parent
+                and attempt["state"] == StepAttemptState.SUCCEEDED.value
+                and not attempt.get("skipped")
+            ]
+            if len(succeeded) != 1 or not isinstance(succeeded[0].get("outcome"), Mapping):
+                raise WorkflowDenied("workflow dependency has no unique successful output")
+            outputs[parent] = succeeded[0]["outcome"]
+        input_value = resolve(source.get("input", {}), run["inputs"], outputs)
         errors = self._validator.validate(binding.input_schema_digest, input_value)
         if errors:
             raise WorkflowValidationError("; ".join(errors))
@@ -780,30 +807,10 @@ class WorkflowEngineV4:
         return result
 
     def _resolve_templates(self, value: Any, inputs: Mapping[str, Any]) -> Any:
-        if isinstance(value, str):
-            match = _TEMPLATE.fullmatch(value)
-            if not match:
-                return value
-            current: Any = inputs
-            for part in match.group(1).split("."):
-                if not isinstance(current, Mapping) or part not in current:
-                    raise WorkflowValidationError("workflow input template is unresolved")
-                current = current[part]
-            return current
-        if isinstance(value, Mapping):
-            return {key: self._resolve_templates(item, inputs) for key, item in value.items()}
-        if isinstance(value, list):
-            return [self._resolve_templates(item, inputs) for item in value]
-        return value
+        return resolve(value, inputs, {})
 
     def _contains_template(self, value: Any) -> bool:
-        if isinstance(value, str):
-            return bool(_TEMPLATE.fullmatch(value))
-        if isinstance(value, Mapping):
-            return any(self._contains_template(item) for item in value.values())
-        if isinstance(value, list):
-            return any(self._contains_template(item) for item in value)
-        return False
+        return bool(references(value))
 
     def _evaluate_when(self, expression: str, inputs: Mapping[str, Any]) -> bool:
         """Evaluate the validated I/O-free condition subset."""

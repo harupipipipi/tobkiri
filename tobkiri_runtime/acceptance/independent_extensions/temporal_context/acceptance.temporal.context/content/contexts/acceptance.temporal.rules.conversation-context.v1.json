@@ -1,0 +1,6 @@
+{
+  "context_binding_api_version": "io.tobkiri.conversation-context-binding.v1",
+  "kind": "timing.task_gap",
+  "output_step_id": "context",
+  "workflow_id": "acceptance.temporal.context"
+}

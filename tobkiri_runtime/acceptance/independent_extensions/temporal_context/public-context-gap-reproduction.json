@@ -1,0 +1,36 @@
+{
+  "baseline_saved_input_valid": true,
+  "denied_external_fields": {
+    "approved": {
+      "message": "Additional properties are not allowed ('approved' was unexpected)",
+      "path": [
+        "request"
+      ],
+      "validator": "additionalProperties"
+    },
+    "internal_timing_context": {
+      "message": "Additional properties are not allowed ('internal_timing_context' was unexpected)",
+      "path": [
+        "request"
+      ],
+      "validator": "additionalProperties"
+    },
+    "last_task_completed_at": {
+      "message": "Additional properties are not allowed ('last_task_completed_at' was unexpected)",
+      "path": [
+        "request"
+      ],
+      "validator": "additionalProperties"
+    },
+    "system_messages": {
+      "message": "Additional properties are not allowed ('system_messages' was unexpected)",
+      "path": [
+        "request"
+      ],
+      "validator": "additionalProperties"
+    }
+  },
+  "scope": "public JSON-schema validation only; no engine/native call",
+  "selected_output_sink_status": "Public typed sink exists; caller request injection is rejected",
+  "step_output_status": "Documented in selected_conversation_workflow.md; not executed here"
+}

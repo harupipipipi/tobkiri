@@ -1,0 +1,56 @@
+{
+  "evidence_kind": "actual_macOS_arm64_executable_isolated_protocol_tests",
+  "bundle_path": "native-build/TobkiriCLI.app",
+  "binary_path": "native-build/TobkiriCLI.app/Contents/MacOS/tobkiri-shell",
+  "binary_digest": "sha256:ac4c576bc166719768702941ea18eaa3f095c950f40e46ad0b4e57b5adb483d7",
+  "bundle_identity": "io.tobkiri.shell.cli.default",
+  "architecture": "arm64",
+  "format": "Mach-O 64-bit executable",
+  "signature": "ad-hoc",
+  "codesign_strict_verification": true,
+  "command_resource_digest": "sha256:763b4a29b1590ecfefb3f214609e0151141a15d6e91790ddf3343fde60f147b9",
+  "command_resource_origin": "acceptance.cli.application/frontend/cli_frontend/commands.json",
+  "runtime_direct_dependencies": [
+    "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+    "/usr/lib/libobjc.A.dylib",
+    "/usr/lib/libSystem.B.dylib",
+    "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"
+  ],
+  "bundled_interpreter": false,
+  "python_sdk_runtime_dependency": false,
+  "regular_file_inventory": [
+    {
+      "path": "Contents/Info.plist",
+      "sha256": "sha256:42662759091c61102eb706934c7001966ce937f9f390a5d947294747ff42e104",
+      "bytes": 550
+    },
+    {
+      "path": "Contents/MacOS/tobkiri-shell",
+      "sha256": "sha256:ac4c576bc166719768702941ea18eaa3f095c950f40e46ad0b4e57b5adb483d7",
+      "bytes": 96064
+    },
+    {
+      "path": "Contents/Resources/commands.json",
+      "sha256": "sha256:763b4a29b1590ecfefb3f214609e0151141a15d6e91790ddf3343fde60f147b9",
+      "bytes": 1179
+    },
+    {
+      "path": "Contents/_CodeSignature/CodeResources",
+      "sha256": "sha256:701ea88165f87a253fbe07ce63b7481a1d0270d7b150921c8bad004f842f51dc",
+      "bytes": 2448
+    }
+  ],
+  "inventory_is_formal_shell_directory_digest": false,
+  "native_subprocess_fixture_tests_passed": 9,
+  "all_author_tests_passed": 47,
+  "runtime_test_environment": "only PATH=/usr/bin:/bin; inherited explicit fixture bootstrap pipe",
+  "host_bootstrap_issuer": "isolated fixture, not actual Host-issued ceremony",
+  "normal_pack_inputs_changed": false,
+  "application_inputs_changed": false,
+  "source_shell_metadata": "build_required; no published verified native variant installed",
+  "trusted_packaging_install_activation": false,
+  "production_broker_execution": false,
+  "production_packvm_execution": false,
+  "native_product_shell_launch_ceremony": false,
+  "product_cli_frontend_replaced": false
+}

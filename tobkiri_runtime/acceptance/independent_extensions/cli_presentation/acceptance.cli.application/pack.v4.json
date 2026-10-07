@@ -1,0 +1,137 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:39f8346ea95aa3cf52bae393490018207084d0871bdb0cca6995bbf93b36269d",
+      "kind": "sidecar",
+      "path": "authoring-source.v1.json"
+    },
+    {
+      "digest": "sha256:61b47ca127918127b5d51cb2360b5e159a04fca29a530420d66e9659294aea50",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:94108bcd85fee0d7ad20f91dd4b36785708355b341effca926007a66caa48a75",
+      "kind": "sidecar",
+      "path": "frontend/__main__.py"
+    },
+    {
+      "digest": "sha256:36ba96bea5984695d559f60ff00836bd759e324331b4b69f9e90aeafe02c01c1",
+      "kind": "sidecar",
+      "path": "frontend/cli_frontend/__init__.py"
+    },
+    {
+      "digest": "sha256:763b4a29b1590ecfefb3f214609e0151141a15d6e91790ddf3343fde60f147b9",
+      "kind": "sidecar",
+      "path": "frontend/cli_frontend/commands.json"
+    },
+    {
+      "digest": "sha256:c579ae8dc069cb4477a1c88efd15eb773deabf96198dbf3589c75c2e89f17669",
+      "kind": "sidecar",
+      "path": "frontend/cli_frontend/frontend.py"
+    },
+    {
+      "digest": "sha256:61ca5a636ec3b4ef6f8bc48adab74cabc8819aa0ef781be5175634ccd017c933",
+      "kind": "sidecar",
+      "path": "frontend_contract_map.v4.json"
+    },
+    {
+      "digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+      "kind": "executable",
+      "path": "runtime/application.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "acceptance.cli.application.v1",
+      "operations": [
+        "launch"
+      ],
+      "revision_digest": "sha256:e6f3cadc3ebb8f238e77b5e488892b5377717c6ecc0152124189b225a9e13da0"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:e6f3cadc3ebb8f238e77b5e488892b5377717c6ecc0152124189b225a9e13da0",
+      "id": "acceptance.cli.application",
+      "implementation_digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+      "isolation": "pack_vm",
+      "operations": [
+        "launch"
+      ],
+      "role": "pure"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:5853d43f670fb908178356c33c40d4eb9ec9f6fe9c9f02030a500963b53e4975",
+    "contract_catalog_digest": "sha256:04844a761354c46c9a7e81448bf097e3380e6cb2b9628789891d27000abe9eb4",
+    "source_identity": "sha256:39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2026-08-05"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "acceptance.cli.application.v1",
+      "effect_ceiling": [
+        "pure"
+      ],
+      "operation_id": "launch",
+      "owner": "acceptance.cli.application",
+      "provider_id": "acceptance.cli.application",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:5853d43f670fb908178356c33c40d4eb9ec9f6fe9c9f02030a500963b53e4975",
+    "display_name": "Tobkiri independent CLI Application source",
+    "id": "acceptance.cli.application",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3",
+        "path": "authoring-source.v1.json",
+        "rule_id": "canonical-python-pack-authoring-source"
+      }
+    ],
+    "generator": "tobkiri.core_runtime.pack_authoring",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "working-tree",
+    "repository_tree": "39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3",
+    "source_kind": "generated",
+    "source_path": "authoring-source.v1.json"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "acceptance.cli.application.v1",
+      "operations": [
+        "launch"
+      ],
+      "owner": "acceptance.cli.application",
+      "provider_id": "acceptance.cli.application"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

@@ -72,7 +72,7 @@ def build_named_profile(
         pack_id = compiled.artifact.pack_id
         if (
             pack_id in ids
-            or manifest["pack"]["kind"] != "normal_sandbox"
+            or manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
             or any(value in pack_id for value in ("/", "\\"))
         ):
             raise ProfileAuthoringError("additional Pack identity is duplicate or unsupported")

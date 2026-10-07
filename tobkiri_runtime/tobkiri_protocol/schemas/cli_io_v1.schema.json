@@ -4,52 +4,223 @@
   "title": "Tobkiri structured CLI Shell I/O v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocol", "type", "request_id"],
+  "required": [
+    "protocol",
+    "type",
+    "request_id"
+  ],
   "properties": {
-    "protocol": {"const": "io.tobkiri.cli.io.v1"},
-    "type": {"enum": ["command", "result", "error"]},
-    "request_id": {"type": "string", "pattern": "^cli:req:[a-z0-9][a-z0-9._-]{7,127}$"},
-    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
-    "shell_provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
-    "command": {"type": "string", "enum": ["health", "echo", "profile.identity"]},
-    "arguments": {"type": "object"},
-    "stdin": {"type": ["string", "null"]},
-    "tty": {"type": "boolean"},
-    "output_limit": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "protocol": {
+      "const": "io.tobkiri.cli.io.v1"
+    },
+    "type": {
+      "enum": [
+        "command",
+        "result",
+        "error"
+      ]
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^cli:req:[a-z0-9][a-z0-9._-]{7,127}$"
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "shell_provider_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "command": {
+      "type": "string",
+      "enum": [
+        "health",
+        "echo",
+        "profile.identity",
+        "application.invoke"
+      ]
+    },
+    "arguments": {
+      "type": "object"
+    },
+    "stdin": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tty": {
+      "type": "boolean"
+    },
+    "output_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1048576
+    },
     "resize": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["columns", "rows"],
+      "required": [
+        "columns",
+        "rows"
+      ],
       "properties": {
-        "columns": {"type": "integer", "minimum": 1, "maximum": 10000},
-        "rows": {"type": "integer", "minimum": 1, "maximum": 10000}
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
       }
     },
-    "signal": {"type": "string", "enum": ["SIGINT", "SIGTERM", "SIGHUP"]},
-    "cancel": {"type": "boolean"},
-    "stdout": {"type": "string"},
-    "stderr": {"type": "string"},
-    "exit_status": {"type": "integer", "minimum": 0, "maximum": 255},
-    "stream": {"enum": ["complete", "cancelled"]},
-    "error": {"type": "string", "minLength": 1}
+    "signal": {
+      "type": "string",
+      "enum": [
+        "SIGINT",
+        "SIGTERM",
+        "SIGHUP"
+      ]
+    },
+    "cancel": {
+      "type": "boolean"
+    },
+    "stdout": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    },
+    "exit_status": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "stream": {
+      "enum": [
+        "complete",
+        "cancelled"
+      ]
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1
+    }
   },
   "allOf": [
     {
-      "if": {"properties": {"type": {"const": "command"}}},
+      "if": {
+        "properties": {
+          "type": {
+            "const": "command"
+          }
+        }
+      },
       "then": {
-        "required": ["command", "arguments", "stdin", "tty", "output_limit"]
+        "required": [
+          "command",
+          "arguments",
+          "stdin",
+          "tty",
+          "output_limit"
+        ]
       }
     },
     {
-      "if": {"properties": {"type": {"const": "result"}}},
+      "if": {
+        "properties": {
+          "type": {
+            "const": "result"
+          }
+        }
+      },
       "then": {
-        "required": ["stdout", "stderr", "exit_status", "stream"]
+        "required": [
+          "stdout",
+          "stderr",
+          "exit_status",
+          "stream"
+        ]
       }
     },
     {
-      "if": {"properties": {"type": {"const": "error"}}},
+      "if": {
+        "properties": {
+          "type": {
+            "const": "error"
+          }
+        }
+      },
       "then": {
-        "required": ["error", "exit_status"]
+        "required": [
+          "error",
+          "exit_status"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "command"
+          },
+          "command": {
+            "const": "application.invoke"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "command_id",
+              "input"
+            ],
+            "properties": {
+              "command_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+              },
+              "input": {
+                "type": "object"
+              }
+            }
+          },
+          "stdin": {
+            "type": "null"
+          },
+          "tty": {
+            "const": false
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "profile_id"
+              ]
+            },
+            {
+              "required": [
+                "shell_provider_id"
+              ]
+            },
+            {
+              "required": [
+                "resize"
+              ]
+            }
+          ]
+        }
       }
     }
   ]

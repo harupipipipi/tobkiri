@@ -56,6 +56,7 @@ _PAYLOAD_KEYS = {
     "run.pause": ["run_id"],
     "run.reconcile-recovery": ["run_id"],
     "run.resume": ["run_id"],
+    "run.selected": ["definition_id", "inputs", "occurrence_id"],
     "run.step.execute": ["run_id", "step_id"],
     "run.step.resume": ["run_id", "step_id"],
     "run.step.retry": ["run_id", "step_id"],

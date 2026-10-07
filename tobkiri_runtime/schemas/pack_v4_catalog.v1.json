@@ -31598,6 +31598,11 @@
               "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3"
             },
             {
+              "entrypoint_id": "run.selected",
+              "id": "run.selected",
+              "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3"
+            },
+            {
               "entrypoint_id": "run.step.execute",
               "id": "run.step.execute",
               "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3"
@@ -31698,13 +31703,13 @@
           "path": "schemas/frontend-contract-map.v4.schema.json"
         },
         {
-          "digest": "sha256:26cef1a25d1184d03285cf1a261372e73cf47d9a4ff0b65cee1acf55366fdb86",
+          "digest": "sha256:485ff06608e706767c16c597fcd79ace48aa5d22ea000dc07eba27b548a4abe4",
           "index_role": "asset",
           "kind": "asset",
           "path": "frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:2d42a393ac806024f16e1411481f5aa40c89526f7d2fc314f6335d5aecbb8869",
+          "digest": "sha256:e37ee0ec0ceb84603b71f5321dfbf782836cabc09bd54748ac3d08a5fc024ba0",
           "index_role": "asset",
           "kind": "asset",
           "path": "backend-integrity.v4.json"
@@ -31713,7 +31718,7 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:5753b4a86708cfb85f6b1365ea56f918b61acb85c6be194e975386a1cad274d8",
+          "digest": "sha256:fa2aac8a60d70fdd74e7854c30ac88ff8941a1999813904393c612336e3aa2a9",
           "path": "ecosystem/tobkiri_workflow_pack/generate_v4.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -31733,7 +31738,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:56e5259b9fbabc4ecec31f518bd62a5330e9ff71420f993047eb3bcfa36a0875",
+          "digest": "sha256:54242acccaa2e476b53080a3cab0d36e7c1596358cf02fba74df04b0716ae40f",
           "path": "core_runtime/workflow_v4/attempt_port.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -31748,7 +31753,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:f4b54e9c6792360ec69a8d6872bb967a72cb425c6fcd374f726d9d546e5f5089",
+          "digest": "sha256:4ee4423fa5e02b6bbc0d7020a83f81a305b6395d612cbde141de9d588ef63ccd",
           "path": "core_runtime/workflow_v4/engine.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -31768,13 +31773,23 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:569c73c554d42405da5cf5f5c224b0ead282590fb4d870064b63b2d4b7286a58",
+          "digest": "sha256:d25452a46bfa2d2431e8cd88fae54d2b1bde0272ff2b99ce1d4a3b1522874171",
           "path": "core_runtime/workflow_v4/provider.py",
+          "rule_id": "workflow-v4-canonical-source"
+        },
+        {
+          "digest": "sha256:639e6a3431328751080c2c723f48bd86a3dabfb1fa63061247be3de7ca6958a5",
+          "path": "core_runtime/workflow_v4/selected_run.py",
           "rule_id": "workflow-v4-canonical-source"
         },
         {
           "digest": "sha256:fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea",
           "path": "core_runtime/workflow_v4/store.py",
+          "rule_id": "workflow-v4-canonical-source"
+        },
+        {
+          "digest": "sha256:b81e5e592b2927010c89075208afaa003671264820a22cf97fbf005be2d281b0",
+          "path": "core_runtime/workflow_v4/templates.py",
           "rule_id": "workflow-v4-canonical-source"
         },
         {
@@ -31803,12 +31818,12 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:26cef1a25d1184d03285cf1a261372e73cf47d9a4ff0b65cee1acf55366fdb86",
+          "digest": "sha256:485ff06608e706767c16c597fcd79ace48aa5d22ea000dc07eba27b548a4abe4",
           "path": "ecosystem/tobkiri_workflow_pack/frontend_contract_map.v4.json",
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:2d42a393ac806024f16e1411481f5aa40c89526f7d2fc314f6335d5aecbb8869",
+          "digest": "sha256:e37ee0ec0ceb84603b71f5321dfbf782836cabc09bd54748ac3d08a5fc024ba0",
           "path": "ecosystem/tobkiri_workflow_pack/backend-integrity.v4.json",
           "rule_id": "workflow-v4-canonical-source"
         }

@@ -3,15 +3,17 @@
 A genuine executable Normal Sandbox Pack is produced entirely through the public
 `core_runtime.pack_authoring` API documented in `docs/python_pack_authoring.md`.
 **This independent extension's Issue #1409 integration is incomplete:** it is not
-connected to the existing trusted lifecycle owner or native saved-turn context
-bridge. Those public owner/storage/context paths already exist in the repository.
+verified in native execution through the trusted lifecycle owner and saved-turn
+context bridge. Public owner-bound source composition is now authored; those
+owner/storage/context paths already exist in the repository.
 The component is offline and capability-free; authoring/compiler success grants
 no admission, Profile selection, activation, approval, or execution authority.
 
 ## Exact declarations and resources
 
 - Pack: `acceptance.temporal.context`, version `0.1.0`, `normal_sandbox`.
-- Contract: `acceptance.temporal.context.v1`; operation `temporal.reduce`.
+- Contract: `acceptance.temporal.context.v1`; operations `temporal.reduce` and
+  `timing.project.owner`. The original reducer remains illustrative.
 - Provider: `acceptance.temporal.context.provider`, sandbox / fail_closed.
 - Function: `acceptance.temporal.context.reduce`, pure / pack_vm.
 - ABI entrypoint: `tobkiri_packvm_invoke(operation_id, payload) -> dict` in the
@@ -61,7 +63,7 @@ function_id)` with a nonexistent output path. Ancestors must not be symlinks.
 The checked-in `acceptance.temporal.context/` is fresh public-producer output,
 not hand-sealed metadata or a fabricated release/activation lock.
 
-Eighteen tests cover seven reducer scenarios plus deterministic byte-identical public
+The twenty-two-test source suite covers seven reducer scenarios plus deterministic byte-identical public
 builds, actual public compiler routing, configurable ID compilation, actual named
 Profile selected/unselected/removal/renamed source compilation, ABI outcome,
 unknown operation and malformed input. Reducer scenarios include 3599/3600 seconds,
@@ -108,7 +110,7 @@ Profile, published `defaults-basepack`, `shell.tauri.default` macOS/arm64,
 `ecosystem/defaultspack/v4` template and this Pack root. No generated release
 artifact was edited by hand.
 
-The compiler pins the selected source Pack artifact, subtree digest and three files;
+The compiler pins the selected source Pack artifact, subtree digest and four files;
 its source lock retains `activation_authority: unbound`. Omitting the projection
 produces no selected content; removing Pack and projection succeeds; removing the
 Pack while retaining its projection fails closed. The actual error is preserved
@@ -121,9 +123,10 @@ supplies the catalog ID, with no frontmatter. The legacy Flow YAML is retained a
 non-executable draft: actual v4 alias dispatch reports `V4_OPERATION_UNAVAILABLE`
 according to Root's consumer verification. There is no public
 `functions/*.function.yaml` registration format; none is invented.
-Requested operation edges in the Tauri source intent remain empty, avoiding an
-invented caller principal. YAML format and projection compilation do not prove
-that a runtime Flow calls this reducer. Root verifies selected runtime resource
+Requested source edges use actual declared executable Function IDs for the saved
+bridge, Workflow provider, owner resource and pure context target. Contract provider
+labels are not executable aliases. These edges contain no invented principal or
+approval. YAML format and source compilation do not prove runtime invocation. Root verifies selected runtime resource
 consumption separately. Connecting this extension to the existing trusted lifecycle
 owner and native context bridge remains the Issue #1409 composition gap.
 
@@ -133,9 +136,10 @@ owner and native context bridge remains the Issue #1409 composition gap.
 `content/workflows/<pack-id>.workflow.intent.v1.json`, with API version
 `io.tobkiri.profile-workflow-intent.v1`. The request pins the exact authored Function
 ID, Contract ID/revision and `temporal.reduce`; it never contains a guessed runtime
-principal. Source input uses public `${inputs.namespace}`, `${inputs.state}` and
-`${inputs.event}` expressions. These supplied inputs remain untrusted: the file
-does not establish completion provenance, durable state, or internal model input.
+principal. The first step uses captured `${inputs.profile_id}` / `${inputs.conversation_id}`
+and `operation: get`; the direct dependent step consumes
+`${steps.owner.output.value.conversation}`. Outside captured execution, supplied
+snapshots remain untrusted; the source file does not establish owner provenance.
 
 The selected compiler must match all four exact binding fields against its actual
 captured operation palette, require exactly one candidate, derive that principal,
@@ -143,8 +147,34 @@ and run the real formal Workflow compiler. Root owns that active binding test.
 This author uses public schema/producer/compiler tests without a fake engine,
 principal, palette, approval, or Run. The legacy Flow remains a non-executable draft.
 
-The 319-file generated release remains on disk and is ignored by this directory's
+The 320-file generated release remains on disk and is ignored by this directory's
 `.gitignore`. `named-profile-verification.json` contains concise real source pins.
 Reproduce in fresh nonexistent outputs with `build_pack.build(new_pack_path)` and
 `build_profile.build_profile(new_release_path, new_pack_path)` after importing this
 owned author directory. Existing outputs are never overwritten by the producers.
+
+## Owner-read and typed timing composition candidate
+
+New `timing.project.owner` is a self-contained stateless operation. Closed input
+contains only `profile_id` and `owner_snapshot`; output contains the exact public
+`io.tobkiri.saved-internal-context.v1` identity/revision/active-user fields plus the
+public SDK-equivalent gap projection or null. Four focused tests compare it with
+`active_task_gap_context` / `validate_timing_output`, including threshold/null,
+waiting/cancelled/wrong-role, stale namespace/revision and extra-field cases.
+Matching supplied dictionaries are still not authenticated owner evidence.
+
+The selected Workflow source now reads the captured conversation owner and passes
+`${steps.owner.output.value.conversation}` to its direct dependent `context` step.
+`contexts/acceptance.temporal.rules.conversation-context.v1.json` selects that output
+as `timing.task_gap`. Requested source edges connect the documented saved bridge to
+Workflow `run.selected`, and Workflow to owner-read / pure context projection. No
+completion confirmation, second timestamp store, tool call or approval flag is added.
+
+The new Pack and named Profile now pass public producers/compilers, and all 22
+source/SDK tests plus scoped Ruff pass. The earlier unavailable `run.selected`
+target was published; the documented edge identity clarified that
+`target_provider_id` is the actual executable Function ID rather than Contract
+provider label. No alias fallback was added. Both failure logs remain historical
+evidence; `pending-owner-workflow-verification.json` is marked superseded by the
+current `named-profile-verification.json`. No actual attempt/Host bridge/model
+delivery is verified by this author.
