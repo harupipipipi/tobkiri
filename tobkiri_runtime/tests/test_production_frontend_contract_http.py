@@ -1748,6 +1748,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
     selected_tools = []
     tool_results = []
+    tool_requests = []
     prompt_reads = []
     incremental_quotes = []
     progress_begins = []
@@ -1776,10 +1777,22 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 AI_STREAM if completion == "incremental" else TARGETS[2]
             )
             ai_calls.append(payload)
+            if completion in {"auto", "incremental", "calculator"}:
+                selected = selected_tools[-1]
+                # Compare the offered model schemas with the real admitted
+                # owner snapshot; auto may offer more than one tool.
+                assert payload["tools"] == selected["tools"]
+                names = [item["function"]["name"] for item in payload["tools"]]
+                assert len(names) == len(set(names))
+                assert set(names) == set(selected["definitions"])
+                if completion == "calculator":
+                    assert "calculator" in names
+                    assert len(names) > 1
+                else:
+                    assert names and "calculator" not in names
             if completion == "provider_error":
                 return {"status": "error", "private": "provider diagnostic"}
             if completion == "calculator":
-                assert [item["function"]["name"] for item in payload["tools"]] == ["calculator"]
                 if len(ai_calls) == 1:
                     return {
                         "status": "ok",
@@ -1795,6 +1808,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 assert payload["messages"][-1]["role"] == "tool"
                 assert "Calculated: 6*7 = 42" in payload["messages"][-1]["content"]
             return {"status": "ok", "output": "Hi"}
+        if contract_id == "tobkiri.service.tool.invoke.v1":
+            tool_requests.append(payload)
         result = original(self, contract_id, operation_id, payload, **kwargs)
         if (
             (contract_id, operation_id) == (ACTION, ACTION_OPERATION)
@@ -1959,7 +1974,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         calls_before_repeat = (
-            len(ai_calls), len(tool_results), len(progress_begins),
+            len(ai_calls), len(tool_requests), len(tool_results),
+            len(progress_begins), len(selected_tools),
         )
         status, repeated, _ = _request(
             server,
@@ -1984,7 +2000,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 "delivery_status": "not_applicable",
             }
         assert (
-            len(ai_calls), len(tool_results), len(progress_begins),
+            len(ai_calls), len(tool_requests), len(tool_results),
+            len(progress_begins), len(selected_tools),
         ) == calls_before_repeat
         completed_turn = repeated["data"]["turn"]
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
@@ -2012,15 +2029,23 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             ]
             assert "system_prompt_digest" not in ai_calls[0]
         if completion == "calculator":
+            assert len(tool_requests) == 1
+            assert tool_requests[0]["tool_id"] == "calculator"
+            assert tool_requests[0]["tool_call_id"] == "calc-1"
+            assert tool_requests[0]["arguments"] == {"expression": "6*7"}
             assert len(tool_results) == 1
             assert tool_results[0]["tool_id"] == "calculator"
+            assert tool_results[0]["tool_call_id"] == "calc-1"
+            assert tool_results[0]["status"] == "success"
             assert tool_results[0]["result"] == "Calculated: 6*7 = 42"
             assert tool_results[0]["is_error"] is False
-            assert all(set(item["definitions"]) == {"calculator"} for item in selected_tools)
-        else:
+        elif completion not in {"auto", "incremental"}:
             assert "tools" not in ai_calls[0]
-        if completion in {"auto", "incremental"}:
-            assert selected_tools == [{"tools": [], "definitions": {}}] * 3
+        if completion in {"auto", "incremental", "calculator"}:
+            assert selected_tools
+            assert all(item == selected_tools[0] for item in selected_tools)
+        if completion != "calculator":
+            assert not tool_requests and not tool_results
         if completion == "incremental":
             # This proves the enabled stream plan sealed and dispatched through
             # the real captured progress owner, before the AI-only adapter.

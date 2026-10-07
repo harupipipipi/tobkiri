@@ -12,6 +12,7 @@ from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity
 from tobkiri_host.continuation_envelope import seal_continuation_intent
+from tobkiri_host.saved_turn_plan import TOOL
 from tobkiri_host.saved_workspace_context import WORKSPACE_TARGET
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_context import PROMPT_TARGET
@@ -555,12 +556,14 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     profile["requested_edges"] = [
         item
         for item in profile["requested_edges"]
-        if item["caller_function_id"]
-        != saved_function
+        if (
+            item["caller_function_id"] != saved_function
+            or (item["contract_id"], item["operation_id"]) == TOOL
+        )
         and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]
-    # Preserve the normal tool contribution edges: they bind the principals
-    # that call their own owner edges, even when this test selects no tools.
+    # Preserve the normal tool contribution edges and the saved -> tool edge
+    # that binds their broker caller, even when this test selects no tools.
 
     def edge(caller, target, provider):
         pack = provider.split(".")[0]
@@ -837,10 +840,18 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         if lost_reply:
             assert result["turn"]["status"] == "waiting"
             assert result["turn"]["result_reference"] is None
-            assert result["turn"]["events"][-1]["details"] == {
-                "phase": "reconciliation_required",
-                "reason": "saved_execution_outcome_unconfirmed",
-            }
+            assert result["turn"]["events"][-1]["details"] == (
+                {
+                    "phase": "reconciliation_required",
+                    "error_code": "HOST_ACTION_FAILED",
+                    "user_persistence": "saved",
+                    "assistant_persistence": "unknown",
+                }
+                if lost_reply == "owner" else {
+                    "phase": "reconciliation_required",
+                    "reason": "saved_execution_outcome_unconfirmed",
+                }
+            )
         with profile_capture_scope():
             repeated = session.invoke(
                 "tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved", initial
