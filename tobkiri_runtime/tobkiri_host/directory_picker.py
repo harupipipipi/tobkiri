@@ -64,7 +64,11 @@ class CapturedDirectoryPicker:
         if roots is None:
             return {"cancelled": True, "selection_id": None}
         selections = self._selections.capture_many(roots, scope)
-        return {**selections[0], "selections": selections}
+        return {
+            **selections[0],
+            "selections": selections,
+            "primary_selection_id": selections[0]["selection_id"],
+        }
 
     def close(self) -> None:
         """Retire all selections together with their captured Provider."""

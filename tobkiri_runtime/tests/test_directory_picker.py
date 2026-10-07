@@ -40,6 +40,40 @@ def test_stale_dialog_result_never_becomes_ticket(tmp_path):
     assert store._entries == {}
 
 
+@pytest.mark.parametrize("folder_count", [1, 2])
+def test_native_picker_reply_binds_primary_to_first_private_ticket(
+    tmp_path: Path, folder_count: int
+) -> None:
+    roots = [tmp_path / f"folder-{index}" for index in range(folder_count)]
+    for root in roots:
+        root.mkdir()
+
+    class Port:
+        def pick_directories(self) -> list[Path]:
+            return roots
+
+    store = DirectorySelections()
+    picker = CapturedDirectoryPicker(Port(), store)
+    scope = DirectorySelectionScope("p", "a", "d", 1, "owner", "session")
+    reply = picker.acquire({}, scope=scope, assert_current=lambda: None)
+    assert reply["cancelled"] is False
+    assert reply["primary_selection_id"] == reply["selection_id"]
+    assert reply["primary_selection_id"] == reply["selections"][0]["selection_id"]
+    assert len(reply["selections"]) == folder_count
+    assert set(reply) == {
+        "cancelled",
+        "selection_id",
+        "display_name",
+        "expires_in_ms",
+        "selections",
+        "primary_selection_id",
+    }
+    for selected, root in zip(reply["selections"], roots):
+        assert selected["display_name"] == root.name
+        assert selected["expires_in_ms"] > 0
+        assert store.consume(selected["selection_id"], scope) == root
+
+
 @pytest.mark.parametrize("error", [PermissionError, TimeoutError, NotImplementedError])
 def test_adapter_errors_sanitized(error):
     class Port:

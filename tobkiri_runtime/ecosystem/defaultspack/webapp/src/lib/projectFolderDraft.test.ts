@@ -16,6 +16,29 @@ test("legacy single selection normalizes to one primary and multi set preserves 
   assert.throws(() => normalizeProjectFolderSelections({ ...set, primary_selection_id: "missing" }), /primary folder/);
 });
 
+test("native picker response seeds one or two folders and permits a second primary", () => {
+  const first = { ...choice("a"), cancelled: false };
+  const second = { ...choice("b"), cancelled: false };
+  for (const selections of [[first], [first, second]]) {
+    const reply = { ...first, selections, primary_selection_id: first.selection_id };
+    const draft = appendProjectFolderSelections(emptyProjectFolderDraft(), reply, 100);
+    assert.deepEqual(projectFolderSelectionSet(draft, 200), {
+      selections, primary_selection_id: first.selection_id,
+    });
+    assert.throws(() => normalizeProjectFolderSelections({
+      ...reply, primary_selection_id: "outside",
+    }), /primary folder/);
+    assert.throws(() => setPrimaryProjectFolderSelection(draft, "outside"), /primary folder/);
+    if (selections.length === 2) {
+      const updated = setPrimaryProjectFolderSelection(draft, second.selection_id);
+      assert.deepEqual(projectFolderSelectionSet(updated, 200), {
+        selections, primary_selection_id: second.selection_id,
+      });
+      assert.equal(draft.primary_selection_id, first.selection_id);
+    }
+  }
+});
+
 test("add retains tickets with matching names, skips repeated identity without refreshing expiry", () => {
   const draft = appendProjectFolderSelections(emptyProjectFolderDraft(), choice("a"), 100);
   const next = appendProjectFolderSelections(draft, {

@@ -7,6 +7,7 @@ import { admittedStrategyContributions, ChatStreamInterruptedError, api, compose
 import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
+import { normalizeProjectFolderSelections } from "./projectFolderDraft";
 import { mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./registeredSlashCommands";
 import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateFeatureFlagEnabled, templateToolPolicySettings } from "./templateAiInput";
 import {
@@ -4902,6 +4903,7 @@ test("coding workspace and compact helpers serialize request bodies", async () =
 
 test("directory selection sends no browser path or authority to the native ticket route", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
+  const first = { selection_id: "opaque-ticket", display_name: "repo", expires_in_ms: 60000, cancelled: false as const };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
@@ -4912,13 +4914,19 @@ test("directory selection sends no browser path or authority to the native ticke
     return new Response(JSON.stringify({
       status: "ok",
       data: requestTarget(input).includes("/select-directory")
-        ? { selection_id: "opaque-ticket", display_name: "repo", expires_in_ms: 60000, cancelled: false }
+        ? { ...first, selections: [first], primary_selection_id: first.selection_id }
         : { root_path: "/repo", rumi_data_path: "/repo/.rumiDP", chat_store_path: "/repo/.rumiDP/chat/conversations.json" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
   try {
-    await api.selectDirectory("保存先");
+    const selected = await api.selectDirectory("保存先");
+    assert.equal(selected.cancelled, false);
+    if (!selected.cancelled) {
+      assert.deepEqual(normalizeProjectFolderSelections(selected), {
+        selections: [first], primary_selection_id: first.selection_id,
+      });
+    }
     await api.prepareChatGroupStorage("/repo");
   } finally {
     globalThis.fetch = originalFetch;

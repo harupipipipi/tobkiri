@@ -96,6 +96,8 @@ def test_selected_ticket_prepare_has_no_mount_and_execute_atomically_mounts_and_
     inv = Invocation()
     choice = acquire("workspace.directory.acquire", {}, inv)
     assert "path" not in choice and str(root) not in json.dumps(choice)
+    assert choice["primary_selection_id"] == choice["selection_id"]
+    assert choice["primary_selection_id"] == choice["selections"][0]["selection_id"]
     request = {"selection_id": choice["selection_id"]}
     plan = prepare("workspace.mount.prepare", request, inv)
     store = WorkspaceMountStore(PROFILE, user_data_root=tmp_path)
@@ -336,6 +338,14 @@ def test_multiple_roots_explicit_second_primary_and_atomic_mount(tmp_path):
     inv = Invocation()
     choice = acquire("workspace.directory.acquire", {}, inv)
     tokens = [item["selection_id"] for item in choice["selections"]]
+    assert choice["primary_selection_id"] == choice["selection_id"] == tokens[0]
+    with pytest.raises(PermissionError, match="selection is invalid"):
+        prepare(
+            "workspace.mount.prepare",
+            {"selection_ids": tokens, "primary_selection_id": "outside"},
+            inv,
+        )
+    assert not WorkspaceMountStore(PROFILE, user_data_root=tmp_path).path.exists()
     request = {"selection_ids": tokens, "primary_selection_id": tokens[1]}
     plan = prepare("workspace.mount.prepare", request, inv)
     assert plan["root_path"] == str(other)
