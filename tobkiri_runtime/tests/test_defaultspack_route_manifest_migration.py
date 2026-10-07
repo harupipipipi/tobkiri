@@ -35,35 +35,22 @@ def _manifest_routes() -> list[dict]:
 
 
 def test_chat_channel_family_is_manifest_declared_with_security_metadata():
-    routes = {
-        (route["method"], route.get("path") or route.get("path_pattern")): route
-        for route in _manifest_routes()
-    }
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-    for key, function_id in CHANNEL_ROUTES.items():
-        route = routes[key]
-        assert route["function_id"] == function_id
-        assert route["auth_mode"] == "panel_or_bearer"
-        assert route["principal"] == "authenticated"
-        assert isinstance(route["csrf_origin_required"], bool)
-        assert route["rate_limit"] == "default_per_path"
-        assert route["audit_category"].startswith("chat.channel.")
-        assert route["legacy_until"] is None
+    assert not (DEFAULTSPACK_ROOT / "ecosystem.json").exists()
+    assert not (DEFAULTSPACK_ROOT / "routes.json").exists()
+    assert_profile_resolver_requires_authority_snapshot()
 
 
-def test_chat_channel_transport_routes_dispatch_without_legacy_block_fallback():
-    from transport.registry import canonical_http_route_specs
+def test_chat_channel_requires_captured_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    specs = {
-        (spec.method, spec.pattern): spec
-        for spec in canonical_http_route_specs(include_always_available=False)
-    }
-    for key, function_id in CHANNEL_ROUTES.items():
-        spec = specs[key]
-        assert spec.function_id == function_id
-        assert spec.legacy_block_module == ""
-        assert spec.fallback_block_module == ""
-        assert spec.block_module == ""
+    assert_route_cutover(
+        "GET",
+        "/api/chat/channels",
+        "tobkiri.chat-channel.v1",
+        "defaultspack.chat-channel.list",
+    )
 
 
 def test_chat_channel_function_route_does_not_fall_back_to_block():
@@ -106,49 +93,20 @@ def test_chat_channel_function_route_does_not_fall_back_to_block():
 
 
 def test_manifest_security_metadata_survives_pack_api_route_registration(monkeypatch):
-    from core_runtime.api.router_table import APIRouteTableMixin
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-    class RouteTable(APIRouteTableMixin):
-        _api_route_exact = {}
-        _api_route_patterns = []
+    assert not (DEFAULTSPACK_ROOT / "ecosystem.json").exists()
+    assert_profile_resolver_requires_authority_snapshot()
 
-    monkeypatch.setattr(
-        RouteTable,
-        "_pack_allows_in_process_api_metadata",
-        classmethod(lambda cls, pack_id, pack_info=None: True),
+
+def test_all_defaultspack_legacy_routes_are_explicitly_rejected():
+    from ecosystem.defaultspack.transport.registry import (
+        _FALLBACK_HTTP_ROUTE_SPECS,
+        load_legacy_http_route_allowlist,
     )
-    manifest = json.loads((DEFAULTSPACK_ROOT / "ecosystem.json").read_text(encoding="utf-8"))
 
-    RouteTable._register_api_routes_from_manifest("defaultspack", manifest)
-
-    entry = RouteTable._api_route_exact[("POST", "/api/chat/channels")]
-    assert entry["function_id"] == "chat_channel_create"
-    assert entry["auth_mode"] == "panel_or_bearer"
-    assert entry["principal"] == "authenticated"
-    assert entry["csrf_origin_required"] is True
-    assert entry["rate_limit"] == "default_per_path"
-    assert entry["audit_category"] == "chat.channel.write"
-    assert entry["legacy_until"] is None
-
-
-def test_all_defaultspack_legacy_routes_have_complete_allowlist_metadata():
-    from transport.registry import canonical_http_route_specs, legacy_http_route_metadata
-
-    validated = 0
-    for spec in canonical_http_route_specs(include_always_available=False):
-        if not spec.legacy_block_module or spec.pattern.startswith("/api/mobile/v1/"):
-            continue
-        metadata = legacy_http_route_metadata(spec)
-        assert metadata["owner"]
-        assert metadata["auth_mode"]
-        assert metadata["principal"]
-        assert metadata["csrf_origin"]
-        assert metadata["rate_limit"]
-        assert metadata["audit_category"]
-        assert metadata["function_id"]
-        assert metadata["legacy_until"]
-        validated += 1
-    assert validated > 0
+    assert _FALLBACK_HTTP_ROUTE_SPECS == []
+    assert load_legacy_http_route_allowlist() == {}
 
 
 def test_legacy_allowlist_guard_rejects_incomplete_security_metadata(monkeypatch):

@@ -1,0 +1,136 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_tool_broker_pack",
+  "source_identity": "sha256:af47c538266b5bd0698715dcae47bf3a23e2c2655256652e7c11087b71cae95b",
+  "variants": [
+    {
+      "variant_id": "rumi_tool_broker_pack.tool-broker.invoke.python",
+      "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "implementation_path": "runtime/broker.py",
+      "implementation_digest": "sha256:89e0cec9d2f3167ef2266366f69d24f6a16f00b3681e719db6fbc9ebd0cd74d0",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.invoke.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:93d9e0cd24e5192e86cc868ca6d8cf6b51599467796e4db864517b0fd0aa25e6",
+          "operation_id": "rumi_tool_broker_pack.tool-invoke",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "title": "引数",
+                "type": "object"
+              },
+              "expected_definition_hash": {
+                "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+                "title": "選択したツール定義のハッシュ",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "tool_call_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$(?![\\s\\S])",
+                "title": "呼び出しID",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "tool_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$(?![\\s\\S])",
+                "title": "登録済みツールID",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "tool-definition"
+              }
+            },
+            "required": [
+              "tool_id",
+              "tool_call_id",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "title": "エラー"
+              },
+              "executor": {
+                "additionalProperties": false,
+                "properties": {
+                  "content_hash": {
+                    "type": "string"
+                  },
+                  "provider_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider_instance_id",
+                  "content_hash"
+                ],
+                "type": "object",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "is_error": {
+                "type": "boolean"
+              },
+              "result": {
+                "title": "結果"
+              },
+              "status": {
+                "enum": [
+                  "success",
+                  "error"
+                ],
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_call_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "widget": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-tobkiri-flow-role": "metadata"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool_id",
+              "status",
+              "is_error",
+              "result",
+              "error",
+              "widget",
+              "executor"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:bcc36cc29f14fe5338bdf29c917b4689ba7fcdcf0990c75cd6ea19173b4dec70",
+  "catalog_digest": "sha256:d8fb657e56a801ad1f928db2bfd996b43372f6a8486c2bbf65f0060f7572012a"
+}

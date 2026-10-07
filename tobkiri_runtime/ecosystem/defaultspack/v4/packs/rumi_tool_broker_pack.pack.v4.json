@@ -1,0 +1,145 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:ca66ca950236a4ca79262efc9faf90d47140e75b6e4cd442ae6b5ab253ec195f",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:89e0cec9d2f3167ef2266366f69d24f6a16f00b3681e719db6fbc9ebd0cd74d0",
+      "kind": "executable",
+      "path": "runtime/broker.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.invoke.v1",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ],
+      "revision_digest": "sha256:93d9e0cd24e5192e86cc868ca6d8cf6b51599467796e4db864517b0fd0aa25e6"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:93d9e0cd24e5192e86cc868ca6d8cf6b51599467796e4db864517b0fd0aa25e6",
+      "id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "implementation_digest": "sha256:89e0cec9d2f3167ef2266366f69d24f6a16f00b3681e719db6fbc9ebd0cd74d0",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:af47c538266b5bd0698715dcae47bf3a23e2c2655256652e7c11087b71cae95b",
+    "artifact_set_digest": "sha256:249cdb5b9808c39c60f6a8b46273488a0abf7451d5719d7c503965312c3890ff",
+    "contract_catalog_digest": "sha256:e342f1d53e2a70001e4f3772bb8c2c9543212ad4bbfe3142ad917c02ae4477de"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.invoke.v1",
+      "rumi:ecosystem/rumi_tool_broker_pack",
+      "rumi_tool_broker_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_broker_pack.tool-invoke",
+      "owner": "rumi_tool_broker_pack",
+      "contract_reference": "tobkiri.service.tool.invoke.v1",
+      "provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:74e307613fa379ee193b87680b371801f557692bf7636caf1b1d5b6b18c71dba",
+    "display_name": "Rumi Tool Broker",
+    "id": "rumi_tool_broker_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_broker_pack/pack.v4.json",
+    "source_digest": "sha256:af47c538266b5bd0698715dcae47bf3a23e2c2655256652e7c11087b71cae95b",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:53117a6ef2038f0babb27e123c559cbbebd879826810edb67047912e745772b8",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:57757fa2cb20a8680c37d83b6ee8cebd1326b4e4924dd130e689db7c273a376b",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_tool_broker_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:af47c538266b5bd0698715dcae47bf3a23e2c2655256652e7c11087b71cae95b"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "owner": "rumi_tool_broker_pack",
+      "contract_reference": "tobkiri.service.tool.invoke.v1",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.invoke"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.arguments.validate.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.execute.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.result.normalize.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

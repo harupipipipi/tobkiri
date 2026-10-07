@@ -1,0 +1,322 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:db88ade2a38412a1c5e4d002ed4df66d0acb8d71c2a5a23d70212e2e8a74e9af",
+  "pack_id": "tobkiri_packvm_sandbox_qa_pack",
+  "source_identity": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "implementation_digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
+      "implementation_path": "runtime/probe.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "fill": {
+                "minLength": 1048577,
+                "type": "string"
+              },
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce",
+              "fill"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        },
+        {
+          "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "nonce": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nonce"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_packvm_sandbox_qa_pack.abnormal_exit",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri_packvm_sandbox_qa_pack.probe.python"
+    }
+  ]
+}

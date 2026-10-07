@@ -1,0 +1,37 @@
+{
+  "artifact_set_digest": "sha256:a12680ea7bcdaa682b4d35e2bcac69c39176c31c0651ec0877a3cbbaca2e1f3e",
+  "artifacts": [
+    {
+      "digest": "sha256:6bc32c011cdfe7f94c24dd904c01d49b797ed385bf5b85f8b0626580f32b2bc8",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:3d72952f6966a6aa2d640287825a28edfe09e4849fc67e18ddb559aab51f80d1",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:5323241f363289d47b1cadbd37898d8262c8640fb0c895ad52e716f897558585",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+      "path": "runtime/messages.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
+      "path": "runtime/saved_conversation.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:4f4d3630635b42d14540741a9bf1308ec83605f4f0d261c745f8c806ed33405c"
+  },
+  "pack_id": "tobkiri_conversation_orchestration_pack",
+  "source_identity": "sha256:5df7eca7291b99226c86d06046eed2ac4e9a6ade68b2579c0594f6f2630b62f3"
+}

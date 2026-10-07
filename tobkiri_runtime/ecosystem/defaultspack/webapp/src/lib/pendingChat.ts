@@ -1,8 +1,313 @@
-import type { ChatMessage } from "./api";
+import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurn, SavedTurnResult } from "./api";
+
+const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+/**
+ * Fail-closed identity check for a Host-bound approval-continuation packet.
+ *
+ * A continuation packet may only be projected onto the exact saved turn it
+ * was bound to: ``turn_id`` and ``operation_id`` must both equal the pending
+ * ``turnId`` (``""`` for an unbound continuation), the conversation and
+ * approval request identities must match exactly, and a terminal receipt
+ * must carry the same identities with a canonical terminal status.
+ */
+export function chatContinuationPacketMatchesTurn(
+  packet: Partial<ChatContinuationPacket> | null | undefined,
+  turnId: string,
+  conversationId: string,
+  requestId: string,
+): boolean {
+  if (!STABLE_ID_PATTERN.test(conversationId) || !STABLE_ID_PATTERN.test(requestId)
+    || (turnId !== "" && !STABLE_ID_PATTERN.test(turnId))) return false;
+  const matches = (value: {
+    turn_id?: string; conversation_id?: string; operation_id?: string; request_id?: string;
+  } | null | undefined) => Boolean(value)
+    && value!.turn_id === turnId && value!.operation_id === turnId
+    && value!.conversation_id === conversationId && value!.request_id === requestId;
+  if (!matches(packet)) return false;
+  const terminal = packet?.terminal;
+  return terminal === null || (typeof terminal === "object" && terminal !== null
+    && matches(terminal)
+    && ["completed", "failed", "cancelled"].includes(String(terminal.status)));
+}
+
+export function savedTurnSnapshotState(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "conversation_revision" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): "pending" | "current" | "changed" | "unavailable" {
+  const reference = turn.result_reference;
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || turn.status !== "completed" || !reference
+    || reference.conversation_id !== conversationId
+    || !Number.isSafeInteger(reference.conversation_revision) || reference.conversation_revision < 1
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(reference.user_message_id ?? "")
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(reference.assistant_message_id ?? "")
+    || !/^sha256:[a-f0-9]{64}$/.test(reference.outcome_digest ?? "")) return "pending";
+  // null means a completed turn followed by an explicit unavailable conversation response.
+  // It is not evidence that the saved operation failed, nor permission to resend it.
+  if (conversation === null) return "unavailable";
+  if (conversation.id !== conversationId || !Number.isSafeInteger(conversation.conversation_revision)
+    || conversation.conversation_revision! < reference.conversation_revision) return "pending";
+  if (conversation.conversation_revision! > reference.conversation_revision) return "changed";
+  const user = conversation.messages.find((message) => message.id === reference.user_message_id);
+  const assistant = conversation.messages.find((message) => message.id === reference.assistant_message_id);
+  return user?.role === "user" && user.metadata?.turn_id === turnId
+    && assistant?.role === "assistant" && assistant.metadata?.turn_id === turnId
+    && !isAssistantMessageStillRunning(assistant) ? "current" : "pending";
+}
+
+export type SavedTurnSnapshotNotice = {
+  message: string;
+  title: string;
+  tone: "success" | "warning";
+};
+
+/**
+ * Presents an owner-verified saved-turn result without treating a newer
+ * conversation snapshot as a failed send. Pending and mismatched snapshots
+ * deliberately have no notice because their callers must keep reconciling.
+ */
+export function savedTurnSnapshotNotice(
+  state: ReturnType<typeof savedTurnSnapshotState>,
+): SavedTurnSnapshotNotice | null {
+  if (state === "changed") {
+    return {
+      tone: "success",
+      title: "送信を確認しました",
+      message: "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。",
+    };
+  }
+  if (state === "unavailable") {
+    return {
+      tone: "warning",
+      title: "現在の会話を確認できません",
+      message: "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。",
+    };
+  }
+  return null;
+}
+
+export type SavedTurnProgressState =
+  | "ledger_only"
+  | "user_saved"
+  | "all_messages_saved_unconfirmed"
+  | "conversation_unavailable";
+
+export function savedTurnProgressState(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "conversation_revision" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): SavedTurnProgressState {
+  if (conversation === null) return "conversation_unavailable";
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || turn.status === "completed" || conversation.id !== conversationId
+    || !Number.isSafeInteger(conversation.conversation_revision)
+    || (conversation.conversation_revision ?? 0) < 1) return "ledger_only";
+  const claim = [...(turn.events ?? [])].reverse().find(
+    (event) => event.name === "turn.running"
+      && event.details?.phase === "saved_execution_claimed",
+  );
+  const userId = claim?.details?.user_message_id;
+  const assistantId = claim?.details?.assistant_message_id;
+  if (typeof userId !== "string" || typeof assistantId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(userId)
+    || !/^message:[a-f0-9]{64}$/.test(assistantId)) return "ledger_only";
+  const messages = conversation.messages.filter(
+    (message) => message.metadata?.turn_id === turnId,
+  );
+  const userSaved = messages.some(
+    (message) => message.id === userId && message.role === "user",
+  );
+  const assistantSaved = messages.some(
+    (message) => message.id === assistantId && message.role === "assistant"
+      && !isAssistantMessageStillRunning(message),
+  );
+  if (userSaved && assistantSaved) return "all_messages_saved_unconfirmed";
+  return userSaved ? "user_saved" : "ledger_only";
+}
+
+export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
+  if (state === "user_saved") {
+    return "ユーザーメッセージは保存済みです。assistant の保存状態を照合中です。自動再送はしません。";
+  }
+  if (state === "all_messages_saved_unconfirmed") {
+    return "user／assistant メッセージは保存済みです。turn の完了状態を照合中です。自動再送はしません。";
+  }
+  if (state === "conversation_unavailable") {
+    return "turn 台帳は未完了で、現在の会話を取得できません。自動再送せず照合を待ちます。";
+  }
+  return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
+}
+
+export function savedTurnTerminalNotice(
+  turn: SavedTurnResult["turn"],
+  conversationId: string,
+  turnId: string,
+): string | null {
+  if (turn.id !== turnId || turn.conversation_id !== conversationId) return null;
+  if (turn.status === "cancelled") {
+    return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  if (turn.status === "failed") {
+    return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  return null;
+}
+
+/**
+ * Returns whether a terminal saved root proves that neither canonical message
+ * was written. This is deliberately narrower than a terminal error: a lost
+ * reply, a completed receipt, or a guidance descendant must keep the normal
+ * reconciliation path and must never restore a draft for resubmission.
+ */
+export function savedTurnCanRestoreUnwrittenDraft(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): boolean {
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || (turn.status !== "failed" && turn.status !== "cancelled")
+    || turn.result_reference
+    || (turn.guidance?.length ?? 0) > 0
+    || turn.guidance_parent_turn_id
+    || turn.guidance_id
+    || turn.guidance_source_turn_id
+    || conversation === null
+    || conversation.id !== conversationId) return false;
+  const terminalName = turn.status === "failed" ? "turn.failed" : "turn.cancelled";
+  const terminalPhase = turn.status === "failed"
+    ? "saved_execution_failed"
+    : "saved_execution_cancelled";
+  const terminalEvents = (turn.events ?? []).filter(
+    (event) => event.name === terminalName,
+  );
+  const claims = (turn.events ?? []).filter(
+    (event) => event.name === "turn.running"
+      && event.details?.phase === "saved_execution_claimed",
+  );
+  if (terminalEvents.length !== 1 || claims.length !== 1) return false;
+  const claim = claims[0].details;
+  const terminal = terminalEvents[0].details;
+  const claimedUserMessageId = claim?.user_message_id;
+  const claimedAssistantMessageId = claim?.assistant_message_id;
+  if (typeof claimedUserMessageId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(claimedUserMessageId)
+    || typeof claimedAssistantMessageId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(claimedAssistantMessageId)
+    || terminal?.phase !== terminalPhase
+    || terminal.user_persistence !== "not_written"
+    || terminal.assistant_persistence !== "not_written") return false;
+  return !conversation.messages.some((message) => (
+    message.id === claimedUserMessageId
+    || message.id === claimedAssistantMessageId
+    || (
+      message.conversation_id === conversationId
+      && message.metadata?.turn_id === turnId
+      && (message.role === "user" || message.role === "assistant")
+    )
+  ));
+}
+
+export type SavedTurnSubmissionAttempt = {
+  attemptId: string;
+  conversationId: string;
+  requestFingerprint: string;
+  turnId: string;
+  viewTicket: {
+    conversationId: string;
+    epoch: number;
+    workspaceTabId: string;
+  };
+};
+
+export type SavedTurnStopAcknowledgement = SavedTurnSubmissionAttempt & {
+  status: "cancellation_requested" | "stopped_confirmed";
+};
+
+function stableSavedTurnIdentity(value: unknown): value is string {
+  return typeof value === "string" && STABLE_ID_PATTERN.test(value);
+}
+
+function validSavedTurnSubmissionAttempt(
+  attempt: SavedTurnSubmissionAttempt | null | undefined,
+): attempt is SavedTurnSubmissionAttempt {
+  const ticket = attempt?.viewTicket;
+  return Boolean(
+    attempt
+    && ticket
+    && stableSavedTurnIdentity(attempt.attemptId)
+    && stableSavedTurnIdentity(attempt.conversationId)
+    && stableSavedTurnIdentity(attempt.requestFingerprint)
+    && stableSavedTurnIdentity(attempt.turnId)
+    && ticket.conversationId === attempt.conversationId
+    && stableSavedTurnIdentity(ticket.workspaceTabId)
+    && Number.isSafeInteger(ticket.epoch)
+    && ticket.epoch >= 0,
+  );
+}
+
+/**
+ * The owner currently exposes a cancellation-propagated saved request as a
+ * generic HTTP 503. This predicate is intentionally not sufficient on its
+ * own: callers must additionally prove an exact local stop acknowledgement
+ * for the same saved submission below.
+ */
+export function isSavedTurnCancellationPropagationError(errorValue: unknown): boolean {
+  const message = errorValue instanceof Error ? errorValue.message : String(errorValue ?? "");
+  return /(?:^|\n)HTTP 503\b/i.test(message);
+}
+
+/**
+ * A stop acknowledgement can only reclassify the original saved POST's
+ * cancellation propagation when every durable and local identity still
+ * matches. In particular, a different root, a retried client attempt, or a
+ * view-ticket ABA transition remains a normal provider error.
+ */
+export function shouldReconcileSavedTurnAfterAcknowledgedStop(
+  acknowledgement: SavedTurnStopAcknowledgement | null | undefined,
+  attempt: SavedTurnSubmissionAttempt | null | undefined,
+  errorValue: unknown,
+): boolean {
+  if (!validSavedTurnSubmissionAttempt(acknowledgement)
+    || !validSavedTurnSubmissionAttempt(attempt)
+    || !isSavedTurnCancellationPropagationError(errorValue)) return false;
+  if (acknowledgement.status !== "cancellation_requested"
+    && acknowledgement.status !== "stopped_confirmed") return false;
+  return acknowledgement.attemptId === attempt.attemptId
+    && acknowledgement.conversationId === attempt.conversationId
+    && acknowledgement.requestFingerprint === attempt.requestFingerprint
+    && acknowledgement.turnId === attempt.turnId
+    && acknowledgement.viewTicket.workspaceTabId === attempt.viewTicket.workspaceTabId
+    && acknowledgement.viewTicket.conversationId === attempt.viewTicket.conversationId
+    && acknowledgement.viewTicket.epoch === attempt.viewTicket.epoch;
+}
+
+/** A delayed receipt may only clear the exact error it was captured with. */
+export function canClearSavedTurnStopFailureError(
+  capturedErrorGeneration: number,
+  currentErrorGeneration: number,
+): boolean {
+  return Number.isSafeInteger(capturedErrorGeneration)
+    && capturedErrorGeneration >= 0
+    && Number.isSafeInteger(currentErrorGeneration)
+    && currentErrorGeneration >= 0
+    && capturedErrorGeneration === currentErrorGeneration;
+}
 
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
+  savedTurn?: boolean;
+  /**
+   * A successful exact saved-turn event read, scoped to the view that started
+   * this request. Until this is true, the UI must not issue Stop or guidance
+   * control requests against an operation ID that the owner has not exposed.
+  */
+  ownerTurnObserved?: boolean;
   requestFingerprint?: string;
   startedAt: number;
   status: string;
@@ -10,6 +315,170 @@ export type PendingChatRequest = {
   toolStartedAt?: Record<string, number>;
   recoveredFromLocation?: boolean;
 };
+
+export type ActiveGenerationViewTicket = {
+  conversationId: string | null;
+  epoch: number;
+  workspaceTabId: string;
+};
+
+function sameGenerationViewTicket(
+  left: ActiveGenerationViewTicket | undefined,
+  right: ActiveGenerationViewTicket | undefined,
+): boolean {
+  return Boolean(
+    left
+    && right
+    && left.workspaceTabId === right.workspaceTabId
+    && left.conversationId === right.conversationId
+    && left.epoch === right.epoch,
+  );
+}
+
+function validSavedTurnRegistrationView(
+  ticket: ActiveGenerationViewTicket | undefined,
+  conversationId: string,
+): ticket is ActiveGenerationViewTicket {
+  return Boolean(
+    ticket
+    && ticket.conversationId === conversationId
+    && stableSavedTurnIdentity(ticket.workspaceTabId)
+    && Number.isSafeInteger(ticket.epoch)
+    && ticket.epoch >= 0,
+  );
+}
+
+function isReadableActiveSavedTurn(
+  turn: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+  request: PendingChatRequest,
+  activeGuidanceTurn?: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+): boolean {
+  const rootMatches = request.savedTurn === true
+    && stableSavedTurnIdentity(request.conversationId)
+    && stableSavedTurnIdentity(request.operationId)
+    && stableSavedTurnIdentity(request.requestFingerprint)
+    && turn.id === request.operationId
+    && turn.conversation_id === request.conversationId;
+  if (!rootMatches) return false;
+  const status = turn.status.trim().toLowerCase();
+  if (status === "queued" || status === "running" || status === "waiting") return true;
+  if (status !== "completed" || !activeGuidanceTurn) return false;
+  const childStatus = activeGuidanceTurn.status.trim().toLowerCase();
+  return activeGuidanceTurn.id !== turn.id
+    && stableSavedTurnIdentity(activeGuidanceTurn.id)
+    && activeGuidanceTurn.conversation_id === request.conversationId
+    && (childStatus === "queued" || childStatus === "running" || childStatus === "waiting");
+}
+
+/**
+ * Marks a saved root as control-ready only after the canonical events read
+ * exposes that exact active root in the same request and view. A locally
+ * generated operation ID, a stale view, terminal result, or retried root is
+ * not authority to issue a Stop or guidance mutation. A completed root may
+ * only use an active guidance turn supplied after its exact root-to-child
+ * lineage has already been verified by the caller.
+ */
+export function markSavedTurnOwnerObserved(
+  current: Record<string, PendingChatRequest>,
+  expected: PendingChatRequest | null | undefined,
+  observedTurn: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+  readViewTicket: ActiveGenerationViewTicket,
+  currentViewTicket: ActiveGenerationViewTicket,
+  activeGuidanceTurn?: Pick<SavedTurn, "id" | "conversation_id" | "status">,
+): Record<string, PendingChatRequest> {
+  if (!expected
+    || !isReadableActiveSavedTurn(observedTurn, expected, activeGuidanceTurn)
+    || !sameGenerationViewTicket(readViewTicket, currentViewTicket)) return current;
+  const request = current[expected.conversationId];
+  if (!request
+    || request.savedTurn !== true
+    || request.conversationId !== expected.conversationId
+    || request.operationId !== expected.operationId
+    || request.requestFingerprint !== expected.requestFingerprint
+    || !validSavedTurnRegistrationView(
+      currentViewTicket,
+      request.conversationId,
+    )
+    || request.ownerTurnObserved === true) return current;
+  return {
+    ...current,
+    [request.conversationId]: {
+      ...request,
+      ownerTurnObserved: true,
+    },
+  };
+}
+
+/**
+ * Keeps the ordinary composer contract intact while withholding saved-turn
+ * control actions until the owner has exposed the exact active root.
+ */
+export function savedTurnControlActionsReady(
+  presentationControlsReady: boolean,
+  request: PendingChatRequest | null | undefined,
+): boolean {
+  return presentationControlsReady
+    && (!request?.savedTurn || request.ownerTurnObserved === true);
+}
+
+/**
+ * Saved pending requests survive reloads for reconciliation, but a prior
+ * session's event read cannot authorize a new session's control mutation.
+ * The first current-view canonical event read must grant readiness again.
+ */
+export function resetPersistedSavedTurnOwnerObservations(
+  current: Record<string, PendingChatRequest>,
+): Record<string, PendingChatRequest> {
+  let changed = false;
+  const next: Record<string, PendingChatRequest> = {};
+  for (const [conversationId, request] of Object.entries(current)) {
+    if (request.savedTurn === true && request.ownerTurnObserved === true) {
+      next[conversationId] = { ...request, ownerTurnObserved: false };
+      changed = true;
+    } else {
+      next[conversationId] = request;
+    }
+  }
+  return changed ? next : current;
+}
+
+/**
+ * `isGenerating` is process-wide while a chat tab is view-scoped. Keep a
+ * background saved turn from putting an unrelated, settled tab into steer or
+ * stop mode. A pending request is already keyed to the active conversation;
+ * before that request exists, only the exact submission view ticket can own
+ * the busy state.
+ */
+export function isGenerationActiveForView(input: {
+  activeConversationId: string | null;
+  activeViewTicket: ActiveGenerationViewTicket;
+  globalIsGenerating: boolean;
+  isConversationPending: boolean;
+  streamingConversationId: string | null;
+  submissionViewTicket: ActiveGenerationViewTicket | null;
+}): boolean {
+  if (input.isConversationPending) return true;
+  if (!input.globalIsGenerating) return false;
+  const submission = input.submissionViewTicket;
+  if (submission
+    && submission.workspaceTabId === input.activeViewTicket.workspaceTabId
+    && submission.conversationId === input.activeViewTicket.conversationId
+    && submission.epoch === input.activeViewTicket.epoch) return true;
+  return input.activeConversationId !== null
+    && input.streamingConversationId === input.activeConversationId;
+}
+
+export function updateSavedTurnNotice(
+  current: Record<string, PendingChatRequest>, conversationId: string,
+  turnId: string, status: string,
+): Record<string, PendingChatRequest> {
+  const entry = current[conversationId];
+  // A delayed stop receipt belongs to the original turn, not the currently
+  // visible conversation or a newer request. Never restore a completed entry.
+  if (!entry?.savedTurn || entry.conversationId !== conversationId
+    || entry.operationId !== turnId || entry.status === status) return current;
+  return { ...current, [conversationId]: { ...entry, status } };
+}
 
 export const PENDING_CHAT_REQUEST_TTL_MS = 6 * 60 * 60_000;
 export const PENDING_USER_ONLY_GRACE_MS = 8_000;
@@ -37,6 +506,8 @@ export function shouldClearPendingAfterConversationRefresh(
   now = Date.now(),
 ): boolean {
   if (!latest || !request) return false;
+  // Saved turns require the durable completion reference, not editable message metadata.
+  if (request.savedTurn) return false;
   if (latest.role !== "user") return !isAssistantMessageStillRunning(latest);
   return now - request.startedAt >= PENDING_USER_ONLY_GRACE_MS;
 }

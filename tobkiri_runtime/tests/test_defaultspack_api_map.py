@@ -40,24 +40,6 @@ def test_api_map_contains_route_tool_and_webhook_edges(monkeypatch: pytest.Monke
         def list_profiles(self):
             return [SimpleNamespace(id="ingress.research", display_name="Ingress Research")]
 
-    class _FakeProfileWorkspaceManager:
-        def load_profile_yaml(self, profile_id: str):
-            return {
-                "profile_id": profile_id,
-                "name": "Research Profile",
-                "metadata": {
-                    "selected": {
-                        "tools": ["web_search"],
-                        "webhooks": ["research-webhook"],
-                        "api_routes": ["POST /api/chat/conversations/{id}/messages"],
-                    }
-                },
-                "policy": {
-                    "api_route_allowlist": ["POST /api/chat/conversations/{id}/messages"],
-                    "enforce_api_route_allowlist": False,
-                },
-            }
-
     monkeypatch.setattr(
         "ecosystem.defaultspack.domain.api_map.builder.canonical_http_route_specs",
         lambda include_always_available=True: [
@@ -73,8 +55,24 @@ def test_api_map_contains_route_tool_and_webhook_edges(monkeypatch: pytest.Monke
     monkeypatch.setattr("ecosystem.defaultspack.domain.api_map.builder.ToolRegistry", _FakeToolRegistry)
     monkeypatch.setattr("ecosystem.defaultspack.domain.api_map.builder.WebhookEndpointStore", _FakeEndpointStore)
     monkeypatch.setattr("ecosystem.defaultspack.domain.api_map.builder.InputProfileRegistry", _FakeInputProfileRegistry)
-    monkeypatch.setattr("ecosystem.defaultspack.domain.api_map.builder.ProfileWorkspaceManager", _FakeProfileWorkspaceManager)
-    monkeypatch.setattr("ecosystem.defaultspack.domain.api_map.builder.active_profile_id", lambda: "research-profile")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.domain.api_map.builder.persisted_resolved_profile",
+        lambda: SimpleNamespace(
+            profile_id="research-profile",
+            profile_revision="revision-7",
+            plan_hash="sha256:plan",
+            effective_pack_set=("defaultspack", "rumi_file_inspect_pack"),
+            providers=(
+                SimpleNamespace(
+                    contract_id="rumi.service.file.inspect.v1",
+                    provider_instance_id="file-inspect.service",
+                    source_pack_id="rumi_file_inspect_pack",
+                    version="1.0.0",
+                    content_hash="sha256:fixture",
+                ),
+            ),
+        ),
+    )
 
     payload = build_api_map(profile_id="research-profile")
     edges = {(edge["from_id"], edge["to_id"], edge["kind"]) for edge in payload["edges"]}
@@ -83,7 +81,17 @@ def test_api_map_contains_route_tool_and_webhook_edges(monkeypatch: pytest.Monke
     assert ("api:POST /api/chat/conversations/{id}/messages", "block:chat.messages", "handled_by") in edges
     assert ("tool:web_search", "handler:domain.search:web_search", "executes_handler") in edges
     assert ("webhook:research-webhook", "node:ingress.research", "uses_input_profile") in edges
-    assert ("profile:research-profile", "tool:web_search", "selects") in edges
+    assert ("profile:research-profile", "pack:defaultspack", "activates") in edges
+    assert (
+        "profile:research-profile",
+        "provider:file-inspect.service",
+        "activates_provider",
+    ) in edges
+    assert (
+        "provider:file-inspect.service",
+        "contract:rumi.service.file.inspect.v1",
+        "provides_contract",
+    ) in edges
     route = next(
         node
         for node in payload["nodes"]
@@ -95,10 +103,24 @@ def test_api_map_contains_route_tool_and_webhook_edges(monkeypatch: pytest.Monke
     assert block["metadata"]["runtime_role"] == "implementation"
     assert payload["summary"]["operation_count"] >= 2
     assert payload["summary"]["implementation_count"] >= 1
-    assert payload["profile_runtime"]["policy"]["api_route_allowlist"] == [
-        "POST /api/chat/conversations/{id}/messages"
-    ]
-    assert any(
-        diagnostic.get("code") == "api_route_allowlist_not_enforced"
-        for diagnostic in payload["diagnostics"]
+    assert payload["summary"]["provider_count"] == 1
+    assert payload["profile_runtime"]["plan_hash"] == "sha256:plan"
+    assert payload["profile_runtime"]["authority"] == "verified-v4-activation"
+
+
+def test_api_map_rejects_non_active_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.domain.api_map.builder.persisted_resolved_profile",
+        lambda: SimpleNamespace(
+            profile_id="defaults",
+            profile_revision="revision-1",
+            plan_hash="sha256:plan",
+            effective_pack_set=("defaultspack",),
+            providers=(),
+        ),
     )
+
+    payload = build_api_map(profile_id="legacy-profile")
+
+    assert payload["profile_runtime"] == {"profile_id": "legacy-profile", "found": False}
+    assert any(item.get("code") == "profile_not_active" for item in payload["diagnostics"])

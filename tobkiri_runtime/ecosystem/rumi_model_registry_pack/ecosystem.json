@@ -1,0 +1,74 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.ai.model.profile.manage.v1",
+      "rumi.action.ai.model.registry.migrate.v1",
+      "rumi.resource.ai.model.profile.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Provider-neutral saved model profiles, aliases, migration, and rollback.",
+  "display_name": "Rumi Model Registry",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:65b894e21beec0c7798fdfbe26bafe3901be1110d7c69c918fd3e89d798bd0fc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:3c3412e13c418d60a6a184c9bd6850fc37ef7e8195229d96a58e5518fce2a76c"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:3c3412e13c418d60a6a184c9bd6850fc37ef7e8195229d96a58e5518fce2a76c"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "model_profiles",
+      "model_aliases"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "atomic_write": true,
+      "opaque_credentials_only": true,
+      "optimistic_revision": true,
+      "provider_neutral": true
+    },
+    "storage_namespace": "rumi.model_profiles"
+  },
+  "pack_id": "rumi_model_registry_pack",
+  "pack_identity": "rumi:ecosystem/rumi_model_registry_pack",
+  "provenance": {
+    "build_identity": "rumi_model_registry_pack:1.0.0",
+    "content_hash": "sha256:28094f5b81b6dcefe67e73106300b1471eec5860e704cccb9e06b090afef92d6",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.model.profile.manage",
+    "ai.model.profile.migrate",
+    "ai.model.profile.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

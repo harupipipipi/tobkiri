@@ -17,16 +17,13 @@ input_data:
         timeout         : int   (optional, default 300)
 """
 
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.agent.scheduler import Scheduler
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if not isinstance(input_data, dict):
         return error("input_data must be a JSON object")
 
@@ -49,7 +46,7 @@ def run(input_data, context):
     description = input_data.get("description", "")
 
     try:
-        scheduler = Scheduler()
+        scheduler = Scheduler(settings_owner=settings_owner)
         schedule = scheduler.create_schedule(
             schedule_type=schedule_type,
             task_config=task,

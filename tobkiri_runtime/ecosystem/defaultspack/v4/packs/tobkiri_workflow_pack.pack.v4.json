@@ -1,0 +1,406 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:0ad6f853d48ebe4ad447b72fc1dec5c69cb5033242283cd0f571689056ad997b",
+      "kind": "asset",
+      "path": "backend-integrity.v4.json"
+    },
+    {
+      "digest": "sha256:9e4b7cbaf1072c8f3fd8f7cd2f156a532d06d2c4fca1a8e2884cfcc8087b4dd5",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:170299a1433e1ba1e4ed71ca632fb6c3268e161bdb4217ad2928958642c7053d",
+      "kind": "asset",
+      "path": "frontend_contract_map.v4.json"
+    },
+    {
+      "digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "kind": "executable",
+      "path": "runtime/provider.py"
+    },
+    {
+      "digest": "sha256:cedae53c8689c63b51ed41d5e8438ea0249e0dd8ffaa1cb1dd1f528b5e84da5d",
+      "kind": "schema",
+      "path": "schemas/frontend-contract-map.v4.schema.json"
+    },
+    {
+      "digest": "sha256:771666139606d1ed36dc71eb1eb8de226d3c5496d75eb8fdd5e80382a3b4cacc",
+      "kind": "schema",
+      "path": "schemas/workflow-definition.v4.schema.json"
+    },
+    {
+      "digest": "sha256:f53591d6733669515655f01feae9d3dc249dc72666bf62c9a494b4b1d915a63e",
+      "kind": "schema",
+      "path": "schemas/workflow-error.v4.schema.json"
+    },
+    {
+      "digest": "sha256:e4e9d62afc0f41dd9ac026010f588e9e6829933ba87e71b31e9cf3b67c5cad4e",
+      "kind": "schema",
+      "path": "schemas/workflow-operation.v4.schema.json"
+    },
+    {
+      "digest": "sha256:59ae8ec6c690bc6f11025fdd8a31d4d7d23d8e1138d87f77da49a6e02a277580",
+      "kind": "schema",
+      "path": "schemas/workflow-result.v4.schema.json"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.workflow.v4",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.observe",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ],
+      "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90"
+    },
+    {
+      "contract_id": "tobkiri.workflow.stop.v4",
+      "operations": [
+        "run.stop"
+      ],
+      "revision_digest": "sha256:96e31a74b9fc698f77351fe7fee9b34d2090165a21194b60c6f3d7a6cb95701d"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
+      "id": "tobkiri.workflow.provider",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.observe",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:96e31a74b9fc698f77351fe7fee9b34d2090165a21194b60c6f3d7a6cb95701d",
+      "id": "tobkiri.workflow.stop.provider",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "run.stop"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:58e4b14c2f3dab9cf5a2c28ad0f31715e7d970f5dda0ddc1ca309203858e5b1c",
+    "artifact_set_digest": "sha256:a93c9d8dde7c19956bd1e3df7e686355a072a387fd0280c82ca8c6ee73bf135e",
+    "contract_catalog_digest": "sha256:372d2046c23495b054ebeaecdb44917b48cb56aff93e0d47f4a9ebe7d0fe4d32"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 13,
+    "sunset_at": "2026-08-10"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "definition.archive",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.compile-preview",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.create",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.delete",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.get",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.list",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.publish",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.update",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "definition.validate",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "operation.palette",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.advance",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.cancel",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.create",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.get",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.observe",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.pause",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.reconcile-recovery",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.resume",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.step.execute",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.step.resume",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.step.retry",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.stop",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.stop.v4",
+      "provider_id": "tobkiri.workflow.stop.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:75b7a968a68b4eb870a07cb90e67b5ee2c199dd1aeddc25b7502188da21a2430",
+    "display_name": "Tobkiri Workflow Pack",
+    "id": "tobkiri_workflow_pack",
+    "kind": "host_extension",
+    "version": "4.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
+    "source_digest": "sha256:58e4b14c2f3dab9cf5a2c28ad0f31715e7d970f5dda0ddc1ca309203858e5b1c",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:ccd374bd4cf741748493dd024be8ce614ae9fa5d0dff1afb7a776872ae0abc27",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:83c69a7f5c4197ce513fa9310d742ef36c28d5c2cf925b9106355987bb7ca32e",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:58e4b14c2f3dab9cf5a2c28ad0f31715e7d970f5dda0ddc1ca309203858e5b1c"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri.workflow.provider",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.observe",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ]
+    },
+    {
+      "provider_id": "tobkiri.workflow.stop.provider",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.stop.v4",
+      "operations": [
+        "run.stop"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "workflow.definition.write",
+      "workflow.run.control",
+      "workflow.step.authority.reserve"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

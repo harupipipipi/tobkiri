@@ -1,0 +1,1383 @@
+{
+  "schema": "io.tobkiri.profile-release-provenance.v1",
+  "profile_id": "defaults",
+  "profile_revision": "sha256:6b7fbaceeb3fcaef0a7d9f75cee85466afc6a18df7dd8aae0358d73c20050aa0",
+  "profile_definition_digest": "sha256:ffbcfa18b97e80fa1c09e795bc206e5e79ff18ba58296e6db090819a79f25000",
+  "source_inputs": [
+    {
+      "path": "core_runtime/profile_content_projection.py",
+      "digest": "sha256:7b938bb506ae8375d8c81d673588d9aa3c6fc6dda769558b97022e62b24736c3"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
+      "digest": "sha256:1b104de38db60e08493ad49203f3c353fd1006bd30810163811a29bbf5ca0617"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+      "digest": "sha256:103dd6e150213645b56acddf89ea026e47f9124ed7ef301f5295df048ea36212"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
+      "digest": "sha256:50ca34f7382f1bd6ec9623998310f307b333806ff960376cdbab0576b37c74dc"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/defaultspack.executables.v4.json",
+      "digest": "sha256:79fbb6502c1ba3915847fab59db21187d1f788b3e3fdcf7061cff5dcf361c3a4"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json",
+      "digest": "sha256:e5721b00bbbbafcfd322b53d1612b2958ea99d8389e9709be299c85e056fcf8f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
+      "digest": "sha256:024dd5834dfce502c20b128015595fd5e140b7143f2063574da3cba9e0d54449"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi-file-inspect.pack.v4.json",
+      "digest": "sha256:72f56c09d0215c7574b77ceaffe8f440be56549a39ab4947891239fb9f3de241"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
+      "digest": "sha256:eb04c40511f940b380602c2065e14b26ac558fc050f7ab75a4fc7d449efdc75a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json",
+      "digest": "sha256:6d59f21acd11be362bbd4a231cf654c57b9d822602f9ca80e13c8cc408b6b7d0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_continuity_pack.executables.v4.json",
+      "digest": "sha256:f378e379ff827af109a655321b79f94aee4211911989b1b444cb21798572da35"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_continuity_pack.pack.v4.json",
+      "digest": "sha256:68384bfea0449f770b408872f31065a20d7a6ad7e293867992c91e78874466c1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_runtime_service_pack.executables.v4.json",
+      "digest": "sha256:33c67037596c22c236b369b13748c06c1520cf05ca5c04f636193cc6bda362ee"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_runtime_service_pack.pack.v4.json",
+      "digest": "sha256:eedb58c694a5ff4246386c707e79019b92f2722407fd4f16c5de9f918cf949fb"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_state_store_pack.executables.v4.json",
+      "digest": "sha256:53ba873692866e01f96948d1799470a6d2fb0902a454d3a4867c67b6da5dda05"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_state_store_pack.pack.v4.json",
+      "digest": "sha256:f39d0b82f5e979522030947620a3e6780658c5df94b99560be377a5caaf7ef22"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_workroom_pack.executables.v4.json",
+      "digest": "sha256:0a51a2b7f19769c913234f944baa78691af47e754f1b96cb42b4661cac7ce0ba"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agent_workroom_pack.pack.v4.json",
+      "digest": "sha256:e9d9fdbbe2a3791bf3f785b38501e72a967b83f52c2fecda0bb9973477fcf75a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agentic_qa_pack.executables.v4.json",
+      "digest": "sha256:c098cd8aed8af098a1ec89189fe442f8858a3fe200678578fc3dbece8ec71741"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_agentic_qa_pack.pack.v4.json",
+      "digest": "sha256:1557bd865d1ad4a5741643acc928f6a7a78bb4500fe15d70dc4726de4bca3099"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.executables.v4.json",
+      "digest": "sha256:919da9fc3feb7b7e4dd8926186cabdfc8eec09a8786c000899feb928ceddc6dd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.pack.v4.json",
+      "digest": "sha256:eeb5a7d5427acf276b2eb99796de614c7718a0bf4fc09479cda7dfa5ddd3e8aa"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.executables.v4.json",
+      "digest": "sha256:0b9ec782fecd51f4679913f57ac9249e3175a847174dd3921da4cb6308471668"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.pack.v4.json",
+      "digest": "sha256:9be2ff358a3b6b817ac197f587c01c74733953645521b3b4107c34f20f29c703"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_pipeline_pack.executables.v4.json",
+      "digest": "sha256:8caaaf306a64aa9fb344580e794eb1fc251d6a8c49bcb9b349eed4352397c5dd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_pipeline_pack.pack.v4.json",
+      "digest": "sha256:eb58ea9f100d769be12c4318dcf4618a5998db5f7434b06d7acaa66d5d90f248"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_routing_pack.executables.v4.json",
+      "digest": "sha256:2250b3cda5832bc5ceb7a3093b658dbbe44b5447e331dfd3ec1430b684bd6d4a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_routing_pack.pack.v4.json",
+      "digest": "sha256:2796c42f77e9d25c6bf7a22ba549fb0ba4f74983cb1ea9e069fe4057e6bb6573"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_strategy_runtime_pack.executables.v4.json",
+      "digest": "sha256:fb8585f5cbcb95c14ffae94d6425d3d0b80941615c23f3256b773132570ca578"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_strategy_runtime_pack.pack.v4.json",
+      "digest": "sha256:354eb133f59db08432f8c4bb7a697ee6bb885a6d3a6a2a89333276e90a11d6c2"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_stream_pack.executables.v4.json",
+      "digest": "sha256:d073dfc3e85321636aa9b9a726eb138f6e0bc4add074670e78192c12c00d39b1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_stream_pack.pack.v4.json",
+      "digest": "sha256:be4ff0736b412184c7424d8ecbdd66546f91cb87567d24d8a39aaa11375461b6"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_tool_bridge_pack.executables.v4.json",
+      "digest": "sha256:d4ac2e5f2669e24a79547b69edec288b227fafb87ebb4bdb6180bb5a18acb98f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_tool_bridge_pack.pack.v4.json",
+      "digest": "sha256:2d5f4404facac5e963c24a934e69fff27aca2959fc51f90419cc67fa3f40bc72"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_usage_pack.executables.v4.json",
+      "digest": "sha256:ef9ead144863232ea800f7a63bc8b0370af71773f6b835d6727d1d04526a104b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ai_usage_pack.pack.v4.json",
+      "digest": "sha256:c0457502adee881b508cbbc9e687e65725b113ede4b4a66537492a15e5ad5d9c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ambient_trigger_pack.executables.v4.json",
+      "digest": "sha256:ceb1f22bc2a0294b7ec8bfa1ce153dbabd076514d1457e5a98ebf0d00c5182ff"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ambient_trigger_pack.pack.v4.json",
+      "digest": "sha256:13cd506e5398baf7760d6f08e5168b061527905a17170a1ce8eae6702c56cf41"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_api_toolsmith_pack.executables.v4.json",
+      "digest": "sha256:46808fff286917ee2a634625adde61379dc4ab5948d9a2128c51a5270723d6dd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_api_toolsmith_pack.pack.v4.json",
+      "digest": "sha256:d6b473419aa1a6163c8193498fbfd569b6dbe518f99c63f5d006ca71949b6808"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_artifact_app_runtime_pack.executables.v4.json",
+      "digest": "sha256:745174194bcd780f66ffe588ef7d2f2b4d8a3100c3f238abb988fce38d127591"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_artifact_app_runtime_pack.pack.v4.json",
+      "digest": "sha256:3516904c70e8f58315bbbbb7a54b508e874437fa0cd9e0c1a3864337edebe76e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_automation_pack.executables.v4.json",
+      "digest": "sha256:a378405af209abf94b08461523f66835ba249d204a96e0479787b8e19b9f0d24"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_automation_pack.pack.v4.json",
+      "digest": "sha256:baabd27de0e820d845ffc77071fba71d17d331deb048827d7ce98996fdd25a77"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_element_pack.executables.v4.json",
+      "digest": "sha256:67bcf250726ef1c5b35283d678c8d8090583351bbeb241b34441cc1624034e66"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_element_pack.pack.v4.json",
+      "digest": "sha256:02a6220725d3437a863663d598432357491394b41e6808842ceaa9f5a9f0f53a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_form_operator_pack.executables.v4.json",
+      "digest": "sha256:d9b3b67d493d658f55b87fab9d514768a29c7811121e1ce49409a6d615ff87a0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_form_operator_pack.pack.v4.json",
+      "digest": "sha256:ae9494a03e5d12d511bb81b4e71430940c4d02fc08b913c9c8c912b7cff43bde"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_host_service_pack.executables.v4.json",
+      "digest": "sha256:042b33c5fda5a02ac5061af25eac330dcd3ad42d88523ba55590dbf7dc1ddea7"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_host_service_pack.pack.v4.json",
+      "digest": "sha256:efdfa861ed6b4736601ecbd335985c8e134f9423a8376065f948538cb5d9612f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_session_replay_pack.executables.v4.json",
+      "digest": "sha256:7365d8042b7e2d0fa668fed79f9a05c50f2f6cc36a2ed6f4749d0fcb748f2a7d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_browser_session_replay_pack.pack.v4.json",
+      "digest": "sha256:162e0eba5b272df380f97712c77d2558608ea944163cbfdc6d8c7bba09cc6097"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_business_ops_pack.executables.v4.json",
+      "digest": "sha256:cd2c9813b2a50fb9749d9b41c4bc4f24e26bbec69a52ebc45184903ed0a0425a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_business_ops_pack.pack.v4.json",
+      "digest": "sha256:6b3d4e86fdf6c3c9aaf44c9c0bf04e46467e5515ab01570d81d74eb790e4b526"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_clipboard_host_service_pack.executables.v4.json",
+      "digest": "sha256:8f2f9980760782d0eef5e6cb94bcaf09ddb71bbb50a250c2580979067c2cdff1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_clipboard_host_service_pack.pack.v4.json",
+      "digest": "sha256:f339303453e02c683a87b34544bd27871015bc60e8e805e08a5a5dca09641e45"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_code_ide_pack.executables.v4.json",
+      "digest": "sha256:70aee7a7e80546e2caa28982bc50bf1fbc1b5e42185d4a7a8a365f6c2bff7efe"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_code_ide_pack.pack.v4.json",
+      "digest": "sha256:b5774a4c246b578eb675ea3217959e86736f0be4248a19db0278b366084f44f4"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_code_migration_pack.executables.v4.json",
+      "digest": "sha256:c602fff8588731d9a81353a3a55ab93055564be24055af75e9f4540fbf0e4cdd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_code_migration_pack.pack.v4.json",
+      "digest": "sha256:5b976ce3252a1a9ca201db676cf2c2dd8e1d77bb81cf7a9d1afb79087ce39147"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_coding_sandbox_service_pack.executables.v4.json",
+      "digest": "sha256:e368f19cc3c253e26178c1d227325eef84f21df21f10660bd194fce4d481d5ee"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_coding_sandbox_service_pack.pack.v4.json",
+      "digest": "sha256:32a6d533c6c03f663e1d53e45cbef7679fe1a9d453d76a4bcc5fb6773420656f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.executables.v4.json",
+      "digest": "sha256:329091d35b738cc5f1e7ce92a816036fcdc0dc815589501aa40f0433cd4b5073"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json",
+      "digest": "sha256:b2659550d680fee95705f102b2b7c524869b25d4af01e4452b6b9e60815ee4de"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_agent_adapter_pack.executables.v4.json",
+      "digest": "sha256:ed869caa12d8715f80c1373af5d6bcc9788b35666a290744cbc0497cf06e9f37"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_agent_adapter_pack.pack.v4.json",
+      "digest": "sha256:de5d048e6363c970b66ef3cbadaaeb0aa39a8676667304fdd5d9e66a96e36a1a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_coordinator_pack.executables.v4.json",
+      "digest": "sha256:63d828b0009d9b4d5f038cc9b23fac896cdf56853ff9854d3e1cc51ead7c10f5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_coordinator_pack.pack.v4.json",
+      "digest": "sha256:d8633f1bba56df791cc3223125b2c9e2a39fdfe442c0912b3ca6e629ed402349"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_state_store_pack.executables.v4.json",
+      "digest": "sha256:c4e8fef9f1b2bce6c48ec2ae4aa76d729756fbb56296ecdab5ab66e77d141cc9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_state_store_pack.pack.v4.json",
+      "digest": "sha256:d583d9922cd0699ef1613285929fb921f3a75c018d91431e2197516d97301999"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_surface_pack.executables.v4.json",
+      "digest": "sha256:0b876eae4404e65e8a167025ff7bc8202298a5d561c8c2be5944d3eb09d7502a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_company_surface_pack.pack.v4.json",
+      "digest": "sha256:67a960354877c3789faeda97cc8e6633c256aa150497ad41d43a5c5bfa430fb0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_computer_control_pack.executables.v4.json",
+      "digest": "sha256:7e9f1510668397f2839d5d367e10e5a53e832bc39c8285ea93f1446426d9ab6c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_computer_control_pack.pack.v4.json",
+      "digest": "sha256:c3daab224555ae46cba6a7d188b00efceb4d29168edb5dfc76dd92bd204302e9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_company_adapter_pack.executables.v4.json",
+      "digest": "sha256:d52deba29229f22b60a18dc882859cbeb02f4b9561b4930dddb4a3b7efa80c64"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_company_adapter_pack.pack.v4.json",
+      "digest": "sha256:cd96c080ed6060d5acfcd0a8688475f87a0a613a035919ef70621ccccc334b1e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_gateway_pack.executables.v4.json",
+      "digest": "sha256:25c392e8cc61a935b0205ac3ab51969c1b619b52234d10e7be6566b9a0719337"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_gateway_pack.pack.v4.json",
+      "digest": "sha256:fa8f81ae3343e812d0610a69c5a0f0f40287ec8c4c19bf7dd96836b085d54661"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_inbound_broker_pack.executables.v4.json",
+      "digest": "sha256:554ad6c2bd04b4934243bcacd09153b5bb976eb7352e84621804cd2235746158"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_inbound_broker_pack.pack.v4.json",
+      "digest": "sha256:bc1ce3455ffe35c8becc93659ffd54d21b2a06754c6d6d9dc0bec07b768d7564"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_oauth_broker_pack.executables.v4.json",
+      "digest": "sha256:772f8dbae4ca67c51dd7369ce007933b87d9c2effe8ab75151ff6a2fc7ee924a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_oauth_broker_pack.pack.v4.json",
+      "digest": "sha256:6689e6a1be0341290d2e4b230ffed0342341daf3518503349d40dae26837308a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_outbound_broker_pack.executables.v4.json",
+      "digest": "sha256:70405f11ea65fc0dbec2ef6f5d1d1f77487bbfbbabeafb38f4d75f2072004dd9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_outbound_broker_pack.pack.v4.json",
+      "digest": "sha256:a0b6ec9f808c3c950d7a81bf22e9c908fdc06635ce24cd9db922fb6bd2ca3767"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_registry_service_pack.executables.v4.json",
+      "digest": "sha256:b26feb5d8c43dfd5ba01017c20ee8eb1902581c7c94663a9aaa3f313b5e7e4a2"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_registry_service_pack.pack.v4.json",
+      "digest": "sha256:669025f0afa0b35ad061ea319392f67020673c312dbc105c7013a08fb7e28339"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_settings_surface_pack.executables.v4.json",
+      "digest": "sha256:54ee42c48b02418cdc6f9fe2e1006197f8e6e7c896d7be2dbbc2116b6afa8d28"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_settings_surface_pack.pack.v4.json",
+      "digest": "sha256:8664722d478fd0c92a2911c2f340b19ce572cef6739111275f60a0cad5ae1d68"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_transport_gateway_pack.executables.v4.json",
+      "digest": "sha256:a76e862e230b3dbdc47d0af4ee330d2eec3b0896964bae230174404b20d13683"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_transport_gateway_pack.pack.v4.json",
+      "digest": "sha256:985dd576832ffab2c54fb5c71fb0b414634c882da39dd5ab2e4310ba2f232f71"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_turn_adapter_pack.executables.v4.json",
+      "digest": "sha256:dade256c3b1c6eac1252fe4ddc150cf21b4cbca9b247d789b23a51e0dbcc79d0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_connector_turn_adapter_pack.pack.v4.json",
+      "digest": "sha256:eadce3c32f3bffedaca9820de63828b653b8c88bbe721b1ca019d6b2be8bcd43"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_context_runtime_pack.executables.v4.json",
+      "digest": "sha256:723e05977651e71d1f7f2320f5709c2be91c39a7533f976883105fa7fc575d13"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_context_runtime_pack.pack.v4.json",
+      "digest": "sha256:3077c67df264d85af379666c484f1034bb2a17745740e748361433025359ca87"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.executables.v4.json",
+      "digest": "sha256:48a40e4064461422b5581625994b0d6804d7db8cc6e7f78addd2d692394ce335"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.pack.v4.json",
+      "digest": "sha256:c7d19882714b1c35cb23a069c690debfaf27d99ea041e5070a74fc0792f5a652"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_credential_broker_pack.executables.v4.json",
+      "digest": "sha256:1f966c49feb6e19e8c3c1ac9f834755d5d2242f20624aa1990ecf578f2f6910f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_credential_broker_pack.pack.v4.json",
+      "digest": "sha256:818c196a561f9e8bf0ea1ae8d93d0360359923f7aab8e4d245c1aef7b664c8aa"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_customer_research_pack.executables.v4.json",
+      "digest": "sha256:e0fb6c62b45d42ee6607d356bee833b4e5d153c0c291adc956bb3b5fabdffa8e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_customer_research_pack.pack.v4.json",
+      "digest": "sha256:131be5bfc2c90eb3bfee77ac9253289d4ad770e717120ce30e823200bc91fec3"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_data_analysis_pack.executables.v4.json",
+      "digest": "sha256:bf1969fdc206a9e95324e83f1d7b053399e957c454602c653842375db57739c0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_data_analysis_pack.pack.v4.json",
+      "digest": "sha256:682e03786752c31bd0e967a2a62ca421e3b8f771f1a06e79d341bc676354a377"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_deepthink_pack.executables.v4.json",
+      "digest": "sha256:51640c183fb3575dfdfa6a3c8f8a10fa0329eeec3b939e2853500990423f1245"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_deepthink_pack.pack.v4.json",
+      "digest": "sha256:91a3d1d2310a8198959d2ff81a8bf2c6c4a82a7653185b96a83d9e271f04e9a1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_default_tool_projection_pack.executables.v4.json",
+      "digest": "sha256:1b237434ff05985d7bb7d018e82f5361daf2a54494d7bd55ab6f098f7e1ffb7e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_default_tool_projection_pack.pack.v4.json",
+      "digest": "sha256:f9ac24adcdd900b5d14091978c4c9d2f7b22626064f27693b3458de35ed46f16"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_default_tools_pack.executables.v4.json",
+      "digest": "sha256:3d5f6f9d09131b1635dbecef90ce9255f11d4951318dcdc4d5430870b0df01db"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_default_tools_pack.pack.v4.json",
+      "digest": "sha256:41fc37f1f5795cbf2daffe9fb8639ea469e876a9da2eeb8f5dfddee03c9a88e0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_desktop_host_service_pack.executables.v4.json",
+      "digest": "sha256:d09e68b545f3dd9edd45d0d322f0f061b18fb8bf42780b9e92f81dfe8ce588db"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_desktop_host_service_pack.pack.v4.json",
+      "digest": "sha256:7bc7dfb2c64720af3be7138f006b42599970a6b86646036721494e6c51117349"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_devops_release_pack.executables.v4.json",
+      "digest": "sha256:84d845b3af563b130a2e08dcf56e9c30ff9b263dbebfb457fcb926f130e0e872"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_devops_release_pack.pack.v4.json",
+      "digest": "sha256:9139a02d6e1960e34149ca9698b46841bc6f036c95e1f3e579a9e3a061c8c191"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_discord_connector_pack.executables.v4.json",
+      "digest": "sha256:bc8635186f33c6a6f935ef328f1816bace8e81a710952ad721a890d3349f1c35"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_discord_connector_pack.pack.v4.json",
+      "digest": "sha256:3ec3aaaf65b05834b6ed0c2b6fd109c68c8fe47992705b11558720add5ff6b3f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_document_intelligence_pack.executables.v4.json",
+      "digest": "sha256:32d20fd3a85795f557f650d9912993eea5c5a3fd0869abc558b39e25919e0d83"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_document_intelligence_pack.pack.v4.json",
+      "digest": "sha256:541a78dda6af127066789be1f5465b87d25a67b22281c945d214ef9c6aaecc9d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_email_connector_pack.executables.v4.json",
+      "digest": "sha256:1855c132f8e540db33cab0bcaa42d6b6057c40a0c9e454592b8bde491f791439"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_email_connector_pack.pack.v4.json",
+      "digest": "sha256:085f3cdc65bf277c983a21e2c3782da39fea03c24a2d93b039767e0951484299"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_evidence_dossier_pack.executables.v4.json",
+      "digest": "sha256:e9644b1c7c65f6187474bbb6f9a55513e34301cf311113aa369084e7d184b28b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_evidence_dossier_pack.pack.v4.json",
+      "digest": "sha256:bb8a6c217fc6e67ca1d7f67a41285b3387b667a5a853391d05d8d5da6ab57a0d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_experiment_design_pack.executables.v4.json",
+      "digest": "sha256:20209ff2338097eb296875f6681528631c0193e6ca009acbaf859018aec4d6b2"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_experiment_design_pack.pack.v4.json",
+      "digest": "sha256:58597ff4234233b02971749b5c964e869f849fe7d4490eeb2355f123117e1f9c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_file_inspect_pack.executables.v4.json",
+      "digest": "sha256:56bf685e08c3794cf37e5a7991d66c59c0d313c5cd1bc7f531f0befdf1464013"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_file_mutation_pack.executables.v4.json",
+      "digest": "sha256:eb9f5781d887ad7d501f5aa2b016a096a9e807cdb177a5a6fd5f7de1102b653d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_file_mutation_pack.pack.v4.json",
+      "digest": "sha256:2c13fa5583578c035e5ed1bd46da8256edf0b9382eb1978c89ce71e770a8d681"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_file_patch_pack.executables.v4.json",
+      "digest": "sha256:e3b5b9f0f7ab55d1a7f59feb1026ccb078e66449897dae0f69dbda8e69381faf"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_file_patch_pack.pack.v4.json",
+      "digest": "sha256:1dfe485f8b1aa08b5c2cf596ecd9ed0d72286d2d96857adb6b72b424fc0a00ef"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_frontend_design_pack.executables.v4.json",
+      "digest": "sha256:ff3d14bb6b55e7254a2d6657dc495a43c886bffb98c04314c5a07852790beb4b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_frontend_design_pack.pack.v4.json",
+      "digest": "sha256:85961c1576c7521051091e7c78f579aaedde3b9a4c05126399717fc58dca7c28"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_generic_webhook_connector_pack.executables.v4.json",
+      "digest": "sha256:8ee2c095e57b108037a7c34810b34959caff6b0be5d669f9c285201a0a6fd53e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_generic_webhook_connector_pack.pack.v4.json",
+      "digest": "sha256:ef87f88ac7c1890166631b8065888eac0a6f4cf3e9cb45f323ed16688bc99f72"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_publish_pack.executables.v4.json",
+      "digest": "sha256:1f6bafadce9c2e65c7dc5128faefc1512ded1dd4cdb0679662614079b9e3da02"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_publish_pack.pack.v4.json",
+      "digest": "sha256:d9216a94d6f1a61cde3268f39c18c48b51bcea538834ab53f89d4bbd0191b323"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_read_pack.executables.v4.json",
+      "digest": "sha256:b50dcdd63145a9cfe474afafc5ebc3e8061b72a787c8b5f772070aaeca40e544"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_read_pack.pack.v4.json",
+      "digest": "sha256:94b12f51b40d3b32edf2506fa4c9da4d26c3c3a5b2cba780087903382d5e45dc"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_write_pack.executables.v4.json",
+      "digest": "sha256:2b3cd9c8e59e9fea54dc48a0373ee6151d525190c579f87bf1f939b641fa846e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_git_write_pack.pack.v4.json",
+      "digest": "sha256:4ce084a07f391f8a5c0faac9e16ddc25f2925741587c3b1c43d2397f24b513c2"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_host_authority_bridge_pack.executables.v4.json",
+      "digest": "sha256:0dacbf610211f0b81d48c823f19ad053e86a66192613038d9f3822b8e85eebaa"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.executables.v4.json",
+      "digest": "sha256:2c54e3470a52bce164bb07973955a47da81b978bf13446ce6b70fb3bd1bc4b18"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.pack.v4.json",
+      "digest": "sha256:e65473cb6ebce768b1a4e3dbc86ffff10dbd1c56e558c203b65645d62bf96d29"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_http_api_connector_pack.executables.v4.json",
+      "digest": "sha256:757dfc5ccebf5be2cc39a0ea374e84af4a696f52c90a483f2f8cb936ff243aef"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_http_api_connector_pack.pack.v4.json",
+      "digest": "sha256:aeeddf9a196ecdd066c14a8dbd4a0bf6ed3218e340a68fc23e666e2ce1eeb020"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_human_operator_provider_pack.executables.v4.json",
+      "digest": "sha256:acf6d2e8275309e0e6c9d69517b96472c3ef15268c6264a37662aee2f469a686"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_human_operator_provider_pack.pack.v4.json",
+      "digest": "sha256:e36d56cf1ea82495b10c84c01220a5568babcec0eaf09584f0250e1dea423523"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ide_bridge_service_pack.executables.v4.json",
+      "digest": "sha256:16c371e506306d2dfc94224edb1526d410842f04d0599b7fa534eb8896b7e1dd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_ide_bridge_service_pack.pack.v4.json",
+      "digest": "sha256:0cb050ba885f9ec180aa85c024dc67f5233934658104a88133da2ada472696ec"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_job_action_broker_pack.executables.v4.json",
+      "digest": "sha256:89a1dd2575933a353f49ce484e607baa25824c2aeb8186a69443d3ec22e8d344"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_job_action_broker_pack.pack.v4.json",
+      "digest": "sha256:99f5f489bff684f8afb353b36eb8a38b8579e65ad5d56a13d6ddac6fd46a71c0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_conversation_adapter_pack.executables.v4.json",
+      "digest": "sha256:5c0e2e388f0c466705a38fde17cf6886c506f8acbb18636fabaf94a4b895a925"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_conversation_adapter_pack.pack.v4.json",
+      "digest": "sha256:8f975b9432c460708e35053ad66fd8a623ce6a5026b8f1c0e72b1af954ba51d5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_state_store_pack.executables.v4.json",
+      "digest": "sha256:36684ae7fb4d75944d253c4f237f2e622bf7ae3aba17d5e9050c114243c398c5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_state_store_pack.pack.v4.json",
+      "digest": "sha256:6333b1dad3187c3231d8ec81467821fd5ba378564701038de8f220c751e05966"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_surface_pack.executables.v4.json",
+      "digest": "sha256:79291fdfa7a9fe6dd24e89c31d13a03815eb7fd17138a4a3102e398c05c8ba67"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_surface_pack.pack.v4.json",
+      "digest": "sha256:60a1aa6da89c43a443de33afc3fa7282bb00c1126ed3ff2cfdcad5b67e9d2967"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_marketplace_pack.executables.v4.json",
+      "digest": "sha256:ea75926776733e110f31fd9f793e80ec1ee847bfb47905303b4bf3eb0868d84e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_marketplace_pack.pack.v4.json",
+      "digest": "sha256:9a95dc886ed41d51bf1a04cb52f92617f53d80462f833201b5f390626829f6ed"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_store_pack.executables.v4.json",
+      "digest": "sha256:36d1394ae9507f862530d91e859b1f93510196c3c269e71c8a0420bd42c668d5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_store_pack.pack.v4.json",
+      "digest": "sha256:3d2e07d3b902624b3bf1beeadc878c936941eecc424ee659b4fc4729c66618f5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_line_connector_pack.executables.v4.json",
+      "digest": "sha256:c9b3e7999c026cb18883066e84938eeb52f246748553dff3cc085a8794996fc1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_line_connector_pack.pack.v4.json",
+      "digest": "sha256:4964f460d8c9ea663a12d1e9ac625e7f569fd7cbcf145b44fa66db8d01af9c5e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_localization_pack.executables.v4.json",
+      "digest": "sha256:4106fc8ea87b54c684e096836fa772fca91371d725797e50089deceb8f29a518"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_localization_pack.pack.v4.json",
+      "digest": "sha256:e1f1a4e0b44d4b6c28e4c1cd8a834cd33787aede4002d227f5fb0b11c21c860b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_gateway_pack.executables.v4.json",
+      "digest": "sha256:0232aec50db368100001ab44715aaee4b76e560996ac7fc5c44a8ba1935fe255"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_gateway_pack.pack.v4.json",
+      "digest": "sha256:c1f1fc0aafe42d41cce036049f61772d39eeb8a684e1f4738a6c0b4ad56d2d59"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_server_pack.executables.v4.json",
+      "digest": "sha256:1d78feddf0f7bc9e30122d0ee26992c320d67c3f93058ab335afe9d035d24ac3"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_server_pack.pack.v4.json",
+      "digest": "sha256:7d27046cc19ba28c681d3120e7f0670f1d3fc187c7c8b45c963180ac3970dcf9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_analysis_adapter_pack.executables.v4.json",
+      "digest": "sha256:73ffad96da7f651de9ad4582bcdbd038d865d9e890794a51616684884dbdb0a7"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_analysis_adapter_pack.pack.v4.json",
+      "digest": "sha256:52fa6c9df127de93b114293af33c924c4ba3e0a7ed2f853c910323fc8f93648e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_capture_host_service_pack.executables.v4.json",
+      "digest": "sha256:9bec72c7d80226bbc20f7ea67242654c8fd1f8faf47bcf62234870522949262d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_capture_host_service_pack.pack.v4.json",
+      "digest": "sha256:cf14cb1f880c3626cd7fb6bc3d97756c2b75902ae49e9285e043a15d505f723a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_inspect_service_pack.executables.v4.json",
+      "digest": "sha256:cc8230c30862c185dcda7b87c9df92e84f97785dce1ab2eaf4d14e1fd3e1803d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_media_inspect_service_pack.pack.v4.json",
+      "digest": "sha256:bc305beeaf48eabb0523c2d96f8dfa7c4f4ca3e2b20bfbbb028ac6b78dba4e15"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_meeting_intelligence_pack.executables.v4.json",
+      "digest": "sha256:db1f92bd8d270a192435e09c7d6e29f008890c5979a1086f373d09bc3e9bd51e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_meeting_intelligence_pack.pack.v4.json",
+      "digest": "sha256:bf8e26ebc9736454ed00b869cff847d4a7c75ba4707569600c830990028b6f60"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_memory_knowledge_pack.executables.v4.json",
+      "digest": "sha256:eaa668f075fe70d212a09c203e98595e50e749a80a51ae49dd9287d7bad1e965"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_memory_knowledge_pack.pack.v4.json",
+      "digest": "sha256:439484080c00854b6ce15a583b4a521776de4a251f557c9cda93512389ab1e2a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_memory_store_pack.executables.v4.json",
+      "digest": "sha256:e18b1d7371160906677d07a3c53d929ee1a113ea0b48992fdb5490ceafe78198"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_memory_store_pack.pack.v4.json",
+      "digest": "sha256:e4f16f112a1d2c488d23549efb832b023935e3da44ee15d1f893e6b76f35b4fc"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mobile_pairing_connector_pack.executables.v4.json",
+      "digest": "sha256:f01a71b803935cdbc1d8efde90836bf3a7e55e9c22f209e20becddf729c35da1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_mobile_pairing_connector_pack.pack.v4.json",
+      "digest": "sha256:06e867d5745c14fde98dc82c514a18729794a4d5c07fb4eab714a78421d7a0d4"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_catalog_pack.executables.v4.json",
+      "digest": "sha256:243319ae82705e0208fce3466fbed9deac4f2beeec654cd83a94e4918a2609f9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_catalog_pack.pack.v4.json",
+      "digest": "sha256:62d9b0c664d417fe0007161821030de8b30413243fa00f10a4ce65df3ebff915"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_evals_pack.executables.v4.json",
+      "digest": "sha256:07cd44f09641e12afd32c0dccf63eeea6a2a9f7411d9ced340d0b553ca7fb972"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_evals_pack.pack.v4.json",
+      "digest": "sha256:a1e4bafa4ee172cd6629a8dcc93b0af4a20d7e8b358e0b80fa36aec80a020956"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_registry_pack.executables.v4.json",
+      "digest": "sha256:7023db1f5687422d8ad95aaf49df7f57fe5dfeefb8953fc9516c21551dbe52b2"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_model_registry_pack.pack.v4.json",
+      "digest": "sha256:1e599f950f951cf510e99260b288d2927471559424d91870ffea65be11961bd0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_multimodal_media_pack.executables.v4.json",
+      "digest": "sha256:ecb1c8ab803634c10bf5238908a1dab18bac4fa218c52df013f2c14370e24368"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_multimodal_media_pack.pack.v4.json",
+      "digest": "sha256:01af0ef4bb3dde7e29e8df440a1a1659f4a5235aee8aba9a36ffea96d6997bdb"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_observability_pack.executables.v4.json",
+      "digest": "sha256:b86165000d0e661daee7fe0daf96b3d03aa229c0121b78599f48caff415c0194"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_observability_pack.pack.v4.json",
+      "digest": "sha256:85dc0d42fea266754cdf71ad5057e958fd2256d5f59ffbee19faa898908567d0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_office_authoring_pack.executables.v4.json",
+      "digest": "sha256:52f5d7661c495a023938122145c3b9a1e23bf0b9d9a1449230181534763ecd3f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_office_authoring_pack.pack.v4.json",
+      "digest": "sha256:275972d82b69e8b480c83580e3b32bd6a9cf6c5c03b817f4fee854e018c680cd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_omnichannel_agent_inbox_pack.executables.v4.json",
+      "digest": "sha256:d156535ac4364d3ef7cf2952517fcc010cfea91bb35a56256888e55ea0763de6"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_omnichannel_agent_inbox_pack.pack.v4.json",
+      "digest": "sha256:0035f4f4d3e022727bb0f94242357bbc7f3a0d5db5ceb3fc060084078cc02df0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_operations_company_pack.executables.v4.json",
+      "digest": "sha256:b8a83257b2b0c85afa07b994a0adc64a4dd02b9edc5fa520090eec5949270d08"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_operations_company_pack.pack.v4.json",
+      "digest": "sha256:e04c64b50f1e189df127d9f68e25ef15dedb2b39fdec17cbe2db16c1f69e1ef6"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_p2p_connector_pack.executables.v4.json",
+      "digest": "sha256:ced68f73b5227003f134cddab09cce823becaad68bb58bd8965b6765f48bae97"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_p2p_connector_pack.pack.v4.json",
+      "digest": "sha256:9ca32caeb60758fa152540ccdb81ec394ce98ccb3602f5033b12c5a33d3c75e8"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_prompt_studio_pack.executables.v4.json",
+      "digest": "sha256:6947d332298315a6b2a57027a65f13cd68e33f9518755417084ada6e7ed97948"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_prompt_studio_pack.pack.v4.json",
+      "digest": "sha256:e61f331a42c7b8f2dcf99e999124c915af6f98ccccd135c5fbaddd6fb3139b53"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.executables.v4.json",
+      "digest": "sha256:104a39409d1b13d4b78ca64ac48f0318614deaa1995dfa601c48e4e214416b9b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.pack.v4.json",
+      "digest": "sha256:7372e30f3211ea2b35c3ce897c67f7c16a2efa0908186ed1da41690e565b7727"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.executables.v4.json",
+      "digest": "sha256:107c3a38c3ba4f217fb295b8d1167997f51ca81bf3ff909ddfd2ee51e4630aaf"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.pack.v4.json",
+      "digest": "sha256:6aa3e55d4b32c2fe7b327f8254952d732899388db51c2092dff2bbaaf7e919d9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_qr_pairing_connector_pack.executables.v4.json",
+      "digest": "sha256:93cb60b4091adf99f74f960ddfcdcb6a831e69503725b94f2910c8a8bfa93386"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_qr_pairing_connector_pack.pack.v4.json",
+      "digest": "sha256:49a11bcad9ea3c0cb2d517b5aafb53092b8e7713b4ba7bd7b1e57ea97ad90e91"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_repository_context_pack.executables.v4.json",
+      "digest": "sha256:11b1753f91d72125f7eff1626aa23c22e3d17fc6a74a18fd73d86247af803e92"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_repository_context_pack.pack.v4.json",
+      "digest": "sha256:fefae99fa7af6861455ead30ddcb7e6b91d668ed6229b9fa8e7591d9a3f7d114"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_research_pack.executables.v4.json",
+      "digest": "sha256:ee27eb049f66ce9bdcb6c64b7d9b433300e27b8bc6666e4e031e8f6060200158"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_research_pack.pack.v4.json",
+      "digest": "sha256:2183dcea48f9b8083d59be71f5655434ded212bc846bcefb8e803dd0e4234d05"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_runtime_benchmark_pack.executables.v4.json",
+      "digest": "sha256:ae75a2cd0f95cfbf093117699ecc6c8a40d58cdf7fd1183c1047b179356a0184"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_runtime_benchmark_pack.pack.v4.json",
+      "digest": "sha256:f14dc035f2ad55fcd2a4a7d190b3f5917cb976252a1b11055b1718f128af3916"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_sandbox_runtime_pack.executables.v4.json",
+      "digest": "sha256:20386c908bb81f6123c0e193dd16b01db76a15acc0700dbf6b6212e2c1e7fb03"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_sandbox_runtime_pack.pack.v4.json",
+      "digest": "sha256:449f578c68ab671a1bf3c8b9343a4780e7a7a69b14b065c025a8b758027a2c52"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_schedule_store_pack.executables.v4.json",
+      "digest": "sha256:76d17181de20633f87b0d5b1992a7e4c6f5b20f801e7afcfc60eb0a77a8ed76c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_schedule_store_pack.pack.v4.json",
+      "digest": "sha256:bce97f596e8df46c8288389b1ff6f0d4d8dc395b933c64c86b426c2c639ed855"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_runtime_pack.executables.v4.json",
+      "digest": "sha256:0a9fa002db68cc2ec45acc53d49c89773227d291413db428522a365b9808a16f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_runtime_pack.pack.v4.json",
+      "digest": "sha256:aad160fb001d57cdabb0f6680eda1f5b50241413e79cc920e27d381198eedcab"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_surface_pack.executables.v4.json",
+      "digest": "sha256:03bf3699f4051602d5da5b43815ee7f269ac1f9afee5508ea4a3b5bef344d9b3"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_surface_pack.pack.v4.json",
+      "digest": "sha256:b73a929985cc30b1b3a4635d7dd58a5001dfca54ff0b5e59e0c2d48bddfdc8e6"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_tool_adapter_pack.executables.v4.json",
+      "digest": "sha256:858321ecae3493aa7f7abc23ac6072e91ccf892a4093b6acba437f4bf1a88d7d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_tool_adapter_pack.pack.v4.json",
+      "digest": "sha256:1e0f179c207c7fb182e33dc5f9d0d83899067316e00ef502781e92a79f3ae1d5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_security_review_pack.executables.v4.json",
+      "digest": "sha256:4031ab7153f0216b78d7d6d61ae33618622182430eaca7fc8c4bd0c36cfb1c9a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_security_review_pack.pack.v4.json",
+      "digest": "sha256:9ada0c47af94bb3dd02b64ecca6f100b2771771b2f49067074303e2f1cc6cd76"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_shell_execute_pack.executables.v4.json",
+      "digest": "sha256:b78584bdcd26c3ef9195da7cca10d883f3443a3dd7d6d452e91415bc1b9e43aa"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_shell_execute_pack.pack.v4.json",
+      "digest": "sha256:79b2ebe1016a28a094d8375fd245818027ce255d9dc01bdc108bd1c2dd3ed92c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.executables.v4.json",
+      "digest": "sha256:948db94828a170bba47589ab766d121143f4acebfa5b763add491f37c8e9ad35"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json",
+      "digest": "sha256:56eeb0c03168a335057601c37511f52a97d499a237fcd6b7c9aa850bad8b5c69"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_slack_connector_pack.executables.v4.json",
+      "digest": "sha256:396ff256269e8800054aff25b6c78ba0e5c535f37f4cd5a379a46234226b601f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_slack_connector_pack.pack.v4.json",
+      "digest": "sha256:d4c40115d42fbcfbc9ca6d351a0ec5b868aaec96d719f566f73cd17ded3f308e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_sop_mining_pack.executables.v4.json",
+      "digest": "sha256:417e4613eeaec3639feaa2da88439d336cf1103a47f0fc1df87c9b7001de614a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_sop_mining_pack.pack.v4.json",
+      "digest": "sha256:744a1f3de02b8c1a430773de4d560462309e880ffeb52321ed3784f7f5dafaaa"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_study_coach_pack.executables.v4.json",
+      "digest": "sha256:150c013b400645e21fc532f4be0278be0753d463c974643e7629a7b9a6e16225"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_study_coach_pack.pack.v4.json",
+      "digest": "sha256:1d574302683ef5d295f534b04bf0a8304c795334cd7736d915ad90d6e8542094"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_placement_pack.executables.v4.json",
+      "digest": "sha256:1d5c46998fe774e8e62d0987dd9c0aa1abb674c47c62bbaced5a78653e7e5940"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_placement_pack.pack.v4.json",
+      "digest": "sha256:372c8d44bfc6abfc3b63e40e73a7e653561b797502c354f0234ad4d334d403a7"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_pr_manager_pack.executables.v4.json",
+      "digest": "sha256:04bd50c2b133669004ec03e25ef5a6170a5b26869d6c628eec843405f5946319"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_pr_manager_pack.pack.v4.json",
+      "digest": "sha256:fd3c2402c07d7a71692fc88937d148ee450e68faec61d891695cf88a7754964a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_telephony_delegate_pack.executables.v4.json",
+      "digest": "sha256:7813302e0b506f6baa963bb469c40f93312f255dab7e476fe30e0c038be75e19"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_telephony_delegate_pack.pack.v4.json",
+      "digest": "sha256:428afb62b2736ddb646590cbf644a3e5390f3708e022c57f8b42e70af8c4a382"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_terminal_session_pack.executables.v4.json",
+      "digest": "sha256:b7b0a16eaa5a42ea6fb2b9efdae3bf296cc7c1187a1c9c1e9e64e1f653a3fbb7"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_terminal_session_pack.pack.v4.json",
+      "digest": "sha256:10fbcd7f7c3d0d06f621fb56c4c888a5081baedd76ae09c5d253b8e56c5008d9"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_approval_bridge_pack.executables.v4.json",
+      "digest": "sha256:ce0b3e0a968ca888bbea71bb3f0a1df10d3bcb805003772a6f2eb56d07e16188"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_approval_bridge_pack.pack.v4.json",
+      "digest": "sha256:47802437b9bad358c5131305e16262a5d4fc0b531ee3537b5acc447a9c101729"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_audit_pack.executables.v4.json",
+      "digest": "sha256:2df883fbe3f38b0971ae052a404c4f54c4171358f856b32fa650bd79462d63c5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_audit_pack.pack.v4.json",
+      "digest": "sha256:909f95e165e903bad9ac49195953755316692adee04df6cc51c2284e7df264cc"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_authoring_pack.executables.v4.json",
+      "digest": "sha256:915c63b4325bcab3e8b9ed1ed8a5fd126f7db13d4f5c8c895e66147d400801b5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_authoring_pack.pack.v4.json",
+      "digest": "sha256:5ea8e973670d6cf13f6fd046a567ca6f20a65a377b7a61be6d5ce1ab86855d0e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_broker_pack.executables.v4.json",
+      "digest": "sha256:ca66ca950236a4ca79262efc9faf90d47140e75b6e4cd442ae6b5ab253ec195f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_broker_pack.pack.v4.json",
+      "digest": "sha256:e3d1a7a8d244994586957b81a8fc06489259d17868eb106e7084e1630ad0c32e"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_capability_executor_pack.executables.v4.json",
+      "digest": "sha256:0da3e50be7dfdfbbabb463dbec1cd280116ceeddff62101744bec389a53463ff"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_capability_executor_pack.pack.v4.json",
+      "digest": "sha256:b67f9da22c9e0a6ab8ccf7d3b5e5dd3a77a73c07cf273a6cb44433c8d4c2352c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_executor_selector_pack.executables.v4.json",
+      "digest": "sha256:69fa4c09aaa4e809d0b887049494fd6db9bd5a71b128f94e89b7d645b61afe86"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_executor_selector_pack.pack.v4.json",
+      "digest": "sha256:0ead697abadd0fe2c6a5a54ecc694d25be73a44a5881b998ba434e9389b6ff71"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_guard_pack.executables.v4.json",
+      "digest": "sha256:a96876529eaff04d5fef6fe99869ce75c9c2993ea59a536a50130004e0981d9c"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_guard_pack.pack.v4.json",
+      "digest": "sha256:e09f3325dd90e2ac374bfeedeb31408452155d5902eaf231b810b0adaac89b6b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_local_executor_pack.executables.v4.json",
+      "digest": "sha256:5b83f8db3184b659b91ce51ef7f09ab86d4425d36c9df117cb02de3c9953d64b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_local_executor_pack.pack.v4.json",
+      "digest": "sha256:e1110632bba3a4dce55d04c6c55cff9e5bc506e2f4792fca0abdbd03d2aa6f8b"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_mcp_executor_pack.executables.v4.json",
+      "digest": "sha256:fe51eb061677faf19a199d6488a420a40ffa528ea4960a469bf82a523a173847"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_mcp_executor_pack.pack.v4.json",
+      "digest": "sha256:ff4389f0be82051e42e171cc6e1e5b986ce0bbd817b79b4aaad90d4e8ad57be4"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_policy_pack.executables.v4.json",
+      "digest": "sha256:63e5a7021c34ba23517d558596707ea920248d6a9494f8584b5c3006001b8f73"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_policy_pack.pack.v4.json",
+      "digest": "sha256:05064508e6948eabfabb82e5502a187d158db017f12f2879c47594c8b55f5948"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.executables.v4.json",
+      "digest": "sha256:d62cc68f998caf0afd0856ac5fa8d883e674e68ea50b9f22053394bc7cfe5a35"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.pack.v4.json",
+      "digest": "sha256:a19d436cedfebf9e5457a2a95bea4dd1c7c2c8655b481e3d4176f932dc3975c0"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_remote_executor_pack.executables.v4.json",
+      "digest": "sha256:cb5041794ed859e54113ae0cb8a39f934a5945b41aab505eddf9b7d6e7e6a633"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_remote_executor_pack.pack.v4.json",
+      "digest": "sha256:74469daa9524200865575a175f9f4f9bb4bdc00e30c6e5b10e972a41b69fad0f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.executables.v4.json",
+      "digest": "sha256:bea6bfb59e3d91c24e3da4b7c24ed9873e14f3bb1a90123655c8074f2c71e3fb"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json",
+      "digest": "sha256:025a2ae8efa7836e54e4b6bdd5975b3a5ff53c88a62705e0cdc2cea0f80d5105"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_sandbox_executor_pack.executables.v4.json",
+      "digest": "sha256:77e12c008b693c3dc48d47307374366bc63361e9f3df1dd8c87dab97a4f2d58d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_sandbox_executor_pack.pack.v4.json",
+      "digest": "sha256:7a5769910df7fd92f9cd5faa3987be3ae393c48b75d2a727c9b22cd1a8b9bd21"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_validation_pack.executables.v4.json",
+      "digest": "sha256:ccfb729364b49e75f035a06f20d9b7a2e739857d5aed417d80719eaf5a830ec4"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_tool_validation_pack.pack.v4.json",
+      "digest": "sha256:8dbb2ac4147ce4a6fec7db91e8ddbfdbe5c463edb054c00b22b9e61ef914796f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
+      "digest": "sha256:c8a71679df325c986c89123bce2365b561faed37247bf9a67c6272326a89ed33"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
+      "digest": "sha256:9373af307fe72928c9b76b4304c52dd01a66d1ea9e91b9f042d34d09c8a1599d"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_voice_mobile_pack.executables.v4.json",
+      "digest": "sha256:99a328880b323c7f670a1db73e7735189b763bbdf0bbbd630a65101f044533e5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_voice_mobile_pack.pack.v4.json",
+      "digest": "sha256:e505b21a9f6e9c5f93c3822b89f0533977d77ae1c11300694bbd5cbc816dc3fd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_workflow_scheduler_pack.executables.v4.json",
+      "digest": "sha256:8e70b68a21f0c670c24521520438953e6dd48321d191b091ccdb5a7df722766a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_workflow_scheduler_pack.pack.v4.json",
+      "digest": "sha256:baf679243c7b385026cb808350d201aedc20d5603b73df1ee90b2077f0eb4726"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_workspace_mount_pack.executables.v4.json",
+      "digest": "sha256:01fef805b7f2e9a2208c6f42df46ce74d2ddc2357d994be1f7d3e2184a75d208"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_workspace_pack.executables.v4.json",
+      "digest": "sha256:45c17c6548cc8dccf860a57e21b5cbcddf39ecc7126cdf452906b3e026b8d4cd"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/rumi_workspace_pack.pack.v4.json",
+      "digest": "sha256:d2c0110c4e937167c41666a73137c8a9fa613d65bc7368f5fbcda42c5a1d7d96"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
+      "digest": "sha256:faa10b98e70b6ce7e64b660b29f51c70546618426f0e25cccdd2ee28379a58ff"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/search_home_pack.executables.v4.json",
+      "digest": "sha256:7925df726d4364a8ce1d6579ae30c2e6b791f6193b0795ebabed5883a4097900"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/search_home_pack.pack.v4.json",
+      "digest": "sha256:ac804abd22e0aae3b7f683c9f6d47764347c1cb0886c21c0b976ef19dde555bc"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/shell.cli.default.pack.v4.json",
+      "digest": "sha256:a664443d5d6800364b03f836d8839f682989657fcfe86f08ca25f20b60ed826a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/shell.tauri.default.pack.v4.json",
+      "digest": "sha256:54aabe63850f1f4ac6f85d05060e3f54654ba9a2f70f9934a7d8808c6f243a21"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri-host-pack-control.pack.v4.json",
+      "digest": "sha256:3101c5b186ed7056fa01688fb80c4441416691691f0ea65a931e761f3edf285a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_conversation_orchestration_pack.executables.v4.json",
+      "digest": "sha256:ad20fae558a1fbbd1627e8fad69e13492b813896cab059318d4998d50dde586a"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_conversation_orchestration_pack.pack.v4.json",
+      "digest": "sha256:a4693776cd6cbc2dc1fe2191750dd2f106fb5b0026aa01a25c63c98b88af3db1"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_host_pack_control.executables.v4.json",
+      "digest": "sha256:4724ec456e243452e723ea52e12089476f9ea563ea990ab56239b0f61118329f"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.executables.v4.json",
+      "digest": "sha256:c1a8091de28e07819620a7561fc50f3007f08e8371d958d7d6ea7501e2e55f92"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.pack.v4.json",
+      "digest": "sha256:c4afde406f628a6c27cc17de12fdf563a7f17655ffa5a729d6ee48aa33770097"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
+      "digest": "sha256:02b46339b54973bacaac273d0eed57cada10befdbd0136d181afee5519acd847"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
+      "digest": "sha256:0557c4d3082b14df44daa7aa65a45caf1c8d74cb1d79a4c98f4f44e519f5c627"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
+      "digest": "sha256:9e4b7cbaf1072c8f3fd8f7cd2f156a532d06d2c4fca1a8e2884cfcc8087b4dd5"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.pack.v4.json",
+      "digest": "sha256:fb9083e0b9ed94e0fd7e6c3e093b9d5e2f9e9a620874f585b50381ccc270f2ff"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/shell.cli.default.shell.v1.json",
+      "digest": "sha256:021d5d703239d1d6c1a4d6ea8ce6d91748c7f698a4607e684f66475eef235e73"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/shell.tauri.default.shell.v1.json",
+      "digest": "sha256:eedd7cbb85027a09cbda9411eb7a3179e436d1503272073c446fbf7d381415a2"
+    },
+    {
+      "path": "scripts/profile_compatibility_provenance.py",
+      "digest": "sha256:dae3c22b26b3080befc4b91630ed20df77015789873c09bb7e2793353e613aae"
+    },
+    {
+      "path": "tobkiri_protocol/canonical.py",
+      "digest": "sha256:9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"
+    },
+    {
+      "path": "tobkiri_protocol/executable_catalog.py",
+      "digest": "sha256:8df8e31596e2315eb03c6cb5bc0ccf024febbf54c2d1797dd2b339a564285653"
+    },
+    {
+      "path": "tobkiri_protocol/profile_scope.py",
+      "digest": "sha256:1ade83af2666f6db934652b6b10070bffc8f89145b2b5711b7dcb9d960f925fa"
+    },
+    {
+      "path": "tobkiri_protocol/provenance.py",
+      "digest": "sha256:9598187b7a80a22505ee7eb7de391f1886c289da2d87e9e89d7a86d563571a31"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/activation_record_v1.schema.json",
+      "digest": "sha256:1cb4d94739cf37f62234001ba618baa25708c72357bb0cf334fd83bf075fb3ed"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/activation_record_v2.schema.json",
+      "digest": "sha256:769bc251efc4655bca294dba54b8926a6712a61f4c132abfba446cfcaa5b21d0"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/base_definition_v4.schema.json",
+      "digest": "sha256:ecf1dd9e8e3db61accdf02fc7f400f113062a883b87dee958f48a4f041fa0fac"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/cli_io_v1.schema.json",
+      "digest": "sha256:158d24717c24b04b066acc21d5284eca322931c9ce125466a8bdd2be78c1a982"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/common_v1.schema.json",
+      "digest": "sha256:680b3846db12054e2099ff8e58a04b57b0cd30b66ffaefe7442549ba67b7d143"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/composition_catalog_v4.schema.json",
+      "digest": "sha256:bc951d53190f337fdb258cb211b0b688f3e61a1b0d79c73b5b920de1d10f6ba1"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/contract_v4.schema.json",
+      "digest": "sha256:88762c00128d0aa861cae38cc5d6f686ac5e5c73b9d8a0ea790f8b3e529c14c8"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/defaults_setup_v4.schema.json",
+      "digest": "sha256:96cf4d6abbbbaff5b31f4dfcd287f7fb25266c497bcc6a599daca1db320520c7"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/distribution_v1.schema.json",
+      "digest": "sha256:be0fac251168c9454defda8a28f95a4920343db9b08a3255971fdd77b469e6da"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/executable_catalog_v4.schema.json",
+      "digest": "sha256:3763381140943e668ffeb977504389a9fcf109c3207a930d285cd7dab781b710"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/external_normal_pack_catalog_v4.schema.json",
+      "digest": "sha256:e5787b92c70d644f04a7a6b80ed466f5e76dcc2756d39c223c925ff953378c6b"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/function_principal_v1.schema.json",
+      "digest": "sha256:3a6f763c358fd6581fe0be35d5e9917869b068c25cfee4adfdfa06fa327ad33b"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/inventory_v1.schema.json",
+      "digest": "sha256:2cd124a405d451cd0858ee10a72e031cd34a5cfa5787ba93ed3b5e29123e1156"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/pack_artifact_index_v4.schema.json",
+      "digest": "sha256:f609b9755120df0a6928aec51d50c525cd4e1be614b1e044292afb6d8b610e0e"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/pack_contract_catalog_v4.schema.json",
+      "digest": "sha256:132c18aeb94952853a914a3bb962150898dd2f8f9d24ec245b7252012603eebf"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/pack_manifest_v4.schema.json",
+      "digest": "sha256:97a013899e48a39bbbe4d650c281edc33284b6970b606ed14428fcbdd85e27b7"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_artifact_lock_v1.schema.json",
+      "digest": "sha256:b9ffec2d23ac0490466754a2c4b9978e82fc598818c90a7f84a9f084094711bc"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_content_projection_v1.schema.json",
+      "digest": "sha256:420709af812c136ce5dff37d6449a3271c2a8f3d503fa979d33860e181027ca6"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_intent_v1.schema.json",
+      "digest": "sha256:017014f39c09bb7fa6b38512806b2ece13bb59fca5de6aa13f3e3be5c9d26a94"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_lock_v4.schema.json",
+      "digest": "sha256:879f2e8b975b9877a59f057e686b785ab4dd81357df688e6efa07927ec89e45e"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_lock_v5.schema.json",
+      "digest": "sha256:0288649d4042c368f3533b9df1c75e5fbb47d7b1c34d3f07a3086ab71448e4ac"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_release_provenance_v1.schema.json",
+      "digest": "sha256:5f930a08eefc229321a7d0a28c28bf38a306c474ac22e370dd6545ba7766d8ec"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_v4.schema.json",
+      "digest": "sha256:c98f0422edc4571c6ff306c851acc3052d37f9d016facae5346afbcf29da7888"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/profile_v5.schema.json",
+      "digest": "sha256:67fd465de0c84e20b945a2d70e2d9abf8762548d1f66bfba1603f83f0a0e4bc8"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/provenance_v1.schema.json",
+      "digest": "sha256:34e1d1104613a7764e627bba147086381fb70f8b4d184bdb1d8f47ba024899da"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/provenance_v2.schema.json",
+      "digest": "sha256:309e0e2a6d2f27b774a1a7d9d1347fc41ad69ba6f3e4d1a8c8bac8e6dafe2665"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/request_envelope_v1.schema.json",
+      "digest": "sha256:b1e73e73b803b183dced2ae6565518ce95e1cdf11efed996149f0eb5eab9760b"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/request_frame_v1.schema.json",
+      "digest": "sha256:c8f54f0453faeb682103611a4b11e5996dd6f81d526588b7a2e7aebf8c7cba90"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/resolved_plan_v1.schema.json",
+      "digest": "sha256:c02a20f1c851ffd0957ee88bf0e1da914f45fef033cdc1f472a93ffbe41fde16"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/resolved_plan_v2.schema.json",
+      "digest": "sha256:4daf5c1509d8a410d83f732c2cf0e4fa8d2fc53051cc01f5e669792e45601720"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json",
+      "digest": "sha256:0d48708fa73284ad2121fb599c6219f1b43b5d4097fe4732ace92341dc18bb7b"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/saved_workflow_admission_v1.schema.json",
+      "digest": "sha256:7ea865d15ec144b633687ad32fc7e202c8d4daf805b5d0131abd4a0c543e9a46"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/shell_definition_v4.schema.json",
+      "digest": "sha256:c1e4b4005b4c3267f33a72b9348b9777a3386279283390c4a12e9d9da55f2e81"
+    },
+    {
+      "path": "tobkiri_protocol/schemas/shell_definition_v5.schema.json",
+      "digest": "sha256:24ab2058a7dbe24018481a9ce06fc951211ebe9a84525da3a23aeed1df12daf6"
+    },
+    {
+      "path": "tobkiri_protocol/validation.py",
+      "digest": "sha256:2ac005f422774b97371285a066a9e209b2750161aea75bf48bc6e4dfa30c2143"
+    }
+  ],
+  "generator": {
+    "name": "tobkiri-profile-artifacts",
+    "version": "1.0.0",
+    "path": "tobkiri_runtime/scripts/generate_profile_artifacts.py",
+    "digest": "sha256:b9307ee0de2eea69e3cf927a5a91224ae0b27f859e5120eab5283003a0228590"
+  },
+  "catalog": {
+    "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
+    "bundle_digest": "sha256:3d9d16f7dae2e632fa7144982902185c189bd42ca162df11c778f4b4d007a296",
+    "catalog_revision": "sha256:342f64cb16e3daccf602ecec9e7544b54b3426c7e1872a875fb6f01ee4845ac0",
+    "closure_digest": "sha256:2f39fa8f3fe81fa32bb9babd8b89b09a85b23c82673d11c2090023573ddbf7a9"
+  },
+  "outputs": [
+    {
+      "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
+      "digest": "sha256:2ae96cae80fcffbe09043728748169cd399f6a43aa12fa9310b754b269d3e502"
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
+      "digest": "sha256:a3835cbb8f0d521858bec63928eced1db9380afd66136fa74f622d76074da098"
+    }
+  ],
+  "release_digest": "sha256:8c8a70dc708195ab9a53da7dbaad57140ec2b05aff25ee7931abc190bd557a55"
+}

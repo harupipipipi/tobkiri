@@ -1,0 +1,79 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.ai.provider.audio.speech.v1",
+      "rumi.service.ai.provider.audio.transcribe.v1",
+      "rumi.service.ai.provider.embedding.v1",
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.image.v1",
+      "rumi.service.ai.provider.stream.v1"
+    ],
+    "requires": [
+      "rumi.resource.ai.provider.registry.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Provider-neutral protocol execution using scoped global resources.",
+  "display_name": "Rumi Provider Adapters",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:65007acbc0c15f65fbd23f110ab36837e9004ea7b2f0024972eaafde39abc338",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "provider_protocol_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "environment_secret_injection": false,
+      "opaque_credentials_only": true,
+      "provider_pack_id_branches": false,
+      "registry_selected_endpoints_only": true
+    }
+  },
+  "pack_id": "rumi_provider_adapters_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
+  "provenance": {
+    "build_identity": "rumi_provider_adapters_pack:1.0.0",
+    "content_hash": "sha256:a7718cbff30342747984c6cf8d279ebda769b20077806a798a8d7c18819ab36e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.provider.audio.speech",
+    "ai.provider.audio.transcribe",
+    "ai.provider.embedding",
+    "ai.provider.generate",
+    "ai.provider.image",
+    "ai.provider.stream"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

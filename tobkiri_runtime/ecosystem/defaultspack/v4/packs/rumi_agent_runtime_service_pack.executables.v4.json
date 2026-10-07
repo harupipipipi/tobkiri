@@ -1,0 +1,111 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_agent_runtime_service_pack",
+  "source_identity": "sha256:425cd5cece8d10ee55c1a038656192aaf2356918b1d653ba5ce79dfdece0f6fc",
+  "variants": [
+    {
+      "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.control.python",
+      "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
+      "implementation_path": "runtime/runtime.py",
+      "implementation_digest": "sha256:e248d332963843c228402c29893b682bc50799efdfaea5bcc26b8b0c06159305",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.agent.run.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:59d361e84a3eaf53a8ac92ed8c38fff4e3fa5d5fd1d8519e3c1bc3e3133c3307",
+          "operation_id": "rumi_agent_runtime_service_pack.agent-runtime-control",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.status.python",
+      "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
+      "implementation_path": "runtime/runtime.py",
+      "implementation_digest": "sha256:e248d332963843c228402c29893b682bc50799efdfaea5bcc26b8b0c06159305",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.agent.runtime.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:acf89f9d5731e2b87bd358058717c0ecd7f19e292673ff99dd93e166aa592ea5",
+          "operation_id": "rumi_agent_runtime_service_pack.agent-runtime-resource",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn.python",
+      "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
+      "implementation_path": "runtime/runtime.py",
+      "implementation_digest": "sha256:e248d332963843c228402c29893b682bc50799efdfaea5bcc26b8b0c06159305",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d318cdaf4adb0ae87b1b50e3c19cc91069cd4bcd2c13eda3e903478f75b8448a",
+          "operation_id": "rumi_agent_runtime_service_pack.agent-turn-job-adapter",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:40317ffb0863a36ef5c726e7eeb8abc7163728a1e85c5e6e2d03716caba39f4a",
+  "catalog_digest": "sha256:7a7fe1bb4e83b09dc3d7621e82d9db84b7e695ef1cec0a0239937e59524e5387"
+}

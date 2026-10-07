@@ -1,0 +1,50 @@
+{
+  "dependencies": {},
+  "description": "Authority-aware local-first Workflow v4 provider.",
+  "display_name": "Tobkiri Workflow Pack",
+  "host_execution": true,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:75b7a968a68b4eb870a07cb90e67b5ee2c199dd1aeddc25b7502188da21a2430",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:5f48dad0307ac175f91558d7cbcab170f5cc97aa0501d40824626bbfb27b3748"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:5f48dad0307ac175f91558d7cbcab170f5cc97aa0501d40824626bbfb27b3748"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "tobkiri_workflow_pack",
+  "pack_identity": "tobkiri:ecosystem/tobkiri_workflow_pack",
+  "provenance": {
+    "build_identity": "tobkiri_workflow_pack:4.0.0",
+    "content_hash": "sha256:75b7a968a68b4eb870a07cb90e67b5ee2c199dd1aeddc25b7502188da21a2430",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "workflow.definition.write",
+    "workflow.run.control",
+    "workflow.step.authority.reserve"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "4.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

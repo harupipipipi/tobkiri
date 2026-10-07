@@ -1,0 +1,195 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.shell.execute.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "shell-execute.service",
+        "required_capabilities": [
+          "shell.execute"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.shell.inspect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "contract_id": "rumi.service.shell.execute.v1",
+      "id": "shell-execute",
+      "loader": "python",
+      "module": "ecosystem.rumi_shell_execute_pack.runtime.execute",
+      "symbol": "create_shell_execute_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+        "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.shell.execute.v1"
+          ],
+          "requires": [
+            "rumi.resource.workspace.v1",
+            "rumi.service.host.authorize.v1",
+            "rumi.service.shell.inspect.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+          "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Receipt-gated workspace-jailed bounded command execution.",
+        "display_name": "Rumi Shell Execute",
+        "host_execution": true,
+        "metadata": {
+          "authority": "execute",
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
+          },
+          "policy_owner": "rumi_shell_policy_pack",
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "receipt_required": true,
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_shell_execute_pack",
+        "pack_identity": "rumi:ecosystem/rumi_shell_execute_pack",
+        "provenance": {
+          "build_identity": "rumi_shell_execute_pack:1.0.0",
+          "content_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "shell.execute",
+          "shell.inspect",
+          "workspace.metadata.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_shell_execute_pack"
+    },
+    "rumi.shell_execute.boundary": {
+      "authority_receipt": "required",
+      "client_approved_flag": false,
+      "cwd": "workspace_relative",
+      "inspect_policy": "external_contract",
+      "output_bytes_max": 131072,
+      "process_group_termination": true,
+      "timeout_seconds_max": 900
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_shell_execute_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.terminal.execute",
+      "defaultspack.blocks.coding.terminal_exec"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior executor and terminate outstanding process groups.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Receipt-gated workspace-jailed bounded command execution.",
+    "display_name": "Rumi Shell Execute",
+    "id": "rumi.shell_execute",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": true,
+      "capability": "shell.execute"
+    },
+    {
+      "access": "inspect",
+      "approval_required": false,
+      "capability": "shell.inspect"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "workspace.metadata.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_shell_execute_pack:1.0.0",
+    "content_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc",
+  "artifacts": [
+    {
+      "digest": "sha256:ea28c17910ab4bcb200601b86126686bf8779882c822e946ef78142014d7583f",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:61cbc0ad4c04d102abb6cf0fedd45803eebd19238d83c2712aa5cf055db9bfc3",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:2f727d2773bd58ad1f9ecfd50dc8e30a82d50e3b7064a4dd6b1d7c9cc8601acf",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:738c06d2712518cd7a32769eb9a2eaf967eecdf5607a907d1a397f5ff131c100",
+      "path": "runtime/mutate.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:85f331cfd34f5dc4a71534301383a34d9acaba579a5d9da460f74b2ac583c05e"
+  },
+  "pack_id": "rumi_file_mutation_pack",
+  "source_identity": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df"
+}
