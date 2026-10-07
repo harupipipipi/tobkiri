@@ -16,7 +16,7 @@
   "production_broker_execution": false,
   "production_packvm_execution": false,
   "product_cli_frontend_replaced": false,
-  "remaining_public_integration": "native prebuilt candidate built and ad-hoc verified; trusted Shell packaging/install/activation/actual Host and VM acceptance remain",
+  "remaining_public_integration": "ordinary platform candidate verification succeeds; trusted Shell packaging/install/activation/actual Host and VM acceptance remain",
   "unperformed_host_checks": [
     "signed_admission",
     "approval_and_activation",
@@ -45,5 +45,6 @@
   "cli_frontend_source_tests": 13,
   "cli_frontend_source_receipt": "cli-frontend-source-receipt.json",
   "native_cli_executable_tests": 9,
-  "native_cli_receipt": "native-cli-receipt.json"
+  "native_cli_receipt": "native-cli-receipt.json",
+  "native_shell_formal_candidate_receipt": "native-shell-variant-receipt.json"
 }

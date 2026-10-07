@@ -434,7 +434,7 @@ def test_stale_catalog_tampered_authority_and_store_records_fail_closed(
 
 
 def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() -> None:
-    assert generate(check=True) == {"packs": 1, "contracts": 1, "operations": 20}
+    assert generate(check=True) == {"packs": 1, "contracts": 1, "operations": 21}
     pack = validate_document((PACK_ROOT / "pack.v4.json").read_bytes(), "pack")
     contracts = validate_document(
         (PACK_ROOT / "contracts.v4.json").read_bytes(), "pack_contract_catalog"
@@ -455,6 +455,7 @@ def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() ->
         "definition.validate",
         "definition.compile-preview",
         "run.create",
+        "run.selected",
         "run.step.retry",
         "run.step.resume",
         "run.cancel",

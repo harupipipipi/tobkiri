@@ -182,3 +182,14 @@ def test_application_source_uses_actual_compiler_and_normal_boundaries(tmp_path:
 def test_application_flag_cannot_be_a_client_truthy_approval(tmp_path: Path):
     with pytest.raises(PackAuthoringError, match="one pure Function"):
         _build(tmp_path / "application", application="approved")
+
+
+@pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef", "$recursiveRef"])
+def test_remote_schema_reference_is_denied_before_contract_http(endpoint, keyword):
+    base, calls = endpoint
+    session = PanelContractSession(base, "explicit-test-bootstrap")
+    declaration = _declarations()["render"]
+    declaration["input_schema"] = {keyword: "https://example.invalid/schema"}
+    with pytest.raises(CliApplicationError, match="must be local"):
+        session.invoke(declaration, {"text": "hello"})
+    assert len(calls) == 1  # bootstrap only, no schema fetch or Contract call

@@ -24,7 +24,7 @@
   "release_files": 320,
   "ruff": "passed",
   "source_only": true,
-  "template_bundle_lock_sha256": "4c2e74f45e8894e919f45ce0392170c4782aace5e02e406ff5fe7e4fd836562a",
+  "template_bundle_lock_sha256": "87cdfb85d6c15f5cc335f69bc93314b0caaf00e36a3afa325bdf8e26db894fab",
   "tests_passed": 22,
   "workflow_active_binding_verified_by_author": false,
   "workflow_source_format": "io.tobkiri.profile-workflow-intent.v1"

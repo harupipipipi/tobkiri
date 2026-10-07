@@ -52,5 +52,7 @@
   "production_broker_execution": false,
   "production_packvm_execution": false,
   "native_product_shell_launch_ceremony": false,
-  "product_cli_frontend_replaced": false
+  "product_cli_frontend_replaced": false,
+  "formal_candidate_variant_receipt": "native-shell-variant-receipt.json",
+  "ordinary_platform_candidate_verifier_passed": true
 }

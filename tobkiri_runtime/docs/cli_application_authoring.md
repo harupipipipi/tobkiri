@@ -54,3 +54,15 @@ A source frontend or generated executable archive is not a verified platform
 Shell variant. Preserve that distinction in receipts: isolated authenticated
 HTTP/stdio boundaries and source compiler success do not prove real Host, VM,
 native Shell launch, approval, model delivery or frontend replacement.
+
+For an actual prebuilt candidate, place its bytes at the source Shell's exact
+`launch.build_targets[].artifact_ref` and entrypoint. The macOS CLI target is
+`TobkiriCLI.app`, with `TobkiriCLI.app/Contents/MacOS/tobkiri-shell` inside it.
+`tobkiri_protocol.shell_authoring.describe_shell_variant(shell, artifact_root,
+platform="macos", architecture="arm64")` validates the definition revision,
+declared target, canonical artifact tree, entrypoint, architecture, bundle ID
+and strict macOS signature using the ordinary platform verifier. It returns
+the existing variant shape. It does not change `availability`, publish a trusted
+catalog, install or activate anything; those still require the normal packager
+and Host ceremony. An ad-hoc signature check is evidence of intact bytes, not
+publisher trust or user approval.

@@ -87,8 +87,9 @@ def test_skipped_dependency_has_no_trusted_output(runtime) -> None:
     assert not invoker.requests and authority.commit_count == 0
 
 
+@pytest.mark.parametrize("original, changed", [("original", "changed"), (1, True)])
 def test_selected_source_drives_engine_and_replay_cannot_change_inputs(
-    runtime, tmp_path, monkeypatch
+    runtime, tmp_path, monkeypatch, original, changed
 ):
     from tests.test_profile_workflow_catalog import _selection, _view
     from core_runtime.resolved_profile_scope import (
@@ -101,19 +102,19 @@ def test_selected_source_drives_engine_and_replay_cannot_change_inputs(
     provider, _catalog, authority, invoker = runtime
     payload = {
         "definition_id": "example",
-        "inputs": {"message": "original"},
+        "inputs": {"message": original},
         "occurrence_id": "occurrence",
     }
     try:
         first = provider.invoke("run.selected", payload)
         assert first["run"]["state"] == "succeeded"
         assert authority.commit_count == 1 and invoker.requests[0]["input"] == {
-            "message": "original"
+            "message": original
         }
         replay = provider.invoke("run.selected", payload)
         assert replay["run"]["run_id"] == first["run"]["run_id"] and authority.commit_count == 1
         with pytest.raises(WorkflowDenied, match="stale or altered"):
-            provider.invoke("run.selected", {**payload, "inputs": {"message": "changed"}})
+            provider.invoke("run.selected", {**payload, "inputs": {"message": changed}})
         assert authority.commit_count == 1
     finally:
         restore_resolved_profile(token)

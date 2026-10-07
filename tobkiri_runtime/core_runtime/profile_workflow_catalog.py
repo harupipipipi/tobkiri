@@ -136,4 +136,5 @@ def selected_workflow_document(engine: WorkflowEngineV4, definition_id: str) -> 
 
 def compile_selected_workflow(engine: WorkflowEngineV4, definition_id: str) -> dict[str, Any]:
     """Compile selected immutable source without storing or executing it."""
-    return engine.compile_preview(selected_workflow_document(engine, definition_id))
+    document = selected_workflow_document(engine, definition_id)
+    return engine.compile_preview(document)

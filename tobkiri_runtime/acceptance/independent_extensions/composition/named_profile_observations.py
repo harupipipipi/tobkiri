@@ -11,6 +11,7 @@ from typing import Any, Callable
 from jsonschema import Draft202012Validator
 
 from core_runtime.profile_authoring import build_named_profile
+from core_runtime.external_pack_catalog_v4 import resolve_admitted_pack_roots
 from core_runtime.profile_content_projection import selected_projection_roots
 from core_runtime.profile_workflow_catalog import (
     compile_selected_workflow,
@@ -28,6 +29,7 @@ from ecosystem.defaultspack.domain.runtime_v4 import resolve_default_profile
 from tobkiri_host.artifact_compiler import compile_pack_root, routes_for_plan
 from tobkiri_host.contracts import OperationCatalog
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.canonical import strict_loads
 from tobkiri_protocol.validation import validate_file
 
 
@@ -177,6 +179,45 @@ def observe_named_profiles(
                             "requested_scope_template": {},
                         }
                     )
+            # Preview catalogs include every exact step target from selected
+            # public source, including unchanged bundled resource owners.
+            # These are Shell-to-step structural edges only: no execution
+            # authority, Workflow caller edge or activation is inferred.
+            for path in sorted((admitted_roots[pack_id] / "content/workflows").glob(
+                "*.workflow.intent.v1.json"
+            )):
+                for step in strict_loads(path.read_bytes())["steps"]:
+                    request = step["request"]
+                    candidates = [
+                        (identity, function)
+                        for identity, manifest in catalog.packs.items()
+                        for function in manifest["functions"]
+                        if function["id"] == request["function_id"]
+                        and function["contract_revision_digest"] == request["contract_revision_digest"]
+                        and request["operation_id"] in function["operations"]
+                        and any(
+                            contract["contract_id"] == request["contract_id"]
+                            and contract["revision_digest"] == request["contract_revision_digest"]
+                            and request["operation_id"] in contract["operations"]
+                            for contract in manifest["contracts"]
+                        )
+                    ]
+                    if len(candidates) != 1:
+                        raise ValueError("selected preview target has no unique exact source binding")
+                    dependency, _function = candidates[0]
+                    if dependency not in {item["pack_id"] for item in value["packs"]}:
+                        value["packs"].append({
+                            "pack_id": dependency, "artifact_digest": None, "role": "provider",
+                        })
+                    edge = {
+                        "caller_function_id": source["shell"]["provider_id"],
+                        "target_provider_id": request["function_id"],
+                        "contract_id": request["contract_id"],
+                        "operation_id": request["operation_id"],
+                        "requested_scope_template": {},
+                    }
+                    if edge not in value["requested_edges"]:
+                        value["requested_edges"].append(edge)
         return value
 
     roots = tuple(admitted_roots.values())
@@ -226,10 +267,15 @@ def observe_named_profiles(
         )
         if resolved is None:
             continue
-        compiled = [compile_pack_root(admitted_roots[pack_id]) for pack_id in selected]
         plan = {
-            "bindings": [item for item in resolved.plan["bindings"] if item["pack_id"] in selected]
+            "bindings": list(resolved.plan["bindings"])
         }
+        runtime_root = Path(__file__).resolve().parents[3]
+        binding_roots = resolve_admitted_pack_roots(
+            tuple(sorted({item["pack_id"] for item in plan["bindings"]})),
+            runtime_root / "ecosystem",
+        )
+        compiled = [compile_pack_root(root) for root in binding_roots.values()]
         routes = routes_for_plan(plan, compiled)
         operations = OperationCatalog([item.artifact for item in compiled], routes)
         bindings = [

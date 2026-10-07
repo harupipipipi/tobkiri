@@ -74,7 +74,7 @@ def run_selected(engine: WorkflowEngineV4, payload: Mapping[str, Any]) -> dict[s
         run = engine.store.get_run(run_id)
         if (
             run["definition_id"] != definition_id
-            or run["inputs"] != dict(inputs)
+            or canonical_json(run["inputs"]) != canonical_json(dict(inputs))
             or run["catalog_digest"] != compiled["catalog_digest"]
             or run["security_epoch"] != compiled["security_epoch"]
         ):

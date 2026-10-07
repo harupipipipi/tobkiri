@@ -152,8 +152,10 @@ def _rename(root: Path, output: Path, pack_id: str) -> Path:
             workflow = json.loads(raw)
             for step in workflow["steps"]:
                 request = step["request"]
-                request["function_id"] = function_ids[request["function_id"]]
-                request["contract_revision_digest"] = revisions[request["contract_id"]]
+                request["function_id"] = function_ids.get(request["function_id"], request["function_id"])
+                request["contract_revision_digest"] = revisions.get(
+                    request["contract_id"], request["contract_revision_digest"]
+                )
             raw = (json.dumps(workflow, indent=2, sort_keys=True) + "\n").encode()
         assets[relative] = raw
     return build_python_pack(

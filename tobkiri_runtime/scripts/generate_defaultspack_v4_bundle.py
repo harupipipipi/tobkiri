@@ -762,7 +762,10 @@ def _normalize_shell(document: dict[str, Any]) -> dict[str, Any]:
         )
         bundle_identity = "io.tobkiri.shell.tauri"
     else:
-        target_specs = (("macos", "arm64", "bin/tobkiri-shell", "tobkiri-shell"),)
+        target_specs = ((
+            "macos", "arm64", "TobkiriCLI.app",
+            "TobkiriCLI.app/Contents/MacOS/tobkiri-shell",
+        ),)
         bundle_identity = "io.tobkiri.shell.cli.default"
     build_targets = [
         {

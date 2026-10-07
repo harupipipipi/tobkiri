@@ -118,3 +118,12 @@ trusted packaging/install, real Host bootstrap/approval, activated Profile/Plan,
 production Broker/VM call or native product Shell launch ceremony. Root owns
 that remaining formal acceptance. Original Application/renderer inputs are
 unchanged; no new native main/startup path or live state was touched.
+
+The public `describe_shell_variant` API now verifies this exact candidate against
+the current source CLI build target, including ordinary tree/entrypoint,
+architecture, bundle identity and strict macOS signature checks.
+`native-shell-variant-receipt.json` records the returned **ordinary candidate**
+variant and current source definition pins. CLI source Profile compilation was
+refreshed against the current locked template. Application/renderer/native bytes
+remain unchanged; candidate verification changes no Shell availability,
+trusted catalog, installation, approval or activation.

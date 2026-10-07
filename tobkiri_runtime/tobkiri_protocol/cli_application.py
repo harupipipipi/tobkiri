@@ -109,11 +109,12 @@ class PanelContractSession:
 
         def check_refs(value: Any) -> None:
             if isinstance(value, Mapping):
-                reference = value.get("$ref")
-                if reference is not None and (
-                    not isinstance(reference, str) or not reference.startswith("#/")
-                ):
-                    raise CliApplicationError("CLI schema references must be local")
+                for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
+                    reference = value.get(keyword)
+                    if reference is not None and (
+                        not isinstance(reference, str) or not reference.startswith("#/")
+                    ):
+                        raise CliApplicationError("CLI schema references must be local")
                 for child in value.values():
                     check_refs(child)
             elif isinstance(value, list):

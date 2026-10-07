@@ -7,10 +7,10 @@
   "source_archive_digest": "sha256:04a29e81330a35a9d1848e5f1565b5d0d96f9a76052e671ce2d5493d8cc62aff",
   "source_archive_bundles_interpreter": false,
   "source_archive_verified_native_shell": false,
-  "cli_profile_source_lock_digest": "sha256:d8e97bd457ffdf79152dcb6faded214837c60d88c45fb2fe81a6912cf784fb5e",
-  "cli_profile_revision": "sha256:adcefc2cba2cc08658a9def38c89e8e79c0be904e77d1504a413b46a236af996",
+  "cli_profile_source_lock_digest": "sha256:1a41cd55f4f3120d6810ab6f5c32a0014a415ad663788658ee385b0037668f78",
+  "cli_profile_revision": "sha256:56feda25c73c221150382114eed8a499366727ccbc3072bc41debddd976d81d1",
   "activation_authority": "unbound",
-  "template_bundle_lock_file_sha256": "sha256:b1900336542ac80267f8131032c37910129e339deb3da81321f3db88a97a2277",
+  "template_bundle_lock_file_sha256": "sha256:87cdfb85d6c15f5cc335f69bc93314b0caaf00e36a3afa325bdf8e26db894fab",
   "frontend_tests_passed": 13,
   "total_author_tests_passed": 47,
   "session_test_kind": "isolated loopback protocol fixture, not Host approval or VM",
@@ -18,5 +18,6 @@
   "production_packvm_execution": false,
   "native_shell_launch": false,
   "product_cli_frontend_replaced": false,
-  "remaining_gap": "verified prebuilt CLI Shell and ordinary trusted packaging/install/local-auth/activation"
+  "remaining_gap": "candidate passes ordinary platform verifier; trusted Shell packaging/install/activation/real Host and VM acceptance remain",
+  "candidate_formal_variant_receipt": "native-shell-variant-receipt.json"
 }

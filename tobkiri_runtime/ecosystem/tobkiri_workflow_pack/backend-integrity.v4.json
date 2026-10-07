@@ -11,7 +11,7 @@
     "core_runtime/workflow_v4/models.py": "sha256:b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684",
     "core_runtime/workflow_v4/protocols.py": "sha256:1c775cd87cbe80f5090204d639a7ece2c2a557d6cad2c975b91d7947fe254219",
     "core_runtime/workflow_v4/provider.py": "sha256:d25452a46bfa2d2431e8cd88fae54d2b1bde0272ff2b99ce1d4a3b1522874171",
-    "core_runtime/workflow_v4/selected_run.py": "sha256:639e6a3431328751080c2c723f48bd86a3dabfb1fa63061247be3de7ca6958a5",
+    "core_runtime/workflow_v4/selected_run.py": "sha256:c6fd7b5d1fb28d9d5bf530bb573e4a5e8f9d9f4b277a65e3fd18929053e1f027",
     "core_runtime/workflow_v4/store.py": "sha256:fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea",
     "core_runtime/workflow_v4/templates.py": "sha256:b81e5e592b2927010c89075208afaa003671264820a22cf97fbf005be2d281b0"
   },
