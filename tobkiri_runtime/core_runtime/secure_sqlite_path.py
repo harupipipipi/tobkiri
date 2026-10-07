@@ -156,13 +156,29 @@ class FileIdentity:
         )
 
 
-def _validate_regular(metadata: os.stat_result) -> FileIdentity:
+def _assert_owned_regular_metadata(metadata: os.stat_result) -> None:
+    """Validate fresh file metadata without constructing an unused identity."""
+
     if _is_reparse_point(metadata) or not stat.S_ISREG(metadata.st_mode):
         raise SecurePathError("file is not regular")
     if metadata.st_nlink != 1:
         raise SecurePathError("file does not have exactly one link")
     if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
         raise SecurePathError("file is not owned by the current user")
+    return None
+
+
+def _validate_regular_without_identity(metadata: os.stat_result) -> None:
+    """Keep identity field reads in order without allocating a discarded record."""
+    _assert_owned_regular_metadata(metadata)
+    _device = metadata.st_dev
+    _inode = metadata.st_ino
+    _owner = getattr(metadata, "st_uid", 0)
+    _file_type = stat.S_IFMT(metadata.st_mode)
+
+
+def _validate_regular(metadata: os.stat_result) -> FileIdentity:
+    _assert_owned_regular_metadata(metadata)
     return FileIdentity.from_stat(metadata)
 
 
@@ -180,7 +196,7 @@ def validate_owned_file_at(
         if required:
             raise SecurePathError("required file is unavailable") from None
         return None
-    _validate_regular(metadata)
+    _validate_regular_without_identity(metadata)
     return metadata
 
 

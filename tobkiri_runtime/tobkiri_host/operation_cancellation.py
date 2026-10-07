@@ -75,6 +75,7 @@ class _NestedCancellationProof:
         self._verified_drained = threading.Event()
         self._execution_guard: Callable[[], None] | None = None
         self._calendar_execution_witness: Callable[[], None] | None = None
+        self._saved_execution_parent: _NestedCancellationProof | None = None
 
     def matches_invocation(
         self,
@@ -840,6 +841,26 @@ class OwnedCancellationBinding:
                 registry, key, self._envelope, self._owner_principal,
                 self._owner_session,
             )
+            if (
+                type(inherited) is _NestedCancellationProof
+                and inherited._registry is registry
+                and inherited._envelope is self._envelope
+                and (self._envelope.contract_id, self._envelope.operation_id)
+                == ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+                and inherited.matches_invocation(
+                    self._envelope, self._owner_principal, self._owner_session,
+                )
+            ):
+                proof._saved_execution_parent = inherited
+
+                def assert_saved_track() -> None:
+                    self._guard()
+                    if not inherited.matches_invocation(
+                        self._envelope, self._owner_principal, self._owner_session,
+                    ):
+                        raise PermissionError("tracked Saved execution parent changed")
+
+                proof._execution_guard = assert_saved_track
             if calendar_guard is not None:
                 proof._execution_guard = calendar_guard
                 proof._calendar_execution_witness = calendar_guard

@@ -7,7 +7,10 @@ import tobkiri_host.saved_tool_policy_execution as module
 
 @pytest.mark.parametrize("mode", ["agent", "full"])
 def test_preference_cannot_supply_missing_host_policy(mode, monkeypatch) -> None:
-    monkeypatch.setattr(module, "saved_tool_owner", lambda invocation: object())
+    monkeypatch.setattr(
+        module, "saved_tool_owner_and_request_scope",
+        lambda invocation: (object(), invocation.parent_invocation),
+    )
     invocation = SimpleNamespace(
         parent_invocation=SimpleNamespace(
             parent=None,

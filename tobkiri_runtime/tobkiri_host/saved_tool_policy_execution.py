@@ -1,8 +1,13 @@
 """Retained finite saved-tool execution using explicit native policy settlement."""
 
+from __future__ import annotations
+
 from dataclasses import replace
 import time
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
+
+if TYPE_CHECKING:
+    from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 
 from core_runtime.authority.v4 import AuthorityScope
 from ecosystem.rumi_default_tools_pack.domain.tool.calculator import calculate
@@ -15,29 +20,23 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_
 from tobkiri_protocol.file_create_v1 import file_arguments as create_arguments
 
 from .saved_tool_admission_store import HostSavedToolAdmissionStore
-from .saved_tool_context import SAVED_TOOL_CAPTURE_FIELDS, saved_tool_owner
+from .saved_tool_context import (
+    SAVED_TOOL_CAPTURE_FIELDS,
+    saved_tool_owner_and_request_scope,
+)
 from .saved_tool_consent import SavedToolConsentExecution
 
 
 def requested_saved_tool_mode(invocation: Any) -> tuple[str, str]:
     """Read only the preference from the authenticated saved-turn ancestry."""
-    scopes: list[Any] = []
-    scope = invocation.parent_invocation
-    while scope is not None:
-        scope.assert_current()
-        if len(scopes) >= 16 or any(scope is prior for prior in scopes):
-            raise PermissionError("saved tool ancestry is unavailable")
-        scopes.append(scope)
-        scope = scope.parent
-    saved = [
-        scope
-        for scope in scopes
-        if (scope.envelope.contract_id, scope.envelope.operation_id)
-        == ("conversation.saved-turn.v1", "saved_complete")
-    ]
-    if len(saved) != 1:
-        raise PermissionError("saved tool request ancestry is unavailable")
-    request = saved[0].envelope.payload.get("request")
+    from tobkiri_host.saved_tool_request_scope import saved_tool_request_scope
+
+    return _requested_mode_from_scope(saved_tool_request_scope(invocation))
+
+
+def _requested_mode_from_scope(scope: CapturedInvocationScopeV4) -> tuple[str, str]:
+    """Read mode and turn from the scope validated in this synchronous gate."""
+    request = scope.envelope.payload.get("request")
     if not isinstance(request, Mapping):
         raise PermissionError("saved tool request is unavailable")
     mode, turn = request.get("action_approval_mode", "ask"), request.get("turn_id")
@@ -78,8 +77,8 @@ class SavedToolApprovalExecution:
         self, invocation: Any, execution: Mapping[str, Any], payload: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Execute one exact authenticated call through its selected mode."""
-        root = saved_tool_owner(invocation)
-        mode, turn = requested_saved_tool_mode(invocation)
+        root, accepted = saved_tool_owner_and_request_scope(invocation)
+        mode, turn = _requested_mode_from_scope(accepted)
         if mode == "ask":
             return self._ask(invocation, execution, payload)
         if self._policies is None:
@@ -171,9 +170,12 @@ class SavedToolApprovalExecution:
                 invocation.assert_current()
                 if invocation.envelope.cancellation_requested.is_set():
                     raise PermissionError("saved tool operation was cancelled")
-                if saved_tool_owner(invocation) != root:
+                current_root, current_scope = saved_tool_owner_and_request_scope(
+                    invocation
+                )
+                if current_root != root:
                     raise PermissionError("saved tool authenticated root changed")
-                if requested_saved_tool_mode(invocation) != (mode, turn):
+                if _requested_mode_from_scope(current_scope) != (mode, turn):
                     raise PermissionError("saved tool mode changed")
                 if (
                     strict_loads(
@@ -233,6 +235,7 @@ class SavedToolApprovalExecution:
                             wall_clock=self._clock,
                             cancellation_requested=invocation.envelope.cancellation_requested,
                             nested_cancellation_proof=nested.cancellation_proof,
+                            inline_parent_scope=nested.inline_parent_scope,
                             execution_guard=before_settlement,
                             parent_deadline_monotonic=invocation.envelope.deadline_monotonic,
                         )
@@ -280,6 +283,7 @@ class SavedToolApprovalExecution:
                     wall_clock=self._clock,
                     cancellation_requested=invocation.envelope.cancellation_requested,
                     nested_cancellation_proof=nested.cancellation_proof,
+                    inline_parent_scope=nested.inline_parent_scope,
                     execution_guard=execution_guard,
                     parent_deadline_monotonic=invocation.envelope.deadline_monotonic,
                 )

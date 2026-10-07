@@ -7,6 +7,8 @@ import threading
 import time
 from types import SimpleNamespace
 import pytest
+from typing import Any
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 from tests import test_saved_tool_consent_broker as ask_fixture
 from tobkiri_host import saved_tool_policy_execution as mode_module
 from tests.approval_policy_fixture import build_bounded_selection
@@ -406,9 +408,14 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
         harness.kernel.policy_roots[policy_root.selection_id] = policy_root
         releases = []
         nested_ids = [0]
+        retained_scopes: dict[str, CapturedInvocationScopeV4] = {}
 
         def bind_nested(inv, contract, op, arguments):
             nested_ids[0] += 1
+            scope = CapturedInvocationScopeV4(
+                inv.envelope, inv.assert_current, inv.parent_invocation
+            )
+            retained_scopes["retained-read-" + str(nested_ids[0])] = scope
             return _host_saved_tool_context.NestedToolBinding(
                 replace(
                     root,
@@ -424,7 +431,20 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                 "publisher.caller",
                 None,
                 lambda: releases.append(op),
+                inline_parent_scope=scope,
             )
+
+        original_invoke_prepared = broker.invoke_prepared
+
+        def observed_prepared(*args: Any, **kwargs: Any) -> Any:
+            """Retain the exact modeled scope while original policy dispatch runs."""
+            request_context = args[1]
+            assert kwargs["inline_parent_scope"] is retained_scopes[
+                request_context.request_id
+            ]
+            return original_invoke_prepared(*args, **kwargs)
+
+        monkeypatch.setattr(broker, "invoke_prepared", observed_prepared)
 
         if outcome == "cancel":
             invocation.envelope.cancellation_requested.set()

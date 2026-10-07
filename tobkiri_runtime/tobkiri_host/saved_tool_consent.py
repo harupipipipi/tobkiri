@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import time
 import uuid
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
+
+if TYPE_CHECKING:
+    from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 
 from core_runtime.authority.v4 import AuthorityScope, FunctionPrincipal
 from ecosystem.rumi_default_tools_pack.runtime.files import _arguments as file_arguments
@@ -20,7 +23,7 @@ from tobkiri_host.native_saved_tool_approval import (
 )
 from tobkiri_host.saved_tool_context import (
     NestedToolBinding,
-    saved_tool_owner,
+    saved_tool_owner_and_request_scope,
     SAVED_TOOL_CAPTURE_FIELDS,
 )
 from tobkiri_host.ports import (
@@ -76,23 +79,14 @@ class ConsentRouteAttestation:
 
 
 def _turn_id(invocation: Any) -> str:
-    scopes: list[Any] = []
-    scope = invocation.parent_invocation
-    while scope is not None:
-        scope.assert_current()
-        if len(scopes) >= 16 or any(scope is prior for prior in scopes):
-            raise PermissionError("saved tool turn ancestry is unavailable")
-        scopes.append(scope)
-        scope = scope.parent
-    saved = [
-        scope
-        for scope in scopes
-        if (scope.envelope.contract_id, scope.envelope.operation_id)
-        == ("conversation.saved-turn.v1", "saved_complete")
-    ]
-    if len(saved) != 1:
-        raise PermissionError("saved tool turn is unavailable")
-    request = saved[0].envelope.payload.get("request")
+    from tobkiri_host.saved_tool_request_scope import saved_tool_request_scope
+
+    return _turn_from_scope(saved_tool_request_scope(invocation))
+
+
+def _turn_from_scope(scope: CapturedInvocationScopeV4) -> str:
+    """Read the turn from a scope validated in this same synchronous gate."""
+    request = scope.envelope.payload.get("request")
     if isinstance(request, Mapping) and request.get("action_approval_mode", "ask") != "ask":
         raise PermissionError("saved tool elevated mode settlement is unavailable")
     value = request.get("turn_id") if isinstance(request, Mapping) else None
@@ -136,8 +130,8 @@ class SavedToolConsentExecution:
         self, invocation: Any, execution: Mapping[str, Any], payload: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Use native one-use admission for one exact captured saved tool call."""
-        root = saved_tool_owner(invocation)
-        turn = _turn_id(invocation)
+        root, accepted = saved_tool_owner_and_request_scope(invocation)
+        turn = _turn_from_scope(accepted)
         frozen = strict_loads(
             canonical_json({"execution": dict(execution), "payload": dict(payload)})
         )
@@ -313,6 +307,7 @@ class SavedToolConsentExecution:
                     wall_clock=self._clock,
                     cancellation_requested=invocation.envelope.cancellation_requested,
                     nested_cancellation_proof=consent.cancellation_proof,
+                    inline_parent_scope=consent.inline_parent_scope,
                     execution_guard=lambda: self._guard(
                         invocation, root, turn, frozen, execution, payload
                     ),
@@ -354,6 +349,7 @@ class SavedToolConsentExecution:
                         wall_clock=self._clock,
                         cancellation_requested=invocation.envelope.cancellation_requested,
                         nested_cancellation_proof=read.cancellation_proof,
+                        inline_parent_scope=read.inline_parent_scope,
                         execution_guard=read_guard,
                         parent_deadline_monotonic=invocation.envelope.deadline_monotonic,
                     )
@@ -378,10 +374,10 @@ class SavedToolConsentExecution:
         execution: Mapping[str, Any],
         payload: Mapping[str, Any],
     ) -> None:
-        current = saved_tool_owner(invocation)
+        current, accepted = saved_tool_owner_and_request_scope(invocation)
         if (
             current != root
-            or _turn_id(invocation) != turn
+            or _turn_from_scope(accepted) != turn
             or canonical_digest({"execution": dict(execution), "payload": dict(payload)})
             != canonical_digest(frozen)
         ):

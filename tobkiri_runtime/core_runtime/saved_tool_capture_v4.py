@@ -83,21 +83,10 @@ def captured_consent_route(edges: Any, executor_bindings: Any) -> Any:
 
 def assert_saved_tool_requested_mode(invocation: Any) -> str:
     """Reject unsettled modes before every saved local tool execution branch."""
-    from tobkiri_host.saved_tool_context import saved_tool_owner
+    from tobkiri_host.saved_tool_context import saved_tool_owner_and_request_scope
 
-    saved_tool_owner(invocation)
-    saved = []
-    scope = invocation.parent_invocation
-    while scope is not None:
-        scope.assert_current()
-        if (scope.envelope.contract_id, scope.envelope.operation_id) == (
-            "conversation.saved-turn.v1",
-            "saved_complete",
-        ):
-            saved.append(scope)
-        scope = scope.parent
-    if len(saved) != 1:
-        raise PermissionError("saved tool mode ancestry is unavailable")
+    _, accepted = saved_tool_owner_and_request_scope(invocation)
+    saved = [accepted]
     request = saved[0].envelope.payload.get("request")
     if not isinstance(request, Mapping):
         raise PermissionError("saved tool mode request is unavailable")
@@ -120,26 +109,13 @@ def optional_captured_consent_route(edges: Any, executor_bindings: Any) -> Any:
 
 def capture_saved_tool_requested_mode(invocation: Any) -> str:
     """Read a preference only after actual saved ancestry and owner validation."""
-    from tobkiri_host.saved_tool_context import saved_tool_owner
+    from tobkiri_host.saved_tool_context import saved_tool_owner_and_request_scope
 
-    saved_tool_owner(invocation)
-    seen: set[int] = set()
-    modes = []
-    scope = invocation.parent_invocation
-    while scope is not None:
-        if id(scope) in seen or len(seen) >= 16:
-            raise PermissionError("saved tool mode ancestry is invalid")
-        seen.add(id(scope))
-        scope.assert_current()
-        if (scope.envelope.contract_id, scope.envelope.operation_id) == (
-            "conversation.saved-turn.v1",
-            "saved_complete",
-        ):
-            request = scope.envelope.payload.get("request")
-            if not isinstance(request, Mapping):
-                raise PermissionError("saved tool mode request is unavailable")
-            modes.append(request.get("action_approval_mode", "ask"))
-        scope = scope.parent
-    if len(modes) != 1 or modes[0] not in {"ask", "agent", "full"}:
+    _, accepted = saved_tool_owner_and_request_scope(invocation)
+    request = accepted.envelope.payload.get("request")
+    if not isinstance(request, Mapping):
+        raise PermissionError("saved tool mode request is unavailable")
+    mode = request.get("action_approval_mode", "ask")
+    if mode not in {"ask", "agent", "full"}:
         raise PermissionError("unsupported saved tool requested mode")
-    return modes[0]
+    return mode

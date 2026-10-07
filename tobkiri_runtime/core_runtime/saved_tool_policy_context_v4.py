@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from tobkiri_host.saved_tool_context import SAVED_TOOL_CAPTURE_FIELDS, saved_tool_owner
+from tobkiri_host.saved_tool_context import (
+    SAVED_TOOL_CAPTURE_FIELDS,
+    saved_tool_owner_and_request_scope,
+)
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -33,23 +36,8 @@ def capture_saved_tool_policy_context(
     selected_workspace: Callable[[], Mapping[str, Any]],
 ) -> SavedToolPolicyContextV4:
     """Use formal conversation reads and current native-owned mount receipts."""
-    root = saved_tool_owner(invocation)
-    saved = []
-    scope = invocation.parent_invocation
-    seen: set[int] = set()
-    while scope is not None:
-        if id(scope) in seen or len(seen) >= 16:
-            raise PermissionError("saved policy ancestry is invalid")
-        seen.add(id(scope))
-        scope.assert_current()
-        if (scope.envelope.contract_id, scope.envelope.operation_id) == (
-            "conversation.saved-turn.v1",
-            "saved_complete",
-        ):
-            saved.append(scope)
-        scope = scope.parent
-    if len(saved) != 1:
-        raise PermissionError("saved policy ancestry is unavailable")
+    root, accepted = saved_tool_owner_and_request_scope(invocation)
+    saved = [accepted]
     request = saved[0].envelope.payload.get("request")
     if not isinstance(request, Mapping):
         raise PermissionError("saved policy request is unavailable")
@@ -86,7 +74,9 @@ def capture_saved_tool_policy_context(
     def guard() -> None:
         invocation.assert_current()
         saved[0].assert_current()
-        current_root = saved_tool_owner(invocation)
+        current_root, current_scope = saved_tool_owner_and_request_scope(invocation)
+        if current_scope is not saved[0]:
+            raise PermissionError("saved policy accepted scope changed")
         if (
             canonical_digest({key: getattr(current_root, key) for key in SAVED_TOOL_CAPTURE_FIELDS})
             != capture
@@ -130,7 +120,7 @@ def assert_saved_native_policy_boundary(
     selected_workspace: Callable[[], Mapping[str, Any]],
 ) -> None:
     """Repeat saved owner, request and native mount proof without Broker I/O."""
-    current_root = saved_tool_owner(invocation)
+    current_root, accepted = saved_tool_owner_and_request_scope(invocation)
     if current_root != authenticated_root:
         raise PermissionError("native policy saved owner changed")
     if current_root.caller_principal.value != capture.get(
@@ -142,22 +132,7 @@ def assert_saved_native_policy_boundary(
         getattr(current_root, key) != native_context.get(key) for key in SAVED_TOOL_CAPTURE_FIELDS
     ):
         raise PermissionError("native policy saved capture changed")
-    scope = invocation.parent_invocation
-    saved = []
-    seen: set[int] = set()
-    while scope is not None:
-        if id(scope) in seen or len(seen) >= 16:
-            raise PermissionError("native policy saved ancestry is invalid")
-        seen.add(id(scope))
-        scope.assert_current()
-        if (scope.envelope.contract_id, scope.envelope.operation_id) == (
-            "conversation.saved-turn.v1",
-            "saved_complete",
-        ):
-            saved.append(scope)
-        scope = scope.parent
-    if len(saved) != 1:
-        raise PermissionError("native policy saved turn changed")
+    saved = [accepted]
     request = saved[0].envelope.payload.get("request")
     if (
         not isinstance(request, Mapping)

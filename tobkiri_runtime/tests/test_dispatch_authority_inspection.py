@@ -3,7 +3,12 @@
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from collections.abc import Iterator
+from typing import Any
 import time
+import sqlite3
+
+from core_runtime.authority.v4_store import _IdentityBoundConnection
 
 import pytest
 
@@ -36,33 +41,45 @@ def _targets(lease):
     )
 
 
-def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(dispatched, monkeypatch):
+def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(
+    dispatched: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One fresh connection reads all exact targets with one guarded query."""
     authority, envelope = dispatched
     store = authority.store
     lease = store.inspect_lease_token(envelope.lease.token.decode())[0]
-    original_connection, original_revoked = store._connection, store._is_revoked
+    original_connection = store._connection
+    original_execute = _IdentityBoundConnection.execute
     opened, checked = [], []
 
     @contextmanager
-    def connection():
+    def connection() -> Iterator[_IdentityBoundConnection]:
         with original_connection() as current:
             opened.append(current)
             yield current
 
-    def revoked(current, kind, identity):
-        checked.append((current, kind, identity))
-        return original_revoked(current, kind, identity)
+    def execute(
+        current: _IdentityBoundConnection,
+        statement: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> sqlite3.Cursor:
+        checked.append((current, statement, parameters))
+        return original_execute(current, statement, parameters)
 
     monkeypatch.setattr(store, "_connection", connection)
-    monkeypatch.setattr(store, "_is_revoked", revoked)
+    monkeypatch.setattr(_IdentityBoundConnection, "execute", execute)
     assert_dispatched_invocation(envelope, store)
     assert_dispatched_invocation(envelope, store)
     assert len(opened) == 2 and opened[0] is not opened[1]
-    for index, current in enumerate(opened):
-        assert [entry[1:] for entry in checked[index * 8 : (index + 1) * 8]] == list(
-            _targets(lease)
-        )
-        assert all(entry[0] is current for entry in checked[index * 8 : (index + 1) * 8])
+    expected = tuple(value for pair in _targets(lease) for value in pair)
+    for current in opened:
+        queries = [entry for entry in checked if entry[0] is current]
+        revocations = [entry for entry in queries if "FROM revocations" in entry[1]]
+        assert len(queries) == 3  # Lease, original epoch, finite revocations.
+        assert len(revocations) == 1
+        assert revocations[0][2] == expected
+        assert "target_kind='global'" in revocations[0][1]
+        assert revocations[0][1].count("target_kind=? AND target_id=?") == 8
 
 
 @pytest.mark.parametrize(
@@ -318,28 +335,121 @@ def test_additional_revocations_still_fence_through_durable_lease_state(
         assert_dispatched_invocation(envelope, store)
 
 
-def test_crypto_key_replacement_during_read_fails_before_return(dispatched, monkeypatch):
+def test_crypto_key_replacement_during_read_fails_before_return(
+    dispatched: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     authority, envelope = dispatched
     store = authority.store
-    original = store._is_revoked
+    original = _IdentityBoundConnection.execute
     path = store.key_path
     moved = path.with_name(path.name + ".original")
     replaced = False
 
-    def revoked(current, kind, identity):
+    def execute(
+        current: _IdentityBoundConnection,
+        statement: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> sqlite3.Cursor:
         nonlocal replaced
-        if not replaced:
+        if "FROM revocations" in statement and not replaced:
             path.rename(moved)
             path.write_bytes(moved.read_bytes())
             path.chmod(0o600)
             replaced = True
-        return original(current, kind, identity)
+        return original(current, statement, parameters)
 
-    monkeypatch.setattr(store, "_is_revoked", revoked)
+    monkeypatch.setattr(_IdentityBoundConnection, "execute", execute)
     try:
         with pytest.raises(AuthorityStoreError):
             store.inspect_dispatch_authority(envelope.lease.token.decode())
+        assert replaced
     finally:
         if replaced:
             path.unlink()
             moved.rename(path)
+
+
+@pytest.mark.parametrize(
+    "kind,identity",
+    [
+        ("profile", ""),
+        ("profile", "x' OR 1=1 --"),
+        ("function_principal", "CASE-DIFFERENT"),
+    ],
+)
+def test_batch_keeps_empty_quoted_and_unrelated_ids_scoped(
+    dispatched: Any, kind: str, identity: str
+) -> None:
+    """Unrelated data, including SQL-looking strings, cannot match other pairs."""
+    authority, envelope = dispatched
+    authority.store.revoke(target_kind=kind, target_id=identity, reason="scoped")
+    assert (
+        authority.store.inspect_dispatch_authority(envelope.lease.token.decode())[3]
+        is False
+    )
+
+
+def test_batch_keeps_exact_id_bound_to_its_kind(dispatched: Any) -> None:
+    """A matching principal ID under another kind is not a revocation match."""
+    authority, envelope = dispatched
+    store = authority.store
+    lease = store.inspect_lease_token(envelope.lease.token.decode())[0]
+    assert lease.caller.principal_id != lease.profile_id
+    store.revoke(
+        target_kind="profile",
+        target_id=lease.caller.principal_id,
+        reason="cross-kind",
+    )
+    assert (
+        store.inspect_dispatch_authority(envelope.lease.token.decode())[3] is False
+    )
+
+
+@pytest.mark.parametrize("kind", ["execution_domain", "global"])
+def test_duplicate_targets_remain_exact_and_global_empty_id_matches(
+    dispatched: Any, kind: str
+) -> None:
+    """Typed same-domain leases preserve duplicate pairs and global semantics."""
+    authority, envelope = dispatched
+    store = authority.store
+    lease = store.inspect_lease_token(envelope.lease.token.decode())[0]
+    changed = replace(lease, target_domain_id=lease.caller_domain_id)
+    with store._lock, store._connection() as current:
+        current.execute(
+            "UPDATE invocation_leases SET encrypted_payload=?, lease_digest=?"
+            " WHERE lease_id=?",
+            (store._encrypt(changed.to_dict()), changed.digest, changed.lease_id),
+        )
+    token = store._encode_lease_token(changed)
+    assert store.inspect_dispatch_authority(token)[3] is False
+    store.revoke(
+        target_kind=kind,
+        target_id=changed.caller_domain_id if kind == "execution_domain" else "",
+        reason="duplicate-or-global",
+    )
+    assert store.inspect_dispatch_authority(token)[3] is True
+
+
+def test_batch_sql_failure_does_not_return_authority(
+    dispatched: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Original SQLite errors are wrapped and the fresh connection is released."""
+    authority, envelope = dispatched
+    original = _IdentityBoundConnection.execute
+
+    def execute(
+        current: _IdentityBoundConnection,
+        statement: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> sqlite3.Cursor:
+        if "FROM revocations" in statement:
+            raise sqlite3.OperationalError("injected read failure")
+        return original(current, statement, parameters)
+
+    with monkeypatch.context() as changed:
+        changed.setattr(_IdentityBoundConnection, "execute", execute)
+        with pytest.raises(
+            AuthorityStoreError, match="dispatch authority inspection failed"
+        ):
+            authority.store.inspect_dispatch_authority(envelope.lease.token.decode())
+    assert_dispatched_invocation(envelope, authority.store)

@@ -17,6 +17,7 @@ from tests.test_tobkiri_host_authority_v4_adapter import (
 )
 from tests.test_interactive_approval_v4 import _CONTRACT
 from core_runtime.host_contract import bind_host_contract
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 from core_runtime.authority.v4 import (
     AuthorityScope,
     AuthorityMode,
@@ -366,27 +367,8 @@ def test_native_policy_real_file_create(tmp_path, monkeypatch, mode, outcome):
             authority_approval_window_port=object(),
             selected_tool_policy_port=policy_registry.capture_current,
         )
-        saved = NS(
-            envelope=NS(
-                contract_id="conversation.saved-turn.v1",
-                operation_id="saved_complete",
-                context=root,
-                payload={"request": {"turn_id": "turn-1", "action_approval_mode": mode}},
-            ),
-            parent=None,
-            assert_current=lambda: None,
-        )
-        tool_broker = NS(
-            envelope=NS(
-                contract_id="tobkiri.service.tool.invoke.v1",
-                operation_id="rumi_tool_broker_pack.tool-invoke",
-                context=root,
-            ),
-            parent=saved,
-            assert_current=lambda: None,
-        )
-
-        def live():
+        def live() -> None:
+            """Repeat the original executor parent lease and deadline guard."""
             current, state = h.store.inspect_lease_token(auth.lease_token)
             if (
                 state is not LeaseState.DISPATCHED
@@ -395,6 +377,26 @@ def test_native_policy_real_file_create(tmp_path, monkeypatch, mode, outcome):
                 or time.monotonic() >= saved_deadline_monotonic
             ):
                 raise AuthorityDenied("executor parent changed")
+
+        saved = CapturedInvocationScopeV4(
+            envelope=NS(
+                contract_id="conversation.saved-turn.v1",
+                operation_id="saved_complete",
+                context=root,
+                payload={"request": {"turn_id": "turn-1", "action_approval_mode": mode}},
+            ),
+            parent=None,
+            assert_current=live,
+        )
+        tool_broker = CapturedInvocationScopeV4(
+            envelope=NS(
+                contract_id="tobkiri.service.tool.invoke.v1",
+                operation_id="rumi_tool_broker_pack.tool-invoke",
+                context=root,
+            ),
+            parent=saved,
+            assert_current=live,
+        )
 
         invocation = NS(
             envelope=NS(
@@ -456,7 +458,7 @@ def test_native_policy_real_file_create(tmp_path, monkeypatch, mode, outcome):
                 lease, state = h.store.inspect_lease_token(envelope.lease.token.decode("ascii"))
                 assert state is LeaseState.DISPATCHED
                 upstream = parents.get(envelope.context.request_id, invocation)
-                scope = NS(
+                scope = CapturedInvocationScopeV4(
                     envelope=upstream.envelope,
                     parent=upstream.parent_invocation,
                     assert_current=upstream.assert_current,

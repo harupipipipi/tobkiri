@@ -20,12 +20,13 @@ def canonical_platform_path(path: Path) -> Path:
     absolute = path.absolute()
     if sys.platform != "darwin":
         return absolute
+    absolute_parts = absolute.parts
     aliases = (
         (Path("/var"), Path("/private/var")),
         (Path("/tmp"), Path("/private/tmp")),
     )
     for alias, canonical in aliases:
-        if absolute != alias and alias not in absolute.parents:
+        if absolute_parts[: len(alias.parts)] != alias.parts:
             continue
         try:
             metadata = alias.lstat()

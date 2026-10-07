@@ -2893,6 +2893,21 @@ def capture_production_dispatch(
         def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
             return self._scope.parent
 
+        def _assert_saved_tool_parent_scopes(
+            self, scopes: tuple[CapturedInvocationScopeV4, ...],
+        ) -> None:
+            """Prove supplied recipient joins against retained Host parents."""
+            self.assert_current()
+            if not scopes or self._scope.parent is not scopes[0]:
+                raise PermissionError("saved tool current parent scope changed")
+            original: CapturedInvocationScopeV4 | None = self._scope.parent
+            for scope in scopes:
+                if (not isinstance(scope, CapturedInvocationScopeV4)
+                        or scope is not original):
+                    raise PermissionError("saved tool retained parent scope changed")
+                scope.assert_current()
+                original = scope.parent
+
         @property
         def cancellation(self) -> OwnedCancellationBinding:
             declaration = cancellation_roles.get(self._envelope.target_principal.value)
@@ -3794,6 +3809,7 @@ def capture_production_dispatch(
                     release=lambda: release_nested_session(
                         session_id, authority_session_id,
                     ),
+                    inline_parent_scope=scope,
                 )
             except BaseException:
                 release_nested_session(session_id, authority_session_id)
@@ -3980,7 +3996,7 @@ def capture_production_dispatch(
                                fixed_target: str = target_id,
                                session_key: str = state_key) -> Iterator[RequestContext]:
             """Register a dedicated Host clock session for one fresh request."""
-            session_id = "wake." + canonical_digest({"registration": session_key,
+            session_id = "wake-" + canonical_digest({"registration": session_key,
                 "occurrence": occurrence}).removeprefix("sha256:")
             owner_session = authority_session_id(session_id, caller_id)
             resolved_session = bind_nested_session(session_id, caller_id,

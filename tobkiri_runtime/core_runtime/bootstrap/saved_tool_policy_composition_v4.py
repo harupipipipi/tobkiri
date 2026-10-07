@@ -156,7 +156,7 @@ def compose_saved_tool_policy_v4(
     if len(generate_edges) != 1:
         raise AuthorityDenied("independent signed reviewer route unavailable")
     generate_edge = generate_edges[0]
-    settings_context = host_context("tobkiri_ui_settings_pack.settings-read")
+    settings_context = host_context("tobkiri.ui.settings.read")
     if len(settings_context.provider_bindings) != 1:
         raise AuthorityDenied("reviewer settings owner unavailable")
     configuration_revision = build_reviewer_configuration_revision(

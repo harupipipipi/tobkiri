@@ -3475,19 +3475,27 @@ class AuthorityStore(PolicyDerivedStoreMixin):
                 if epoch_row is None or int(epoch_row["value"]) < 1:
                     raise AuthorityStoreError("security epoch is unavailable")
                 epoch = int(epoch_row["value"])
-                revoked = any(
-                    self._is_revoked(connection, kind, identity)
-                    for kind, identity in (
-                        ("function_principal", lease.caller.principal_id),
-                        ("function_principal", lease.target.principal_id),
-                        ("execution_domain", lease.caller_domain_id),
-                        ("execution_domain", lease.target_domain_id),
-                        ("profile", lease.profile_id),
-                        ("activation", lease.activation_id),
-                        ("grant", lease.grant_id),
-                        ("provider_authority", lease.provider_authority_id),
-                    )
+                revocation_targets = (
+                    ("function_principal", lease.caller.principal_id),
+                    ("function_principal", lease.target.principal_id),
+                    ("execution_domain", lease.caller_domain_id),
+                    ("execution_domain", lease.target_domain_id),
+                    ("profile", lease.profile_id),
+                    ("activation", lease.activation_id),
+                    ("grant", lease.grant_id),
+                    ("provider_authority", lease.provider_authority_id),
                 )
+                # Inspect the same finite targets in one fresh SQL read. Each
+                # remaining execute retains the identity-bound I/O validator.
+                revoked = connection.execute(
+                    "SELECT 1 FROM revocations WHERE target_kind='global' OR "
+                    + " OR ".join(
+                        "(target_kind=? AND target_id=?)"
+                        for _ in revocation_targets
+                    )
+                    + " LIMIT 1",
+                    tuple(value for pair in revocation_targets for value in pair),
+                ).fetchone() is not None
                 self._assert_crypto_material()
                 return lease, state, epoch, revoked
         except sqlite3.Error as exc:

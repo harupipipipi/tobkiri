@@ -8,6 +8,8 @@ import threading
 import time
 from types import SimpleNamespace
 import pytest
+from typing import Any
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 from core_runtime.authority.v4 import (
     AuthorityScope,
 )
@@ -429,6 +431,7 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
         return {"opened": True, "request_id": command.request_id}
 
     releases = []
+    retained_scopes: dict[str, CapturedInvocationScopeV4] = {}
 
     def bind_nested(invocation, contract, operation, request):
         context = replace(
@@ -442,6 +445,10 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
                 else harness.target_domain.domain_id
             ),
         )
+        scope = CapturedInvocationScopeV4(
+            invocation.envelope, invocation.assert_current, invocation.parent_invocation
+        )
+        retained_scopes[context.request_id] = scope
         return prepared_module.NestedToolBinding(
             context,
             (
@@ -452,7 +459,20 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
             "publisher.caller",
             None,
             lambda: releases.append(operation),
+            inline_parent_scope=scope,
         )
+
+    original_invoke_prepared = broker.invoke_prepared
+
+    def observed_prepared(*args: Any, **kwargs: Any) -> Any:
+        """Forward the exact modeled retained scope into the original Broker."""
+        request_context = args[1]
+        assert kwargs["inline_parent_scope"] is retained_scopes[
+            request_context.request_id
+        ]
+        return original_invoke_prepared(*args, **kwargs)
+
+    monkeypatch.setattr(broker, "invoke_prepared", observed_prepared)
 
     route = consent_module.ConsentRouteAttestation(
         catalog.resolve(consent_module.CONSENT_CONTRACT, consent_module.CONSENT_OPERATION, None),

@@ -11,7 +11,10 @@ def load_capture(monkeypatch, root):
     from core_runtime import saved_tool_policy_context_v4 as module
 
     monkeypatch.setattr(module, "SAVED_TOOL_CAPTURE_FIELDS", ("profile_id", "activation_id"))
-    monkeypatch.setattr(module, "saved_tool_owner", lambda invocation: root)
+    monkeypatch.setattr(
+        module, "saved_tool_owner_and_request_scope",
+        lambda invocation: (root, invocation.parent_invocation),
+    )
     return module.capture_saved_tool_policy_context
 
 

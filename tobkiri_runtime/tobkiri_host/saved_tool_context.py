@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 from tobkiri_host.models import RequestContext
+
+if TYPE_CHECKING:
+    from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 
 SAVED_TOOL_CAPTURE_FIELDS = (
     "profile_id",
@@ -27,10 +30,23 @@ class NestedToolBinding:
     caller_publisher_lineage: str
     cancellation_proof: Any
     release: Callable[[], None]
+    inline_parent_scope: CapturedInvocationScopeV4 | None = None
 
 
 def saved_tool_owner(invocation: Any) -> Any:
     """Return the authenticated live saved root for the finite executor chain."""
+    root, _ = saved_tool_owner_and_request_scope(invocation)
+    return root
+
+
+def saved_tool_owner_and_request_scope(
+    invocation: Any,
+) -> tuple[RequestContext, CapturedInvocationScopeV4]:
+    """Validate owner and accepted request once within one synchronous caller.
+
+    Callers must revalidate at every later gate; this returns no reusable
+    execution authority and must not be retained across external operations.
+    """
     invocation.assert_current()
     envelope = invocation.envelope
     if (envelope.contract_id, envelope.operation_id) != (
@@ -64,4 +80,7 @@ def saved_tool_owner(invocation: Any) -> Any:
         or root.caller_session_id != invocation.presentation_owner_session_id
     ):
         raise PermissionError("saved tool presentation owner changed")
-    return root
+    from tobkiri_host.saved_tool_request_scope import saved_tool_request_scope
+
+    saved = saved_tool_request_scope(invocation)
+    return root, saved

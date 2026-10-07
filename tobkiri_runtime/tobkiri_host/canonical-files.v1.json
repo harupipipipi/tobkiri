@@ -69,6 +69,7 @@
     "saved_tool_context.py",
     "saved_tool_entry_guards.py",
     "saved_tool_policy_execution.py",
+    "saved_tool_request_scope.py",
     "saved_turn_plan.py",
     "saved_workspace_context.py",
     "scheduled_job_cancellation.py",
