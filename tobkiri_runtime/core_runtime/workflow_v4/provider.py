@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from .engine import WorkflowEngineV4
+from .observation import observe_workflow_run
 from .models import DefinitionState, WorkflowValidationError, require_mapping
 
 WORKFLOW_CONTRACT_ID = "tobkiri.workflow.v4"
 WORKFLOW_FUNCTION_PRINCIPAL = "tobkiri.workflow.provider"
+# Verified stop surface: a separate Function principal in the same Pack so the
+# cancellation registry can grant it the "stop" role for the shared
+# "workflow-v4" group.  UI resolves this exact provider for user-facing Stop.
+WORKFLOW_STOP_CONTRACT_ID = "tobkiri.workflow.stop.v4"
+WORKFLOW_STOP_FUNCTION_PRINCIPAL = "tobkiri.workflow.stop.provider"
+WORKFLOW_STOP_OPERATIONS = ("run.stop",)
 WORKFLOW_OPERATIONS = (
     "definition.archive",
     "definition.create",
@@ -24,6 +32,7 @@ WORKFLOW_OPERATIONS = (
     "run.advance",
     "run.create",
     "run.get",
+    "run.observe",
     "run.pause",
     "run.reconcile-recovery",
     "run.resume",
@@ -59,6 +68,7 @@ class WorkflowProviderV4:
             "run.advance": self._advance,
             "run.create": self._run_create,
             "run.get": self._run_get,
+            "run.observe": self._run_observe,
             "run.pause": self._pause,
             "run.reconcile-recovery": self._reconcile,
             "run.resume": self._resume,
@@ -136,6 +146,8 @@ class WorkflowProviderV4:
             inputs=inputs,
             occurrence_id=self._optional_string(payload, "occurrence_id"),
             run_id=self._optional_string(payload, "run_id"),
+            revision_digest=(self._required_string(payload, "revision_digest")
+                             if "revision_digest" in payload else None),
         )
 
     def _run_get(self, payload: Mapping[str, Any]) -> Any:
@@ -144,6 +156,14 @@ class WorkflowProviderV4:
             "run": self._engine.store.get_run(run_id),
             "attempts": self._engine.store.list_attempts(run_id),
         }
+
+    def _run_observe(self, payload: Mapping[str, Any]) -> Any:
+        if set(payload) != {"run_id"}:
+            raise WorkflowValidationError("run.observe requires only run_id")
+        run_id = self._required_string(payload, "run_id")
+        return observe_workflow_run(
+            self._engine.store.get_run(run_id), self._engine.store.list_attempts(run_id),
+        )
 
     def _execute(self, payload: Mapping[str, Any]) -> Any:
         return self._engine.execute_step(
@@ -171,7 +191,15 @@ class WorkflowProviderV4:
         return self._engine.cancel_run(self._required_string(payload, "run_id"))
 
     def _advance(self, payload: Mapping[str, Any]) -> Any:
-        return self._engine.advance_run(self._required_string(payload, "run_id"))
+        # A ready wave may contain several inline-audio requests. Returning
+        # every full request would exceed the journal envelope after effects
+        # have already completed. Keep durable records in the owner and return
+        # the same bounded status/result projection as run.observe.
+        run_id = self._required_string(payload, "run_id")
+        self._engine.advance_run(run_id)
+        return observe_workflow_run(
+            self._engine.store.get_run(run_id), self._engine.store.list_attempts(run_id),
+        )
 
     def _reconcile(self, payload: Mapping[str, Any]) -> Any:
         return self._engine.reconcile_recovery(self._required_string(payload, "run_id"))
@@ -189,3 +217,24 @@ class WorkflowProviderV4:
         if not isinstance(value, str) or not value:
             raise WorkflowValidationError(f"{key} must be a non-empty string")
         return value
+
+
+class WorkflowStopProviderV4:
+    """Expose the verified stop surface of the Workflow v4 provider."""
+
+    def __init__(self, engine: WorkflowEngineV4) -> None:
+        self._engine = engine
+
+    def invoke(self, operation_id: str, payload: Mapping[str, Any]) -> Any:
+        """Invoke one finite stop operation."""
+
+        if operation_id not in WORKFLOW_STOP_OPERATIONS:
+            raise WorkflowValidationError(
+                "unknown Workflow v4 stop operation"
+            )
+        if operation_id == "run.stop":
+            run_id = payload.get("run_id")
+            if not isinstance(run_id, str) or not run_id:
+                raise WorkflowValidationError("run_id is required")
+            return self._engine.cancel_run(run_id)
+        raise WorkflowValidationError("unknown Workflow v4 stop operation")

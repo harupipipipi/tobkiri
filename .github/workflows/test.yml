@@ -1148,6 +1148,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tobkiri_launcher/scripts/tests/test_package_presentation_artifact.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tobkiri_runtime/tests/test_windows_dev_staging.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Set up Node
         uses: actions/setup-node@v4

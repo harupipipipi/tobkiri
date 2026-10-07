@@ -40,8 +40,14 @@ _verify_backend_integrity()
 from core_runtime.workflow_v4 import WorkflowProviderV4  # noqa: E402
 from core_runtime.workflow_v4.integration import (  # noqa: E402
     WORKFLOW_HOST_PROVIDER_FACTORY,
+    WORKFLOW_STOP_HOST_PROVIDER_FACTORY,
 )
 
-HOST_PROVIDER_FACTORY = WORKFLOW_HOST_PROVIDER_FACTORY
+HOST_PROVIDER_FACTORY = {
+    WORKFLOW_HOST_PROVIDER_FACTORY.function_id: WORKFLOW_HOST_PROVIDER_FACTORY,
+    WORKFLOW_STOP_HOST_PROVIDER_FACTORY.function_id: (
+        WORKFLOW_STOP_HOST_PROVIDER_FACTORY
+    ),
+}
 
 __all__ = ["HOST_PROVIDER_FACTORY", "WorkflowProviderV4"]

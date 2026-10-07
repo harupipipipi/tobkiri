@@ -64,6 +64,38 @@ class HostCredentialTransport(Protocol):
     ) -> Mapping[str, Any]:
         """Perform exactly one Host-bound credentialed JSON request."""
 
+    def post_multipart(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        fields: Mapping[str, str],
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> Mapping[str, Any]:
+        """Perform one Host-serialized credentialed multipart request."""
+
+    def post_binary(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> bytes:
+        """Perform one credentialed request with a bounded binary response."""
+
     def select_git_https_credential(
         self,
         *,
@@ -218,6 +250,80 @@ class GlobalContractClient:
             if not isinstance(value, Mapping):
                 raise HostCredentialTransportError
             return dict(value)
+        except Exception:
+            pass
+        raise HostCredentialTransportError
+
+    def post_multipart_with_credential(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        fields: Mapping[str, str],
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        """Use the finite Host transport capability; never resolve material."""
+        if self.host_credential_transport is None:
+            raise PermissionError("Host credential transport is unavailable")
+        try:
+            value = self.host_credential_transport.post_multipart(
+                endpoint=endpoint,
+                headers=headers,
+                fields=fields,
+                file_field=file_field,
+                filename=filename,
+                content_type=content_type,
+                content=content,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
+            if not isinstance(value, Mapping):
+                raise HostCredentialTransportError
+            return dict(value)
+        except Exception:
+            pass
+        raise HostCredentialTransportError
+
+    def post_binary_with_credential(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> bytes:
+        """Use the finite Host transport capability; never resolve material."""
+        if self.host_credential_transport is None:
+            raise PermissionError("Host credential transport is unavailable")
+        try:
+            value = self.host_credential_transport.post_binary(
+                endpoint=endpoint,
+                headers=headers,
+                body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
+            if not isinstance(value, (bytes, bytearray)):
+                raise HostCredentialTransportError
+            return bytes(value)
         except Exception:
             pass
         raise HostCredentialTransportError

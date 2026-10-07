@@ -63,6 +63,10 @@ from .chat_continuation_presentation import (
     present_chat_continuation,
 )
 from .ai_strategy_presentation import present_ai_strategy_catalog
+from .workflow_presentation import (
+    WORKFLOW_TARGET_IDENTITIES,
+    normalize_workflow_request,
+)
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -606,6 +610,14 @@ class DefaultspackHTTPPresentation:
             return normalize_conversation_record(
                 record_action, payload, profile_id=str(getattr(session, "profile_id", "")),
             )
+        if identity in WORKFLOW_TARGET_IDENTITIES:
+            # Exact Workflow Pack owner + contract + provider + operation
+            # identity only; the finite per-operation key surface and shapes
+            # are enforced inside, and Host authority stays in the captured
+            # session and the Broker — this path admits no generic pack.*
+            # dispatch and injects no client-controlled identity.
+            session.assert_current()
+            return normalize_workflow_request(target, payload)
         if not target.contribution_id.startswith("pack."):
             return dict(payload)
         if target.contract_id != "tobkiri.service.media.inspect.v1":

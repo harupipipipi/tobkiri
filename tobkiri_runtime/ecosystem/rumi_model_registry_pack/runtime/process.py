@@ -33,7 +33,7 @@ _PROVIDER_REGISTRY_OPERATION = (
     "rumi_provider_registry_pack.provider-registry-resource"
 )
 _MIGRATE_OPERATION = "rumi_model_registry_pack.model-registry-migrate"
-_MANAGE_SERVICE_OPERATIONS = frozenset({"save", "delete", "alias.set"})
+_MANAGE_SERVICE_OPERATIONS = frozenset({"create", "save", "delete", "alias.set"})
 _MIGRATE_SERVICE_OPERATIONS = frozenset(
     {"migration.apply", "migration.rollback"}
 )
@@ -95,6 +95,11 @@ class ModelRegistryHostFactoryV4:
                     "expected_revision",
                     "provider_registry_revision",
                 },
+                "create": {
+                    "record",
+                    "expected_revision",
+                    "provider_registry_revision",
+                },
                 "delete": {"model_profile_id", "expected_revision"},
                 "alias.set": {"alias", "target_profile_id", "expected_revision"},
                 "migration.apply": {"profiles", "aliases", "expected_source_hash"},
@@ -106,7 +111,7 @@ class ModelRegistryHostFactoryV4:
                 revision = payload.get("expected_revision")
                 if type(revision) is not int or revision < 0:
                     raise PermissionError("model registry revision is invalid")
-            if operation == "save":
+            if operation in {"create", "save"}:
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
                     consumer_pack_id=_PACK_ID,
@@ -115,10 +120,34 @@ class ModelRegistryHostFactoryV4:
                 invocation.assert_current()
                 _validate_provider_connection(client, payload)
                 invocation.assert_current()
-            return service.invoke(
+            result = service.invoke(
                 operation,
                 {**payload, "profile_id": context.profile_id},
             )
+            if operation == "create":
+                # The Host journals this result before the HTTP presentation.
+                # Keep full parameters (which may include floats) and opaque
+                # credential handles inside the owner, out of that journal.
+                profile = result["profile"]
+                return {
+                    "action": result["action"],
+                    "store_revision": result["store_revision"],
+                    "profile": {
+                        **{
+                            key: profile[key]
+                            for key in (
+                                "model_profile_id", "model_id", "display_name",
+                                "enabled",
+                            )
+                        },
+                        "metadata": {
+                            "provider_connection_id": payload["record"]["metadata"][
+                                "provider_connection_id"
+                            ],
+                        },
+                    },
+                }
+            return result
 
         return CapturedHostProviderV4(
             tuple(_contributions(context, invoke)),

@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -274,7 +274,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -285,7 +285,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -336,7 +336,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -347,7 +347,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -368,6 +368,143 @@
       },
       "revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
       "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.ai.messages.generate.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ai.gateway.messages.generate",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:87486ed5a036263fe68939a5ded7f28adee1e16971eb3411cdbd4ee371c65616",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+          "output_schema_digest": "sha256:403af9f1ad183b0133b95c2ec3089c8918780652c872cc2ae8d966a373f7fe65",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_gateway_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+        "required_capabilities": [
+          "ai.gateway.messages.generate"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:187ac636eeed4ac1d67ded080ea3746f3d1b5bcff46c03665107ba6f743496f9",
+      "schema_catalog": {
+        "sha256:403af9f1ad183b0133b95c2ec3089c8918780652c872cc2ae8d966a373f7fe65": {
+          "additionalProperties": false,
+          "properties": {
+            "model_profile_id": {
+              "title": "モデル",
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "status": {
+              "const": "ok",
+              "title": "状態",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "text": {
+              "maxLength": 262144,
+              "title": "text",
+              "type": "string",
+              "x-tobkiri-flow-role": "data"
+            }
+          },
+          "required": [
+            "status",
+            "text",
+            "model_profile_id"
+          ],
+          "type": "object"
+        },
+        "sha256:87486ed5a036263fe68939a5ded7f28adee1e16971eb3411cdbd4ee371c65616": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "maxLength": 262144,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "会話メッセージ",
+              "type": "array",
+              "x-tobkiri-flow-role": "data"
+            },
+            "model_profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "モデル",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration",
+              "x-tobkiri-selector": "model-profile"
+            }
+          },
+          "required": [
+            "messages",
+            "model_profile_id"
+          ],
+          "title": "会話履歴からAIの返答を作る",
+          "type": "object"
+        },
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
@@ -398,7 +535,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -409,7 +546,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -436,8 +573,147 @@
       },
       "status": "accepted",
       "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.ai.text.generate.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ai.gateway.text.generate",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:0715d30d62270df1c255da1baff295000a0d787352287c998920df250e79e4d4",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+          "output_schema_digest": "sha256:e14f0c3039a2cb2ba8099bae853f6238adcf4aa1344a11d397ca8be798d3ef0a",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_gateway_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+        "required_capabilities": [
+          "ai.gateway.text.generate"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:de81bff11bae7f4a55b6e0c39bc1e142100f6456201cc745533b9d0dbd25e3b8",
+      "schema_catalog": {
+        "sha256:0715d30d62270df1c255da1baff295000a0d787352287c998920df250e79e4d4": {
+          "additionalProperties": false,
+          "properties": {
+            "model_profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "モデル",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration",
+              "x-tobkiri-selector": "model-profile"
+            },
+            "system_prompt": {
+              "maxLength": 16384,
+              "title": "AIへの指示",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration"
+            },
+            "text": {
+              "maxLength": 262144,
+              "minLength": 1,
+              "title": "text",
+              "type": "string",
+              "x-tobkiri-flow-role": "data"
+            }
+          },
+          "required": [
+            "model_profile_id",
+            "text"
+          ],
+          "title": "AIの返答を作る",
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:e14f0c3039a2cb2ba8099bae853f6238adcf4aa1344a11d397ca8be798d3ef0a": {
+          "additionalProperties": false,
+          "properties": {
+            "model_id": {
+              "title": "モデルID",
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "model_profile_id": {
+              "title": "モデル",
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "provider_instance_id": {
+              "title": "接続ID",
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "request_id": {
+              "title": "実行ID",
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "status": {
+              "const": "ok",
+              "title": "状態",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "text": {
+              "maxLength": 262144,
+              "title": "text",
+              "type": "string",
+              "x-tobkiri-flow-role": "data"
+            }
+          },
+          "required": [
+            "model_id",
+            "model_profile_id",
+            "provider_instance_id",
+            "request_id",
+            "status",
+            "text"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
     }
   ],
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:6572dcd3a5d5e9c7ea81cdaab90932bfb305d897852d3d34074556edb2277117"
+  "source_identity": "sha256:e2acf2f52613e6416a9675e77645ddb4237ae9afb9a0a82e4799119646b04386"
 }

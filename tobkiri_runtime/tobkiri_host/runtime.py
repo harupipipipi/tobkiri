@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -54,6 +55,9 @@ class ProductionRuntimeV4:
         supporting_artifacts: Sequence[PackArtifact],
         verified_effective_artifacts: Mapping[str, str],
         authority_ceilings: Mapping[tuple[str, ...], AuthorityCeilings],
+        caller_function_declarations: (
+            Mapping[str, Sequence[Mapping[str, Any]]] | None
+        ) = None,
     ) -> "ProductionRuntimeV4":
         """Compile only exact plan Pack roots and capture the active graph."""
         binding_pack_ids = {item["pack_id"] for item in plan["bindings"]}
@@ -73,6 +77,7 @@ class ProductionRuntimeV4:
             routes=routes,
             authority_ceilings=authority_ceilings,
             effective_artifacts=verified_effective_artifacts,
+            caller_function_declarations=caller_function_declarations,
         )
         return cls(composition=composition)
 
@@ -263,6 +268,9 @@ class V4DispatchSession:
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
+        idempotency_key: str | None = None,
+        timeout_ms: int | None = None,
+        expected_payload_digest: str | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -271,9 +279,41 @@ class V4DispatchSession:
         strict additional constraint and can never select another Provider.
         The optional parent deadline is a Host-only absolute ceiling, never
         derived from application payload fields or renewed for nested work.
+
+        ``idempotency_key``, ``timeout_ms`` and ``expected_payload_digest``
+        form the narrow typed dispatch API used by Host-owned consumers
+        (for example durable Workflow attempts).  The key reaches the real
+        Broker envelope, the timeout only ever narrows the parent deadline,
+        and the payload digest is verified against the normalized arguments
+        before any dispatch so a pinned resolved input cannot be swapped.
+        These fields are never exposed as arbitrary frame overrides.
         """
         arguments = dict(payload)
         session_id = str(arguments.pop("_session_id", "")).strip()
+        if idempotency_key is not None and (
+            type(idempotency_key) is not str or not idempotency_key
+        ):
+            raise ValueError("dispatch idempotency key is invalid")
+        if timeout_ms is not None and (
+            type(timeout_ms) is not int or timeout_ms <= 0
+        ):
+            raise ValueError("dispatch timeout bound is invalid")
+        if expected_payload_digest is not None:
+            from tobkiri_protocol.canonical import canonical_digest
+
+            if (
+                type(expected_payload_digest) is not str
+                or not expected_payload_digest
+                or canonical_digest(arguments) != expected_payload_digest
+            ):
+                raise ValueError("dispatch payload does not match its pinned digest")
+        if timeout_ms is not None and parent_deadline_monotonic is not None:
+            # A caller deadline may only ever tighten the authenticated parent
+            # deadline; it can never extend it.
+            remaining_ms = int(
+                (parent_deadline_monotonic - time.monotonic()) * 1000
+            )
+            timeout_ms = min(timeout_ms, max(0, remaining_ms))
         parameter_count = len(inspect.signature(self.context_for).parameters)
         if parameter_count >= 3:
             if not session_id:
@@ -299,6 +339,8 @@ class V4DispatchSession:
             version_range=version_range,
             operation_id=operation_id,
             payload=arguments,
+            timeout_ms=timeout_ms,
+            idempotency_key=idempotency_key,
         )
         if (
             parent_deadline_monotonic is None

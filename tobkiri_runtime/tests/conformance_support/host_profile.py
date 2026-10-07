@@ -26,7 +26,7 @@ _RUNTIME_ROOT = Path(__file__).resolve().parents[2]
 @contextmanager
 def captured_host_profile(
     tmp_path, monkeypatch, *, packs, edges, backends, exclude_packs=(),
-    exclude_callers=(),
+    exclude_callers=(), exclude_targets=(),
 ):
     """Add explicit test edges without touching live activation or user data."""
     source_bundle = packaged_profile_bundle_root()
@@ -42,13 +42,18 @@ def captured_host_profile(
     intent["packs"] = [
         item for item in intent["packs"] if item["pack_id"] not in exclude_packs
     ]
+    present_pack_ids = {item["pack_id"] for item in intent["packs"]}
     for pack_id in packs:
+        if pack_id in present_pack_ids:
+            continue
+        present_pack_ids.add(pack_id)
         intent["packs"].append(
             {"artifact_digest": None, "pack_id": pack_id, "role": "provider"}
         )
     intent["requested_edges"] = [
         edge for edge in intent["requested_edges"]
         if edge["caller_function_id"] not in exclude_callers
+        and edge["target_provider_id"] not in exclude_targets
     ] + list(edges)
     intent_path.write_text(json.dumps(intent, indent=2) + "\n")
     outputs = render(

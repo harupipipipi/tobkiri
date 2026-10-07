@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/runtime.py",
-      "sha256": "313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+      "sha256": "e248d332963843c228402c29893b682bc50799efdfaea5bcc26b8b0c06159305",
       "role": "runtime"
     }
   ]

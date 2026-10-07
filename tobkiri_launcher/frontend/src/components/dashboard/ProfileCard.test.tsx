@@ -20,7 +20,7 @@ const profile: NamedProfileRecord = {
   legacy_ids: [],
 };
 
-test('ProfileCard copies the complete visible Profile error diagnostic', async () => {
+test('ProfileCard keeps a blocked launch and adjacent copy action without an error panel', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -82,23 +82,31 @@ test('ProfileCard copies the complete visible Profile error diagnostic', async (
     });
     assert.match(container.textContent ?? '', /Error\. The v4 Base Pack is missing\./);
     const cover = container.querySelector('svg[viewBox="0 0 320 180"]');
-    assert.equal(cover?.getAttribute('aria-hidden'), 'true');
+    assert.equal(cover, null);
     const titleLink = container.querySelector<HTMLAnchorElement>('h3')?.closest('a');
     assert.equal(titleLink?.getAttribute('href'), '/profile');
     const launch = container.querySelector<HTMLButtonElement>('button[aria-label="Launch Broken Profile"]');
     assert.ok(launch?.disabled, 'A cover card must not enable launch for an unresolved Profile');
+    assert.ok(launch.querySelector('[data-launch-error]'));
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    const diagnosticId = launch.getAttribute('aria-describedby');
+    assert.equal(document.getElementById(diagnosticId ?? '')?.textContent,
+      'Error. The v4 Base Pack is missing.');
     await act(async () => { titleLink?.click(); launch?.click(); });
     assert.equal(launches, 0, 'Browsing the card title must not launch or activate it');
 
     const copy = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Copy Broken Profile Profile error"]',
+      'button[aria-label="Copy error details for Broken Profile"]',
     );
     assert.ok(copy);
+    assert.equal(copy.textContent, 'Copy error', 'The visible label identifies the copied content');
+    assert.ok(launch.parentElement?.contains(copy), 'Copy stays next to the blocked Launch button');
     await act(async () => {
       copy.click();
       await Promise.resolve();
     });
     assert.equal(copied, 'Error. The v4 Base Pack is missing.');
+    assert.equal(copy.textContent, 'Copied');
   } finally {
     await act(async () => root?.unmount());
     dom.window.close();

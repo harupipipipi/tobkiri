@@ -148,8 +148,8 @@ def test_native_startup_reads_outlive_cold_packvm_start(
     ("pack_id", "function_id", "operation_id"),
     (
         (
-            "defaultspack",
-            "defaultspack.conversation.saved",
+            "tobkiri_conversation_orchestration_pack",
+            "tobkiri_conversation_orchestration_pack.saved",
             "saved_complete",
         ),
         (
@@ -206,15 +206,21 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
 
     conversation = next(item for item in compiled if item.artifact.pack_id == "defaultspack")
     inspect = next(item for item in compiled if item.artifact.pack_id == "rumi_file_inspect_pack")
+    saved = next(item for item in compiled if item.artifact.pack_id == "tobkiri_conversation_orchestration_pack")
+    assert set(saved.routes) == {
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.service.conversation.messages.build.v1", "messages_build"),
+    }
     selected_operations = {
         (operation.contract_id, operation.operation_id)
-        for artifact in (conversation.artifact, inspect.artifact)
+        for artifact in (conversation.artifact, saved.artifact, inspect.artifact)
         for function in artifact.functions
         for operation in function.operations
     }
     assert selected_operations == {
         ("conversation.turn.v1", "complete"),
         ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.service.conversation.messages.build.v1", "messages_build"),
         ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
         (
             "tobkiri.service.file.inspect.v1",
@@ -227,7 +233,6 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     }
     assert set(conversation.routes) == {
         ("conversation.turn.v1", "complete"),
-        ("conversation.saved-turn.v1", "saved_complete"),
         ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
     }
     assert set(inspect.routes) == {

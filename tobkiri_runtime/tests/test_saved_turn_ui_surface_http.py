@@ -96,7 +96,7 @@ def test_saved_send_readiness_denied_surfaces_distinct_waiting_turn(
     record and a readable unconfirmed phase.
     """
     from core_runtime.bootstrap.saved_bridge import READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import (
         ConversationStore,
     )
@@ -191,7 +191,7 @@ def test_saved_send_model_unset_is_typed_rejection_without_writes(
     """Model unset is a deterministic pre-write rejection, distinct from
     Provider/credential gaps that surface as a waiting turn."""
     from core_runtime.bootstrap.saved_bridge import READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import (
         ConversationStore,
     )
@@ -247,7 +247,7 @@ def test_saved_turn_and_conversation_survive_runtime_recapture(
     """Restart persistence: completed turn, transcript and model selection
     reopen through a fresh captured session without any re-execution."""
     from core_runtime.bootstrap.saved_bridge import READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import (
         ConversationStore,
     )

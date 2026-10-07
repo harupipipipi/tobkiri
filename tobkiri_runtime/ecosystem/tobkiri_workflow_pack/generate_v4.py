@@ -16,7 +16,14 @@ PACK_ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core_runtime.workflow_v4.provider import WORKFLOW_OPERATIONS  # noqa: E402
+from core_runtime.workflow_v4.provider import (  # noqa: E402
+    WORKFLOW_CONTRACT_ID,
+    WORKFLOW_FUNCTION_PRINCIPAL,
+    WORKFLOW_OPERATIONS,
+    WORKFLOW_STOP_CONTRACT_ID,
+    WORKFLOW_STOP_FUNCTION_PRINCIPAL,
+    WORKFLOW_STOP_OPERATIONS,
+)
 from scripts.generate_executable_catalogs_v4 import _render as render_executables  # noqa: E402
 from scripts.migrate_pack_artifacts_v4 import (  # noqa: E402
     _render_record,
@@ -51,14 +58,21 @@ _PAYLOAD_KEYS = {
     "operation.palette": [],
     "run.advance": ["run_id"],
     "run.cancel": ["run_id"],
-    "run.create": ["definition_id", "inputs", "occurrence_id", "run_id"],
+    "run.create": ["definition_id", "revision_digest", "inputs", "occurrence_id", "run_id"],
     "run.get": ["run_id"],
+    "run.observe": ["run_id"],
     "run.pause": ["run_id"],
     "run.reconcile-recovery": ["run_id"],
     "run.resume": ["run_id"],
     "run.step.execute": ["run_id", "step_id"],
     "run.step.resume": ["run_id", "step_id"],
     "run.step.retry": ["run_id", "step_id"],
+}
+
+# Verified cross-invocation stop surface (separate stop-role Function
+# principal in the same Pack and cancellation group).
+_STOP_PAYLOAD_KEYS = {
+    "run.stop": ["run_id"],
 }
 
 
@@ -83,11 +97,29 @@ def _frontend_map() -> dict[str, Any]:
                 "targets": [
                     {
                         "contribution_id": f"workflow.{operation}",
-                        "contract_id": "tobkiri.workflow.v4",
+                        "contract_id": WORKFLOW_CONTRACT_ID,
                         "operation_id": operation,
-                        "provider_id": "tobkiri.workflow.provider",
-                        "function_id": "tobkiri.workflow.provider",
+                        "provider_id": WORKFLOW_FUNCTION_PRINCIPAL,
+                        "function_id": WORKFLOW_FUNCTION_PRINCIPAL,
                         "allowed_payload_keys": _PAYLOAD_KEYS[operation],
+                    }
+                ],
+            }
+        )
+    for operation in WORKFLOW_STOP_OPERATIONS:
+        routes.append(
+            {
+                "method": "POST",
+                "path": f"/api/contracts/{PACK_ID}/{operation}",
+                "presentation": "broker_result",
+                "targets": [
+                    {
+                        "contribution_id": f"workflow.stop.{operation}",
+                        "contract_id": WORKFLOW_STOP_CONTRACT_ID,
+                        "operation_id": operation,
+                        "provider_id": WORKFLOW_STOP_FUNCTION_PRINCIPAL,
+                        "function_id": WORKFLOW_STOP_FUNCTION_PRINCIPAL,
+                        "allowed_payload_keys": _STOP_PAYLOAD_KEYS[operation],
                     }
                 ],
             }
@@ -185,10 +217,10 @@ def _record(frontend_digest: str, backend_integrity_digest: str) -> dict[str, An
         "workspace_boundary": "host_brokered",
         "provided_contracts": [
             {
-                "contract_id": "tobkiri.workflow.v4",
+                "contract_id": WORKFLOW_CONTRACT_ID,
                 "version": "4.0.0",
                 "owner": PACK_ID,
-                "provider_id": "tobkiri.workflow.provider",
+                "provider_id": WORKFLOW_FUNCTION_PRINCIPAL,
                 "operations": [
                     {
                         "id": operation,
@@ -213,7 +245,55 @@ def _record(frontend_digest: str, backend_integrity_digest: str) -> dict[str, An
                     "output": result_schema,
                     "error": error_schema,
                 },
-            }
+            },
+            {
+                "contract_id": WORKFLOW_STOP_CONTRACT_ID,
+                "version": "4.0.0",
+                "owner": PACK_ID,
+                "provider_id": WORKFLOW_STOP_FUNCTION_PRINCIPAL,
+                "operations": [
+                    {
+                        "id": operation,
+                        "entrypoint_id": operation,
+                        "implementation_digest": implementation_digest,
+                    }
+                    for operation in WORKFLOW_STOP_OPERATIONS
+                ],
+                "cardinality": "one",
+                "security": "restricted",
+                "failure": "fail_closed",
+                "isolation": "in_process",
+                "required_capabilities": capabilities,
+                "lifecycle": {
+                    "deprecated": False,
+                    "introduced": "4.0.0",
+                    "local_first": True,
+                    "authority_per_attempt": True,
+                },
+                "schemas": {
+                    "input": operation_schema,
+                    "output": result_schema,
+                    "error": error_schema,
+                },
+            },
+        ],
+        # Explicit multi-Function inventory: the stop Function shares the
+        # Pack and implementation artifact but is bound as a separate
+        # principal so the Host grants it the "stop" cancellation role for
+        # the shared "workflow-v4" group.
+        "functions": [
+            {
+                "function_id": WORKFLOW_FUNCTION_PRINCIPAL,
+                "contract_id": WORKFLOW_CONTRACT_ID,
+                "operation_ids": list(WORKFLOW_OPERATIONS),
+                "implementation_digest": implementation_digest,
+            },
+            {
+                "function_id": WORKFLOW_STOP_FUNCTION_PRINCIPAL,
+                "contract_id": WORKFLOW_STOP_CONTRACT_ID,
+                "operation_ids": list(WORKFLOW_STOP_OPERATIONS),
+                "implementation_digest": implementation_digest,
+            },
         ],
         "legacy_operations": [],
         "runtime_artifacts": runtime_artifacts,
@@ -252,6 +332,16 @@ def _upsert_authority() -> str:
     return _text(payload)
 
 
+def _matches_generated_bytes(path: Path, content: str) -> bool:
+    """Compare the exact bytes whose digest is pinned, without newline folding."""
+    return path.is_file() and path.read_bytes() == content.encode("utf-8")
+
+
+def _write_generated_bytes(path: Path, content: str) -> None:
+    """Keep canonical LF output identical on Windows and POSIX."""
+    path.write_bytes(content.encode("utf-8"))
+
+
 def render(*, check: bool) -> dict[Path, str]:
     """Render canonical source, Pack, executable, and frontend artifacts."""
 
@@ -274,13 +364,13 @@ def render(*, check: bool) -> dict[Path, str]:
     stale_source_assets = [
         path
         for path, content in source_assets.items()
-        if not path.is_file() or path.read_text(encoding="utf-8") != content
+        if not _matches_generated_bytes(path, content)
     ]
     if check and stale_source_assets:
         raise RuntimeError("Workflow Pack v4 generated source assets are stale")
     if not check:
         for path, content in source_assets.items():
-            path.write_text(content, encoding="utf-8")
+            _write_generated_bytes(path, content)
     record = _record(frontend_digest, backend_integrity_digest)
     files = _render_record(record)
     verify_rendered_artifacts(files)
@@ -295,13 +385,13 @@ def render(*, check: bool) -> dict[Path, str]:
         stale_inputs = [
             path
             for path, content in compiler_inputs.items()
-            if not path.is_file() or path.read_text(encoding="utf-8") != content
+            if not _matches_generated_bytes(path, content)
         ]
         if stale_inputs:
             raise RuntimeError("Workflow Pack v4 official compiler inputs are stale")
     else:
         for path, content in compiler_inputs.items():
-            path.write_text(content, encoding="utf-8")
+            _write_generated_bytes(path, content)
     rendered[PACK_ROOT / "executables.v4.json"] = _text(render_executables(PACK_ID))
     return rendered
 
@@ -313,7 +403,7 @@ def generate(*, check: bool = False) -> dict[str, int]:
     stale = [
         path
         for path, content in rendered.items()
-        if not path.is_file() or path.read_text(encoding="utf-8") != content
+        if not _matches_generated_bytes(path, content)
     ]
     if check and stale:
         raise RuntimeError(
@@ -322,7 +412,7 @@ def generate(*, check: bool = False) -> dict[str, int]:
         )
     if not check:
         for path, content in rendered.items():
-            path.write_text(content, encoding="utf-8")
+            _write_generated_bytes(path, content)
     for name, schema in (
         ("pack.v4.json", "pack"),
         ("contracts.v4.json", "pack_contract_catalog"),
@@ -330,7 +420,11 @@ def generate(*, check: bool = False) -> dict[str, int]:
         ("executables.v4.json", "executable_catalog"),
     ):
         validate_document(rendered[PACK_ROOT / name], schema)
-    return {"packs": 1, "contracts": 1, "operations": len(WORKFLOW_OPERATIONS)}
+    return {
+        "packs": 1,
+        "contracts": 2,
+        "operations": len(WORKFLOW_OPERATIONS) + len(WORKFLOW_STOP_OPERATIONS),
+    }
 
 
 def main() -> int:

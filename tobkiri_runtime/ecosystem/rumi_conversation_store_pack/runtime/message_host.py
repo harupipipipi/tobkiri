@@ -65,7 +65,7 @@ class MessageManageHostFactoryV4:
         store = ConversationStore(context.profile_id, user_data_root=context.user_data_root)
         saved_callers = frozenset(
             item.principal_ref.value for item in context.catalog_bindings
-            if item.function.function_id == "defaultspack.conversation.saved"
+            if item.function.function_id == "tobkiri_conversation_orchestration_pack.saved"
         )
 
         def invoke(

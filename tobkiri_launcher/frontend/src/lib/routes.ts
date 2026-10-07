@@ -3,6 +3,7 @@ export const panelRoutes = {
   setup: '/setup',
   packs: '/packs',
   profile: '/profile',
+  account: '/account',
   settings: '/settings',
   profileWiring: '/profile-graph',
   profileFiles: '/profile-workspace',
@@ -22,9 +23,11 @@ export type PanelRouteMeta = {
   navKey?: string;
 };
 
+// 'flow' is intentionally not listed: Flow composition is a primary user
+// task, so it stays in the main navigation and outside the Devtools
+// preference gate. The remaining routes are technical inspectors.
 export const DEVTOOLS_PANEL_ROUTE_KEYS = [
   'graph',
-  'flow',
   'apiMap',
   'aiInput',
   'nodeManager',
@@ -39,6 +42,7 @@ export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   setup: { path: panelRoutes.setup, titleKey: 'nav.setup' },
   packs: { path: panelRoutes.packs, titleKey: 'nav.packs', navKey: 'nav.packs' },
   profile: { path: panelRoutes.profile, titleKey: 'nav.profile', navKey: 'nav.profile' },
+  account: { path: panelRoutes.account, titleKey: 'nav.account', navKey: 'nav.account' },
   settings: { path: panelRoutes.settings, titleKey: 'nav.settings', navKey: 'nav.settings' },
   profileWiring: {
     path: panelRoutes.profileWiring,
@@ -65,12 +69,12 @@ const primaryViewerNavGroups = [
   {
     id: 'workspace',
     labelKey: 'nav.group.workspace',
-    routes: ['home', 'packs'] satisfies PanelRouteKey[],
+    routes: ['home', 'packs', 'flow'] satisfies PanelRouteKey[],
   },
   {
     id: 'preferences',
     labelKey: 'nav.group.preferences',
-    routes: ['profile', 'settings'] satisfies PanelRouteKey[],
+    routes: ['account', 'settings'] satisfies PanelRouteKey[],
   },
 ] as const;
 
@@ -108,8 +112,16 @@ export function panelRouteTitleKey(pathname: string): string {
 
 /** Match stable panel routes without treating Profile Files/Wiring as Profile. */
 export function isPanelRouteActive(pathname: string, routePath: string): boolean {
+  if (routePath === panelRoutes.home) {
+    return pathname === routePath || pathname === panelRoutes.profile;
+  }
   if (routePath === panelRoutes.packs) {
     return pathname === routePath || pathname.startsWith(`${routePath}/`);
   }
   return pathname === routePath;
+}
+
+/** Preserve the inspected execution identity when opening its configuration. */
+export function profileHref(profileId: string, section?: 'profile-packs' | 'profile-closure' | 'profile-ceremony'): string {
+  return `${panelRoutes.profile}?profile_id=${encodeURIComponent(profileId)}${section ? `#${section}` : ''}`;
 }

@@ -17,6 +17,7 @@ from ecosystem.rumi_tool_executor_selector_pack.runtime.selector import (
 from ecosystem.rumi_tool_guard_pack.runtime.guards import create_guard_operation
 from ecosystem.rumi_tool_mcp_executor_pack.runtime.executor import (
     create_execute_operation as create_mcp_execute_operation,
+    MCP_CALL,
 )
 from ecosystem.rumi_tool_policy_pack.runtime.policy import create_policy_operation
 from ecosystem.rumi_tool_registry_pack.runtime.registry import (
@@ -281,9 +282,10 @@ def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
                 "_contract_consumer_pack_id": "rumi_tool_broker_pack",
                 "definition": {
                     "execution": {
-                        "contract_id": "rumi.service.mcp.tool.call.v1",
+                        "contract_id": MCP_CALL,
                         "provider_instance_id": "mcp-gateway.call",
                         "operation": "search",
+                        "connection_id": "connection.valid",
                     }
                 },
                 "arguments": {},

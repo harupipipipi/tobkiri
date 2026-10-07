@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_agent_state_store_pack",
-  "source_identity": "sha256:75172f4566ae04c3b2d31d25042241a2c5d015197471893b1c5691190280a5e0",
+  "source_identity": "sha256:333b5c8651f4d530929a06f1ebe55b7853987a6220235b7b8b4edf0ef27d3c8a",
   "variants": [
     {
       "variant_id": "rumi_agent_state_store_pack.agent-state.action.python",
       "function_id": "rumi_agent_state_store_pack.agent-state.action",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_agent_state_store_pack.agent-state.resource.python",
       "function_id": "rumi_agent_state_store_pack.agent-state.resource",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:89fed9ddfcb1fd4183590b63b601649ebabb0b0dd98a78ec760a95987ea3f310",
-  "catalog_digest": "sha256:29d9be9fdec775bf784683e9c26ed35a7c458a1df048c45a69b5d10e96060e8c"
+  "materialization_catalog_digest": "sha256:af58d02ac686d3fb6a394dc2270bad437f41dd60a49111c7980692b91163f5f4",
+  "catalog_digest": "sha256:db9ceeaa7bd22dcec23170a12600f15967d27882a385757226d1a58cf83500bd"
 }

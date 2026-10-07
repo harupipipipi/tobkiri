@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:22a6a803781c33b6d0a57afb0e159afade5992e906ead1bc2d16e7d8b798fba3",
+      "digest": "sha256:e5d016f2cdb0f6df7ebce43e39179caa3281c018b4f27f40a7099ba34d39b8e8",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -29,11 +29,6 @@
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "kind": "executable",
       "path": "runtime/conversation.py"
-    },
-    {
-      "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
-      "kind": "executable",
-      "path": "runtime/saved_conversation.py"
     },
     {
       "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
@@ -628,13 +623,6 @@
   ],
   "contracts": [
     {
-      "contract_id": "conversation.saved-turn.v1",
-      "operations": [
-        "saved_complete"
-      ],
-      "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976"
-    },
-    {
       "contract_id": "tobkiri.resource.application.presentation.v1",
       "operations": [
         "defaultspack.presentation.read"
@@ -669,22 +657,12 @@
         "complete"
       ],
       "role": "brokered"
-    },
-    {
-      "contract_revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
-      "id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
-      "isolation": "pack_vm",
-      "operations": [
-        "saved_complete"
-      ],
-      "role": "brokered"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:6863b374a8da437e7733c196023422527071d1a9806bcdcdfc6de1bc5644562b",
-    "contract_catalog_digest": "sha256:98fbb61dcd6c0cc79e4f733a4ffb30e6039779c1b9ef98a072a0080440d8ce45",
-    "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090"
+    "artifact_set_digest": "sha256:761f925c9b51b8cf73569f3c2e398aa8233d4f05139bdd4170ebee7c3c452fdb",
+    "contract_catalog_digest": "sha256:9cb6bf3bf203814432890d282e1cda477ae6f454d3f3bbe5856ba7031234f244",
+    "source_identity": "sha256:529b88cea533b744015af9d7564d3c37d85b3c4f3b42f5d92c3f7e7628cbc429"
   },
   "migration": {
     "compatibility": "none",
@@ -708,19 +686,11 @@
       "owner": "defaultspack",
       "provider_id": "defaultspack.application-presentation",
       "source_kind": "canonical_v4_contract"
-    },
-    {
-      "contract_reference": "conversation.saved-turn.v1",
-      "effect_ceiling": [],
-      "operation_id": "saved_complete",
-      "owner": "defaultspack",
-      "provider_id": "defaultspack.conversation.saved",
-      "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6863b374a8da437e7733c196023422527071d1a9806bcdcdfc6de1bc5644562b",
-    "display_name": "Tobkiri Defaults Providers",
+    "artifact_digest": "sha256:761f925c9b51b8cf73569f3c2e398aa8233d4f05139bdd4170ebee7c3c452fdb",
+    "display_name": "Tobkiri Harness Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
     "version": "4.0.0"
@@ -729,7 +699,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
+        "digest": "sha256:529b88cea533b744015af9d7564d3c37d85b3c4f3b42f5d92c3f7e7628cbc429",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -740,7 +710,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
+    "source_digest": "sha256:529b88cea533b744015af9d7564d3c37d85b3c4f3b42f5d92c3f7e7628cbc429",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
@@ -760,14 +730,6 @@
       ],
       "owner": "defaultspack",
       "provider_id": "defaultspack.conversation"
-    },
-    {
-      "contract_reference": "conversation.saved-turn.v1",
-      "operations": [
-        "saved_complete"
-      ],
-      "owner": "defaultspack",
-      "provider_id": "defaultspack.conversation.saved"
     }
   ],
   "requirements": {

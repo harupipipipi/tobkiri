@@ -162,13 +162,26 @@ def test_workflow_authoring_dynamic_targets_admit_only_the_finite_v4_payloads() 
         "definition.delete",
         "definition.validate",
         "definition.publish",
+        "definition.archive",
+        "definition.compile-preview",
         "operation.palette",
         "run.create",
+        "run.get",
+        "run.observe",
+        "run.advance",
+        "run.resume",
+        "run.cancel",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry",
+        "run.pause",
+        "run.reconcile-recovery",
     )
     catalog = {
         "packs": [{
             "pack_id": "tobkiri_workflow_pack",
             "artifact_digest": "sha256:" + "a" * 64,
+            "pack_artifact_digest": "sha256:" + "b" * 64,
             "enabled": True,
             "approved": True,
             "operations": [{
@@ -192,11 +205,83 @@ def test_workflow_authoring_dynamic_targets_admit_only_the_finite_v4_payloads() 
         "definition.delete": frozenset({"definition_id", "if_match"}),
         "definition.validate": frozenset({"document"}),
         "definition.publish": frozenset({"definition_id", "if_match"}),
+        "definition.archive": frozenset({"definition_id", "if_match"}),
+        "definition.compile-preview": frozenset({"document"}),
         "operation.palette": frozenset(),
-        # A catalog declaration alone cannot turn a run operation into this UI.
-        "run.create": frozenset(),
+        # Every user-facing run operation admits exactly its provider keys.
+        "run.create": frozenset(
+            {"definition_id", "revision_digest", "inputs", "occurrence_id", "run_id"}
+        ),
+        "run.get": frozenset({"run_id"}),
+        "run.observe": frozenset({"run_id"}),
+        "run.advance": frozenset({"run_id"}),
+        "run.resume": frozenset({"run_id"}),
+        "run.cancel": frozenset({"run_id"}),
+        "run.step.execute": frozenset({"run_id", "step_id"}),
+        "run.step.resume": frozenset({"run_id", "step_id"}),
+        "run.step.retry": frozenset({"run_id", "step_id"}),
+        "run.pause": frozenset({"run_id"}),
+        "run.reconcile-recovery": frozenset({"run_id"}),
     }
     assert all(target.contribution_id.startswith("pack.tobkiri_workflow_pack.") for target in targets)
+
+
+def test_workflow_stop_projects_to_exact_dynamic_contribution() -> None:
+    """Launcher resolves pack.<pack_id>.run.stop -> stop contract/principal.
+
+    The dynamic capability projection rewrites contribution ids to
+    ``pack.<pack_id>.<operation_id>``; the Run button's stop action must
+    resolve to exactly this contribution carrying the stop contract, the
+    verified stop Function principal, and only the ``run_id`` payload key.
+    """
+
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/api/ui/capability/invoke",
+        presentation="capability_result",
+        targets=(),
+    )
+    catalog = {
+        "packs": [{
+            "pack_id": "tobkiri_workflow_pack",
+            "artifact_digest": "sha256:" + "a" * 64,
+            "pack_artifact_digest": "sha256:" + "b" * 64,
+            "enabled": True,
+            "approved": True,
+            "operations": [
+                {
+                    "invokable": True,
+                    "contract_id": "tobkiri.workflow.v4",
+                    "operation_id": "run.step.execute",
+                    "provider_id": "tobkiri.workflow.provider",
+                    "function_id": "tobkiri.workflow.provider",
+                },
+                {
+                    "invokable": True,
+                    "contract_id": "tobkiri.workflow.stop.v4",
+                    "operation_id": "run.stop",
+                    "provider_id": "tobkiri.workflow.stop.provider",
+                    "function_id": "tobkiri.workflow.stop.provider",
+                },
+            ],
+        }],
+    }
+    targets = {
+        target.contribution_id: target
+        for target in defaultspack_dynamic_capability_targets(
+            binding, catalog=catalog
+        )
+    }
+    stop = targets["pack.tobkiri_workflow_pack.run.stop"]
+    assert stop.contract_id == "tobkiri.workflow.stop.v4"
+    assert stop.operation_id == "run.stop"
+    assert stop.provider_id == "tobkiri.workflow.stop.provider"
+    assert stop.function_id == "tobkiri.workflow.stop.provider"
+    assert stop.allowed_payload_keys == frozenset({"run_id"})
+    # The execute principal projects to a separate contribution identity.
+    execute = targets["pack.tobkiri_workflow_pack.run.step.execute"]
+    assert execute.contract_id == "tobkiri.workflow.v4"
+    assert execute.provider_id == "tobkiri.workflow.provider"
 
 
 def test_packvm_acceptance_bridge_has_only_finite_qa_payload_keys() -> None:
@@ -220,6 +305,7 @@ def test_packvm_acceptance_bridge_has_only_finite_qa_payload_keys() -> None:
         "packs": [{
             "pack_id": "tobkiri_packvm_sandbox_qa_pack",
             "artifact_digest": "sha256:" + "a" * 64,
+            "pack_artifact_digest": "sha256:" + "b" * 64,
             "enabled": True,
             "approved": True,
             "operations": [{
@@ -525,3 +611,78 @@ def test_desktop_contract_context_requires_the_active_profile_record_graph() -> 
     activation["state"] = "superseded"
     with pytest.raises(RuntimeError, match="active Profile identity is stale"):
         desktop_app._active_profile_contract_context(active)
+
+
+@pytest.mark.parametrize("pack_digest", [None, "", "sha256:" + "b" * 64])
+def test_dynamic_targets_require_active_pack_artifact_not_admission_digest(pack_digest):
+    binding = FrontendContractBinding(
+        method="POST", path="/api/ui/capability/invoke",
+        presentation="capability_result", targets=(),
+    )
+    pack = {
+        "pack_id": "tobkiri_workflow_pack", "artifact_digest": "sha256:" + "a" * 64,
+        "enabled": True, "approved": True,
+        "operations": [{"invokable": True, "contract_id": "tobkiri.workflow.v4",
+                        "operation_id": "definition.list", "provider_id": "tobkiri.workflow.provider",
+                        "function_id": "tobkiri.workflow.provider"}],
+    }
+    if pack_digest is not None:
+        pack["pack_artifact_digest"] = pack_digest
+    targets = defaultspack_dynamic_capability_targets(binding, catalog={"packs": [pack]})
+    if not pack_digest:
+        assert targets == ()
+        return
+    assert len(targets) == 1
+    assert targets[0].artifact_digest == pack_digest
+    pack["artifact_digest"] = "sha256:" + "c" * 64
+    assert defaultspack_dynamic_capability_targets(binding, catalog={"packs": [pack]}) == targets
+    for gate in ("enabled", "approved"):
+        assert defaultspack_dynamic_capability_targets(
+            binding, catalog={"packs": [{**pack, gate: False}]},
+        ) == ()
+    pack["operations"][0]["invokable"] = False
+    assert defaultspack_dynamic_capability_targets(binding, catalog={"packs": [pack]}) == ()
+
+
+@pytest.mark.parametrize("fault", [None, "artifact", "profile", "activation", "plan", "duplicate", "unavailable"])
+def test_active_pack_digest_keeps_host_identity_and_readiness_fences(fault):
+    from core_runtime.global_contracts.capability_capture import capture_capability_binding_snapshot
+
+    digest = "sha256:" + "b" * 64
+    metadata = {
+        "provider_id": "tobkiri.workflow.provider", "function_id": "tobkiri.workflow.provider",
+        "operation_id": "definition.list", "profile_id": "defaults",
+        "profile_revision": "revision", "activation_id": "activation", "plan_digest": "plan",
+        "artifact_digest": digest,
+    }
+    field = {"artifact": "artifact_digest", "profile": "profile_revision",
+             "activation": "activation_id", "plan": "plan_digest"}.get(fault)
+    if field:
+        metadata[field] = "wrong"
+
+    def ready(*_args):
+        if fault == "unavailable":
+            raise RuntimeError("backend unavailable")
+
+    session = SimpleNamespace(
+        profile_id="defaults", profile_revision="revision", activation_id="activation", plan_digest="plan",
+        provider_metadata=lambda _contract: [metadata] * (2 if fault == "duplicate" else 1),
+        assert_operation_ready=ready,
+    )
+    binding = FrontendContractBinding(
+        method="POST", path="/api/ui/capability/invoke", presentation="capability_result", targets=(),
+    )
+    catalog = {"packs": [{
+        "pack_id": "tobkiri_workflow_pack", "artifact_digest": "sha256:" + "a" * 64,
+        "pack_artifact_digest": digest, "enabled": True, "approved": True,
+        "operations": [{"invokable": True, "contract_id": "tobkiri.workflow.v4",
+                        "operation_id": "definition.list", "provider_id": "tobkiri.workflow.provider",
+                        "function_id": "tobkiri.workflow.provider"}],
+    }]}
+    snapshot = capture_capability_binding_snapshot(
+        binding, session=session, catalog=catalog,
+        dynamic_target_factory=defaultspack_dynamic_capability_targets,
+    )
+    assert len(snapshot.targets) == (1 if fault is None else 0)
+    if fault is None:
+        assert snapshot.targets[0].artifact_digest == digest

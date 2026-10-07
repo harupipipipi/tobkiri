@@ -22,10 +22,13 @@ import {bootstrapPanelSession, hasPendingPanelBootstrapCode} from '@/src/lib/api
 import { applyAppearanceToRoot } from '@/src/lib/appearance';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
+import {ProfileSelectionProvider} from '@/src/lib/profileSelection';
+import {LAUNCHER_ADVANCED_VIEWS, type LauncherAdvancedViewId} from '@/src/lib/advancedSurfaces';
 import {
   resolveSetupVerificationState,
   type SetupVerificationState,
 } from '@/src/lib/setupVerification';
+import {broadcastRuntimeSurfaceRefresh} from '@/src/hooks/useRuntimeSurface';
 import { RouteAnnouncer } from '@/src/components/layout/RouteAnnouncer';
 import {
   LazyAiInput,
@@ -36,6 +39,7 @@ import {
   LazyPacks,
   LazyNodeManager,
   LazyProfile,
+  LazyAccount,
   LazyProfileFiles,
   LazyProfileWiring,
   LazySettings,
@@ -46,6 +50,8 @@ export default function App() {
   const colorMode = useAppStore(state => state.colorMode);
   const isSetupDone = useAppStore(state => state.isSetupDone);
   const runtimeReady = useAppStore(state => state.runtimeReady);
+  const hostCatalogVerified = useAppStore(state => state.hostCatalogVerified);
+  const profileCeremonyAvailable = useAppStore(state => state.profileCeremonyAvailable);
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const defaultsBootstrapRequired = useAppStore(state => state.defaultsBootstrapRequired);
@@ -116,11 +122,19 @@ export default function App() {
     };
   }, [refreshRuntimeHealth]);
 
+  useEffect(() => {
+    if (runtimeReady && runtimeStatus === 'runtime_ready') {
+      broadcastRuntimeSurfaceRefresh();
+    }
+  }, [runtimeReady, runtimeStatus]);
+
   return (
     <BrowserRouter basename="/panel">
       <RouteTree
         isSetupDone={isSetupDone}
         runtimeReady={runtimeReady}
+        hostCatalogVerified={hostCatalogVerified}
+        profileCeremonyAvailable={profileCeremonyAvailable}
         runtimeStatus={runtimeStatus}
         runtimeDisconnected={runtimeDisconnected}
         defaultsBootstrapRequired={defaultsBootstrapRequired}
@@ -136,6 +150,8 @@ export interface SetupVerificationGateProps {
   children: ReactNode;
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -147,6 +163,8 @@ export interface SetupVerificationGateProps {
 export interface SetupVerificationBannerProps {
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -303,6 +321,8 @@ function VerificationMessage({
 function useSetupVerification({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -311,6 +331,8 @@ function useSetupVerification({
   const state = resolveSetupVerificationState({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -330,6 +352,8 @@ function useSetupVerification({
 export function SetupVerificationBanner({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -338,6 +362,8 @@ export function SetupVerificationBanner({
   const {state, retrying, retry} = useSetupVerification({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -366,7 +392,11 @@ export function SetupVerificationBanner({
  * gate below instead.
  */
 export function HomeRoute({verificationBanner}: HomeRouteProps) {
-  return <Layout verificationBanner={verificationBanner} />;
+  return (
+    <ProfileSelectionProvider>
+      <Layout verificationBanner={verificationBanner} />
+    </ProfileSelectionProvider>
+  );
 }
 
 /**
@@ -428,6 +458,8 @@ export function SetupVerificationGate({
   children,
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -437,6 +469,8 @@ export function SetupVerificationGate({
   const {state, retrying, retry} = useSetupVerification({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -473,6 +507,8 @@ export function SetupVerificationGate({
 export function RouteTree({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -480,6 +516,8 @@ export function RouteTree({
 }: {
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -491,6 +529,8 @@ export function RouteTree({
     <SetupVerificationBanner
       isSetupDone={isSetupDone}
       runtimeReady={runtimeReady}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
@@ -501,6 +541,8 @@ export function RouteTree({
     <SetupVerificationGate
       isSetupDone={isSetupDone}
       runtimeReady={runtimeReady}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
@@ -512,6 +554,13 @@ export function RouteTree({
   );
   const gateDevtoolsRoute = (element: ReactNode) => (
     <DevtoolsRouteGate>{gateRuntimeRoute(element)}</DevtoolsRouteGate>
+  );
+  // Primary user-task surfaces (flow) stay on the runtime health/authority
+  // gate only; technical inspectors stay behind the Devtools preference.
+  const gatedDevSurface = (viewId: LauncherAdvancedViewId, element: ReactNode) => (
+    LAUNCHER_ADVANCED_VIEWS[viewId].devtoolsGated === false
+      ? gateRuntimeRoute(element)
+      : gateDevtoolsRoute(element)
   );
 
   return (
@@ -528,14 +577,15 @@ export function RouteTree({
           <Route path={panelRoutes.packs.slice(1)} element={gateRuntimeRoute(<LazyPacks />)} />
           <Route path={`${panelRoutes.packs.slice(1)}/:id`} element={gateRuntimeRoute(<LazyPackDetail />)} />
           <Route path={panelRoutes.profile.slice(1)} element={<LazyProfile />} />
+          <Route path={panelRoutes.account.slice(1)} element={<LazyAccount />} />
           <Route path={panelRoutes.settings.slice(1)} element={<LazySettings />} />
-          <Route path={panelRoutes.profileWiring.slice(1)} element={gateDevtoolsRoute(<LazyProfileWiring />)} />
-          <Route path={panelRoutes.profileFiles.slice(1)} element={gateDevtoolsRoute(<LazyProfileFiles />)} />
-          <Route path={panelRoutes.flow.slice(1)} element={gateDevtoolsRoute(<LazyFlow />)} />
-          <Route path={panelRoutes.graph.slice(1)} element={gateDevtoolsRoute(<LazyGraph />)} />
-          <Route path={panelRoutes.aiInput.slice(1)} element={gateDevtoolsRoute(<LazyAiInput />)} />
-          <Route path={panelRoutes.apiMap.slice(1)} element={gateDevtoolsRoute(<LazyApiMap />)} />
-          <Route path={panelRoutes.nodeManager.slice(1)} element={gateDevtoolsRoute(<LazyNodeManager />)} />
+          <Route path={panelRoutes.profileWiring.slice(1)} element={gatedDevSurface('profileWiring', <LazyProfileWiring />)} />
+          <Route path={panelRoutes.profileFiles.slice(1)} element={gatedDevSurface('profileFiles', <LazyProfileFiles />)} />
+          <Route path={panelRoutes.flow.slice(1)} element={gatedDevSurface('flow', <LazyFlow />)} />
+          <Route path={panelRoutes.graph.slice(1)} element={gatedDevSurface('graph', <LazyGraph />)} />
+          <Route path={panelRoutes.aiInput.slice(1)} element={gatedDevSurface('aiInput', <LazyAiInput />)} />
+          <Route path={panelRoutes.apiMap.slice(1)} element={gatedDevSurface('apiMap', <LazyApiMap />)} />
+          <Route path={panelRoutes.nodeManager.slice(1)} element={gatedDevSurface('nodeManager', <LazyNodeManager />)} />
         </Route>
       </Routes>
     </>

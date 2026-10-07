@@ -1,6 +1,7 @@
 import type {ReactNode} from 'react';
-import {CheckCircle2, CircleAlert, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
+import {CircleAlert, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
 
+import {InspectedProfileNotice} from '@/src/components/advanced/InspectedProfileNotice';
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
@@ -19,6 +20,8 @@ export interface SurfaceStateNotice {
   status: RuntimeSurfaceLoadStatus;
   stale: boolean;
   error: {code: RuntimeSurfaceErrorCode; message: string} | null;
+  /** Execution Profile the accepted surface snapshot is bound to, when known. */
+  profileId?: string | null;
 }
 
 function supportVariant(support: LauncherViewSupport): 'default' | 'secondary' | 'outline' | 'success' | 'warning' {
@@ -148,7 +151,6 @@ export function AdvancedSurfaceFrame({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight text-text-main">{descriptor.label}</h1>
-              <Badge variant={supportVariant(descriptor.support)}>{supportLabel(descriptor.support, descriptor.actions)}</Badge>
             </div>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{descriptor.summary}</p>
           </div>
@@ -158,6 +160,9 @@ export function AdvancedSurfaceFrame({
           </Button>
         </header>
 
+        <StatusNotice descriptor={descriptor} state={state} onRetry={onRetry} />
+        <InspectedProfileNotice surfaceProfileId={state.profileId} />
+        {descriptor.capability === 'launcher_local' || state.stale || state.status === 'ready' ? children : null}
         <details
           className="rounded-xl border border-border bg-bg-card px-4 py-4 sm:px-5"
           aria-label={`${descriptor.label} capability and action metadata`}
@@ -167,6 +172,7 @@ export function AdvancedSurfaceFrame({
             Capability and action details
           </summary>
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Badge variant={supportVariant(descriptor.support)}>{supportLabel(descriptor.support, descriptor.actions)}</Badge>
             <Badge variant={actionVariant(descriptor.actions)}>Action: {descriptor.actions}</Badge>
             <Badge variant="outline">Capability: {descriptor.capability}</Badge>
           </div>
@@ -175,14 +181,6 @@ export function AdvancedSurfaceFrame({
           <p className="mt-1 text-xs leading-5 text-text-muted">{actionStateCopy(descriptor.actions, state.status, state.stale)}</p>
         </details>
 
-        <StatusNotice descriptor={descriptor} state={state} onRetry={onRetry} />
-        {state.status === 'ready' && !state.error ? (
-          <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300" role="status" aria-live="polite">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            Canonical v4 projection accepted. {actionStateCopy(descriptor.actions, state.status, state.stale)}
-          </div>
-        ) : null}
-        {descriptor.capability === 'launcher_local' || state.stale || (state.status !== 'idle' && state.status !== 'loading') ? children : null}
       </div>
     </div>
   );

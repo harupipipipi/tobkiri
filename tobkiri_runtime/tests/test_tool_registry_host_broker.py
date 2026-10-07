@@ -9,7 +9,7 @@ import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from tests.conformance_support.host_profile import captured_host_profile
-from tobkiri_host.errors import ProviderExecutionError
+from tobkiri_host.errors import ProviderExecutionError, ResolutionError
 
 
 @pytest.mark.parametrize("selected", [True, False])
@@ -128,8 +128,8 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
             session.invoke(broker.CONTRACT, broker.OPERATION, {**request, "arguments": {}})
         assert isinstance(failure.value.__cause__, ValueError)
         assert str(failure.value.__cause__) == "tool arguments are invalid"
-        with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
+        # The typed envelope now rejects forged authority before entering the
+        # provider. Its independent owner-side guard remains covered separately.
+        with pytest.raises(ResolutionError, match="operation input schema validation failed"):
             session.invoke(broker.CONTRACT, broker.OPERATION, {**request, "approved": True})
-        assert isinstance(failure.value.__cause__, ValueError)
-        assert str(failure.value.__cause__) == "tool invocation payload is invalid"
         assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()

@@ -49,17 +49,20 @@ def _payload(**extra: object) -> dict[str, object]:
     }
 
 
-@pytest.mark.parametrize("caller", ["saved-principal", "ordinary-principal"])
+@pytest.mark.parametrize("caller", ["saved-principal", "ordinary-principal", "retired-principal"])
 def test_saved_append_receipt_requires_captured_saved_caller(tmp_path: Path, caller: str) -> None:
-    from ecosystem.defaultspack.runtime import saved_conversation
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation
     from tests.test_saved_conversation_steps import _setup
 
     store, request = _setup(tmp_path)
     context = _context(tmp_path)
     context.catalog_bindings = (SimpleNamespace(
-        function=SimpleNamespace(function_id="defaultspack.conversation.saved"),
+        function=SimpleNamespace(function_id="tobkiri_conversation_orchestration_pack.saved"),
         principal_ref=SimpleNamespace(value="saved-principal"),
-    ),)
+    ), SimpleNamespace(
+        function=SimpleNamespace(function_id="defaultspack.conversation.saved"),
+        principal_ref=SimpleNamespace(value="retired-principal"),
+    ))
     invoke = MessageManageHostFactoryV4().capture(context).contributions[0].invoke
     intent = saved_conversation.start(request)
     intent = saved_conversation.resume(intent["state"], {
@@ -72,7 +75,7 @@ def test_saved_append_receipt_requires_captured_saved_caller(tmp_path: Path, cal
     invocation = SimpleNamespace(envelope=SimpleNamespace(
         context=SimpleNamespace(caller_principal=SimpleNamespace(value=caller)),
     ))
-    if caller == "ordinary-principal":
+    if caller != "saved-principal":
         before = store.path.read_bytes()
         with pytest.raises(PermissionError, match="captured saved caller"):
             invoke(OPERATION_ID, payload, invocation)

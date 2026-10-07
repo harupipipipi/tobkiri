@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 from tobkiri_protocol.canonical import canonical_digest
 
@@ -23,6 +24,10 @@ class WorkflowConflict(WorkflowError):
 
 class WorkflowDenied(WorkflowError):
     """Raised when authority fails closed."""
+
+
+class WorkflowCancellationUnconfirmed(WorkflowDenied):
+    """No live cancellation proof exists; absence is not proof of drain."""
 
 
 class WorkflowNotFound(WorkflowError):
@@ -114,10 +119,21 @@ RUN_TRANSITIONS = {
             RunState.NEEDS_RECONCILIATION,
         }
     ),
-    RunState.PAUSED: frozenset({RunState.RUNNING, RunState.CANCELLED}),
+    RunState.PAUSED: frozenset({RunState.RUNNING, RunState.CANCELLED, RunState.FAILED, RunState.NEEDS_RECONCILIATION}),
     RunState.WAITING_APPROVAL: frozenset(
-        {RunState.RUNNING, RunState.FAILED, RunState.CANCELLED, RunState.TIMED_OUT}
+        {
+            RunState.RUNNING,
+            RunState.SUCCEEDED,
+            RunState.FAILED,
+            RunState.CANCELLED,
+            RunState.TIMED_OUT,
+            RunState.NEEDS_RECONCILIATION,
+        }
     ),
+    # A cancelled run may only escalate to reconciliation: stop can win the
+    # durable race while a dispatched effect still commits, and the honest
+    # record is reconciliation rather than a clean cancel.
+    RunState.CANCELLED: frozenset({RunState.NEEDS_RECONCILIATION}),
 }
 
 ATTEMPT_TRANSITIONS = {
@@ -154,6 +170,9 @@ ATTEMPT_TRANSITIONS = {
             StepAttemptState.TIMED_OUT,
         }
     ),
+    # Only a self-transition is legal after cancel: it exists solely to
+    # attach outcome evidence when a dispatched effect completed anyway.
+    StepAttemptState.CANCELLED: frozenset({StepAttemptState.CANCELLED}),
 }
 
 
@@ -222,6 +241,11 @@ class InvocationOutcome:
     error_code: str | None = None
     ambiguous_effect: bool = False
     timed_out: bool = False
+    # False only when the outcome provably reached no dispatch at all (a
+    # cancellation fence, a payload-digest denial, or an unavailable
+    # bounded dispatch primitive).  A cancelled Broker call still counts
+    # as dispatched because the Provider may already have taken effect.
+    dispatched: bool = True
 
 
 def require_mapping(value: Any, name: str) -> Mapping[str, Any]:

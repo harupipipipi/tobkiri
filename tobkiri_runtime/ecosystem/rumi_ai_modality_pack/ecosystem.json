@@ -7,6 +7,7 @@
       "rumi.service.ai.image.v1"
     ],
     "requires": [
+      "rumi.resource.ai.model.profile.v1",
       "rumi.service.ai.provider.audio.speech.v1",
       "rumi.service.ai.provider.audio.transcribe.v1",
       "rumi.service.ai.provider.embedding.v1",
@@ -21,9 +22,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:04c491c29a78619201cdcfd81facf1c87dae15e540e88969c1116cbf9a662872",
+      "artifact_digest": "sha256:20fec8e481aa8e915ed34ee7ecb1be81f44367bd4e4b62745f6c13712ad7f70b",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4"
+      "source_identity": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -31,7 +32,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4"
+      "source_content_hash": "sha256:44be55d3eb7b9bb9784f94ae8e99e50ee98bf495e95bc0ec121aeb86fd069f34"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
@@ -55,7 +56,7 @@
   "pack_identity": "rumi:ecosystem/rumi_ai_modality_pack",
   "provenance": {
     "build_identity": "rumi_ai_modality_pack:1.0.0",
-    "content_hash": "sha256:81e01da817a21308038cecc51562d7a57774c3dec83286fecdf754d84622e34d",
+    "content_hash": "sha256:f73b0a74821f9a2f95640f0c2c18d283f46f0225dd615d2178e867893dfcc815",
     "signature": null,
     "trust_class": "local"
   },

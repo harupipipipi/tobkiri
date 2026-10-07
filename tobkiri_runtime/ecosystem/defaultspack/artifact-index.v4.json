@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:6863b374a8da437e7733c196023422527071d1a9806bcdcdfc6de1bc5644562b",
+  "artifact_set_digest": "sha256:761f925c9b51b8cf73569f3c2e398aa8233d4f05139bdd4170ebee7c3c452fdb",
   "artifacts": [
     {
-      "digest": "sha256:98fbb61dcd6c0cc79e4f733a4ffb30e6039779c1b9ef98a072a0080440d8ce45",
+      "digest": "sha256:9cb6bf3bf203814432890d282e1cda477ae6f454d3f3bbe5856ba7031234f244",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:22a6a803781c33b6d0a57afb0e159afade5992e906ead1bc2d16e7d8b798fba3",
+      "digest": "sha256:e5d016f2cdb0f6df7ebce43e39179caa3281c018b4f27f40a7099ba34d39b8e8",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -27,7 +27,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:4ded4949bde0096e611a7468090e98e8fd716c2c4a2f740f37310df38e464fb3",
+      "digest": "sha256:d516dbabf0d2c845c58b4d6edd5d15af06bc886ed7d6f6f7067658870def9aff",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -39,11 +39,6 @@
     {
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "path": "runtime/conversation.py",
-      "role": "runtime"
-    },
-    {
-      "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
-      "path": "runtime/saved_conversation.py",
       "role": "runtime"
     },
     {
@@ -640,8 +635,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:b1dd01cd243a28449ab77b14329a9fdba2139a8c30e7a6340921abed18419ff2"
+    "signed_digest": "sha256:e217ab7d09b3041caca28dd082e18dc942c92608ffadb706b91950c66cd0b303"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090"
+  "source_identity": "sha256:529b88cea533b744015af9d7564d3c37d85b3c4f3b42f5d92c3f7e7628cbc429"
 }

@@ -11,7 +11,7 @@ import stat
 import threading
 import time
 from dataclasses import dataclass
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol
@@ -134,6 +134,10 @@ from ..host_provider_backend_v4 import (
     ExactHostProviderBackendV4,
     HostProviderCaptureContextV4,
     HostProviderInvocationContextV4,
+    HostInvocationEvidenceReferenceV4,
+)
+from ..invocation_evidence import (
+    BoundInvocationEvidence, EvidenceBinding, InvocationEvidenceRegistry,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..host_provider_hooks_v4 import load_host_provider_factory
@@ -731,6 +735,58 @@ def _authority_ceilings_for_edge(
         runtime_safety=axis_scope("runtime_safety"),
         profile_admin=axis_scope("profile_admin"),
     )
+
+
+def _manifest_caller_principals(
+    catalog: Any,
+    admitted_pack_ids: set[str],
+    *,
+    expected_artifact_digests: Mapping[str, str] | None = None,
+) -> dict[str, tuple[FunctionPrincipal, ...]]:
+    """Index Function principals declared by admitted Pack manifests.
+
+    A Profile edge is caller-Function-scoped while Authority is exercised by
+    exact per-Operation principals.  Functions whose Pack is admitted but
+    which are never bound as an edge target (a provider left with only
+    outgoing edges after its callers were removed, or a Pack that only
+    contributes callers) are not materialized for dispatch; their identity
+    still comes from the verified manifest declarations, so a signed plan
+    edge keeps an exact, finite set of caller principals.  Manifests outside
+    the admitted set are never consulted: an unknown caller Function keeps
+    failing closed instead of being masked by the bundle catalog.
+    """
+
+    principals: dict[str, list[FunctionPrincipal]] = {}
+    for pack_id in sorted(admitted_pack_ids):
+        manifest = catalog.packs.get(pack_id)
+        if not isinstance(manifest, Mapping):
+            continue
+        artifact_digest = str(manifest["pack"]["artifact_digest"])
+        if expected_artifact_digests is not None and expected_artifact_digests.get(pack_id) != artifact_digest:
+            raise AuthorityDenied("caller manifest differs from the admitted ProfileLock artifact")
+        functions = manifest.get("functions")
+        if not isinstance(functions, list):
+            continue
+        for function in functions:
+            function_id = str(function.get("id") or "")
+            operations = function.get("operations")
+            if not function_id or not isinstance(operations, list):
+                raise AuthorityDenied("admitted Pack Function declaration is invalid")
+            for operation_id in operations:
+                principal = FunctionPrincipal(
+                    artifact_digest,
+                    str(function["implementation_digest"]),
+                    function_id,
+                    str(function["contract_revision_digest"]),
+                    str(operation_id),
+                )
+                bucket = principals.setdefault(function_id, [])
+                if any((item.parent_artifact_digest, item.function_implementation_digest, item.contract_revision_digest) !=
+                       (principal.parent_artifact_digest, principal.function_implementation_digest, principal.contract_revision_digest) for item in bucket):
+                    raise AuthorityDenied("caller Function has ambiguous artifact ownership")
+                if principal not in bucket:
+                    bucket.append(principal)
+    return {key: tuple(value) for key, value in principals.items()}
 
 
 def _execution_domain(
@@ -1549,6 +1605,41 @@ def capture_production_dispatch(
             existing.append(principal)
         principals_by_function[principal.function_id] = tuple(existing)
 
+    # A signed edge names only the caller Function; every admitted Operation
+    # of that Function is one exact caller principal.  Functions that never
+    # appear as a binding target still have digest-pinned declarations in the
+    # admitted manifests, which keep their outgoing Profile edges deniable but
+    # representable.  A caller Function with no admitted declaration at all
+    # stays denied rather than masked or selected arbitrarily.
+    admitted_pack_ids = {
+        str(item["identity"]) for item in lock["effective_set"]
+    }
+    admitted_pack_ids.update(
+        str(item["pack_id"]) for item in plan["bindings"]
+    )
+    admitted_pack_ids.add(shell_id)
+    manifest_callers = _manifest_caller_principals(
+        catalog, admitted_pack_ids,
+        expected_artifact_digests={str(item["identity"]): str(item["artifact_digest"]) for item in lock["effective_set"]},
+    )
+    edge_caller_function_ids = {
+        str(edge["caller_function_id"]) for edge in profile["requested_edges"]
+    }
+    for function_id in sorted(edge_caller_function_ids):
+        existing = list(principals_by_function.get(function_id, ()))
+        by_operation = {item.operation_id: item for item in existing}
+        for declared in manifest_callers.get(function_id, ()):
+            previous = by_operation.get(declared.operation_id)
+            if previous is None:
+                existing.append(declared)
+                continue
+            if previous != declared:
+                raise AuthorityDenied(
+                    "Profile edge caller declaration conflicts with the "
+                    "signed ResolvedPlan"
+                )
+        principals_by_function[function_id] = tuple(existing)
+
     # Dispatch must follow the persisted immutable Profile, including exact
     # operation edges contributed by an enabled/approved optional Pack.
     edges = profile["requested_edges"]
@@ -1589,9 +1680,11 @@ def capture_production_dispatch(
             raise AuthorityDenied("Profile edge is absent from the signed ResolvedPlan")
         seen_binding_edges.add(binding_key)
         callers = principals_by_function.get(binding_key[0], ())
-        if len(callers) != 1:
-            raise AuthorityDenied("Profile edge caller does not identify one principal")
-        caller = callers[0]
+        if not callers:
+            raise AuthorityDenied(
+                "Profile edge caller Function is not declared by the "
+                "admitted inventory"
+            )
         target = FunctionPrincipal.from_dict(binding["function_principal"])
         if str(edge["target_provider_id"]) != target.function_id:
             raise AuthorityDenied("Profile edge target differs from its ResolvedPlan binding")
@@ -1600,28 +1693,29 @@ def capture_production_dispatch(
             raise AuthorityDenied("ResolvedPlan requested scope binding changed")
         authority_mode = _requested_edge_authority_mode(edge, binding)
         axis_ceilings = _authority_ceilings_for_edge(edge, target)
-        authority_key = (
-            profile_id,
-            activation_id,
-            caller.principal_id,
-            target.principal_id,
-            str(edge["contract_id"]),
-            str(edge["operation_id"]),
-        )
-        if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
-            raise AuthorityDenied("Profile edge authority is duplicated")
-        ceilings[authority_key] = axis_ceilings
-        edge_specs.append(
-            (
-                edge,
-                binding,
-                caller,
-                target,
-                axis_ceilings,
-                authority_key,
-                authority_mode,
+        for caller in callers:
+            authority_key = (
+                profile_id,
+                activation_id,
+                caller.principal_id,
+                target.principal_id,
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
             )
-        )
+            if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
+                raise AuthorityDenied("Profile edge authority is duplicated")
+            ceilings[authority_key] = axis_ceilings
+            edge_specs.append(
+                (
+                    edge,
+                    binding,
+                    caller,
+                    target,
+                    axis_ceilings,
+                    authority_key,
+                    authority_mode,
+                )
+            )
     if set(binding_by_edge) != seen_binding_edges:
         raise AuthorityDenied("ResolvedPlan contains an edge outside the active Profile")
 
@@ -1659,6 +1753,12 @@ def capture_production_dispatch(
         supporting_artifacts=(shell,),
         verified_effective_artifacts=effective,
         authority_ceilings=ceilings,
+        caller_function_declarations={
+            function_id: tuple(
+                principal.to_dict() for principal in declared
+            )
+            for function_id, declared in manifest_callers.items()
+        },
     )
     resolved_binding_by_edge: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
     for binding in plan["bindings"]:
@@ -2475,6 +2575,8 @@ def capture_production_dispatch(
     cancellation_handles = OwnedCancellationHandles()
     cancellation_roles: dict[str, tuple[str, str, str]] = {}
     close_callbacks.append(cancellation_handles.close)
+    invocation_evidence_registry = InvocationEvidenceRegistry()
+    close_callbacks.append(invocation_evidence_registry.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
         if credential_store_factory is not None
@@ -2602,6 +2704,9 @@ def capture_production_dispatch(
             payload: Mapping[str, Any],
             *,
             version_range: str | None = None,
+            idempotency_key: str | None = None,
+            timeout_ms: int | None = None,
+            expected_payload_digest: str | None = None,
         ) -> Mapping[str, Any]:
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
@@ -2624,6 +2729,9 @@ def capture_production_dispatch(
                         self._presentation_owner[0],
                         self._presentation_owner[1],
                     ),
+                    idempotency_key=idempotency_key,
+                    timeout_ms=timeout_ms,
+                    expected_payload_digest=expected_payload_digest,
                 )
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)
@@ -2713,6 +2821,122 @@ def capture_production_dispatch(
             self._client_binding = binding
             return self._client
 
+        def dispatch_bounded(
+            self,
+            *,
+            allowed_contract_ids: frozenset[str],
+            consumer_pack_id: str,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, Any],
+            idempotency_key: str,
+            timeout_ms: int | None,
+            expected_payload_digest: str,
+            evidence_ref: HostInvocationEvidenceReferenceV4 | None = None,
+        ) -> Mapping[str, Any]:
+            """Dispatch one durable typed attempt through the real Broker.
+
+            Only Host-owned consumers reach this path.  The durable
+            idempotency key, the caller's bounded timeout (which can only
+            tighten the envelope deadline) and the digest of the pinned
+            resolved input all reach the real ``RequestBroker``; credential
+            transport stays disabled and declared-contract restrictions are
+            identical to ``contract_client``.  No arbitrary frame override
+            is accepted.
+            """
+            expected_pack_id = pack_by_principal.get(
+                self._envelope.target_principal.value
+            )
+            if expected_pack_id != consumer_pack_id:
+                raise AuthorityDenied("Host Provider consumer identity is invalid")
+            if contract_id not in allowed_contract_ids:
+                raise AuthorityDenied("Host Provider contract is not declared")
+            if type(idempotency_key) is not str or not idempotency_key:
+                raise AuthorityDenied("Host Provider idempotency key is invalid")
+            if timeout_ms is not None and (
+                type(timeout_ms) is not int or timeout_ms <= 0
+            ):
+                raise AuthorityDenied("Host Provider timeout bound is invalid")
+            if (
+                type(expected_payload_digest) is not str
+                or not expected_payload_digest
+            ):
+                raise AuthorityDenied("Host Provider payload digest is invalid")
+            session = _InvocationSession(
+                self._envelope,
+                presentation_owner=(
+                    self._presentation_owner_principal_id,
+                    self._presentation_owner_session_id,
+                ),
+            )
+            evidence_scope: AbstractContextManager[None] = nullcontext()
+            if evidence_ref is not None:
+                if not isinstance(evidence_ref, HostInvocationEvidenceReferenceV4):
+                    raise AuthorityDenied("Host evidence reference is invalid")
+                issuer = principal_by_id.get(self._envelope.target_principal.value)
+                if issuer is None:
+                    raise AuthorityDenied("Host evidence issuer is unavailable")
+                target = resolved_binding_by_edge.get(
+                    (issuer.function_id, contract_id, operation_id)
+                )
+                if target is None:
+                    raise AuthorityDenied("Host evidence target is not a selected edge")
+                evidence_scope = invocation_evidence_registry.dispatch(
+                    kind=evidence_ref.kind,
+                    reference=evidence_ref.reference,
+                    binding=self._evidence_binding(
+                        issuer_principal=self._envelope.target_principal.value,
+                        target_principal=target.principal_ref.value,
+                        contract_id=contract_id,
+                        contract_version=target.operation.contract_version,
+                        operation_id=operation_id,
+                        payload_digest=expected_payload_digest,
+                        idempotency_key=idempotency_key,
+                    ),
+                    guard=self.assert_current,
+                )
+            with evidence_scope:
+                return session.invoke(
+                    contract_id, operation_id, dict(payload),
+                    idempotency_key=idempotency_key, timeout_ms=timeout_ms,
+                    expected_payload_digest=expected_payload_digest,
+                )
+
+        def _evidence_binding(
+            self, *, issuer_principal: str, target_principal: str,
+            contract_id: str, contract_version: str, operation_id: str, payload_digest: str,
+            idempotency_key: str,
+        ) -> EvidenceBinding:
+            context = self._envelope.context
+            return EvidenceBinding(
+                issuer_principal=issuer_principal, target_principal=target_principal,
+                contract_id=contract_id, contract_version=contract_version,
+                operation_id=operation_id,
+                payload_digest=payload_digest, idempotency_key=idempotency_key,
+                profile_id=context.profile_id, plan_digest=context.plan_digest,
+                activation_id=context.activation_id,
+                activation_digest=context.activation_digest,
+                security_epoch=context.security_epoch,
+                presentation_owner_principal=self.presentation_owner_principal_id,
+                presentation_owner_session=self.presentation_owner_session_id,
+            )
+
+        def invocation_evidence(self, kind: str) -> BoundInvocationEvidence:
+            self.assert_current()
+            envelope = self._envelope
+            return invocation_evidence_registry.receive(
+                kind=kind, receiver=envelope, guard=self.assert_current,
+                binding=self._evidence_binding(
+                    issuer_principal=envelope.context.caller_principal.value,
+                    target_principal=envelope.target_principal.value,
+                    contract_id=envelope.contract_id,
+                    contract_version=envelope.contract_version,
+                    operation_id=envelope.operation_id,
+                    payload_digest=canonical_digest(dict(envelope.payload)),
+                    idempotency_key=envelope.idempotency_key or "",
+                ),
+            )
+
         def assert_current(self) -> None:
             """Fence durable coordination with the original Host invocation."""
             if (
@@ -2758,6 +2982,10 @@ def capture_production_dispatch(
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,
+            outbound_catalog_bindings=tuple(
+                binding for key, binding in resolved_binding_by_edge.items()
+                if key[0] in {item.function.function_id for item in provider_bindings}
+            ),
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -2848,6 +3076,24 @@ def capture_production_dispatch(
         if {item.key for item in captured_provider.contributions} != expected_keys:
             captured_provider.close()
             raise AuthorityDenied("Host Provider hook contribution set is incomplete")
+        try:
+            verified_issuers = {item.principal_ref.value for item in captured_bindings}
+            declarations = []
+            for evidence in captured_provider.evidence_contributions:
+                if evidence.issuer_principal_id not in verified_issuers:
+                    raise AuthorityDenied("Host evidence issuer is not a verified contribution")
+                declarations.append((evidence.issuer_principal_id, evidence.kind, evidence.resolve))
+            invocation_evidence_registry.register_many(tuple(declarations))
+        except BaseException:
+            # No dispatch exists yet. Revoke evidence before closing stores,
+            # including factories captured earlier in this failed bootstrap.
+            invocation_evidence_registry.close()
+            for close in (*close_callbacks, captured_provider.close):
+                try:
+                    close()
+                except Exception:
+                    pass  # Keep the original invalid-capture error primary.
+            raise
         host_contributions_by_backend.setdefault(backend_id, []).extend(
             captured_provider.contributions
         )

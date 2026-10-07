@@ -6,11 +6,15 @@
     },
     {
       "path": "runtime/gateway.py",
-      "sha256": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e"
+      "sha256": "sha256:3d1e32d07939227eedc9a8a2010261db214a058e88f0f82436a28bad8325ecd6"
     },
     {
       "path": "runtime/route_quote.py",
       "sha256": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494"
+    },
+    {
+      "path": "runtime/text_generate.py",
+      "sha256": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

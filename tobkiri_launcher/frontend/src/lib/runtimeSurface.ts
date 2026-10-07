@@ -1319,6 +1319,11 @@ export function extractExactProfileCatalogSelectablePackIds(value: unknown): str
  * Return bindings only when the projection contains the complete canonical
  * identity. This keeps Graph and Profile Wiring from synthesizing edges.
  */
+/** One function-scoped binding may expand to distinct operation principals. */
+export function runtimePlanBindingKey(binding: Pick<RuntimePlanBinding, 'binding_id' | 'source_principal_id' | 'target_principal_id'>): string {
+  return JSON.stringify([binding.binding_id, binding.source_principal_id, binding.target_principal_id]);
+}
+
 export function extractExactPlanBindings(value: unknown): RuntimePlanBinding[] | null {
   if (!isRecord(value)) return null;
   const wiring = isRecord(value.resolved_wiring) ? value.resolved_wiring : null;

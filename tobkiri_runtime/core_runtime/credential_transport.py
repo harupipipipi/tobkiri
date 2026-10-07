@@ -79,6 +79,17 @@ class JsonResponse(Protocol):
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 _MAX_RESPONSE_DEPTH = 32
 
+# Narrow structured multipart boundary: one bounded file part plus a small
+# allowlisted set of scalar text fields.  This is not a generic form or HTTP
+# upload primitive; it exists for providers whose audio endpoints require
+# multipart/form-data wire encoding.
+_MULTIPART_FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
+_MULTIPART_CONTENT_TYPE = re.compile(r"^audio/[a-z0-9!#$&^_.+-]{1,64}$")
+_MAX_MULTIPART_FIELDS = 16
+_MAX_MULTIPART_FIELD_CHARS = 4096
+_MAX_MULTIPART_FILE_BYTES = 4 * 1024 * 1024
+_MAX_MULTIPART_FILENAME_CHARS = 255
+
 
 class CredentialMaterialStore(Protocol):
     """Host-injected credential capability; no concrete Pack import is allowed."""
@@ -343,6 +354,156 @@ class HostBoundCredentialTransport:
             denial_code = "provider_failure"
         raise CredentialTransportDenied(denial_code)
 
+    def post_multipart(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        fields: Mapping[str, str],
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        """Run one bounded multipart request through the same sealed lease.
+
+        The Host serializes the form body itself from declared scalar fields
+        plus exactly one ``audio/*`` file part, so Pack code can never choose
+        the boundary, part headers, or content type, and never sends an
+        arbitrary request body.
+        """
+
+        denial_code = "provider_failure"
+        try:
+            return self._post_multipart(
+                endpoint=endpoint,
+                headers=headers,
+                fields=fields,
+                file_field=file_field,
+                filename=filename,
+                content_type=content_type,
+                content=content,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
+        except CredentialTransportDenied as error:
+            denial_code = error.code
+        except Exception:
+            denial_code = "provider_failure"
+        raise CredentialTransportDenied(denial_code)
+
+    def _post_multipart(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        fields: Mapping[str, str],
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        encoded_body, body_content_type = _encode_multipart_form_data(
+            fields,
+            file_field=file_field,
+            filename=filename,
+            content_type=content_type,
+            content=content,
+        )
+        return self._post_credentialed(
+            endpoint=endpoint,
+            headers=headers,
+            encoded_body=encoded_body,
+            body_content_type=body_content_type,
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_scheme=credential_scheme,
+            deadline=deadline,
+            decode=_decode_sanitized_json_response,
+        )
+
+    def post_binary(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> bytes:
+        """Run one bounded JSON request whose response is opaque binary audio.
+
+        The response is still bound by the shared response-byte cap, the
+        deadline/cancellation/revocation fences, and the rule that resolved
+        credential material can never appear in returned bytes.
+        """
+
+        denial_code = "provider_failure"
+        try:
+            return self._post_binary(
+                endpoint=endpoint,
+                headers=headers,
+                body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
+        except CredentialTransportDenied as error:
+            denial_code = error.code
+        except Exception:
+            denial_code = "provider_failure"
+        raise CredentialTransportDenied(denial_code)
+
+    def _post_binary(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> bytes:
+        try:
+            encoded_body = json.dumps(
+                body, ensure_ascii=False
+            ).encode("utf-8")
+        except (TypeError, ValueError):
+            raise CredentialTransportDenied("binding_invalid") from None
+        return self._post_credentialed(
+            endpoint=endpoint,
+            headers=headers,
+            encoded_body=encoded_body,
+            body_content_type="application/json",
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_scheme=credential_scheme,
+            deadline=deadline,
+            decode=_decode_binary_response,
+        )
+
     def _post_json(
         self,
         *,
@@ -356,6 +517,38 @@ class HostBoundCredentialTransport:
         deadline: float,
     ) -> dict[str, Any]:
         """Consume the sealed lease and perform one credentialed HTTP request."""
+        try:
+            encoded_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        except (TypeError, ValueError):
+            raise CredentialTransportDenied("binding_invalid") from None
+        return self._post_credentialed(
+            endpoint=endpoint,
+            headers=headers,
+            encoded_body=encoded_body,
+            body_content_type=None,
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_scheme=credential_scheme,
+            deadline=deadline,
+            decode=_decode_sanitized_json_response,
+        )
+
+    def _post_credentialed(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        encoded_body: bytes,
+        body_content_type: str | None,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+        decode: Callable[[bytes, str], Any],
+    ) -> Any:
+        """Run one credentialed request through the shared bounded pipeline."""
         now = self._clock()
         try:
             remaining = float(deadline) - now
@@ -403,7 +596,6 @@ class HostBoundCredentialTransport:
             value = material.get("api_key") or material.get("token")
             if not isinstance(value, str) or not value:
                 raise CredentialTransportDenied("material_invalid")
-            encoded_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
             _remaining_deadline_budget(
                 initial_remaining=initial_remaining,
                 started=deadline_started,
@@ -416,6 +608,10 @@ class HostBoundCredentialTransport:
                 for key, item in headers.items()
                 if key.lower() not in {"authorization", "host", "x-api-key"}
             }
+            if body_content_type is not None:
+                # The request body shape is fixed by the Host: callers may
+                # not smuggle a different content type or boundary.
+                outbound_headers["Content-Type"] = body_content_type
             if credential_scheme == "bearer":
                 outbound_headers["Authorization"] = f"Bearer {secret_text}"
             elif credential_scheme == "anthropic":
@@ -446,10 +642,7 @@ class HostBoundCredentialTransport:
                 response_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
                 if len(response_bytes) > _MAX_RESPONSE_BYTES:
                     raise CredentialTransportDenied("response_invalid")
-                value = json.loads(response_bytes.decode("utf-8"))
-            if not isinstance(value, dict):
-                raise CredentialTransportDenied("response_invalid")
-            sanitized = _sanitize_json_response(value, secret_text)
+            value = decode(response_bytes, secret_text)
             _remaining_deadline_budget(
                 initial_remaining=initial_remaining,
                 started=deadline_started,
@@ -458,7 +651,7 @@ class HostBoundCredentialTransport:
             if not self._authority_still_active():
                 raise CredentialTransportDenied("binding_invalid")
             audit_status = "completed"
-            return sanitized
+            return value
         except CredentialTransportDenied:
             audit_status = "denied"
             raise
@@ -844,6 +1037,104 @@ class AuthorizedEnvelopeCredentialTransport:
             deadline=deadline,
         )
 
+    def post_multipart(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        fields: Mapping[str, str],
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        """Construct and consume exactly one envelope-bound transport."""
+        with self._lock:
+            if self._used:
+                raise CredentialTransportDenied("binding_invalid")
+            self._used = True
+        transport = HostBoundCredentialTransport.from_authorized_envelope(
+            self._envelope,
+            provider_principal=self._provider_principal,
+            store=self._store,
+            authority_store=self._authority_store,
+            credential_handle=credential_handle,
+            credential_key_version=self._credential_key_version,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_purpose="provider.invoke",
+            endpoint_origin=_credential_origin(endpoint),
+            current_security_epoch=self._current_security_epoch,
+            consumer_pack_id=self._consumer_pack_id,
+            audit_sink=self._audit_sink,
+            clock=self._clock,
+            monotonic_clock=self._monotonic_clock,
+        )
+        return transport.post_multipart(
+            endpoint=endpoint,
+            headers=headers,
+            fields=fields,
+            file_field=file_field,
+            filename=filename,
+            content_type=content_type,
+            content=content,
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_scheme=credential_scheme,
+            deadline=deadline,
+        )
+
+    def post_binary(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> bytes:
+        """Construct and consume exactly one envelope-bound transport."""
+        with self._lock:
+            if self._used:
+                raise CredentialTransportDenied("binding_invalid")
+            self._used = True
+        transport = HostBoundCredentialTransport.from_authorized_envelope(
+            self._envelope,
+            provider_principal=self._provider_principal,
+            store=self._store,
+            authority_store=self._authority_store,
+            credential_handle=credential_handle,
+            credential_key_version=self._credential_key_version,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_purpose="provider.invoke",
+            endpoint_origin=_credential_origin(endpoint),
+            current_security_epoch=self._current_security_epoch,
+            consumer_pack_id=self._consumer_pack_id,
+            audit_sink=self._audit_sink,
+            clock=self._clock,
+            monotonic_clock=self._monotonic_clock,
+        )
+        return transport.post_binary(
+            endpoint=endpoint,
+            headers=headers,
+            body=body,
+            credential_handle=credential_handle,
+            provider_instance_id=provider_instance_id,
+            credential_scope=credential_scope,
+            credential_scheme=credential_scheme,
+            deadline=deadline,
+        )
+
     def push_git_https(
         self,
         *,
@@ -1203,6 +1494,132 @@ def _safe_egress_address(value: str) -> bool:
             address.is_unspecified,
         )
     )
+
+
+def _decode_sanitized_json_response(
+    response_bytes: bytes,
+    secret: str,
+) -> dict[str, Any]:
+    """Decode one bounded credentialed response as a secret-safe JSON object."""
+    try:
+        value = json.loads(response_bytes.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        raise CredentialTransportDenied("response_invalid") from None
+    if not isinstance(value, dict):
+        raise CredentialTransportDenied("response_invalid")
+    return _sanitize_json_response(value, secret)
+
+
+def _decode_binary_response(response_bytes: bytes, secret: str) -> bytes:
+    """Return opaque bounded bytes that cannot carry resolved material back."""
+    if not response_bytes:
+        raise CredentialTransportDenied("response_invalid")
+    if secret and secret.encode("utf-8") in response_bytes:
+        raise CredentialTransportDenied("response_invalid")
+    return bytes(response_bytes)
+
+
+def _encode_multipart_form_data(
+    fields: Mapping[str, str],
+    *,
+    file_field: str,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> tuple[bytes, str]:
+    """Serialize one declared scalar-field set plus one bounded file part.
+
+    The boundary is derived deterministically from the part bytes, so the
+    caller can never choose the delimiter and a delimiter can never appear
+    inside supplied bytes.  Only ``audio/*`` file content types are admitted.
+    """
+    if not isinstance(fields, Mapping) or len(fields) > _MAX_MULTIPART_FIELDS:
+        raise CredentialTransportDenied("binding_invalid")
+    items: list[tuple[str, str]] = []
+    for name, value in fields.items():
+        if (
+            not isinstance(name, str)
+            or not _MULTIPART_FIELD_NAME.match(name)
+            or name == file_field
+        ):
+            raise CredentialTransportDenied("binding_invalid")
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > _MAX_MULTIPART_FIELD_CHARS
+            or "\r" in value
+            or "\n" in value
+            or "\x00" in value
+        ):
+            raise CredentialTransportDenied("binding_invalid")
+        items.append((name, value))
+    if not isinstance(file_field, str) or not _MULTIPART_FIELD_NAME.match(
+        file_field
+    ):
+        raise CredentialTransportDenied("binding_invalid")
+    if not isinstance(filename, str):
+        raise CredentialTransportDenied("binding_invalid")
+    file_name = filename.strip().replace("\\", "/").rsplit("/", 1)[-1]
+    if (
+        not file_name
+        or file_name in {".", ".."}
+        or len(file_name) > _MAX_MULTIPART_FILENAME_CHARS
+        or '"' in file_name
+        or "\\" in file_name
+        or any(ord(char) < 32 or char == "\x7f" for char in file_name)
+    ):
+        raise CredentialTransportDenied("binding_invalid")
+    if (
+        not isinstance(content_type, str)
+        or not _MULTIPART_CONTENT_TYPE.match(content_type.strip().lower())
+    ):
+        raise CredentialTransportDenied("binding_invalid")
+    if (
+        not isinstance(content, (bytes, bytearray))
+        or not content
+        or len(content) > _MAX_MULTIPART_FILE_BYTES
+    ):
+        raise CredentialTransportDenied("binding_invalid")
+    body_content = bytes(content)
+    digest_input = b"\x00".join(
+        [
+            item[0].encode("utf-8") + item[1].encode("utf-8")
+            for item in sorted(items)
+        ]
+        + [
+            file_field.encode("utf-8"),
+            file_name.encode("utf-8"),
+            content_type.strip().lower().encode("utf-8"),
+            body_content,
+        ]
+    )
+    boundary = "TobkiriFormBoundary" + hashlib.sha256(digest_input).hexdigest()[:24]
+    delimiter = ("--" + boundary).encode("ascii")
+    parts: list[bytes] = []
+    for name, value in sorted(items):
+        parts.append(
+            delimiter
+            + b"\r\nContent-Disposition: form-data; name=\""
+            + name.encode("utf-8")
+            + b"\"\r\n\r\n"
+            + value.encode("utf-8")
+            + b"\r\n"
+        )
+    parts.append(
+        delimiter
+        + b"\r\nContent-Disposition: form-data; name=\""
+        + file_field.encode("utf-8")
+        + b"\"; filename=\""
+        + file_name.encode("utf-8")
+        + b"\"\r\nContent-Type: "
+        + content_type.strip().lower().encode("ascii")
+        + b"\r\n\r\n"
+        + body_content
+        + b"\r\n"
+    )
+    parts.append(delimiter + b"--\r\n")
+    body = b"".join(parts)
+    return body, f"multipart/form-data; boundary={boundary}"
 
 
 def _sanitize_json_response(value: Any, secret: str, *, depth: int = 0) -> Any:

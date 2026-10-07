@@ -74,3 +74,23 @@ concurrency setting. A Scheduler Pack should call `run.create` with an
 occurrence ID after the Host wake kernel admits delivery. The store claims
 `occurrence ID + workflow revision digest` atomically, preventing duplicate
 starts without importing Scheduler domain logic into the Runtime TCB.
+
+## Step-output binding
+
+Inside `request.input`, a whole-string reference binds a prior step's
+committed output: `${steps.<step_id>.output.<dotted-path>}`. References parse
+against the exact declared step IDs of the Definition (ambiguous or unknown
+references are rejected, never guessed) and require an explicit `depends_on`
+entry for the referenced step. At materialization the engine resolves each
+reference against the referenced step's latest succeeded, non-skipped,
+committed attempt in the same Run only; skipped, failed, uncommitted, or
+absent paths fail closed before authority is reserved. The materialized
+input is validated against the operation's captured input schema, and the
+resolved request is pinned: approval resume and retries reuse the first
+attempt's stored resolution verbatim.
+
+`operation.palette` may attach bounded `display-reduced` schema projections
+and `input_ports`/`output_ports` derived from the captured canonical
+operation schemas. They are display metadata only: they sit outside the
+persisted catalog digest, cannot be verified against the schema digests, and
+never weaken the authoritative resolved-input schema validation.

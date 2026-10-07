@@ -239,6 +239,7 @@ def _normalize_flow_ui_envelope(
     volatile_keys = (
         "artifact_digest", "invocation_catalog_hash", "catalog_digest",
         "activation_id", "function_principal_id", "authority_reference",
+        "contribution_id",
     )
     for key in volatile_keys:
         normalized_operation[key] = fixture_operation[key]
@@ -500,6 +501,20 @@ def test_operations_flow_ui_fixture_comes_from_the_real_surface(
     normalized, real_operation, real_pack, real_edge = (
         _normalize_flow_ui_envelope(envelope, fixture)
     )
+    # The UI fixture normalizes artifact/principal digests, so its derived
+    # contribution ID must be normalized too. First prove the actual producer
+    # still binds the complete current principal, not just the display labels.
+    binding = next(
+        item for item in active_runtime.resolved.plan["bindings"]
+        if item["contract_id"] == real_operation["contract_id"]
+        and item["operation_id"] == real_operation["operation_id"]
+    )
+    assert real_operation["contribution_id"] == "operation::" + canonical_digest({
+        "pack_id": binding["pack_id"],
+        "contract_id": binding["contract_id"],
+        "operation_id": binding["operation_id"],
+        "function_principal": binding["function_principal"],
+    }).removeprefix("sha256:")
     assert real_operation["invocation_catalog_hash"] == capability["catalog_hash"]
     assert real_operation["catalog_digest"] == envelope["catalog_revision"]
     assert real_operation["artifact_digest"] == real_pack["artifact_digest"]

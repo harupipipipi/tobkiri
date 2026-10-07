@@ -3,6 +3,136 @@
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.ai.provider.audio.speech.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ai.provider.audio.speech",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_provider_adapters_pack.provider-audio-speech",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_provider_adapters_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
+        "required_capabilities": [
+          "ai.provider.audio.speech"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:e1fb7f4621f93b296292b58d515105ebeb39985186efee3dfcc8862f865020cd",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.ai.provider.audio.transcribe.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ai.provider.audio.transcribe",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_provider_adapters_pack.provider-audio-transcribe",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_provider_adapters_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
+        "required_capabilities": [
+          "ai.provider.audio.transcribe"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:f7385129824d8dc3b436e837a13e6e726f8f51f69a9db2eb1eb6cd1a2595adcf",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
       "contract_id": "tobkiri.service.ai.provider.embedding.v1",
       "operations": [
         {
@@ -24,7 +154,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +165,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
       },
@@ -89,7 +219,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -100,7 +230,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
       },
@@ -154,7 +284,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -165,7 +295,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
       },
@@ -219,7 +349,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+            "digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -230,7 +360,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99",
+        "source_digest": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
       },
@@ -263,5 +393,5 @@
     }
   ],
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:ef48c7b5736799cdf1a55eaa7f5f0f3e4d1ec728ffffbf16cde3d1520e069f99"
+  "source_identity": "sha256:0befcbb0fa2fa5621465b804887aa9de4f290a780c5c5b19773d7313f357da5d"
 }

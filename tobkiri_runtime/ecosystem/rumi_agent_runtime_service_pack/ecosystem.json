@@ -34,9 +34,9 @@
     "authoritative_owner": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:e872fc8bbaf2c134c6039673e1747ee68494ec99b2eda4c4fa85f922dbdd751e",
+      "artifact_digest": "sha256:9d52a42727bf8e421ce18f1be0290df1352e73e7c6c7385ef0668d6f991c41cb",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3"
+      "source_identity": "sha256:8cfc94c202d0094e24119455231a22c913fa01cf16503bc008da0416b64f14c7"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -44,7 +44,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:20be80246ba715898e522a1ec9ae95a76ff363f675bd7127d14c96db1173bbf3"
+      "source_content_hash": "sha256:8cfc94c202d0094e24119455231a22c913fa01cf16503bc008da0416b64f14c7"
     },
     "manifest_authority": "v4-authoritative",
     "owner_surfaces": [
@@ -57,7 +57,7 @@
   "pack_identity": "rumi:ecosystem/rumi_agent_runtime_service_pack",
   "provenance": {
     "build_identity": "rumi_agent_runtime_service_pack:1.0.0",
-    "content_hash": "sha256:313f387e5f57f0fe4588d8983308c5e88f71547dc6ff5f1035b9710b584c92b9",
+    "content_hash": "sha256:e248d332963843c228402c29893b682bc50799efdfaea5bcc26b8b0c06159305",
     "signature": null,
     "trust_class": "local"
   },

@@ -47,7 +47,7 @@ test('bottom-left avatar opens Profile/Settings with native links and returns fo
     await act(async () => { trigger.click(); await nextTick(); });
     const dialog = dom.window.document.querySelector('[role="dialog"][aria-label="Profile menu"]');
     assert.ok(dialog);
-    assert.ok(dialog.querySelector('a[href="/profile"]'));
+    assert.ok(dialog.querySelector('a[href="/account"]'));
     assert.ok(dialog.querySelector('a[href="/settings"]'));
     assert.equal(dialog.querySelector('[role="menuitem"]'), null);
 
@@ -88,7 +88,7 @@ test('desktop navigation exposes one labelled Devtools group with selected-state
       devtoolsGroup.querySelector('#sidebar-group-devtools')?.textContent,
       'Devtools',
     );
-    assert.equal(devtoolsGroup.querySelectorAll('a').length, 7);
+    assert.equal(devtoolsGroup.querySelectorAll('a').length, 6);
     const selected = devtoolsGroup.querySelector<HTMLAnchorElement>(
       'a[href="/graphs"]',
     );

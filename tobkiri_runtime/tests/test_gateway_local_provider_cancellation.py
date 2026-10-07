@@ -59,6 +59,14 @@ def test_root_stop_waits_for_real_gateway_adapter_future_and_broker_release(
 ) -> None:
     """The real restricted Gateway client enrolls and drains its local socket."""
 
+    # A pinned local route must never consult an unrelated remote inventory,
+    # including a warm cache that could otherwise hide this regression.
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog
+
+    def reject_unrelated_inventory(_models):
+        raise AssertionError("local route consulted the OpenRouter inventory")
+
+    monkeypatch.setattr(catalog, "_merge_openrouter_inventory", reject_unrelated_inventory)
     user_data = tmp_path / "gateway-local-cancellation"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     active = capture_default_profile(

@@ -410,3 +410,26 @@ def test_live_provider_model_routes_before_static_catalog_refresh() -> None:
     assert provider_call[2] == "adapter-a"
     assert provider_call[3]["provider_id"] == "opencode-zen"
     assert provider_call[3]["model_id"] == "deepseek-v4-flash-free"
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('reference', ['model_profile_id', 'model_reference'])
+@pytest.mark.parametrize('enabled', [False, 'false', None])
+def test_disabled_saved_profile_never_reaches_provider_or_legacy_fallback(
+    streaming, reference, enabled,
+) -> None:
+    class DisabledProfileClient(FakeContractClient):
+        def invoke(self, contract_id, *args, **kwargs):
+            result = super().invoke(contract_id, *args, **kwargs)
+            if contract_id == MODEL_PROFILE_CONTRACT:
+                result['profile']['enabled'] = enabled
+            return result
+
+    client = DisabledProfileClient()
+    factory = create_stream_operation if streaming else create_generate_operation
+    with pytest.raises(GlobalContractInvocationError) as denied:
+        factory(client)('stream' if streaming else 'generate',
+                        {reference: 'saved-default', 'messages': []})
+    assert denied.value.code == 'unresolved_profile'
+    assert not any(call[0] in {GENERATE_PROVIDER_CONTRACT, STREAM_PROVIDER_CONTRACT}
+                   for call in client.calls)

@@ -428,12 +428,23 @@ def _execute_payload(
             set(configuration_plan) != {
                 "profile_id", "provider_instance_id", "adapter_id", "endpoint",
                 "expected_revision", "request_digest",
+                *({"credential_scopes"} if "capabilities" in request else set()),
             }
             or configuration_plan.get("request_digest") != canonical_digest(dict(request))
             or type(configuration_plan.get("expected_revision")) is not int
             or configuration_plan["expected_revision"] < 0
         ):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        if "capabilities" in request:
+            capabilities = request["capabilities"]
+            scopes = configuration_plan.get("credential_scopes")
+            if (
+                not isinstance(capabilities, list) or not 0 < len(capabilities) <= 16
+                or any(not isinstance(item, str) or not item or len(item) > 128 for item in capabilities)
+                or len(set(capabilities)) != len(capabilities)
+                or scopes != sorted(capabilities)
+            ):
+                raise InteractiveEffectUnavailable("interactive effect is unavailable")
         return {"request": dict(request), "plan": configuration_plan}
     if spec.kind == "shell_execute":
         plan = prepared_result.get("redacted_plan")
@@ -641,7 +652,10 @@ def _presentation_metadata(
                 f"Profile: {plan['profile_id']}\n"
                 f"Protocol: {plan['adapter_id']}\n"
                 f"Endpoint: {plan['endpoint']}\n"
-                f"{key_detail}"
+                "Credential scopes: "
+                + (", ".join(plan["credential_scopes"]) if "credential_scopes" in plan
+                   else "text generation and streaming")
+                + f"\n{key_detail}"
             ),
         )
     if spec.kind == "shell_execute":

@@ -125,6 +125,7 @@ class _FakeWindowsApi:
         self.persistent_close_failures = set(persistent_close_failures or ())
         self.handles: dict[int, _FakeHandleRecord] = {}
         self.open_share_modes: list[int] = []
+        self.open_roles: list[tuple[Path, bool]] = []
         self.rename_calls: list[tuple[int, int, str]] = []
         self.close_attempts: list[int] = []
         self.identity_attempts: list[int] = []
@@ -149,6 +150,7 @@ class _FakeWindowsApi:
         *,
         directory: bool,
         share_mode: int = cleanup._WINDOWS_HANDLE_SHARE_MODE,
+        ancestor: bool = False,
     ) -> int:
         if path.name == "owned.bin" and self.open_failures:
             self.open_failures -= 1
@@ -156,6 +158,7 @@ class _FakeWindowsApi:
         if share_mode & cleanup._WINDOWS_FILE_SHARE_DELETE:
             raise AssertionError("simulation received FILE_SHARE_DELETE")
         self.open_share_modes.append(share_mode)
+        self.open_roles.append((Path(path), ancestor))
         identity = self._path_identity(path, directory=directory)
         handle = self._next_handle
         self._next_handle += 1
@@ -509,7 +512,8 @@ def test_windows_rename_info_rejects_relative_parent() -> None:
         api.rename_same_parent(41, 42, Path("scope"), "name")
 
 
-def test_windows_directory_open_requests_traverse_and_read_attributes() -> None:
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_windows_directory_open_requests_traverse_and_read_attributes(ancestor: bool) -> None:
     """Held parent directories request every right used by the trust walk."""
 
     accesses: list[int] = []
@@ -528,9 +532,10 @@ def test_windows_directory_open_requests_traverse_and_read_attributes() -> None:
         return 123
 
     api._create_file = create_file
-    assert api.open(Path("held-parent"), directory=True) == 123
+    assert api.open(Path("held-parent"), directory=True, ancestor=ancestor) == 123
     assert len(accesses) == 1
-    assert accesses[0] & cleanup._WINDOWS_FILE_LIST_DIRECTORY
+    assert bool(accesses[0] & cleanup._WINDOWS_FILE_LIST_DIRECTORY) is (not ancestor)
+    assert bool(accesses[0] & cleanup._WINDOWS_DELETE) is (not ancestor)
     assert accesses[0] & cleanup._WINDOWS_FILE_TRAVERSE
     assert accesses[0] & cleanup._WINDOWS_FILE_READ_ATTRIBUTES
 
@@ -626,6 +631,7 @@ def test_windows_bound_chain_excludes_delete_sharing_and_blocks_move(
         )
         assert binding.windows_state is not None
         assert len(binding.windows_state.ancestor_handles) == 2
+        assert fake_api.open_roles == [(scope, True), (nested, True), (target, False)]
         assert binding.windows_state.target_handle is not None
 
         for source, name in (
@@ -2139,3 +2145,49 @@ def test_cleanup_rejects_scope_root_and_outside_paths(tmp_path: Path) -> None:
 
     assert owner_root.exists()
     assert outside.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handles")
+@pytest.mark.parametrize("kind", ["file", "empty-directory", "nested-directory"])
+def test_windows_native_cleanup_access_roles(tmp_path: Path, kind: str) -> None:
+    """Least-privilege ancestor pins permit genuine quarantine cleanup."""
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    target = scope / "target"
+    if kind == "file":
+        target.write_bytes(b"owned")
+    else:
+        target.mkdir()
+        if kind == "nested-directory":
+            (target / "child").mkdir()
+            (target / "child" / "owned.bin").write_bytes(b"owned")
+    cleanup.remove_owned_path(target, owner_root=scope, operation="native roles")
+    assert not target.exists()
+    assert not list(scope.glob(".tobkiri-cleanup-*"))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handles")
+def test_windows_native_ancestor_pins_still_block_mutation(tmp_path: Path) -> None:
+    """Reducing access does not grant competing DELETE/rename access."""
+    scope = tmp_path / "scope"
+    nested = scope / "nested"
+    nested.mkdir(parents=True)
+    target = nested / "owned.bin"
+    target.write_bytes(b"owned")
+    binding = cleanup._bind_owned_path(target, scope, operation="native pin")
+    try:
+        assert binding.windows_state is not None
+        api = binding.windows_state.api
+        for ancestor in (scope, nested):
+            with pytest.raises(OSError) as error:
+                handle = api.open(ancestor, directory=True)
+                api.close(handle)
+            assert error.value.winerror == 32
+            with pytest.raises(OSError):
+                ancestor.rename(ancestor.with_name(ancestor.name + "-moved"))
+            assert ancestor.exists()
+    finally:
+        binding.close()
+    moved = scope / "moved"
+    nested.rename(moved)
+    assert (moved / "owned.bin").read_bytes() == b"owned"

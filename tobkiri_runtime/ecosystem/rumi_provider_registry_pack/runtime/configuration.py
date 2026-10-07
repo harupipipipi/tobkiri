@@ -22,16 +22,31 @@ PREPARE_OPERATION = "rumi_provider_registry_pack.provider-configure-prepare"
 EXECUTE_OPERATION = "rumi_provider_registry_pack.provider-configure"
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}\Z")
 _FIELDS = {"connection_name", "protocol", "endpoint", "key_value"}
+_TEXT_SCOPES = ("ai.generate", "ai.stream")
+_CONFIGURATION_SCOPES = frozenset((*_TEXT_SCOPES, "ai.audio.transcribe", "ai.audio.speech"))
 
 
-def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
+def configuration_request(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Validate setup data without accepting Profile or authority selections."""
-    if set(payload) != _FIELDS or any(type(value) is not str for value in payload.values()):
+    if (
+        not _FIELDS.issubset(payload)
+        or set(payload) - (_FIELDS | {"capabilities"})
+        or any(type(payload[field]) is not str for field in _FIELDS)
+    ):
         raise ValueError("provider configuration fields are invalid")
     name = payload["connection_name"]
     key = payload["key_value"]
     endpoint = payload["endpoint"]
     protocol = payload["protocol"]
+    if "capabilities" in payload:
+        capabilities = payload["capabilities"]
+        if (
+            not isinstance(capabilities, list) or not 0 < len(capabilities) <= 4
+            or any(type(item) is not str or item not in _CONFIGURATION_SCOPES for item in capabilities)
+            or len(set(capabilities)) != len(capabilities)
+            or (protocol != "openai-compatible" and set(capabilities) - set(_TEXT_SCOPES))
+        ):
+            raise ValueError("provider configuration capabilities are invalid")
     if (
         _NAME.fullmatch(name) is None
         or protocol not in {
@@ -72,7 +87,7 @@ def prepare_configuration(
 ) -> dict[str, Any]:
     """Read the existing revision and describe a write without storing a key."""
     request = configuration_request(payload)
-    return {
+    plan = {
         "profile_id": registry.profile_id,
         "provider_instance_id": "provider." + request["connection_name"],
         "adapter_id": request["protocol"],
@@ -82,6 +97,9 @@ def prepare_configuration(
         # digest raw while freezing the separately canonicalized endpoint.
         "request_digest": canonical_digest(dict(payload)),
     }
+    if "capabilities" in request:
+        plan["credential_scopes"] = sorted(request["capabilities"])
+    return plan
 
 
 def execute_configuration(
@@ -139,7 +157,7 @@ def execute_configuration(
             "secret_material": {"api_key": request["key_value"]},
             "consumer_pack_id": consumer_pack_id,
             "provider_instance_id": plan["provider_instance_id"],
-            "scopes": ["ai.generate", "ai.stream"],
+            "scopes": list(plan.get("credential_scopes", _TEXT_SCOPES)),
         })
     except Exception:
         # A missing ACK does not authorize another create. PendingEffect records

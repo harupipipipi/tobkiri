@@ -1,6 +1,5 @@
 import type {FormEvent} from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
   Copy,
   Edit2,
@@ -8,6 +7,7 @@ import {
   Package,
   Rocket,
   Trash2,
+  XCircle,
 } from 'lucide-react';
 import {Link} from 'react-router';
 
@@ -19,7 +19,6 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/src/components/ui/Popov
 import type {NamedProfileRecord} from '@/src/lib/profileRegistry';
 import type {NamedProfileView} from '@/src/lib/profileRegistryView';
 import {cn} from '@/src/lib/utils';
-import {ProfileCover} from './ProfileCover';
 
 export interface ProfileCardProps {
   activationHref: string;
@@ -102,17 +101,16 @@ export function ProfileCard({
     <Card
       aria-labelledby={`profile-${profile.profile_id}-title`}
       className={cn(
-        'group relative flex h-full min-w-0 w-full flex-col overflow-hidden transition-shadow duration-[var(--transition-base)] hover:shadow-[var(--shadow-md)]',
+        'group relative flex min-w-0 w-full flex-col overflow-hidden transition-shadow duration-[var(--transition-base)] hover:shadow-[var(--shadow-md)]',
         isActive && 'ring-1 ring-accent/30',
         isBrowsing && 'border-accent/50',
       )}
       data-profile-card={profile.profile_id}
       data-profile-status={profileView.status}
     >
-      <div className="relative aspect-[16/9] shrink-0 border-b border-border">
-        <ProfileCover profileId={profile.profile_id} />
+      <div className="relative min-h-14 shrink-0">
         {isActive && (
-          <span className="absolute left-3 top-3 inline-flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-full border border-accent/40 bg-bg-main/90 px-2 py-1 text-xs font-medium text-accent">
+          <span className="absolute left-3 top-3 inline-flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-md border border-accent/40 bg-bg-main/90 px-2 py-1 text-xs font-medium text-accent">
             <CheckCircle2 aria-hidden="true" className="h-3 w-3 shrink-0" />
             <span className="truncate">Active execution</span>
           </span>
@@ -129,15 +127,18 @@ export function ProfileCard({
             </PopoverTrigger>
             <PopoverContent align="right" className="w-48">
               <div className="flex flex-col gap-0.5 py-1">
+                <Link className={actionButtonClass()} role="menuitem" to={`${browseHref}#profile-packs`} aria-label={`Edit Packs for ${displayName}`}>
+                  <Package aria-hidden="true" className="h-3.5 w-3.5" /> Edit Packs
+                </Link>
                 <button
                   className={actionButtonClass()}
                   disabled={mutationDisabled}
                   onClick={() => onEdit(profile)}
                   role="menuitem"
-                  title={mutationsAvailable ? `Edit ${displayName}` : 'Profile catalog verification is unavailable'}
+                  title={mutationsAvailable ? `Rename ${displayName}` : 'Profile catalog verification is unavailable'}
                   type="button"
                 >
-                  <Edit2 aria-hidden="true" className="h-3.5 w-3.5" /> Edit
+                  <Edit2 aria-hidden="true" className="h-3.5 w-3.5" /> Rename
                 </button>
                 {isActive ? (
                   <button
@@ -201,43 +202,22 @@ export function ProfileCard({
           to={browseHref}
           title={displayName}
         >
-          <h3 className="line-clamp-2 min-h-10 break-words text-sm font-semibold leading-5 text-text-main" id={`profile-${profile.profile_id}-title`}>
+          <h3 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-text-main" id={`profile-${profile.profile_id}-title`}>
             {displayName}
           </h3>
         </Link>
-        <p className="mt-1 line-clamp-2 min-h-10 break-words text-xs leading-5 text-text-muted">
-          {typeof profile.profile.description === 'string' && profile.profile.description.trim()
-            ? profile.profile.description
-            : 'Browse this Profile’s composition and review it before activation.'}
-        </p>
+        {typeof profile.profile.description === 'string' && profile.profile.description.trim() ? (
+          <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-text-muted">{profile.profile.description}</p>
+        ) : null}
         <p className="mt-3 flex min-w-0 items-center gap-1.5 text-xs text-text-muted">
           <Package aria-hidden="true" className="h-3 w-3 shrink-0" />
           <span className="shrink-0">{Array.isArray(profile.profile.packs) ? profileView.packIds.length : '--'} Packs</span>
           <span aria-hidden="true">·</span>
           <span className="truncate" title={profileView.basePackId ?? undefined}>{profileView.basePackId ?? 'Base Pack unavailable'}</span>
         </p>
-        {(isBrowsing || profileView.status !== 'ready') && (
-          <div className="my-3 flex min-w-0 flex-wrap content-start gap-1.5">
-            {isBrowsing && <Badge variant="default">Selected browsing</Badge>}
-            {profileView.status !== 'ready' && (
-              <div
-                aria-label={profileErrorDiagnostic ?? undefined}
-                className="flex w-full items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/8 p-2.5 text-xs text-destructive"
-                role="alert"
-              >
-                <AlertCircle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 line-clamp-2">
-                  <span className="font-medium">{profileView.statusLabel}.</span>{' '}
-                  {profileView.statusDescription}
-                </span>
-                {profileErrorDiagnostic ? (
-                  <CopyErrorButton
-                    label={`Copy ${displayName} Profile error`}
-                    text={profileErrorDiagnostic}
-                  />
-                ) : null}
-              </div>
-            )}
+        {isBrowsing && (
+          <div className="mt-3">
+            <Badge variant="default">Selected browsing</Badge>
           </div>
         )}
 
@@ -266,35 +246,53 @@ export function ProfileCard({
         <div className="mt-auto flex min-w-0 flex-col gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <Link
-              aria-label={`Browse and review ${displayName}`}
+              aria-label={`Edit Packs for ${displayName}`}
               className="rounded px-1 py-1 text-text-muted underline-offset-2 hover:text-text-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
-              to={browseHref}
+              to={`${browseHref}#profile-packs`}
             >
-              Browse
+              Edit Packs
             </Link>
             <Link
-              aria-label={`View Pack closure for ${displayName}`}
+              aria-label={`View included Packs for ${displayName}`}
               className="flex items-center gap-1 rounded px-1 py-1 text-text-muted underline-offset-2 hover:text-text-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
               to={closureHref}
             >
-              <Package aria-hidden="true" className="h-3.5 w-3.5" /> Pack closure
+              <Package aria-hidden="true" className="h-3.5 w-3.5" /> Included Packs
             </Link>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border pt-3">
-            {profileView.status === 'ready' ? <Badge variant="success">Profile verified</Badge> : <span className="text-xs text-text-muted">Needs review</span>}
-            <Button
-              aria-label={`Launch ${displayName}`}
-              disabled={launchDisabled}
-              loading={isBusy && actionType === 'launch'}
-              onClick={() => onLaunch(profile)}
-              size="sm"
-              title={launchBlockedReason ?? `Launch ${displayName}`}
-              type="button"
-            >
-              <Rocket aria-hidden="true" className="h-3.5 w-3.5" />
-              {isBusy && actionType === 'launch' ? 'Launching…' : 'Launch'}
-            </Button>
+          <div className={cn('flex min-w-0 items-center gap-2 border-t border-border pt-3', profileErrorDiagnostic ? 'justify-end' : 'justify-between')}>
+            {profileView.status === 'ready' && <Badge variant="success">Profile verified</Badge>}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {profileErrorDiagnostic && (
+                <span className="sr-only" id={`profile-${profile.profile_id}-error`}>{profileErrorDiagnostic}</span>
+              )}
+              <Button
+                aria-label={`Launch ${displayName}`}
+                aria-describedby={profileErrorDiagnostic ? `profile-${profile.profile_id}-error` : launchBlockedReason ? `profile-${profile.profile_id}-launch-note` : undefined}
+                className={profileErrorDiagnostic ? 'disabled:opacity-100 disabled:text-text-muted' : undefined}
+                disabled={launchDisabled}
+                loading={isBusy && actionType === 'launch'}
+                onClick={() => onLaunch(profile)}
+                size="sm"
+                title={profileErrorDiagnostic ?? launchBlockedReason ?? `Launch ${displayName}`}
+                type="button"
+                variant={profileErrorDiagnostic ? 'outline' : 'default'}
+              >
+                {profileErrorDiagnostic
+                  ? <XCircle aria-hidden="true" className="h-3.5 w-3.5 text-destructive" data-launch-error />
+                  : <Rocket aria-hidden="true" className="h-3.5 w-3.5" />}
+                {isBusy && actionType === 'launch' ? 'Launching…' : 'Launch'}
+              </Button>
+              {profileErrorDiagnostic && (
+                <CopyErrorButton
+                  label={`Copy error details for ${displayName}`}
+                  visibleLabel="Copy error"
+                  text={profileErrorDiagnostic}
+                />
+              )}
+            </div>
           </div>
+          {launchBlockedReason && !profileErrorDiagnostic ? <span className="sr-only" id={`profile-${profile.profile_id}-launch-note`}>{launchBlockedReason}</span> : null}
         </div>
       </div>
     </Card>

@@ -8,7 +8,7 @@
     {
       "path": "runtime/adapter.py",
       "role": "runtime",
-      "sha256": "sha256:9d70f4a1af515c594f678f11ff5854cac75ec41f73a65b4c3571300e836a4774"
+      "sha256": "sha256:2822a2418d3ce4024c51cfbb8708b4789404fe5219fa87863b6e7d97b23140a5"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

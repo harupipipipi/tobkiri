@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:632c74dd048a8d40242921b13f550707d716889aaa1c5d1368dab251547e09a0",
+  "catalog_digest": "sha256:8bfc7b8bf3b0953f2415799737b24ea66cd27bc2a65be236201afe504950dc8c",
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c",
+  "source_identity": "sha256:5f48dad0307ac175f91558d7cbcab170f5cc97aa0501d40824626bbfb27b3748",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.workflow.provider",
-      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
       "implementation_path": "runtime/provider.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -53,7 +53,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -96,7 +96,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -139,7 +139,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -182,7 +182,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -225,7 +225,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -268,7 +268,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -311,7 +311,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -354,7 +354,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -397,7 +397,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -440,7 +440,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -483,7 +483,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -526,7 +526,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -569,7 +569,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -612,7 +612,50 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "run.observe",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -655,7 +698,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -698,7 +741,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -741,7 +784,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -784,7 +827,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -827,7 +870,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -870,7 +913,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:2a032f344bad0a8d6912a5081b396d148493bdbbd7fea952271c7ad2f3c29f90",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -878,6 +921,64 @@
       "platform": "any",
       "runtime_abi": "python3.13",
       "variant_id": "tobkiri.workflow.provider.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri.workflow.stop.provider",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "implementation_path": "runtime/provider.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.workflow.stop.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "run.stop",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:96e31a74b9fc698f77351fe7fee9b34d2090165a21194b60c6f3d7a6cb95701d",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri.workflow.stop.provider.python"
     }
   ]
 }

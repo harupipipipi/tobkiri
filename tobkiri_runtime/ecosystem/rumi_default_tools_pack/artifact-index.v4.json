@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa",
+  "artifact_set_digest": "sha256:05d2787caa1f21e3362eae9f60840e8280beb463d353ef36f99d230b9f884c16",
   "artifacts": [
     {
-      "digest": "sha256:55f1f92a0c1966b4b58eb411de5781952dfd9105210ac29b4e21c88c3f8c55c6",
+      "digest": "sha256:79918cf0b1e4f2ddf87330e1079595c5b8a119e680f3e3205bf40be39247101e",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:d85c04d931c987e1f26af24af6b0b0d0247ba12a873ec5d9ae96ec5c87240fcc",
+      "digest": "sha256:73d35d8984db143d5007cddd5c6aa5db6982418e1650641fcbd794dbd449d16d",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:d83015374b5f8ae53a3dfd012f42edaccc8f30d4ea6c4c971f79fb7b1da50124",
+      "digest": "sha256:51c74c0208d2f36caf1faa8fa57bbe6bc1f3286a05975826e4b02f41923d7449",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+      "digest": "sha256:38e2f7c41236532d93612bf2570f49b79a0053c51aa3133f6966e8ca0860a08c",
       "path": "tools/calculator/manifest.json",
       "role": "runtime"
     },
@@ -185,8 +185,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:b1092c8e32f19b58ae42d04da1d47e36736a8ad307e9ac693654acc8aad7805b"
+    "signed_digest": "sha256:69b1f16525c74018bd4ef9cd57a36f7439c9e62a64c3572b0ef89db351ff76ba"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:df3e346dc453500699a22170bc2281987e24ae5379ba3ced248d31587f021751"
+  "source_identity": "sha256:a82b753a70cfc2b93f7b90ccff980bf46ad78a320b65fc2b5828d21237a6048a"
 }

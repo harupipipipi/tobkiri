@@ -4,6 +4,7 @@ import { configureProvider, type ProviderConfigurationStatus } from "./providerC
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { defaultspackContractRoute, defaultspackContractUrl } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -1948,7 +1949,7 @@ test("model-state saves use the owner endpoint and accept its receipt", async ()
   try {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-      requests.push({ target: requestTarget(input), method: init?.method ?? "GET", body });
+      requests.push({ target: String(input), method: init?.method ?? "GET", body });
       if (requests.length === 1) {
         return new Response(JSON.stringify({
           status: "ok",
@@ -1977,8 +1978,8 @@ test("model-state saves use the owner endpoint and accept its receipt", async ()
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests.map(({ target, method }) => ({ target, method })), [
-    { target: "/api/ui/model-state", method: "GET" },
-    { target: "/api/ui/model-state", method: "PUT" },
+    { target: defaultspackContractUrl(defaultspackContractRoute("api/ui/model-state")), method: "GET" },
+    { target: defaultspackContractUrl(defaultspackContractRoute("api/ui/model-state"), "PUT"), method: "PUT" },
   ]);
   const write = requests[1]?.body as Record<string, unknown>;
   assert.deepEqual({ ...write, mutation_id: "[generated]" }, {
@@ -1988,7 +1989,7 @@ test("model-state saves use the owner endpoint and accept its receipt", async ()
     mutation_id: "[generated]",
   });
   assert.match(String(write.mutation_id), /^[0-9a-f-]{36}$/i);
-  assert.equal(requests.some((request) => request.target === "/api/ui/settings"), false);
+  assert.equal(requests.some((request) => request.target === defaultspackContractUrl(defaultspackContractRoute("api/ui/settings"), "PUT")), false);
 });
 
 test("model-state receipts require the authoritative document revision", async () => {
@@ -2028,7 +2029,7 @@ test("model-state failures do not fall back to the UI preferences write", async 
   const requests: Array<{ target: string; method: string }> = [];
   try {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ target: requestTarget(input), method: init?.method ?? "GET" });
+      requests.push({ target: String(input), method: init?.method ?? "GET" });
       if (requests.length === 1) {
         return new Response(JSON.stringify({
           status: "ok",
@@ -2046,8 +2047,8 @@ test("model-state failures do not fall back to the UI preferences write", async 
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests, [
-    { target: "/api/ui/model-state", method: "GET" },
-    { target: "/api/ui/model-state", method: "PUT" },
+    { target: defaultspackContractUrl(defaultspackContractRoute("api/ui/model-state")), method: "GET" },
+    { target: defaultspackContractUrl(defaultspackContractRoute("api/ui/model-state"), "PUT"), method: "PUT" },
   ]);
 });
 

@@ -378,3 +378,18 @@ def test_creation_race_reopens_and_validates_the_winning_entry(
         if operation == "write":
             assert (root / "nested/entry").read_bytes() == b"saved"
     assert raced
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows MAX_PATH regression")
+def test_windows_atomic_temporary_fits_when_migration_destination_fits(tmp_path: Path) -> None:
+    # The reported migration has a 216-character parent and a 243-character
+    # final path. Repeating the filename made its temporary path 275+ chars.
+    padding = 216 - len(str(tmp_path)) - 1
+    if not 1 <= padding <= 200:
+        pytest.skip("temporary base is outside the bounded native fixture range")
+    root = tmp_path / ("p" * padding)
+    store = SecureDirectory(root)
+    store.write_bytes_atomic("legacy-model-registry.json", b"old")
+    store.write_bytes_atomic("legacy-model-registry.json", b"new")
+    assert store.read_bytes("legacy-model-registry.json") == b"new"
+    assert sorted(path.name for path in root.iterdir()) == ["legacy-model-registry.json"]

@@ -1,7 +1,7 @@
 {
   "counts": {
-    "canonical_source_packs": 143,
-    "catalog_pack_directories": 143,
+    "canonical_source_packs": 144,
+    "catalog_pack_directories": 144,
     "gates": {
       "artifact_contracts": 0,
       "authority_resolved_plan_scope": 0,
@@ -11,20 +11,20 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 6,
+      "migration_evidence": 17,
       "offline_projection": 0
     },
-    "legacy_manifest_declared_packs": 143,
+    "legacy_manifest_declared_packs": 144,
     "migration_status": {
-      "generated-draft": 3,
-      "release-verified": 138,
-      "semantically-reviewed": 2
+      "generated-draft": 12,
+      "release-verified": 127,
+      "semantically-reviewed": 5
     },
-    "production_pack_directories": 143,
-    "v4_artifact_files": 572,
+    "production_pack_directories": 144,
+    "v4_artifact_files": 576,
     "v4_artifacts_per_pack": 4,
-    "v4_only_packs": 5,
-    "v4_pack_artifacts": 143,
+    "v4_only_packs": 6,
+    "v4_pack_artifacts": 144,
     "v4_profile_artifacts": 1
   },
   "findings": {
@@ -39,12 +39,74 @@
     "migration_evidence": [
       {
         "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "defaultspack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
           "curated_review_source_digest_mismatch",
           "curated_review_target_digest_mismatch",
           "runtime_receipt_target_digest_mismatch"
         ],
         "line": 1,
         "pack_id": "rumi_agent_runtime_service_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch"
+        ],
+        "line": 1,
+        "pack_id": "rumi_agent_state_store_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_ai_gateway_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified"
+        ],
+        "line": 1,
+        "pack_id": "rumi_ai_modality_pack",
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "pack_release_proof_invalid",
         "symbol": "pack_release_proof_invalid"
@@ -62,6 +124,30 @@
         ],
         "line": 1,
         "pack_id": "rumi_conversation_store_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch"
+        ],
+        "line": 1,
+        "pack_id": "rumi_default_tools_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch"
+        ],
+        "line": 1,
+        "pack_id": "rumi_model_registry_pack",
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "pack_release_proof_invalid",
         "symbol": "pack_release_proof_invalid"
@@ -107,7 +193,92 @@
           "pack_specific_operation_mapping_missing"
         ],
         "line": 1,
+        "pack_id": "rumi_tool_broker_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_tool_registry_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_tool_result_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_tool_validation_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
         "pack_id": "rumi_turn_runtime_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "tobkiri_workflow_pack",
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "pack_release_proof_invalid",
         "symbol": "pack_release_proof_invalid"
@@ -117,19 +288,31 @@
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
+          "defaultspack",
           "rumi_agent_runtime_service_pack",
+          "rumi_agent_state_store_pack",
+          "rumi_ai_gateway_pack",
+          "rumi_ai_modality_pack",
           "rumi_conversation_store_pack",
+          "rumi_default_tools_pack",
+          "rumi_model_registry_pack",
           "rumi_provider_adapters_pack",
           "rumi_provider_registry_pack",
-          "rumi_turn_runtime_pack"
+          "rumi_tool_broker_pack",
+          "rumi_tool_registry_pack",
+          "rumi_tool_result_pack",
+          "rumi_tool_validation_pack",
+          "rumi_turn_runtime_pack",
+          "tobkiri_conversation_orchestration_pack",
+          "tobkiri_workflow_pack"
         ],
         "status_counts": {
-          "generated-draft": 3,
-          "release-verified": 138,
-          "semantically-reviewed": 2
+          "generated-draft": 12,
+          "release-verified": 127,
+          "semantically-reviewed": 5
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 5
+        "unverified_count": 17
       }
     ],
     "offline_projection": []
@@ -187,12 +370,74 @@
       "findings": [
         {
           "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "defaultspack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
             "curated_review_source_digest_mismatch",
             "curated_review_target_digest_mismatch",
             "runtime_receipt_target_digest_mismatch"
           ],
           "line": 1,
           "pack_id": "rumi_agent_runtime_service_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch"
+          ],
+          "line": 1,
+          "pack_id": "rumi_agent_state_store_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified"
+          ],
+          "line": 1,
+          "pack_id": "rumi_ai_modality_pack",
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "pack_release_proof_invalid",
           "symbol": "pack_release_proof_invalid"
@@ -210,6 +455,30 @@
           ],
           "line": 1,
           "pack_id": "rumi_conversation_store_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch"
+          ],
+          "line": 1,
+          "pack_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch"
+          ],
+          "line": 1,
+          "pack_id": "rumi_model_registry_pack",
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "pack_release_proof_invalid",
           "symbol": "pack_release_proof_invalid"
@@ -255,7 +524,92 @@
             "pack_specific_operation_mapping_missing"
           ],
           "line": 1,
+          "pack_id": "rumi_tool_broker_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_tool_registry_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_tool_result_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_tool_validation_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
           "pack_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "tobkiri_workflow_pack",
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "pack_release_proof_invalid",
           "symbol": "pack_release_proof_invalid"
@@ -265,19 +619,31 @@
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
+            "defaultspack",
             "rumi_agent_runtime_service_pack",
+            "rumi_agent_state_store_pack",
+            "rumi_ai_gateway_pack",
+            "rumi_ai_modality_pack",
             "rumi_conversation_store_pack",
+            "rumi_default_tools_pack",
+            "rumi_model_registry_pack",
             "rumi_provider_adapters_pack",
             "rumi_provider_registry_pack",
-            "rumi_turn_runtime_pack"
+            "rumi_tool_broker_pack",
+            "rumi_tool_registry_pack",
+            "rumi_tool_result_pack",
+            "rumi_tool_validation_pack",
+            "rumi_turn_runtime_pack",
+            "tobkiri_conversation_orchestration_pack",
+            "tobkiri_workflow_pack"
           ],
           "status_counts": {
-            "generated-draft": 3,
-            "release-verified": 138,
-            "semantically-reviewed": 2
+            "generated-draft": 12,
+            "release-verified": 127,
+            "semantically-reviewed": 5
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 5
+          "unverified_count": 17
         }
       ],
       "status": "RED"
@@ -449,12 +815,13 @@
       "rumi_workspace_mount_pack",
       "rumi_workspace_pack",
       "search_home_pack",
+      "tobkiri_conversation_orchestration_pack",
       "tobkiri_host_pack_control",
       "tobkiri_mcp_connection_pack",
       "tobkiri_ui_settings_pack",
       "tobkiri_workflow_pack"
     ],
-    "catalog_pack_directories": 143,
+    "catalog_pack_directories": 144,
     "declared_source_sets": {
       "direct_ids": [
         "defaultspack",
@@ -596,6 +963,7 @@
         "rumi_workspace_mount_pack",
         "rumi_workspace_pack",
         "search_home_pack",
+        "tobkiri_conversation_orchestration_pack",
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
@@ -741,6 +1109,7 @@
         "rumi_workspace_mount_pack",
         "rumi_workspace_pack",
         "search_home_pack",
+        "tobkiri_conversation_orchestration_pack",
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
@@ -1026,6 +1395,7 @@
         "rumi_workspace_mount_pack",
         "rumi_workspace_pack",
         "search_home_pack",
+        "tobkiri_conversation_orchestration_pack",
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
@@ -1035,18 +1405,19 @@
         "defaultspack",
         "rumi_ai_strategy_runtime_pack",
         "rumi_deepthink_pack",
+        "tobkiri_conversation_orchestration_pack",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack"
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 3,
-      "release-verified": 138,
-      "semantically-reviewed": 2
+      "generated-draft": 12,
+      "release-verified": 127,
+      "semantically-reviewed": 5
     },
     "migration_status_records": [
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "defaultspack",
@@ -1070,7 +1441,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_state_store_pack",
@@ -1094,7 +1465,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_gateway_pack",
@@ -1102,7 +1473,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_modality_pack",
@@ -1438,7 +1809,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_default_tools_pack",
@@ -1758,7 +2129,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_model_registry_pack",
@@ -2014,7 +2385,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_broker_pack",
@@ -2070,7 +2441,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_registry_pack",
@@ -2086,7 +2457,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_result_pack",
@@ -2102,7 +2473,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_validation_pack",
@@ -2158,6 +2529,14 @@
         "v4_only": false
       },
       {
+        "classified_as": "generated-draft",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": "v4-authoritative",
+        "pack_id": "tobkiri_conversation_orchestration_pack",
+        "v4_artifacts": true,
+        "v4_only": true
+      },
+      {
         "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
@@ -2182,7 +2561,7 @@
         "v4_only": true
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_workflow_pack",
@@ -2190,8 +2569,8 @@
         "v4_only": false
       }
     ],
-    "production_pack_directories": 143,
-    "v4_artifact_files": 572,
+    "production_pack_directories": 144,
+    "v4_artifact_files": 576,
     "v4_artifacts_per_pack": 4,
     "v4_pack_artifacts": [
       "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
@@ -2333,6 +2712,7 @@
       "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_workspace_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_conversation_orchestration_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
@@ -2345,8 +2725,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "7b05bfe761af63498388f8bfbed1b728e31914e3",
-    "semantic_digest": "sha256:f37981281310246f32e5d1dc40b103361fa90d28a2cc3837683c8d1c95ccec96",
+    "observed_head_sha": "5978edf5d8fe6579889f021d7b4826a0b69e97de",
+    "semantic_digest": "sha256:260a669e574ac0947a7a3078b1b5598cbe2f72f0c450c07c4e63f42cda2cc971",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

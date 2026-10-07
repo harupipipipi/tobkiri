@@ -109,7 +109,7 @@ export function Setup() {
       })
       .catch((error) => {
         if (live && generation === reviewGeneration.current) {
-          setSetupError(message(error, 'Defaults Profile could not be loaded.'));
+          setSetupError(message(error, 'Tobkiri Harness Profile could not be loaded.'));
         }
       });
     return () => { live = false; ++reviewGeneration.current; };
@@ -142,7 +142,7 @@ export function Setup() {
     if (runtimeState.runtimeStatus !== 'runtime_ready') {
       throw new Error(formatPackVMRecoveryError(
         runtimeState.runtimeError,
-        'Defaults activation completed without a verified runtime dispatch map.',
+        'Harness activation completed without a verified runtime dispatch map.',
       ));
     }
 
@@ -195,7 +195,7 @@ export function Setup() {
     setReviewed(false);
     setActivationCommitted(result.activationCommitted);
     const failure = result.error
-      ? message(result.error, 'Defaults activation reconciliation failed.')
+      ? message(result.error, 'Harness activation reconciliation failed.')
       : null;
     if (result.state?.state === 'active') {
       setSetupError(null);
@@ -349,7 +349,7 @@ export function Setup() {
         ? 'Activated Profile verified. Checking runtime health and Pack surfaces…'
         : activationPhase === 'verifying'
           ? 'Checking the Host-owned Setup state. This can take up to five minutes after a cold restart…'
-          : 'Submitting the reviewed Defaults Profile…'}
+          : 'Submitting the reviewed Harness Profile…'}
     </p>}
     {profileReconfirmationRequired && !activationCommitted && <label className="mb-6 flex items-start gap-3 rounded-xl border border-border p-4 text-sm text-text-main">
       <input type="checkbox" checked={includeSourceAdditions} disabled={activating || reviewLoading}

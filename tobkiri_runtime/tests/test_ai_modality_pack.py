@@ -27,7 +27,7 @@ class FakeClient:
 def test_embedding_normalizes_finite_vectors() -> None:
     operation = create_embedding_operation(
         FakeClient(
-            ({"provider_instance_id": "embedding.fixture"},),
+            ({"provider_instance_id": "embedding.fixture", "operation_id": "embedding.fixture.embed"},),
             {"vectors": [[1, 2.5]], "usage": {"input_tokens": 2}},
         )
     )

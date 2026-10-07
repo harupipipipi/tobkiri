@@ -328,3 +328,39 @@ assert not any(name == 'ecosystem' or name.startswith('ecosystem.') for name in 
         capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_candidate_uses_current_intent_not_retired_provider(tmp_path: Path) -> None:
+    """A removed provider in the old projection cannot block its replacement."""
+    generator = _load_generator()
+    path = tmp_path / "defaults.profile.v5.json"
+    old = json.loads((BUNDLE / path.name).read_text())
+    old["requested_edges"][0]["target_provider_id"] = "retired.provider"
+    path.write_text(json.dumps(old))
+    intent = json.loads((BUNDLE / "defaults.profile.intent.v1.json").read_text())
+    intent_path = tmp_path / "defaults.profile.intent.v1.json"
+    intent_path.write_text(json.dumps(intent))
+    before = _snapshot(tmp_path)
+    candidate = generator._profile_source_for_candidate(path)
+    assert candidate["requested_edges"] == intent["requested_edges"]
+    assert candidate["packs"] == intent["packs"]
+    assert _snapshot(tmp_path) == before
+
+
+def test_candidate_defers_unresolved_content_to_staged_compiler(tmp_path: Path) -> None:
+    """Author content references are resolved only against the complete stage."""
+    generator = _load_generator()
+    path = tmp_path / "defaults.profile.v5.json"
+    old = json.loads((BUNDLE / path.name).read_text())
+    path.write_text(json.dumps(old))
+    intent = json.loads((BUNDLE / "defaults.profile.intent.v1.json").read_text())
+    # This test isolates projection staging; edge semantics are resolved later.
+    intent["requested_edges"] = []
+    intent["content_projections"] = [{
+        "projection_id": "sample", "kind": "profile_content",
+        "artifact_root": "profile_projections/sample", "content_digest": None,
+    }]
+    (tmp_path / "defaults.profile.intent.v1.json").write_text(json.dumps(intent))
+    candidate = generator._profile_source_for_candidate(path)
+    assert candidate.get("content_projections") == old.get("content_projections")
+    assert validate_document(candidate, "profile") == candidate

@@ -117,7 +117,7 @@ class ProviderRegistry:
         for item in self.snapshot()["providers"]:
             evidence = item.get("health_evidence")
             evidence = evidence if isinstance(evidence, Mapping) else {}
-            verified = bool(evidence.get("verified"))
+            verified = evidence.get("verified") is True
             status = str(evidence.get("status") or "unknown")
             if not verified or status not in {"available", "unavailable"}:
                 status = "unknown"
@@ -228,6 +228,9 @@ class ProviderRegistry:
 
 
 def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
+    enabled = value.get("enabled", True)
+    if type(enabled) is not bool:
+        raise ValueError("provider enabled must be a boolean")
     provider_instance_id = _identifier(value.get("provider_instance_id"))
     adapter_id = _identifier(value.get("adapter_id"))
     credential_handle = value.get("credential_handle")
@@ -241,18 +244,21 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
 
     health = value.get("health_evidence")
     health = health if isinstance(health, Mapping) else {}
+    verified = health.get("verified", False)
+    if type(verified) is not bool:
+        raise ValueError("provider health verified must be a boolean")
     return {
         "provider_instance_id": provider_instance_id,
         "adapter_id": adapter_id,
         "display_name": str(value.get("display_name") or provider_instance_id)[:200],
         "credential_handle": credential_handle,
         "endpoint": endpoint_text,
-        "enabled": bool(value.get("enabled", True)),
+        "enabled": enabled,
         "data_residency": str(value.get("data_residency") or "unknown")[:100],
         "health_evidence": {
             "status": str(health.get("status") or "unknown"),
             "observed_at": health.get("observed_at"),
-            "verified": bool(health.get("verified", False)),
+            "verified": verified,
         },
         "metadata": _safe_metadata(value.get("metadata")),
     }

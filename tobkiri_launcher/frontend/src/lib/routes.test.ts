@@ -37,7 +37,7 @@ test('viewer navigation keeps preferences separate and feature-gates one Devtool
   const defaultRoutes = new Set<string>(defaultGroups.flatMap((group) => group.routes));
   assert.ok(navRoutes.has('packs'));
   for (const route of [
-    'profile',
+    'account',
     'settings',
     'profileWiring',
     'profileFiles',
@@ -62,6 +62,10 @@ test('viewer navigation keeps preferences separate and feature-gates one Devtool
     assert.equal(defaultRoutes.has(route), false);
     assert.equal(isDevtoolsPanelRouteKey(route), true);
   }
+  // Flow is a primary task surface: reachable in default navigation and not
+  // listed as a Devtools route even though its URL is stable.
+  assert.equal(defaultRoutes.has('flow'), true);
+  assert.equal(isDevtoolsPanelRouteKey('flow'), false);
   assert.equal(isDevtoolsPanelRouteKey('profile'), false);
   assert.ok(!navRoutes.has('startup'));
 
@@ -92,6 +96,7 @@ test('stable advanced panel paths map to rebuilt v4 surfaces', () => {
     'setup',
     'packs',
     'profile',
+    'account',
     'settings',
     'profileWiring',
     'profileFiles',
@@ -109,7 +114,6 @@ test('legacy Devtools deep links retain their stable route metadata', () => {
     DEVTOOLS_PANEL_ROUTE_KEYS.map((route) => panelRouteMeta[route].path),
     [
       '/graphs',
-      '/flows',
       '/api-map',
       '/ai-input',
       '/nodes',
@@ -130,4 +134,10 @@ test('stable route activity does not confuse Profile with Profile Wiring or Prof
   assert.equal(isPanelRouteActive('/profile-graph', panelRoutes.profile), false);
   assert.equal(isPanelRouteActive('/profile-workspace', panelRoutes.profile), false);
   assert.equal(isPanelRouteActive('/packs/provider-pack', panelRoutes.packs), true);
+});
+
+test('execution Profile navigation belongs to Home, separate from personal settings', () => {
+  assert.equal(isPanelRouteActive('/profile', panelRoutes.home), true);
+  assert.equal(isPanelRouteActive('/account', panelRoutes.home), false);
+  assert.equal(isPanelRouteActive('/account', panelRoutes.profile), false);
 });

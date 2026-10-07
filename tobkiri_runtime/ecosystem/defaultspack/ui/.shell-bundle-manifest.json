@@ -1,12 +1,12 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "f9c461594ddb782080e2910cf2b719a4cb30e35a1fb2273e24ce24a7d351f466",
+    "digest": "95b235a8a4056d2648bb5edee4f0b1c485ba9529af81d1d003e6c9efbb5c365b",
     "entries": [
       {
         "path": "index.html",
-        "size": 1915,
-        "sha256": "14a67e44b10fb306b540896a48e91acdb31520105f5120279e8c3d4ba2d8e68a"
+        "size": 1923,
+        "sha256": "64cdf6421760ad669c32d8a6e3d633c960f729c610350923e30bf6e7afb01e76"
       },
       {
         "path": "package-lock.json",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5914,
-        "sha256": "ffffe7dd55cfb8b486a5beec210ab9f2ea7fe068007ff944e0d4cd4d2607f29d"
+        "size": 5954,
+        "sha256": "88a1483b3fe160348223afeb8c122ed96d6f6c1daf4b483ef84b3261553758f2"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -1095,13 +1095,13 @@
       },
       {
         "path": "src/host/DynamicFrontendHost.test.tsx",
-        "size": 12048,
-        "sha256": "ec26ecbd803909269f2a9d6e82d2313a3d12c137d7b07dadaa8a77cca4a5e0a5"
+        "size": 13528,
+        "sha256": "bdd0fcf1e7ab36697d5ab996509b4b6f133dedd11e1ca74b48cdba4428f13417"
       },
       {
         "path": "src/host/DynamicFrontendHost.tsx",
-        "size": 16505,
-        "sha256": "755d39b5f3ee72efa1594dd5857d40548bc7cf5b85cfd49b41a5d5c85cdb68e9"
+        "size": 17753,
+        "sha256": "b7719c7636939fbea4a3102c386125b26a3ca7b6fa6039dc6254f1fb022b2ff3"
       },
       {
         "path": "src/host/HostBootstrap.test.tsx",
@@ -1160,8 +1160,8 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 180092,
-        "sha256": "f6a31c9ac954fbfd8ab0be930ff9e8d61a37fcd4459eba59535a526e1583848c"
+        "size": 180430,
+        "sha256": "9ec1a6b6dfd3b571147b4310fc7d834acbbf5d942789d460333d3773ee2ac615"
       },
       {
         "path": "src/lib/api.ts",
@@ -1267,6 +1267,11 @@
         "path": "src/lib/calendarScheduleDeletion.ts",
         "size": 506,
         "sha256": "db5e94cdcebd417f6eaa7ee8acde11e704b150cc88230ba9f40626a17d2c8ce8"
+      },
+      {
+        "path": "src/lib/canonicalFixtureRequest.test.ts",
+        "size": 1910,
+        "sha256": "477cf1d474a68b8c8cc0753e5bc226f401b2bc354d6d7ea2fd4c1797bfe2287f"
       },
       {
         "path": "src/lib/changeRequests.test.ts",
@@ -2051,7 +2056,7 @@
     ]
   },
   "bundle": {
-    "digest": "49671cbfa936251ec25026075248883c346e54a7038864d62381e78c0adf98a2",
+    "digest": "17610a2e5de772f583d4bdd1597941e69e5a695108994d1eca318b99bb96a5bf",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2060,8 +2065,8 @@
       },
       {
         "path": "shell-app.js",
-        "size": 27003,
-        "sha256": "1786728c8b281f6e604cec5febf1c90e07d6af508d42821e7887bd35f47685db"
+        "size": 27639,
+        "sha256": "7fa0059f8ca33f62efc33a8a6e43eb6e1985030893a81afc94d96be9b4e4529f"
       },
       {
         "path": "shell-defaultspack-app.js",
@@ -2080,8 +2085,8 @@
       },
       {
         "path": "shell.html",
-        "size": 2055,
-        "sha256": "818fdd2381f16aa51cfbc03c8b9686b13a1b437da6a753d27fb3967f5dadfeab"
+        "size": 2063,
+        "sha256": "ad5457b00ad44c84874d969d129f1094e4d5d86d772ba7f926f9278b19b5b44b"
       }
     ]
   }

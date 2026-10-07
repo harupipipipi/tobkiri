@@ -170,18 +170,31 @@ class _WindowsApi:
         *,
         directory: bool,
         share_mode: int = _WINDOWS_HANDLE_SHARE_MODE,
+        ancestor: bool = False,
     ) -> int:
-        """Open one final component without reparse or delete sharing."""
+        """Pin an ancestor or open a mutation target without delete sharing.
+
+        Ancestors need only traversal and identity rights. Requesting DELETE
+        or directory-list access on these pins can conflict with the kernel
+        destination-directory open performed during quarantine rename.
+        Mutation targets retain DELETE and directory enumeration rights.
+        """
 
         if share_mode & _WINDOWS_FILE_SHARE_DELETE:
             raise ValueError("Windows cleanup handles must not share delete access")
 
-        access = _WINDOWS_DELETE | _WINDOWS_FILE_READ_ATTRIBUTES
+        if ancestor and not directory:
+            raise ValueError("Windows cleanup ancestor must be a directory")
+        access = _WINDOWS_FILE_READ_ATTRIBUTES
+        if not ancestor:
+            access |= _WINDOWS_DELETE
         flags = _WINDOWS_FILE_FLAG_OPEN_REPARSE_POINT
         if directory:
             # Root/ancestor handles are also the non-delete-sharing trust
             # boundary for relative traversal and identity checks.
-            access |= _WINDOWS_FILE_LIST_DIRECTORY | _WINDOWS_FILE_TRAVERSE
+            access |= _WINDOWS_FILE_TRAVERSE
+            if not ancestor:
+                access |= _WINDOWS_FILE_LIST_DIRECTORY
             flags |= _WINDOWS_FILE_FLAG_BACKUP_SEMANTICS
         handle = self._create_file(
             os.fspath(path),
@@ -1428,6 +1441,7 @@ def _bind_windows_handles(
                 expected.path,
                 directory=True,
                 share_mode=_WINDOWS_HANDLE_SHARE_MODE,
+                ancestor=True,
             )
             owned_handles.append(_WindowsHandleRecord(expected.path, handle, None))
             native_identity = api.identity(handle)

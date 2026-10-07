@@ -72,18 +72,18 @@
     "source_digest": "sha256:a8e481924ab02a38e53717addb5fb5b3b7bea92037274dcf498636a048fd0375",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:fec604ef7bfea4135738f774c5ebd095bf0fe1a424621cb326f1d84068fa356d",
+    "content_root_digest": "sha256:500ed7a7abf599c2d58beab5eb8d1ae571bd2a058b9e067689af2a586aadd2d0",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
     "input_inventory_digest": "sha256:7b9324ad78c731fcfd516e3600fac255c51c05ca957d19ce5b26be3814e8124b",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
       },
       {
         "path": "ecosystem/rumi_mobile_pairing_connector_pack/pack.v4.json",

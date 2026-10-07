@@ -131,8 +131,17 @@ class Invoker:
         self.cancelled: list[str] = []
 
     def invoke(
-        self, request: Mapping[str, Any], *, authority: DispatchAuthority
+        self,
+        request: Mapping[str, Any],
+        *,
+        authority: DispatchAuthority,
+        dispatch_fence: Any = None,
     ) -> InvocationOutcome:
+        if dispatch_fence is not None:
+            try:
+                dispatch_fence(str(request["request_id"]))
+            except WorkflowDenied:
+                return InvocationOutcome(error_code="dispatch_fenced", dispatched=False)
         assert authority.dispatch_token.startswith("one-shot-")
         self.requests.append(request)
         return self.outcome
@@ -248,6 +257,43 @@ def test_definition_lifecycle_etag_digest_validate_compile_and_delete(
     ) == {"deleted": True}
 
 
+def test_step_label_is_bounded_display_only(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    """step.label is an optional <=128-char display hint, never identity."""
+    provider, _catalog, _authority, _invoker = runtime
+    document = definition()
+    document["steps"][0]["label"] = "音声を文字にする"
+    assert provider.invoke("definition.validate", {"document": document}) == {
+        "valid": True,
+        "errors": [],
+    }
+    preview = provider.invoke(
+        "definition.compile-preview", {"document": document}
+    )
+    assert "label" not in preview["steps"][0]
+    created = provider.invoke(
+        "definition.create",
+        {"definition_id": "workflow.labelled", "document": document},
+    )
+    fetched = provider.invoke(
+        "definition.get", {"definition_id": "workflow.labelled"}
+    )
+    assert fetched["document"]["steps"][0]["label"] == "音声を文字にする"
+    assert fetched["document"]["steps"][0]["id"] == "echo"
+    compiled = provider.invoke(
+        "definition.publish",
+        {"definition_id": "workflow.labelled", "if_match": created["etag"]},
+    )
+    assert "label" not in compiled["compiled"]["steps"][0]
+    oversized = definition()
+    oversized["steps"][0]["label"] = "x" * 129
+    validation = provider.invoke(
+        "definition.validate", {"document": oversized}
+    )
+    assert validation["valid"] is False
+
+
 def test_palette_is_exact_catalog_and_rejects_unpinned_operation(
     runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
 ) -> None:
@@ -262,8 +308,19 @@ def test_palette_is_exact_catalog_and_rejects_unpinned_operation(
             "provider_id": "example.echo",
             "input_schema_digest": INPUT_SCHEMA_DIGEST,
             "effect_ceiling": ["capability:echo"],
+            "output_schema_digest": None,
+            "projection": "display-reduced",
+            "schemas": {"input": None, "output": None},
+            "input_ports": [],
+            "output_ports": [],
         }
     ]
+    assert palette["port_binding"] == {
+        "reference_format": "${steps.<step_id>.output.<path>}",
+        "whole_value_reference_format": "${steps.<step_id>.output}",
+        "json_pointer_reference_format": "${steps.<step_id>.output@<json_pointer>}",
+        "requires_depends_on": True,
+    }
     altered = definition()
     altered["steps"][0]["request"]["function_principal_id"] = "legacy.registry"
     result = provider.invoke("definition.validate", {"document": altered})
@@ -434,7 +491,7 @@ def test_stale_catalog_tampered_authority_and_store_records_fail_closed(
 
 
 def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() -> None:
-    assert generate(check=True) == {"packs": 1, "contracts": 1, "operations": 20}
+    assert generate(check=True) == {"packs": 1, "contracts": 2, "operations": 22}
     pack = validate_document((PACK_ROOT / "pack.v4.json").read_bytes(), "pack")
     contracts = validate_document(
         (PACK_ROOT / "contracts.v4.json").read_bytes(), "pack_contract_catalog"
@@ -447,7 +504,11 @@ def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() ->
     frontend_operations = {
         target["operation_id"] for route in frontend["routes"] for target in route["targets"]
     }
-    assert frontend_operations == set(pack["functions"][0]["operations"])
+    assert frontend_operations == {
+        operation
+        for function in pack["functions"]
+        for operation in function["operations"]
+    }
     assert {
         "definition.create",
         "definition.update",
@@ -604,3 +665,74 @@ def test_unknown_operation_and_restricted_expression_are_rejected(
     result = provider.invoke("definition.validate", {"document": invalid})
     assert not result["valid"]
     assert "restricted CEL subset" in result["errors"][0]
+
+
+def test_run_create_accepts_only_the_explicit_published_revision(runtime):
+    provider, _catalog, authority, invoker = runtime
+    published = publish(provider)
+    with pytest.raises(WorkflowConflict, match="revision"):
+        provider.invoke("run.create", {"definition_id": "workflow.echo",
+                        "revision_digest": "sha256:" + "f" * 64,
+                        "run_id": "wrong-revision"})
+    assert authority.commit_count == 0
+    assert invoker.requests == []
+    run = provider.invoke("run.create", {"definition_id": "workflow.echo",
+                          "revision_digest": published["revision_digest"],
+                          "run_id": "pinned-revision"})
+    assert run["revision_digest"] == published["revision_digest"]
+
+
+def test_archive_racing_run_creation_is_rechecked_under_owner_lock(runtime, monkeypatch):
+    provider, _catalog, _authority, invoker = runtime
+    published = publish(provider)
+    store = provider._engine.store
+    create = store.create_run
+    def archive_then_create(**kwargs):
+        provider.invoke("definition.archive", {"definition_id": "workflow.echo", "if_match": published["etag"]})
+        return create(**kwargs)
+    monkeypatch.setattr(store, "create_run", archive_then_create)
+    with pytest.raises(WorkflowConflict, match="changed"):
+        provider.invoke("run.create", {"definition_id": "workflow.echo", "run_id": "archive-race"})
+    assert invoker.requests == []
+    assert store._connection.execute("SELECT count(*) FROM workflow_runs").fetchone()[0] == 0
+    assert store._connection.execute("SELECT count(*) FROM workflow_occurrences").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("value", [0.5, float("nan"), 2**53, "\ud800"])
+def test_definition_validation_rejects_noncanonical_values_before_compile(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker], value: Any,
+) -> None:
+    """The authoring validator must not promise values storage cannot accept."""
+    provider, _catalog, authority, invoker = runtime
+    result = provider.invoke("definition.validate", {"document": definition(value)})
+    assert result["valid"] is False
+    assert "canonical JSON" in result["errors"][0]
+    with pytest.raises(WorkflowValidationError):
+        provider.invoke("definition.compile-preview", {"document": definition(value)})
+    assert not authority.reservations
+
+
+def test_definition_validation_preserves_explicit_decimal_strings(runtime) -> None:
+    provider, _catalog, _authority, _invoker = runtime
+    assert provider.invoke("definition.validate", {"document": definition("0.5")}) == {
+        "valid": True, "errors": [],
+    }
+
+
+def test_legacy_waiting_approval_resumes_with_proven_predispatch_admission(runtime):
+    provider, _catalog, authority, invoker = runtime
+    authority.state = ApprovalState.WAITING_APPROVAL
+    publish(provider)
+    provider.invoke("run.create", {"definition_id": "workflow.echo", "run_id": "legacy-wait", "inputs": {"message": "x"}})
+    waiting = provider.invoke("run.step.execute", {"run_id": "legacy-wait", "step_id": "echo"})
+    assert waiting["state"] == "waiting_approval"
+    store = provider._engine.store
+    legacy = store.get_attempt(waiting["attempt_id"])
+    legacy.pop("dispatch_admission")
+    payload, seal = store._encode(legacy)
+    store._connection.execute("UPDATE workflow_attempts SET payload=?, seal=? WHERE attempt_id=?", (payload, seal, waiting["attempt_id"]))
+    authority.reservations["reservation-1"] = replace(authority.reservations["reservation-1"], state=ApprovalState.APPROVED)
+    result = provider.invoke("run.step.execute", {"run_id": "legacy-wait", "step_id": "echo"})
+    assert result["state"] == "succeeded"
+    assert len(invoker.requests) == 1
+    assert store.get_attempt(waiting["attempt_id"])["dispatch_admission"] == "admitted"

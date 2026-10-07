@@ -252,7 +252,7 @@ def _configure_http_environment() -> None:
 
 def _parse_cli_args(argv: list[str]) -> None:
     """Parse launcher arguments before runtime setup or imports."""
-    parser = argparse.ArgumentParser(description="Launch the Tobkiri Defaultspack desktop app.")
+    parser = argparse.ArgumentParser(description="Launch the Tobkiri Harness desktop app.")
     parser.parse_args(argv)
 
 
@@ -893,7 +893,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         raise
     launch_url = f"{url}?{urllib.parse.urlencode({'code': login_code})}"
-    surface_result = open_desktop_surface(launch_url, title="Tobkiri")
+    surface_result = open_desktop_surface(launch_url, title="Tobkiri Harness")
     _write_launch_event(
         "surface_opened",
         port=port,

@@ -155,6 +155,9 @@ class HostV4Composition:
         routes: Sequence[OperationRoute],
         authority_ceilings: Mapping[tuple[str, ...], AuthorityCeilings],
         effective_artifacts: Mapping[str, str] | None = None,
+        caller_function_declarations: (
+            Mapping[str, Sequence[Mapping[str, Any]]] | None
+        ) = None,
     ) -> "HostV4Composition":
         """Capture a complete v4 graph, rejecting missing, stale, or extra input."""
         checked_profile = validate_document(profile, "profile")
@@ -205,6 +208,51 @@ class HostV4Composition:
                         principal
                     )
 
+        # Profile edges are caller-Function-scoped while Authority is exercised
+        # by exact per-Operation principals.  Caller Functions admitted by the
+        # Profile but never bound as a target (a provider whose own
+        # dependencies remain declared after its callers were removed, or a
+        # Pack with only outgoing edges) are supplied by the plan producer as
+        # digest-pinned declarations so their identity is still exact.  Every
+        # admitted Operation expands the Function edge to one authority edge
+        # per caller principal; an undeclared caller remains denied.
+        for function_id, declared_operations in (
+            caller_function_declarations or {}
+        ).items():
+            for declaration in declared_operations:
+                principal = FunctionPrincipal.from_dict(declaration)
+                if principal.function_id != function_id:
+                    raise ResolutionError(
+                        "declared caller Function principal is inconsistent"
+                    )
+                if principal.parent_artifact_digest not in {digest for _identity, digest in effective}:
+                    raise ResolutionError("declared caller Function conflicts with ProfileLock artifacts")
+                existing = principals.get(principal.principal_id)
+                if existing is None and principal.parent_artifact_digest in {artifact.digest for artifact in artifacts}:
+                    raise ResolutionError("declared caller Function conflicts with verified artifact operations")
+                if existing is not None:
+                    if existing != principal:
+                        raise ResolutionError(
+                            "declared caller Function principal conflicts "
+                            "with verified inventory"
+                        )
+                    continue
+                same_operation = next(
+                    (
+                        item
+                        for item in principals_by_function.get(function_id, ())
+                        if item.operation_id == principal.operation_id
+                    ),
+                    None,
+                )
+                if same_operation is not None:
+                    raise ResolutionError(
+                        "declared caller Function principal conflicts "
+                        "with verified inventory"
+                    )
+                principals[principal.principal_id] = principal
+                principals_by_function.setdefault(function_id, []).append(principal)
+
         # Shared operation names are valid only when every selected edge still
         # resolves to the same immutable target.  OperationCatalog has one
         # route per Contract/operation, so collapse byte-for-byte duplicate
@@ -250,9 +298,12 @@ class HostV4Composition:
             caller_candidates = tuple(
                 principals_by_function.get(str(item["caller_function_id"]), ())
             )
-            if len(caller_candidates) != 1:
+            if len({(caller.parent_artifact_digest, caller.function_implementation_digest, caller.contract_revision_digest) for caller in caller_candidates}) > 1:
+                raise ResolutionError("caller Function has ambiguous artifact ownership")
+            if not caller_candidates:
                 raise ResolutionError(
-                    "ResolvedPlan caller Function does not identify one principal"
+                    "ResolvedPlan caller Function is not declared by the "
+                    "admitted inventory"
                 )
             operation_key = (str(item["contract_id"]), str(item["operation_id"]))
             plan_edge_key = (str(item["caller_function_id"]), *operation_key)
@@ -278,16 +329,17 @@ class HostV4Composition:
             # caller distinction is retained by ``expected_authority_edges``
             # and must not require duplicate catalog rows.
             expected_route_counts[binding_identity] = 1
-            expected_authority_edges.add(
-                _authority_edge_key(
-                    profile_id=profile_id,
-                    activation_id=activation_id,
-                    caller=caller_candidates[0],
-                    target=principal,
-                    contract_id=operation_key[0],
-                    operation_id=operation_key[1],
+            for caller_candidate in caller_candidates:
+                expected_authority_edges.add(
+                    _authority_edge_key(
+                        profile_id=profile_id,
+                        activation_id=activation_id,
+                        caller=caller_candidate,
+                        target=principal,
+                        contract_id=operation_key[0],
+                        operation_id=operation_key[1],
+                    )
                 )
-            )
         actual_route_counts: dict[tuple[str, str, str, str, str], int] = {}
         for route in unique_routes:
             route_identity = (

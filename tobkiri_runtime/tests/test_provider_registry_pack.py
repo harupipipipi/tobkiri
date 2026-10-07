@@ -91,3 +91,25 @@ def test_registry_rejects_credentialed_http_but_keeps_credentialless_local_http(
     with pytest.raises(ValueError, match="requires HTTPS") as stale:
         registry.snapshot()
     assert "opaque-stale" not in str(stale.value)
+
+
+@pytest.mark.parametrize('verified', ['false', 'true', 0, 1, None, [], {}])
+def test_provider_health_rejects_non_boolean_evidence(tmp_path, verified):
+    registry = ProviderRegistry('default', user_data_root=tmp_path)
+    with pytest.raises(ValueError, match='verified must be a boolean'):
+        registry.save({'provider_instance_id': 'test', 'adapter_id': 'adapter.standard',
+                       'health_evidence': {'verified': verified}}, expected_revision=0)
+    assert not registry.path.exists()
+
+
+def test_provider_health_does_not_trust_truthy_legacy_evidence(tmp_path):
+    registry = ProviderRegistry('default', user_data_root=tmp_path)
+    registry.save({'provider_instance_id': 'test', 'adapter_id': 'adapter.standard',
+                   'enabled': False}, expected_revision=0)
+    state = json.loads(registry.path.read_text())
+    assert state['providers']['test']['enabled'] is False
+    state['providers']['test']['health_evidence'] = {'verified': 'false', 'status': 'available'}
+    registry.path.write_text(json.dumps(state))
+    health = registry.health()['providers'][0]
+    assert health['verified'] is False
+    assert health['status'] == 'unknown'

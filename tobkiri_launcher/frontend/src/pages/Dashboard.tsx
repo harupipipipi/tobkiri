@@ -1,23 +1,19 @@
 import type {FormEvent} from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {Link, useSearchParams, useOutletContext} from 'react-router';
+import {Link, useSearchParams, useOutletContext, useNavigate} from 'react-router';
 import {
   AlertCircle,
-  ArrowRight,
-  Monitor,
-  Package,
   Plus,
-  RefreshCw,
   Search,
-  Workflow,
 } from 'lucide-react';
 
 import type {LayoutOutletContext} from '@/src/components/layout/Layout';
 import {ProfileCard} from '@/src/components/dashboard/ProfileCard';
+import {useAutoRefresh} from '@/src/hooks/useAutoRefresh';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Badge} from '@/src/components/ui/Badge';
-import {TobkiriLoader, TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
+import {TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
 import {
   createNamedProfile,
   deleteNamedProfile,
@@ -27,30 +23,19 @@ import {
   type NamedProfileRecord,
   type NamedProfileRegistry,
 } from '@/src/lib/hostClient';
-import {fetchDashboard} from '@/src/lib/defaultspackClient';
 import {ApiContractError, ApiRequestTimeoutError} from '@/src/lib/apiTransport';
 import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {isDesktopShellAvailable, launchSelectedPresentation, openExternalUrl} from '@/src/lib/desktopHost';
 import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
-import {panelRoutes} from '@/src/lib/routes';
+import {useProfileSelection} from '@/src/lib/profileSelection';
+import {panelRoutes, profileHref} from '@/src/lib/routes';
 import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
   namedProfileDisplayName,
   type NamedProfileSortMode,
 } from '@/src/lib/profileRegistryView';
-import {transformDashboard} from '@/src/lib/transforms';
-import type {DashboardData} from '@/src/store';
 import {useAppStore} from '@/src/store';
-
-const defaultDashboard: DashboardData = {
-  kernelStatus: 'stopped',
-  uptime: '--',
-  activePacks: 0,
-  registeredFlows: 0,
-  activities: [],
-  supervisor: null,
-};
 
 export {copyTextToClipboard} from '@/src/lib/clipboard';
 
@@ -77,11 +62,6 @@ function isActiveExecutionProfile(
   // not compared with the immutable definition revision on the registry row.
   return registry.active_profile_id === entry.profile_id
     && registry.active_profile_revision !== null;
-}
-
-function profileHref(profileId: string, hash?: string): string {
-  const query = `?profile_id=${encodeURIComponent(profileId)}`;
-  return `${panelRoutes.profile}${query}${hash ? `#${hash}` : ''}`;
 }
 
 function sortModeFromParam(value: string | null): NamedProfileSortMode {
@@ -150,6 +130,7 @@ function packProfileTransitionPending(): boolean {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const verificationBanner = useOutletContext<LayoutOutletContext | undefined>()?.verificationBanner;
   const addToast = useAppStore((state) => state.addToast);
   const showDialog = useAppStore((state) => state.showDialog);
@@ -172,18 +153,14 @@ export function Dashboard() {
     && packVmDoctor.platform === 'macos-arm64';
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [dashboard, setDashboard] = useState<DashboardData>(defaultDashboard);
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const summaryAvailable = runtimeReady && !profileTransitionPending && !dashboardLoading && !dashboardError;
   const [registry, setRegistry] = useState<NamedProfileRegistry | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
   const [launchFailure, setLaunchFailure] = useState<ProfileLaunchFailure | null>(null);
   const [profileBusy, setProfileBusy] = useState<string | null>(null);
   const profileOperationKeyRef = useRef<string | null>(null);
-  const dashboardReadGeneration = useRef(0);
-  const profileReadGeneration = useRef(0);
+  const profileReadVersion = useRef(0);
+  const notifiedProfileError = useRef('');
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileSourceId, setNewProfileSourceId] = useState('');
@@ -194,6 +171,13 @@ export function Dashboard() {
   const profileQuery = searchParams.get('q') ?? '';
   const sortMode = sortModeFromParam(searchParams.get('sort'));
   const browsingProfileId = searchParams.get('profile_id');
+  const {selectProfile} = useProfileSelection();
+
+  // Browsing a Profile on Home also marks it as the panel-wide inspection
+  // selection so Dev surfaces can say which identity they would act on.
+  useEffect(() => {
+    selectProfile(browsingProfileId);
+  }, [browsingProfileId, selectProfile]);
 
   const updateProfileSearch = (key: 'q' | 'sort', value: string) => {
     setSearchParams((current) => {
@@ -204,52 +188,29 @@ export function Dashboard() {
     }, {replace: true});
   };
 
-  const refreshDashboard = async () => {
-    const generation = ++dashboardReadGeneration.current;
-    setDashboardLoading(true);
+  const refreshProfiles = async (signal: AbortSignal): Promise<boolean> => {
+    const version = profileReadVersion.current;
     try {
-      const response = await fetchDashboard();
-      if (generation !== dashboardReadGeneration.current || packProfileTransitionPending()) return;
-      setDashboard(transformDashboard(response));
-      setDashboardError(null);
-    } catch (error) {
-      if (generation !== dashboardReadGeneration.current) return;
-      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return;
-      const rawMessage = error instanceof Error ? error.message : '';
-      setDashboardError(rawMessage || 'Failed to load your workspace summary.');
-    } finally {
-      if (generation === dashboardReadGeneration.current) setDashboardLoading(false);
-    }
-  };
-
-  const refreshProfiles = async () => {
-    const generation = ++profileReadGeneration.current;
-    try {
-      const nextRegistry = await fetchNamedProfiles();
-      if (generation !== profileReadGeneration.current || packProfileTransitionPending()) return;
-      setRegistry(nextRegistry);
+      const next = await fetchNamedProfiles();
+      if (signal.aborted || version !== profileReadVersion.current || packProfileTransitionPending()) return true;
+      setRegistry((current) => current && current.generation > next.generation ? current : next);
       setProfileLoadError(null);
-      setProfileActionError(null);
+      notifiedProfileError.current = '';
+      return true;
     } catch (error) {
-      if (generation !== profileReadGeneration.current) return;
-      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return;
-      setProfileLoadError(error instanceof Error ? error.message : 'Named Profiles could not be loaded.');
+      if (signal.aborted || version !== profileReadVersion.current) return true;
+      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return true;
+      const message = error instanceof Error ? error.message : 'Named Profiles could not be loaded.';
+      setProfileLoadError(message);
+      if (notifiedProfileError.current !== message) {
+        notifiedProfileError.current = message;
+        addToast(message, 'error');
+      }
+      return false;
     }
   };
 
-  useEffect(() => {
-    if (profileTransitionPending) {
-      setDashboardLoading(false);
-    } else if (runtimeReady) {
-      void refreshDashboard();
-    } else {
-      setDashboardLoading(false);
-    }
-  }, [runtimeReady, profileTransitionPending]);
-
-  useEffect(() => {
-    if (!profileTransitionPending) void refreshProfiles();
-  }, [profileTransitionPending]);
+  useAutoRefresh(refreshProfiles, {paused: profileBusy !== null || profileTransitionPending});
 
   useEffect(() => {
     if (desktopShellAvailable && runtimeReady && !packVmDoctor) {
@@ -287,6 +248,7 @@ export function Dashboard() {
 
   const beginProfileOperation = (key: string): boolean => {
     if (profileOperationKeyRef.current !== null) return false;
+    profileReadVersion.current += 1;
     profileOperationKeyRef.current = key;
     setProfileBusy(key);
     return true;
@@ -313,7 +275,7 @@ export function Dashboard() {
     if (!beginProfileOperation(key)) return false;
     try {
       const nextRegistry = await operation();
-      profileReadGeneration.current += 1;
+      profileReadVersion.current += 1;
       setRegistry(nextRegistry);
       setProfileActionError(null);
       addToast(successMessage, 'success');
@@ -366,6 +328,7 @@ export function Dashboard() {
     setNewProfileName('');
     setNewProfileSourceId('');
     setShowAddProfile(false);
+    navigate(profileHref(profileId, 'profile-packs'));
   };
 
   const submitProfileName = async (
@@ -399,7 +362,7 @@ export function Dashboard() {
       registry.profiles.map((profile) => profile.profile_id),
     );
     const displayName = `${namedProfileDisplayName(entry)} Copy`;
-    await commitProfileMutation(
+    const duplicated = await commitProfileMutation(
       `duplicate:${entry.profile_id}`,
       () => duplicateNamedProfile({
         profile_id: entry.profile_id,
@@ -410,6 +373,7 @@ export function Dashboard() {
       }),
       `Profile ${displayName} created.`,
     );
+    if (duplicated) navigate(profileHref(candidate, 'profile-packs'));
   };
 
   const removeProfile = (entry: NamedProfileRecord) => {
@@ -437,7 +401,7 @@ export function Dashboard() {
 
   const launchProfile = async (entry: NamedProfileRecord) => {
     if (!registry || !isActiveExecutionProfile(registry, entry)) return;
-    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady});
+    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
     if (
       !activeProfileReady
       || !launchReady
@@ -461,10 +425,6 @@ export function Dashboard() {
     }
   };
 
-  if (dashboardLoading && !registry && !profileError) {
-    return <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-6">{verificationBanner}<DashboardSkeleton /></div>;
-  }
-
   return (
     <div className="flex min-w-0 flex-1 overflow-hidden">
       <div className="mx-auto flex min-w-0 w-full max-w-[1100px] flex-col gap-6 overflow-y-auto px-6 py-8 page-enter lg:px-10">
@@ -485,19 +445,6 @@ export function Dashboard() {
             >
               <Plus aria-hidden="true" className="h-4 w-4" /> Add Profile
             </Button>
-            <Button
-              aria-label="Refresh Home and Profiles"
-              onClick={() => {
-                void refreshDashboard();
-                void refreshProfiles();
-              }}
-              size="icon"
-              title="Refresh Home and Profiles"
-              type="button"
-              variant="outline"
-            >
-              <RefreshCw aria-hidden="true" className="h-4 w-4" />
-            </Button>
           </div>
         </section>
 
@@ -507,17 +454,6 @@ export function Dashboard() {
           <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="status">
             <TobkiriLoadingMark />
             <span className="flex-1">Updating Profile. Home and Profiles will refresh when the Pack change finishes.</span>
-          </div>
-        )}
-
-        {dashboardError && (
-          <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="alert">
-            <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{dashboardError}</span>
-            <CopyErrorButton text={dashboardError} label="Copy dashboard error" />
-            <Button onClick={() => void refreshDashboard()} size="sm" type="button" variant="ghost">
-              Retry
-            </Button>
           </div>
         )}
 
@@ -573,9 +509,6 @@ export function Dashboard() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-main" id="profiles-title">Profiles</h2>
-              <p className="mt-1 text-xs text-text-muted">
-                Browse a Profile without changing execution. Set Active lets you review and approve a Profile before starting it.
-              </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <label className="relative block sm:w-64">
@@ -682,29 +615,29 @@ export function Dashboard() {
             </div>
           )}
 
-          {profileError && (
+          {profileActionError && (
             <div aria-live="assertive" className="mt-4 flex items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/8 px-3 py-2 text-sm text-destructive" role="alert">
               <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{profileError}</span>
-              <CopyErrorButton text={profileError} label="Copy Profile error" />
+              <span className="flex-1">{profileActionError}</span>
+              <CopyErrorButton text={profileActionError} label="Copy Profile error" />
               <Button
-                onClick={() => {
-                  if (profileLoadError) {
-                    void refreshProfiles();
-                  } else {
-                    setProfileActionError(null);
-                  }
-                }}
+                onClick={() => setProfileActionError(null)}
                 size="sm"
                 type="button"
                 variant="ghost"
               >
-                {profileLoadError ? 'Retry' : 'Dismiss'}
+                Dismiss
               </Button>
             </div>
           )}
 
           <div aria-live="polite" className="mt-5">
+            {profileLoadError && (
+              <p className="mb-3 flex items-center gap-2 text-xs text-text-muted" role="status">
+                <TobkiriLoadingMark />
+                {registry ? 'Updating Profiles…' : 'Connecting to Profiles…'}
+              </p>
+            )}
             {!registry && !profileError && (
               <div className="flex items-center justify-center py-8"><TobkiriLoadingMark /></div>
             )}
@@ -729,10 +662,10 @@ export function Dashboard() {
               </div>
             )}
             {registry && visibleProfiles.length > 0 && (
-              <div className="grid min-w-0 auto-rows-fr gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
+              <div className="grid min-w-0 items-stretch gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
                 {visibleProfiles.map((entry) => {
                   const active = isActiveExecutionProfile(registry, entry);
-                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady});
+                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
                   // Only the card whose own action is in flight reports busy.
                   // Any pending mutation still locks the catalog for every card
                   // through mutationsAvailable, so a create cannot race a rename.
@@ -778,52 +711,13 @@ export function Dashboard() {
                 })}
               </div>
             )}
+            {registry && visibleProfiles.length > 0 && !desktopShellAvailable ? (
+              <p className="mt-3 text-xs text-text-muted">Launch is available in Tobkiri Launcher.</p>
+            ) : null}
           </div>
         </section>
 
-        <section aria-label="Workspace summary" className="grid gap-4 sm:grid-cols-3">
-          <Link
-            className="group rounded-xl border border-border bg-bg-card p-4 transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
-            to={panelRoutes.packs}
-          >
-            <div className="flex items-center gap-2">
-              <Package aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
-              <h3 className="text-sm font-semibold text-text-main group-hover:underline">Active Packs</h3>
-              <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-text-muted" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{summaryAvailable ? dashboard.activePacks : '--'}</div>
-            <p className="mt-1 text-xs text-text-muted">Enabled in the current v4 Profile</p>
-          </Link>
-          <div className="rounded-xl border border-border bg-bg-card p-4">
-            <div className="flex items-center gap-2">
-              <Workflow aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
-              <h3 className="text-sm font-semibold text-text-main">Flows</h3>
-            </div>
-            <div className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{summaryAvailable ? dashboard.registeredFlows : '--'}</div>
-            <p className="mt-1 text-xs text-text-muted">Registered flow definitions</p>
-          </div>
-          <div className="rounded-xl border border-border bg-bg-card p-4">
-            <div className="flex items-center gap-2">
-              <Monitor aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
-              <h3 className="text-sm font-semibold text-text-main">Kernel</h3>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className={summaryAvailable && dashboard.kernelStatus === 'running' ? 'h-2.5 w-2.5 shrink-0 rounded-full bg-success' : 'h-2.5 w-2.5 shrink-0 rounded-full bg-warning'}
-              />
-              <span className="text-lg font-semibold tracking-tight text-text-main">
-                {!summaryAvailable ? 'Not verified' : dashboard.kernelStatus === 'running' ? 'Running' : dashboard.kernelStatus === 'error' ? 'Error' : 'Stopped'}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-text-muted">Uptime: {summaryAvailable ? dashboard.uptime : '--'}</p>
-          </div>
-        </section>
       </div>
     </div>
   );
-}
-
-function DashboardSkeleton() {
-  return <TobkiriLoader label="Loading Tobkiri home..." />;
 }

@@ -11,30 +11,58 @@ cd tobkiri_runtime
 python -m core_runtime.pack_scaffold my.pack --template minimal --output /secure/build/output
 ```
 
-authoritative artifact set は次の4文書と、indexに列挙されたruntime fileです。
+このコマンドは実行権限のない空の **authoring scaffold** を生成します。
+`minimal` の実際の出力は次の6ファイルです。`runtime/handler.py` は生成しません。
 
 ```text
 my.pack/
+├── scaffold-source.v1.json
+├── README.md
 ├── pack.v4.json
 ├── contracts.v4.json
 ├── executables.v4.json
-├── artifact-index.v4.json
-└── runtime/
-    └── handler.py
+└── artifact-index.v4.json
 ```
 
-- `pack.v4.json` は Pack ID、version、`kind: normal_sandbox`、Function、requirementsを宣言します。
-- `contracts.v4.json` は exact Contract/Operation schema と revision digest を持ちます。
-- `executables.v4.json` は Function、Operation、implementation digest、PackVM backendを固定します。
-- `artifact-index.v4.json` は全runtime artifactをdigestで列挙し、integrity sealを持ちます。
-- Host Extensionは別package kind・署名namespace・install APIです。Normal Packのmanifest変更で
-  Host Extensionへ昇格できません。
+- 4つのv4文書がPackの宣言、公開Contract、実装の対応、ファイルdigestを保持します。
+- 生成直後は `execution_boundary: declarative_only`、Functionsとcapabilitiesは空です。
+- `capability`、`flow`、`full` は追加のActivity/Skill/Toolと関数ソースの例を生成しますが、
+  それらも実行可能なv4 Functionとしては登録されません。
+- `refresh_scaffold_artifacts` は空の実行カタログを含む雛形を再生成します。
+  追加した関数ソースを自動登録するコンパイラとして使わないでください。
+- 外部Packの開発だけでbundled catalogや他Packの内部ファイルを変更する必要はありません。
 
-生成後は公式validatorを実行します。
+### 指定したPackのメタデータを検証する
+
+上の `tobkiri_runtime` ディレクトリから実行します。
+対象パスは自分が生成したディレクトリに置き換えてください。
 
 ```bash
-python scripts/quality/validate_pack_architecture.py
+python - /secure/build/output/my.pack <<'PY'
+import sys
+from pathlib import Path
+from tobkiri_host.artifact_compiler import compile_pack_root
+
+compiled = compile_pack_root(Path(sys.argv[1]))
+print("Pack metadata compiled:", compiled.artifact.pack_id)
+print("This is not signature, install, activation, or runtime verification.")
+PY
 ```
+
+この検証は4文書間の整合性と宣言された実装の対応を確認します。
+外部Packの署名・全ファイルinventory検証は後述のHost admissionで別途行います。
+`python scripts/quality/validate_pack_architecture.py` はTobkiriリポジトリ全体の
+検証です。リポジトリ外に作ったPackをこのコマンドだけで検証できたとは判断しません。
+
+### 動く機能にするために残る作業
+
+公開Contract/Operation、入出力schema、Function、実装とdigestの対応を定義し、
+ロジック単体のテスト、署名、Host admission、Profile選択、実際の呼び出しを順に確認します。
+現状、この雛形コマンドだけでは「実行可能なhello world」まで完成しません。
+UIのJSON宣言や独自画面を追加した場合も、表示と実行の検証はそれぞれ必要です。
+
+Host Extensionは別package kind・署名namespace・install APIです。
+Normal Packのmanifest変更でHost Extensionへ昇格できません。
 
 ## 2. publisher署名を作る
 

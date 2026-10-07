@@ -6,8 +6,16 @@ from typing import Any
 
 import pytest
 
+from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
+    normalize_model_profile_save,
+    present_model_profile_saved,
+    present_model_profiles,
+)
 from ecosystem.rumi_model_registry_pack.runtime.process import ModelRegistryHostFactoryV4
-from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+from ecosystem.rumi_model_registry_pack.runtime.registry import (
+    ModelRegistry,
+    ModelRegistryConflict,
+)
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
 
@@ -197,6 +205,130 @@ def test_identical_model_configuration_revalidates_without_rewriting(
     assert second == first
     assert ModelRegistry("defaults", user_data_root=tmp_path).snapshot()["revision"] == 1
     assert len(client.calls) == 2, "owner-side Provider validation still runs"
+
+
+def _create_payload(expected_revision: int) -> dict[str, Any]:
+    return normalize_model_profile_save({
+        "model_profile_id": "daily",
+        "model_id": "provider/model",
+        "provider_instance_id": "provider.fixture",
+        "display_name": "Daily",
+        "expected_revision": expected_revision,
+        "provider_registry_revision": 1,
+    })
+
+
+@pytest.mark.parametrize("provider_in_requirements", [False, True])
+def test_repeated_create_preserves_full_configuration_and_redaction(
+    tmp_path: Path, provider_in_requirements: bool,
+) -> None:
+    """A lossy selector projection cannot replace an owner's rich record."""
+    provider_registry = _provider_registry(tmp_path)
+    client = _ProviderRegistryClient(provider_registry)
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    record = {
+        **_create_payload(0)["record"],
+        "requirements": {"tool_calling": True, "minimum_context": 32000},
+        "parameters": {"temperature": 0.25, "max_tokens": 4096},
+        "credential_handle": "credential:opaque-model-binding",
+    }
+    record["metadata"]["purpose"] = "rich route"
+    if provider_in_requirements:
+        record["metadata"].pop("provider_connection_id")
+        record["requirements"]["preferred_provider_instance_id"] = "provider.fixture"
+    registry.save(record, expected_revision=0)
+    before = registry.path.read_bytes()
+    confirmed = registry.create(_create_payload(1)["record"], expected_revision=1)
+    assert confirmed["profile"] == registry.get("daily")
+
+    saved = _invoke(tmp_path, client=client)(_create_payload(1))
+
+    assert saved["profile"] == {
+        **_create_payload(1)["record"], "enabled": True,
+    }
+    assert registry.path.read_bytes() == before
+    assert saved["store_revision"] == 1
+    assert len(client.calls) == 1
+    # The captured owner response is journaled before the UI's projection.
+    from tobkiri_protocol.canonical import canonical_digest
+
+    assert canonical_digest(saved).startswith("sha256:")
+    projected = present_model_profile_saved(saved)
+    assert projected["profiles"][0]["provider_id"] == "provider.fixture"
+    assert not any(key in str(projected) for key in (
+        "credential_handle", "parameters", "requirements", "purpose",
+    ))
+
+
+@pytest.mark.parametrize("change", [
+    {"enabled": False}, {"model_id": "another/model"},
+    {"display_name": "Another"},
+    {"metadata": {"provider_connection_id": "another.provider"}},
+])
+def test_create_rejects_reserved_ids_including_hidden_disabled_records(
+    tmp_path: Path, change: dict[str, Any],
+) -> None:
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    registry.save({
+        **_create_payload(0)["record"], "parameters": {"temperature": 0.25},
+        "credential_handle": "opaque:binding", **change,
+    }, expected_revision=0)
+    before = registry.path.read_bytes()
+    if change.get("enabled") is False:
+        assert present_model_profiles(registry.snapshot())["profiles"] == []
+    provider_registry = _provider_registry(tmp_path)
+
+    with pytest.raises(ModelRegistryConflict, match="reserved"):
+        _invoke(tmp_path, client=_ProviderRegistryClient(provider_registry))(
+            _create_payload(1)
+        )
+
+    assert registry.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_repeated_create_revalidates_provider_before_confirming_identity(
+    tmp_path: Path, enabled: bool,
+) -> None:
+    provider_registry = _provider_registry(tmp_path)
+    client = _ProviderRegistryClient(provider_registry)
+    invoke = _invoke(tmp_path, client=client)
+    invoke(_create_payload(0))
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    before = registry.path.read_bytes()
+    provider_registry.save({
+        **provider_registry.snapshot()["providers"][0], "enabled": enabled,
+    }, expected_revision=1)
+
+    with pytest.raises(PermissionError, match="provider connection"):
+        invoke(_create_payload(1))
+    if not enabled:
+        with pytest.raises(PermissionError, match="provider connection"):
+            invoke({**_create_payload(1), "provider_registry_revision": 2})
+
+    assert registry.path.read_bytes() == before
+
+
+def test_explicit_full_save_can_update_and_reenable_a_reserved_profile(
+    tmp_path: Path,
+) -> None:
+    provider_registry = _provider_registry(tmp_path)
+    invoke = _invoke(tmp_path, client=_ProviderRegistryClient(provider_registry))
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    registry.save({**_create_payload(0)["record"], "enabled": False}, expected_revision=0)
+    payload = _create_payload(1)
+    payload["operation"] = "save"
+    payload["record"].update({
+        "enabled": True, "model_id": "changed/model",
+        "parameters": {"temperature": 0.5},
+    })
+
+    saved = invoke(payload)
+
+    assert saved["store_revision"] == 2
+    assert saved["profile"]["enabled"] is True
+    assert saved["profile"]["model_id"] == "changed/model"
+    assert saved["profile"]["parameters"] == {"temperature": 0.5}
 
 
 @pytest.mark.parametrize("change", [

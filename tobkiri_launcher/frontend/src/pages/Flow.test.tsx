@@ -285,6 +285,9 @@ test('Workflow authoring palette is usable from a fresh draft and selection relo
     await act(async () => {
       insert.click();
     });
+    const sourceTab = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Source JSON');
+    assert.ok(sourceTab);
+    await act(async () => sourceTab.click());
     const editor = container.querySelector<HTMLTextAreaElement>('#workflow-definition-json');
     assert.ok(editor);
     const inserted = JSON.parse(editor.value) as Record<string, unknown>;
@@ -527,3 +530,65 @@ test('a published Profile-declared flow renders its exact backend operation as i
     });
   }
 });
+
+test('authoring writes are blocked for a different inspected Profile even outside operation-invocation hook', async () => {
+  const {ProfileSelectionProvider,useProfileSelection} = await import('@/src/lib/profileSelection');
+  const {dom,container,root}=createDom();
+  const writes:string[]=[];
+  const dependencies:WorkflowAuthoringDependencies={fetchCatalog:async()=>workflowCatalog(),invoke:async(request)=>{
+    if(request.contributionId.endsWith('definition.list'))return {definitions:[]};
+    if(request.contributionId.endsWith('operation.palette'))return {catalog_digest:digest('8'),security_epoch:1,operations:[]};
+    writes.push(request.contributionId);throw new Error('Unexpected write');
+  }};
+  function Selection(){const {selectProfile}=useProfileSelection();return <button onClick={()=>selectProfile('other-profile')}>Inspect other</button>;}
+  try{
+    await act(async()=>{root.render(<ProfileSelectionProvider><Selection/><WorkflowAuthoringPanel boundProfileId="defaults" dependencies={dependencies}/></ProfileSelectionProvider>);});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10));});
+    const pick=Array.from(container.querySelectorAll('button')).find(button=>button.textContent==='Inspect other')!;
+    await act(async()=>pick.click());
+    const save=Array.from(container.querySelectorAll('button')).find(button=>button.textContent==='Create draft')!;
+    assert.ok(save);assert.equal(save.disabled,true);
+    await act(async()=>save.click());assert.deepEqual(writes,[]);
+  }finally{await act(async()=>root.unmount());dom.window.close();}
+});
+
+for (const navigation of ['workspace-tab', 'same-active-profile', 'different-profile'] as const) {
+  test(`unsaved Flow steps survive ${navigation} without starting a write`, async () => {
+    const previous = {window:globalThis.window,document:globalThis.document,navigator:globalThis.navigator};
+    const {ProfileSelectionProvider,useProfileSelection} = await import('@/src/lib/profileSelection');
+    const {MemoryRouter} = await import('react-router');
+    const {dom,container,root} = createDom();
+    let writes = 0;
+    const dependencies:WorkflowAuthoringDependencies = {fetchCatalog:async()=>workflowCatalog(),invoke:async request=>{
+      if(request.contributionId.endsWith('.definition.list'))return {definitions:[]};
+      if(request.contributionId.endsWith('.operation.palette'))return {catalog_digest:digest('7'),security_epoch:1,operations:[paletteOperation()]};
+      writes++;throw new Error('Unexpected write');
+    }};
+    function Selection(){const {selectProfile}=useProfileSelection();return <button onClick={()=>selectProfile(navigation==='different-profile'?'other-profile':'defaults')}>Inspect active</button>;}
+    const button=(text:string)=>{const value=Array.from(container.querySelectorAll('button')).find(item=>item.textContent===text);assert.ok(value,text);return value;};
+    const client={read:async<T,>()=>flowUiFixture as RuntimeSurfaceEnvelope<T>};
+    try {
+      await act(async()=>root.render(<MemoryRouter><ProfileSelectionProvider><Selection/><Flow operationsClient={client} authoringDependencies={dependencies}/></ProfileSelectionProvider></MemoryRouter>));
+      const insert=container.querySelector<HTMLButtonElement>('[aria-label="Insert exact Workflow step for echo"]');assert.ok(insert);
+      await act(async()=>insert.click());
+      await act(async()=>button('Source JSON').click());
+      const source=()=>{const textarea=container.querySelector<HTMLTextAreaElement>('#workflow-definition-json');assert.ok(textarea);return JSON.parse(textarea.value);};
+      assert.equal(source().steps.length,1);
+      if(navigation==='workspace-tab'){
+        await act(async()=>button('Profile-declared operations').click());
+        assert.equal(container.querySelector('[aria-label="Workflow run controls"]'),null,'hidden authoring must unmount local run controls');
+        await act(async()=>button('Workflow authoring').click());
+        assert.ok(container.querySelector('[aria-label="Workflow run controls"]'));
+      }else{await act(async()=>button('Inspect active').click());}
+      if(navigation==='different-profile'){
+        await act(async()=>button('Source JSON').click());
+        assert.equal(source().steps.length,0,'draft must not cross Profile identities');
+        assert.equal(button('Create draft').disabled,true);
+      }else{assert.equal(source().steps.length,1);}
+      assert.equal(writes,0);
+    }finally{
+      await act(async()=>root.unmount());dom.window.close();
+      Object.defineProperties(globalThis,{window:{value:previous.window,configurable:true},document:{value:previous.document,configurable:true},navigator:{value:previous.navigator,configurable:true}});
+    }
+  });
+}

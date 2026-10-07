@@ -820,6 +820,29 @@ def _normalize_profile(document: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
+def _profile_source_for_candidate(profile_path: Path) -> dict[str, Any]:
+    """Use current author intent for requests while staging derived outputs."""
+    profile_source = json.loads(profile_path.read_text(encoding="utf-8"))
+    intent_path = profile_path.with_name(
+        profile_path.name.replace(".profile.v5.json", ".profile.intent.v1.json")
+    )
+    if intent_path.is_symlink():
+        raise ValueError("Profile intent must not be a symlink")
+    if profile_path.name.endswith(".profile.v5.json") and intent_path.is_file():
+        # Intent owns requested providers and edges. The old compatibility
+        # projection may refer to a provider removed by this very release.
+        # Resolve the new requests against the candidate manifests below;
+        # the staged profile compiler rebuilds all derived locks/projections.
+        intent = validate_document(intent_path.read_bytes(), "profile_intent")
+        if intent["profile_id"] != profile_source["profile_id"]:
+            raise ValueError("Profile intent identity differs from its projection")
+        profile_source.update({
+            key: value for key, value in intent.items()
+            if key not in {"intent_api_version", "content_projections"}
+        })
+    return _normalize_profile(profile_source)
+
+
 def _render(source_commit: str | None = None) -> dict[Path, bytes]:
     source_commit = informational_source_commit(ROOT.parent, source_commit)
     rendered: dict[Path, bytes] = {}
@@ -930,7 +953,7 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
         )
         shells.append((path, validate_document(shell, "shell")))
     for profile_path in profile_paths:
-        profile = _normalize_profile(json.loads(profile_path.read_text(encoding="utf-8")))
+        profile = _profile_source_for_candidate(profile_path)
         pack_aliases = PROFILE_BUNDLE_POLICY["legacy_pack_id_aliases"]
         for pack in profile["packs"]:
             replacement = pack_aliases.get(pack["pack_id"])

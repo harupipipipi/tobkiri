@@ -14,10 +14,10 @@ import type {NamedProfileRegistry} from '@/src/lib/api';
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
 import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {getRuntimeDispatchStatus, setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
+import {ToastContainer} from '@/src/components/ui/ToastContainer';
 import {useAppStore} from '@/src/store';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
-const dashboardRequestPath = `/api/contracts/defaultspack/${encodeURIComponent('GET /api/home/dashboard')}`;
 
 function profileRecord(profileId: string, displayName: string, revision: string) {
   const resolved = profileId === 'defaults';
@@ -164,15 +164,6 @@ function jsonResponse(data: unknown): Response {
   });
 }
 
-function dashboardProjection(enabled: number) {
-  return {
-    packs: {total: 141, enabled, disabled: 141 - enabled},
-    flows: {total: 0},
-    kernel: {status: 'running', uptime: null},
-    profile: null,
-  };
-}
-
 function buttonByLabel(container: HTMLElement, label: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   assert.ok(button, `missing button ${label}`);
@@ -223,6 +214,74 @@ test('copyTextToClipboard copies the complete runtime error message', async () =
 test('copyTextToClipboard returns false when the clipboard is unavailable', async () => {
   const success = await copyTextToClipboard('message', undefined);
   assert.equal(success, false);
+});
+
+test('Home only reads Profiles, retries failures, and recovers without manual refresh', async (context) => {
+  const previous = Object.getOwnPropertyDescriptors(globalThis);
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createDashboardDom();
+  let requests = 0;
+  let failing = true;
+  const notices: string[] = [];
+  try {
+    context.mock.timers.enable({apis: ['setTimeout']});
+    globalThis.fetch = (async (input, init) => {
+      assert.equal(new URL(String(input), 'http://localhost').pathname, '/api/v4/profiles');
+      assert.equal(init?.method ?? 'GET', 'GET');
+      requests += 1;
+      return failing
+        ? new Response(JSON.stringify({success: false, error: 'Catalog temporarily unavailable'}), {
+          status: 503, headers: {'Content-Type': 'application/json'},
+        })
+        : jsonResponse(profileRegistry());
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: true,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      toasts: [],
+      addToast: (message, type) => {
+        notices.push(message);
+        previousState.addToast(message, type);
+      },
+    });
+    await act(async () => root.render(<MemoryRouter><Dashboard /><ToastContainer /></MemoryRouter>));
+    assert.equal(requests, 1);
+    assert.equal(notices.length, 1);
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /Catalog temporarily unavailable/);
+    assert.equal(container.querySelector('button[aria-label="Refresh Home and Profiles"]'), null);
+    assert.ok(![...container.querySelectorAll('button')].some((button) => button.textContent === 'Retry'));
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled);
+
+    await act(async () => context.mock.timers.tick(3_000));
+    assert.equal(container.querySelector('[role="alert"]'), null, 'Notice leaves after three seconds');
+    await act(async () => context.mock.timers.tick(2_000));
+    assert.equal(requests, 2, 'Read is retried automatically');
+    assert.equal(notices.length, 1, 'The same failure does not repeat its notification');
+
+    failing = false;
+    await act(async () => context.mock.timers.tick(10_000));
+    assert.equal(requests, 3);
+    assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+
+    failing = true;
+    await act(async () => context.mock.timers.tick(30_000));
+    assert.equal(notices.length, 2, 'A new failure after recovery is announced');
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2, 'Last accepted cards stay visible');
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled, 'Stale catalog cannot authorize writes');
+  } finally {
+    await act(async () => root.unmount());
+    context.mock.timers.reset();
+    dom.window.close();
+    for (const key of ['fetch', 'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'IS_REACT_ACT_ENVIRONMENT']) {
+      if (previous[key]) Object.defineProperty(globalThis, key, previous[key]);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    useAppStore.setState(previousState, true);
+  }
 });
 
 test('duplicate Profile IDs are deterministic and never privilege Defaults', () => {
@@ -456,10 +515,7 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         assert.match(container.textContent ?? '', /Profiles/, scenario.name);
         assert.match(container.textContent ?? '', /Defaults Profile/, scenario.name);
         assert.match(container.textContent ?? '', /Research Profile/, scenario.name);
-        const summary = container.querySelector('[aria-label="Workspace summary"]');
-        assert.ok(summary);
-        assert.match(summary.textContent ?? '', /Not verified/, scenario.name);
-        assert.doesNotMatch(summary.textContent ?? '', /Stopped|Running/, scenario.name);
+        assert.equal(container.querySelector('[aria-label="Workspace summary"]'), null);
         assert.ok(container.querySelector('input[aria-label="Search Profiles"]'));
 
         const addProfile = [...container.querySelectorAll('button')].find(
@@ -475,16 +531,16 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         assert.ok(container.querySelector('[data-profile-card="defaults"][data-profile-status="ready"]'));
         assert.ok(container.querySelector('[data-profile-card="research"][data-profile-status="error"]'));
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="View Pack closure for Defaults Profile"]')?.getAttribute('href'),
+          container.querySelector<HTMLAnchorElement>('a[aria-label="View included Packs for Defaults Profile"]')?.getAttribute('href'),
           '/profile?profile_id=defaults#profile-closure',
         );
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="Browse and review Research Profile"]')?.getAttribute('href'),
-          '/profile?profile_id=research',
+          container.querySelector<HTMLAnchorElement>('a[aria-label="Edit Packs for Research Profile"]')?.getAttribute('href'),
+          '/profile?profile_id=research#profile-packs',
         );
 
         await act(async () => { buttonByLabel(container, 'Open actions for Defaults Profile').click(); });
-        assert.ok(menuItemByText('Edit'));
+        assert.ok(menuItemByText('Rename'));
         assert.ok(menuItemByText('Active'));
         assert.ok(menuItemByText('Duplicate'));
         const defaultsDelete = menuItemByText('Delete') as HTMLButtonElement;
@@ -586,8 +642,8 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
         'New custom profile 2',
       ]) {
         assert.ok(buttonByLabel(container, `Launch ${displayName}`).disabled, displayName);
-        assert.ok(linkByLabel(container, `Browse and review ${displayName}`));
-        assert.ok(linkByLabel(container, `View Pack closure for ${displayName}`));
+        assert.ok(linkByLabel(container, `Edit Packs for ${displayName}`));
+        assert.ok(linkByLabel(container, `View included Packs for ${displayName}`));
       }
 
       await act(async () => {
@@ -880,7 +936,7 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
         buttonByLabel(container, 'Open actions for Research Profile').click();
       });
       await act(async () => {
-        menuItemByText('Edit').click();
+        menuItemByText('Rename').click();
       });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
@@ -901,8 +957,8 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
       assert.match(container.textContent ?? '', /revision conflict/);
       assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
       assert.equal(
-        linkByLabel(container, 'Browse and review Research Profile').getAttribute('href'),
-        '/profile?profile_id=research',
+        linkByLabel(container, 'Edit Packs for Research Profile').getAttribute('href'),
+        '/profile?profile_id=research#profile-packs',
       );
       await act(async () => {
         buttonByLabel(container, 'Open actions for Research Profile').click();
@@ -966,7 +1022,7 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
       });
       await settle();
       await act(async () => { buttonByLabel(container, 'Open actions for Research Profile').click(); });
-      await act(async () => { menuItemByText('Edit').click(); });
+      await act(async () => { menuItemByText('Rename').click(); });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
       assert.ok(nameInput);
@@ -1014,7 +1070,7 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
   }
 });
 
-test('Home shows Updating Profile on navigation during a Pack toggle and reloads both projections afterward', async () => {
+test('Home shows Updating Profile during a Pack toggle and reloads Profiles afterward', async () => {
   const previousState = useAppStore.getState();
   const previousDispatchStatus = getRuntimeDispatchStatus();
   const previousFetch = globalThis.fetch;
@@ -1029,7 +1085,6 @@ test('Home shows Updating Profile on navigation during a Pack toggle and reloads
     globalThis.fetch = (async (input) => {
       const path = new URL(String(input), 'http://localhost').pathname;
       reads.push(path);
-      if (path === dashboardRequestPath) return jsonResponse(dashboardProjection(37));
       if (path === '/api/v4/profiles') return jsonResponse(profileRegistry());
       throw new Error(`Unexpected request: ${path}`);
     }) as typeof fetch;
@@ -1052,8 +1107,7 @@ test('Home shows Updating Profile on navigation during a Pack toggle and reloads
 
       await act(async () => useAppStore.setState({packTogglePending: {}}));
       await settle();
-      assert.deepEqual(reads.sort(), [dashboardRequestPath, '/api/v4/profiles'].sort());
-      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
+      assert.deepEqual(reads, ['/api/v4/profiles']);
       assert.match(container.textContent ?? '', /Defaults Profile/);
       assert.doesNotMatch(container.textContent ?? '', /Updating Profile/);
     } finally {
@@ -1074,7 +1128,7 @@ test('Home shows Updating Profile on navigation during a Pack toggle and reloads
   }
 });
 
-test('Home treats only in-flight Pack transition timeouts as pending and then recovers without manual Refresh', async () => {
+test('Home treats only in-flight Pack transition timeouts as pending and then recovers automatically', async () => {
   const previousState = useAppStore.getState();
   const previousDispatchStatus = getRuntimeDispatchStatus();
   const previousFetch = globalThis.fetch;
@@ -1083,23 +1137,14 @@ test('Home treats only in-flight Pack transition timeouts as pending and then re
   const previousNavigator = globalThis.navigator;
   const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
   const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
-  let rejectDashboard: ((error: Error) => void) | undefined;
   let rejectProfiles: ((error: Error) => void) | undefined;
   let stableTimeout = false;
-  const counts = {dashboard: 0, profiles: 0};
+  const counts = {profiles: 0};
+  const notices: string[] = [];
 
   try {
     globalThis.fetch = ((input) => {
       const path = new URL(String(input), 'http://localhost').pathname;
-      if (path === dashboardRequestPath) {
-        counts.dashboard += 1;
-        if (counts.dashboard === 1) {
-          return new Promise<Response>((_resolve, reject) => { rejectDashboard = reject; });
-        }
-        return stableTimeout
-          ? Promise.reject(new RequestTimeoutError('GET request timed out after 30000ms: dashboard'))
-          : Promise.resolve(jsonResponse(dashboardProjection(37)));
-      }
       if (path === '/api/v4/profiles') {
         counts.profiles += 1;
         if (counts.profiles === 1) {
@@ -1118,39 +1163,39 @@ test('Home treats only in-flight Pack transition timeouts as pending and then re
       profileCeremonyAvailable: true,
       defaultsBootstrapRequired: false,
       packTogglePending: {},
+      toasts: [],
+      addToast: (message, type) => {
+        notices.push(message);
+        previousState.addToast(message, type);
+      },
     });
     setRuntimeDispatchStatus('runtime_ready');
     const {dom, container, root} = createDashboardDom();
     try {
-      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
-      assert.equal(counts.dashboard, 1);
+      await act(async () => root.render(<MemoryRouter><Dashboard /><ToastContainer /></MemoryRouter>));
       assert.equal(counts.profiles, 1);
       await act(async () => useAppStore.setState({packTogglePending: {'catalog-pack': true}}));
       await act(async () => {
-        assert.ok(rejectDashboard);
         assert.ok(rejectProfiles);
-        rejectDashboard(new RequestTimeoutError('GET request timed out after 30000ms: dashboard'));
         rejectProfiles(new RequestTimeoutError('GET request timed out after 30000ms: profiles'));
       });
       await settle();
       assert.match(container.textContent ?? '', /Updating Profile/);
       assert.doesNotMatch(container.textContent ?? '', /GET request timed out/);
+      assert.equal(notices.length, 0);
       assert.equal(container.querySelector('[role="alert"]'), null);
 
       await act(async () => useAppStore.setState({packTogglePending: {}}));
       await settle();
-      assert.equal(counts.dashboard, 2);
       assert.equal(counts.profiles, 2);
-      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
       assert.match(container.textContent ?? '', /Defaults Profile/);
 
       stableTimeout = true;
-      await act(async () => buttonByLabel(container, 'Refresh Home and Profiles').click());
+      await act(async () => useAppStore.setState({packTogglePending: {'catalog-pack': true}}));
+      await act(async () => useAppStore.setState({packTogglePending: {}}));
       await settle();
-      assert.equal(counts.dashboard, 3);
       assert.equal(counts.profiles, 3);
-      assert.equal([...container.querySelectorAll('[role="alert"]')].filter((node) =>
-        node.textContent?.includes('GET request timed out')).length, 2);
+      assert.match(notices.join('\n'), /GET request timed out/);
     } finally {
       await act(async () => root.unmount());
       dom.window.close();
@@ -1169,7 +1214,7 @@ test('Home treats only in-flight Pack transition timeouts as pending and then re
   }
 });
 
-test('Home discards an old successful GET that finishes during the Pack Profile transition', async () => {
+test('Home discards an old successful Profile read that finishes during the Pack Profile transition', async () => {
   const previousState = useAppStore.getState();
   const previousDispatchStatus = getRuntimeDispatchStatus();
   const previousFetch = globalThis.fetch;
@@ -1178,19 +1223,12 @@ test('Home discards an old successful GET that finishes during the Pack Profile 
   const previousNavigator = globalThis.navigator;
   const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
   const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
-  let resolveOldDashboard: ((response: Response) => void) | undefined;
   let resolveOldProfiles: ((response: Response) => void) | undefined;
-  const counts = {dashboard: 0, profiles: 0};
+  const counts = {profiles: 0};
 
   try {
     globalThis.fetch = ((input) => {
       const path = new URL(String(input), 'http://localhost').pathname;
-      if (path === dashboardRequestPath) {
-        counts.dashboard += 1;
-        return counts.dashboard === 1
-          ? new Promise<Response>((resolve) => { resolveOldDashboard = resolve; })
-          : Promise.resolve(jsonResponse(dashboardProjection(37)));
-      }
       if (path === '/api/v4/profiles') {
         counts.profiles += 1;
         return counts.profiles === 1
@@ -1213,23 +1251,18 @@ test('Home discards an old successful GET that finishes during the Pack Profile 
       await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
       await act(async () => useAppStore.setState({packTogglePending: {'catalog-pack': true}}));
       await act(async () => {
-        assert.ok(resolveOldDashboard);
         assert.ok(resolveOldProfiles);
         const oldRegistry = profileRegistry();
         oldRegistry.profiles[1] = profileRecord('research', 'Old Research Profile', digest('b'));
-        resolveOldDashboard(jsonResponse(dashboardProjection(36)));
         resolveOldProfiles(jsonResponse(oldRegistry));
       });
       await settle();
       assert.match(container.textContent ?? '', /Updating Profile/);
       assert.doesNotMatch(container.textContent ?? '', /Old Research Profile/);
-      assert.doesNotMatch(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /36/);
 
       await act(async () => useAppStore.setState({packTogglePending: {}}));
       await settle();
-      assert.equal(counts.dashboard, 2);
       assert.equal(counts.profiles, 2);
-      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
       assert.match(container.textContent ?? '', /Research Profile/);
       assert.doesNotMatch(container.textContent ?? '', /Old Research Profile/);
     } finally {

@@ -14,6 +14,13 @@ from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractTarget,
 )
 
+from .workflow_presentation import (
+    WORKFLOW_CONTRACT_ID,
+    WORKFLOW_STOP_CONTRACT_ID,
+    WORKFLOW_V4_ALLOWED_KEYS,
+    WORKFLOW_STOP_ALLOWED_KEYS,
+)
+
 
 def defaultspack_dynamic_capability_targets(
     binding: HTTPContractBinding,
@@ -36,7 +43,11 @@ def defaultspack_dynamic_capability_targets(
         ):
             continue
         pack_id = str(pack.get("pack_id") or "").strip()
-        artifact_digest = str(pack.get("artifact_digest") or "").strip()
+        # Pack approval binds the admission record; capability dispatch binds
+        # the executable artifact in the verified active Profile. These are
+        # different digests. Never substitute the admission record or infer an
+        # executable identity when the active snapshot does not provide one.
+        artifact_digest = str(pack.get("pack_artifact_digest") or "").strip()
         operations = pack.get("operations")
         if not pack_id or not artifact_digest or not isinstance(operations, list):
             continue
@@ -96,20 +107,15 @@ def _payload_keys(contract_id: str, operation_id: str) -> frozenset[str]:
             if scenario == "stdin_overflow":
                 return frozenset({"nonce", "fill"})
             return frozenset({"nonce"})
-    if contract_id == "tobkiri.workflow.v4":
-        workflow_payloads = {
-            "definition.list": frozenset(),
-            "definition.get": frozenset({"definition_id"}),
-            "definition.create": frozenset({"definition_id", "document"}),
-            "definition.update": frozenset(
-                {"definition_id", "document", "if_match"}
-            ),
-            "definition.delete": frozenset({"definition_id", "if_match"}),
-            "definition.validate": frozenset({"document"}),
-            "definition.publish": frozenset({"definition_id", "if_match"}),
-            "operation.palette": frozenset(),
-        }
-        return workflow_payloads.get(operation_id, frozenset())
+    if contract_id == WORKFLOW_CONTRACT_ID:
+        # Every finite Workflow operation admits exactly the payload keys its
+        # provider consumes; the table is shared with the presentation
+        # normalizer so the two gates cannot drift apart.
+        return WORKFLOW_V4_ALLOWED_KEYS.get(operation_id, frozenset())
+    if contract_id == WORKFLOW_STOP_CONTRACT_ID:
+        # The stop principal admits exactly the durable run reference; the
+        # projection below is the only surface the Run button resolves.
+        return WORKFLOW_STOP_ALLOWED_KEYS.get(operation_id, frozenset())
     return frozenset()
 
 

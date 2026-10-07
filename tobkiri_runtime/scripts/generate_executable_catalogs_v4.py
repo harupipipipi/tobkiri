@@ -81,8 +81,8 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
         "complete",
     ): 120_000,
     (
-        "defaultspack",
-        "defaultspack.conversation.saved",
+        "tobkiri_conversation_orchestration_pack",
+        "tobkiri_conversation_orchestration_pack.saved",
         "saved_complete",
     ): 300_000,
     (

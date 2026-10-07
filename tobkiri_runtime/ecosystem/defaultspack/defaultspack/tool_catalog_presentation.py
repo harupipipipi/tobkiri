@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from typing import Any, Mapping
+from copy import deepcopy
+import json
+import re
 
 from core_runtime.pack_api_server import DispatchSession
 from ..domain.tool.definition_projection import project_tool_definition
@@ -54,12 +57,33 @@ def present_tool_catalog(
         }
         tools.append(tool)
     catalog = ToolServiceCatalog(tools)
+    records = catalog.compact_records()
+    definitions_by_id = {definition["tool_id"]: definition for definition in definitions}
+    for record in records:
+        definition = definitions_by_id[record["tool_id"]]
+        schema = definition.get("input_schema")
+        digest = definition.get("definition_hash")
+        # Display metadata is not an execution grant. The broker independently
+        # resolves this identity and compares its current definition hash.
+        if (isinstance(schema, Mapping) and isinstance(digest, str)
+                and re.fullmatch(r"[0-9a-f]{64}", digest)
+                and len(json.dumps(schema, ensure_ascii=False, allow_nan=False).encode()) <= 32768):
+            record["input_schema"] = deepcopy(dict(schema))
+            record["definition_hash"] = digest
+            result_schema = definition.get("result_schema", {})
+            if (definition.get("result_schema_format") == "normalized-result.v1"
+                    and isinstance(result_schema, Mapping)
+                    and len(json.dumps(result_schema, ensure_ascii=False, allow_nan=False).encode()) <= 32768):
+                record["result_schema"] = deepcopy(dict(result_schema))
+                record["result_schema_format"] = "normalized-result.v1"
     session.assert_current()
     return {
         "services": catalog.services(),
-        "tools": catalog.compact_records(),
+        "tools": records,
         "count": len(tools),
         "registry_revision": revision,
+        "profile_id": session.profile_id,
+        "plan_digest": getattr(session, "plan_digest", None),
     }
 
 

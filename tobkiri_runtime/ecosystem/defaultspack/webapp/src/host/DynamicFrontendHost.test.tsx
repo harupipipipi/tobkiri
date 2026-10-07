@@ -8,6 +8,7 @@ import {
   ISOLATED_FRAME_RESPONSE_TARGET_ORIGIN,
   bindFrontendCapabilityClient,
   contributionsForRoute,
+  declarativeInput,
   frontendContributionRevisionKey,
   frontendActionErrorMessage,
   isolatedFrontendFrameUrl,
@@ -67,6 +68,35 @@ const capabilities: FrontendCapabilityInvoker = {
   invokeAction: async () => ({ ok: true }),
   readDataSource: async () => ({ ok: true }),
 };
+
+test("captured inert JSON input is rendered without granting an action", () => {
+  resetFrontendHostQuarantineForTests();
+  const item = contribution({ view: {
+    title: "Input fixture", input: { label: "QA note", placeholder: "Type a local note" },
+  } });
+  let calls = 0;
+  const forbidden = async () => { calls += 1; throw new Error("No operation declared"); };
+  const html = renderToStaticMarkup(<DynamicFrontendHost
+    catalog={catalog([item])} route="/feature" activePlanHash="plan-1"
+    capabilities={{ invokeAction: forbidden, readDataSource: forbidden }}
+  />);
+  assert.match(html, /data-declarative-input/);
+  assert.match(html, /<label[^>]+for="([^"]+)"[^>]*>QA note<\/label><input[^>]+id="\1"/);
+  assert.match(html, /placeholder="Type a local note"/);
+  assert.doesNotMatch(html, /<button|<form|<iframe/);
+  assert.equal(calls, 0);
+});
+
+test("inert input accepts only the admitted label and placeholder shape", () => {
+  assert.deepEqual(declarativeInput({ label: "Note" }), { label: "Note" });
+  assert.deepEqual(declarativeInput({ label: "Note", placeholder: "" }), { label: "Note", placeholder: "" });
+  for (const value of [null, [], "Note", {}, { label: " " }, { label: 5 },
+    { label: "x".repeat(257) }, { label: "Note", placeholder: false },
+    { label: "Note", placeholder: "x".repeat(257) },
+    { label: "Note", action: "submit" }, { label: "Note", approved: true }]) {
+    assert.equal(declarativeInput(value), null);
+  }
+});
 
 test("the selected full Chat implementation is independent of Profile name", () => {
   resetFrontendHostQuarantineForTests();

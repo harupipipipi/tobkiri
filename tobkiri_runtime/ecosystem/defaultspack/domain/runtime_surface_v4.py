@@ -2495,35 +2495,101 @@ def _normalized_plan_bindings(
 
     active = snapshot.active
     bindings = active.resolved.plan["bindings"]
-    principals = {
-        str(item["function_principal"]["function_id"]): item["function_principal"]
-        for item in bindings
-    }
+    lock = active.resolved.lock
+    admitted_pack_ids = {str(item["identity"]) for item in lock["effective_set"]}
+    admitted_pack_ids.update(str(item["pack_id"]) for item in bindings)
     shell_id = str(active.resolved.profile["shell"]["pack_id"])
+    admitted_pack_ids.add(shell_id)
+    expected_artifacts = {str(item["identity"]): str(item["artifact_digest"]) for item in lock["effective_set"]}
+    for pack_id in admitted_pack_ids:
+        manifest = snapshot.catalog.packs.get(pack_id)
+        if isinstance(manifest, Mapping) and manifest["pack"]["artifact_digest"] != expected_artifacts.get(pack_id):
+            raise RuntimeSurfaceError(RuntimeSurfaceErrorCode.DIGEST_MISMATCH, "caller manifest differs from ProfileLock artifact")
     shell_manifest = snapshot.catalog.packs.get(shell_id)
     if shell_manifest is None:
         raise RuntimeSurfaceError(
             RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
             "active Shell principal manifest is unavailable",
         )
+    # Profile edges are caller-Function-scoped while the signed principals are
+    # per-Operation.  Caller identity is derived from the exact admitted
+    # Function declarations — the Shell artifact, every admitted Pack
+    # manifest, and the signed binding principals — never from an arbitrary
+    # binding row.  A caller Function with only outgoing edges (declared but
+    # never bound as a target) still resolves; a caller absent from every
+    # admitted declaration stays denied.
+    caller_operations: dict[str, dict[str, dict[str, str]]] = {}
+
+    def declare(artifact_digest: str, function: Mapping[str, Any]) -> None:
+        function_id = str(function["id"])
+        for operation_id in function["operations"]:
+            record = {
+                "parent_artifact_digest": artifact_digest,
+                "function_implementation_digest": str(
+                    function["implementation_digest"]
+                ),
+                "function_id": function_id,
+                "contract_revision_digest": str(
+                    function["contract_revision_digest"]
+                ),
+                "operation_id": str(operation_id),
+            }
+            bucket = caller_operations.setdefault(function_id, {})
+            if any((item["parent_artifact_digest"], item["function_implementation_digest"], item["contract_revision_digest"]) !=
+                   (record["parent_artifact_digest"], record["function_implementation_digest"], record["contract_revision_digest"]) for item in bucket.values()):
+                raise RuntimeSurfaceError(RuntimeSurfaceErrorCode.DIGEST_MISMATCH, "caller Function has ambiguous artifact ownership")
+            previous = bucket.get(record["operation_id"])
+            if previous is not None and previous != record:
+                raise RuntimeSurfaceError(
+                    RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+                    "Profile edge caller declaration conflicts with the "
+                    "signed ResolvedPlan",
+                )
+            bucket[record["operation_id"]] = record
+
     for function in shell_manifest["functions"]:
         contracts = [
             item
             for item in shell_manifest["contracts"]
             if item["revision_digest"] == function["contract_revision_digest"]
         ]
-        if len(contracts) != 1 or len(function["operations"]) != 1:
+        if len(contracts) != 1 or not function["operations"]:
             raise RuntimeSurfaceError(
                 RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
                 "active Shell principal declaration is ambiguous",
             )
-        principals[str(function["id"])] = {
-            "parent_artifact_digest": str(shell_manifest["pack"]["artifact_digest"]),
-            "function_implementation_digest": str(function["implementation_digest"]),
-            "function_id": str(function["id"]),
-            "contract_revision_digest": str(function["contract_revision_digest"]),
-            "operation_id": str(function["operations"][0]),
+        declare(str(shell_manifest["pack"]["artifact_digest"]), function)
+    for pack_id in sorted(admitted_pack_ids - {shell_id}):
+        manifest = snapshot.catalog.packs.get(pack_id)
+        if not isinstance(manifest, Mapping):
+            continue
+        for function in manifest.get("functions", ()):
+            declare(str(manifest["pack"]["artifact_digest"]), function)
+    for binding in bindings:
+        target = binding["function_principal"]
+        function_id = str(target["function_id"])
+        record = {
+            key: str(target[key])
+            for key in (
+                "parent_artifact_digest",
+                "function_implementation_digest",
+                "function_id",
+                "contract_revision_digest",
+                "operation_id",
+            )
         }
+        bucket = caller_operations.setdefault(function_id, {})
+        if any((item["parent_artifact_digest"], item["function_implementation_digest"], item["contract_revision_digest"]) !=
+               (record["parent_artifact_digest"], record["function_implementation_digest"], record["contract_revision_digest"]) for item in bucket.values()):
+            raise RuntimeSurfaceError(RuntimeSurfaceErrorCode.DIGEST_MISMATCH, "caller Function has ambiguous artifact ownership")
+        previous = bucket.get(record["operation_id"])
+        if previous is not None and previous != record:
+            raise RuntimeSurfaceError(
+                RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+                "Profile edge caller declaration conflicts with the "
+                "signed ResolvedPlan",
+            )
+        bucket[record["operation_id"]] = record
     edge_lookup = {
         (
             str(edge["caller_function_id"]),
@@ -2544,25 +2610,27 @@ def _normalized_plan_bindings(
                 str(binding["operation_id"]),
             )
         )
-        if edge is None or binding["caller_function_id"] not in principals:
+        callers = caller_operations.get(str(binding["caller_function_id"]))
+        if edge is None or not callers:
             raise RuntimeSurfaceError(
                 RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
                 "ResolvedPlan binding has no exact Profile edge principals",
             )
-        result.append(
-            {
-                "binding_id": canonical_digest(binding),
-                "source_principal_id": _principal_id(
-                    principals[str(binding["caller_function_id"])]
-                ),
-                "target_principal_id": _principal_id(target),
-                "target_contract_id": str(binding["contract_id"]),
-                "operation_id": str(binding["operation_id"]),
-                "owner_pack_id": str(binding["pack_id"]),
-                "edge_digest": canonical_digest(edge),
-                "authority_reference": str(binding["authority_reference"]),
-            }
-        )
+        for operation_id in sorted(callers):
+            result.append(
+                {
+                    "binding_id": canonical_digest(binding),
+                    "source_principal_id": _principal_id(
+                        callers[operation_id]
+                    ),
+                    "target_principal_id": _principal_id(target),
+                    "target_contract_id": str(binding["contract_id"]),
+                    "operation_id": str(binding["operation_id"]),
+                    "owner_pack_id": str(binding["pack_id"]),
+                    "edge_digest": canonical_digest(edge),
+                    "authority_reference": str(binding["authority_reference"]),
+                }
+            )
     return result
 
 

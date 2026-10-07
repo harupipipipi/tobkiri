@@ -41,7 +41,7 @@ def test_saved_agent_four_signed_exchanges_use_real_owner_and_one_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Socket/signing/ledger/owner are real; sandbox and AI are explicit adapters."""
-    from ecosystem.defaultspack.runtime import saved_conversation as saved
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.saved_guest_dispatch import TARGETS
 

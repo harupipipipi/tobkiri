@@ -10,6 +10,7 @@ import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/src/components/ui/Card';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {useRuntimeOperationInvocation} from '@/src/hooks/useRuntimeOperationInvocation';
+import {useProfileMutationBlocked} from '@/src/lib/profileSelection';
 import {
   authoritativeOperationKey,
   selectAdvancedContractInvokableOperations,
@@ -47,6 +48,7 @@ export function AiInput() {
     surface.data,
     selectedOperation,
   );
+  const profileWriteBlocked = useProfileMutationBlocked(surface.data?.profile_id ?? null);
   const refreshAiInput = async () => {
     await surface.refresh(true);
     await invocation.reconcileUnknown();
@@ -55,7 +57,7 @@ export function AiInput() {
   return (
     <AdvancedSurfaceFrame
       descriptor={descriptor}
-      state={{status: surface.status, stale: surface.stale, error: surface.error}}
+      state={{status: surface.status, stale: surface.stale, error: surface.error, profileId: surface.data?.profile_id ?? null}}
       onRetry={() => void refreshAiInput()}
     >
       {surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Operation catalog provenance" /> : null}
@@ -76,9 +78,9 @@ export function AiInput() {
                     className="flex min-h-11 flex-col items-start gap-1 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
                     aria-pressed={key === selectedOperationKey}
                     aria-label={`Select contract operation ${operation.contract_id} / ${operation.operation_id}`}
-                    disabled={invocation.busy}
+                    disabled={invocation.busy || profileWriteBlocked}
                     onClick={() => {
-                      if (invocation.busy) return;
+                      if (invocation.busy || profileWriteBlocked) return;
                       setSelectedOperationKey(key);
                     }}
                   >
@@ -118,7 +120,7 @@ export function AiInput() {
                 operation={selectedOperation}
                 descriptor={descriptor}
                 busy={invocation.busy}
-                canInvoke={!invocation.error && invokableOperations.some((operation) => (
+                canInvoke={!invocation.error && !profileWriteBlocked && invokableOperations.some((operation) => (
                   authoritativeOperationKey(operation.contract_id, operation.operation_id) === selectedOperationKey
                 ))}
                 onInvoke={invocation.invoke}
