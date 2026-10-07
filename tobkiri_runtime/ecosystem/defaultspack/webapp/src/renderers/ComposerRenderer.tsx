@@ -2279,14 +2279,18 @@ export function validComposerHistoryDropTarget(target: HTMLElement, point: { x: 
     && top !== null && target.contains(top);
 }
 
-/** Reconfirmation replaces one entity's earlier anchor instead of cloning it. */
+/** Reconfirmation replaces the same occurrence while retaining other anchors. */
 export function replaceConfirmedComposerWidget(widgets: DroppedWidget[], widget: DroppedWidget): DroppedWidget[] {
-  const entityKey = (item: DroppedWidget) => {
+  const occurrenceKey = (item: DroppedWidget) => {
     const mention = composerMentionMetadataFromWidgets([item])[0];
-    return mention ? JSON.stringify([mention.kind, mention.id, mention.profileId ?? null])
+    const entity = mention ? JSON.stringify([mention.kind, mention.id, mention.profileId ?? null])
       : `${item.type}:${item.sourceItemId || item.id.replace(/^exclude:/, "")}`;
+    const confirmation = item.metadata?.composer_confirmation as { value?: unknown } | undefined;
+    const range = typeof confirmation?.value === "string"
+      ? confirmedComposerMentionRange(item, confirmation.value) : null;
+    return range ? JSON.stringify([entity, range.start, range.end, range.syntax]) : entity;
   };
-  return [...widgets.filter((prior) => entityKey(prior) !== entityKey(widget)), widget];
+  return [...widgets.filter((prior) => occurrenceKey(prior) !== occurrenceKey(widget)), widget];
 }
 
 /** Split composer text into ordinary and selected semantic-mention runs. */

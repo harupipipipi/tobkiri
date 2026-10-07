@@ -28,6 +28,20 @@ test("confirmed tool selection produces the visible turn selection and deletion 
   assert.deepEqual(resolveComposerToolMentions("Please", draft.widgets, tools).toolIds, []);
 });
 
+test("repeated tool and service anchors remain visible while wire selections stay unique", () => {
+  for (const widget of [composerToolMentionWidget(tools[0]), composerServiceMentionWidget({ id: "google_drive", label: "Google Drive", toolIds: ["drive_read", "drive_write"] })]) {
+    const syntax = String((widget.metadata?.mention as Record<string, unknown>).syntax);
+    const text = `${syntax} ${syntax} ${syntax}`;
+    const anchors = [0, syntax.length + 1].map((start) => anchorComposerMentionWidget(widget, text, start));
+    const draft = resolveComposerToolMentions(text, [...anchors, anchors[0]], tools);
+    assert.equal(draft.widgets.length, 2);
+    assert.deepEqual(draft.widgets.map((item) => confirmedComposerMentionRange(item, text)?.start), [0, syntax.length + 1]);
+    assert.equal(new Set(draft.toolIds).size, draft.toolIds.length);
+    assert.equal(draft.include.length, widget.type === "tool" ? 1 : 2);
+    assert.deepEqual(draft.widgets.map((item) => item.id), [widget.id, widget.id]);
+  }
+});
+
 test("service selection expands available tools and service exclusion stays visible", () => {
   const draft = resolveComposerToolMentions("@google_drive @-browser", materializeLegacyToolMentions("", { include: [{ kind: "service", id: "google_drive" }], exclude: [{ kind: "service", id: "browser" }] }, [], tools).widgets.map((widget) => anchorComposerMentionWidget(widget, "@google_drive @-browser", "@google_drive @-browser".indexOf(String((widget.metadata?.mention as Record<string, unknown>).syntax)))), tools);
   assert.deepEqual(draft.toolIds, ["drive_read", "drive_write"]);

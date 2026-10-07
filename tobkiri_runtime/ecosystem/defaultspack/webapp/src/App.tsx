@@ -123,6 +123,7 @@ import { conversationVisibleInHistory } from "./lib/conversationVisibility";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./lib/conversationView";
 import { cn } from "./lib/cn";
+import { deduplicateComposerWidgets } from "./lib/composerMentionAnchors";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
 import {
   canExecuteComposerEndpointAction,
@@ -3692,11 +3693,10 @@ export function ChatApp() {
   );
   const liveComposerToolsRef = useRef(composerExtensions);
   liveComposerToolsRef.current = composerExtensions;
-  const activeDroppedWidgets = useMemo(() => {
-    const byId = new Map<string, DroppedWidget>();
-    for (const widget of droppedWidgets) byId.set(widget.id, widget);
-    return Array.from(byId.values());
-  }, [droppedWidgets]);
+  const activeDroppedWidgets = useMemo(
+    () => deduplicateComposerWidgets(droppedWidgets, input),
+    [droppedWidgets, input],
+  );
   const composerSkills = useMemo<ComposerSkillItem[]>(() => (
     withSettingsAssistantSkill((catalog?.skills ?? []).map((skill) => ({
       id: skill.id,

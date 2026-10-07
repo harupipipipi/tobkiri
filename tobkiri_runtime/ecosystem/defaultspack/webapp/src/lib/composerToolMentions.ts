@@ -2,7 +2,7 @@ import type { ComposerExtensionItem, DroppedWidget, ToolGroup } from "../rendere
 import type { ConversationToolPreferences, ToolSelectionMode, ToolSelectionRequest, ToolTarget } from "../features/tools/types";
 import { composerMentionMetadataFromWidgets, composerServiceMentionWidget, composerToolMentionWidget } from "./composerWidgets";
 import { hasUnescapedMentionSyntax } from "./mentionContract";
-import { anchorComposerMentionWidget, confirmedComposerMentionRange, updateConfirmedComposerWidgets } from "./composerMentionAnchors";
+import { anchorComposerMentionWidget, confirmedComposerMentionRange, deduplicateComposerWidgets, updateConfirmedComposerWidgets } from "./composerMentionAnchors";
 import { toolGroupFor } from "./toolUi";
 
 export type ComposerToolMentionDraft = {
@@ -109,8 +109,7 @@ export function resolveComposerToolMentions(text: string, widgets: DroppedWidget
   const toolIds = [...new Set([...include.values()].flatMap((target) => target.kind === "tool" ? [target.id]
     : services.find((service) => service.id === target.id)?.toolIds ?? []))].filter((id) => !excludedIds.has(id));
   // Preserve confirmed widget identity and frontend occurrence anchors.
-  const byId = new Map<string, DroppedWidget>();
-  for (const widget of activeWidgets) if (!byId.has(widget.id)) byId.set(widget.id, widget);
+  const occurrenceWidgets = deduplicateComposerWidgets(activeWidgets, text);
   const wireTargets = (targets: ToolTarget[], negative = false) => {
     const expanded = targets.flatMap((target): ToolTarget[] => {
       if (target.kind === "tool") return [target];
@@ -122,7 +121,7 @@ export function resolveComposerToolMentions(text: string, widgets: DroppedWidget
     });
     return [...new Map(expanded.map((target) => [`${target.kind}:${target.id}`, target])).values()];
   };
-  return { include: wireTargets([...include.values()]), exclude: wireTargets([...exclude.values()], true), toolIds, widgets: [...byId.values()] };
+  return { include: wireTargets([...include.values()]), exclude: wireTargets([...exclude.values()], true), toolIds, widgets: occurrenceWidgets };
 }
 
 /** Build an authoritative turn request while keeping the existing wire schema. */

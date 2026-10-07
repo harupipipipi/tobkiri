@@ -45,6 +45,18 @@ export function confirmedComposerMentionRange(widget: DroppedWidget, text: strin
   return null;
 }
 
+/** Deduplicate widgets without collapsing independently confirmed occurrences. */
+export function deduplicateComposerWidgets(widgets: DroppedWidget[], text: string): DroppedWidget[] {
+  const byOccurrence = new Map<string, DroppedWidget>();
+  for (const widget of widgets) {
+    const range = widget.metadata?.composer_confirmation !== undefined
+      ? confirmedComposerMentionRange(widget, text) : null;
+    const key = range ? JSON.stringify([widget.id, range.start, range.end, range.syntax]) : widget.id;
+    byOccurrence.set(key, widget);
+  }
+  return [...byOccurrence.values()];
+}
+
 /** Move untouched anchors across edits and discard any replaced confirmed occurrence. */
 export function updateConfirmedComposerWidgets(
   previous: string,

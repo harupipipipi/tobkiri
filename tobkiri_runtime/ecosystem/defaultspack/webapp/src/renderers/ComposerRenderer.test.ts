@@ -2637,7 +2637,7 @@ test("native prefix edits retain only the shifted confirmed occurrence", () => {
 });
 
 
-test("explicit reconfirmation keeps shifted older entities and replaces the same entity anchor", () => {
+test("explicit confirmation retains every independently confirmed occurrence", () => {
   const input = "@Settings Mode @Other";
   const first = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 0);
   const other = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "other", label: "Other" }), input, 15);
@@ -2645,13 +2645,36 @@ test("explicit reconfirmation keeps shifted older entities and replaces the same
   const updated = updateConfirmedComposerWidgets(input, next, [first, other], { start: input.length, end: input.length });
   const replacement = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), next, input.length + 1);
   const merged = replaceConfirmedComposerWidget(updated, replacement);
-  assert.equal(merged.length, 2);
+  assert.equal(merged.length, 3);
+  assert.equal(replaceConfirmedComposerWidget(merged, replacement).length, 3);
   assert.deepEqual(composerInlineMentionParts(next, merged), [
-    { mention: false, text: "@Settings Mode " }, { mention: true, text: "@Other" },
+    { mention: true, text: "@Settings Mode" }, { mention: false, text: " " }, { mention: true, text: "@Other" },
     { mention: false, text: " " }, { mention: true, text: "@Settings Mode" },
   ]);
 });
 
+
+test("five repeated explicit selections retain anchors when inserted before between and after", () => {
+  const widget = composerSkillMentionWidget({ id: "settings", label: "Settings" });
+  let input = "";
+  let widgets: typeof widget[] = [];
+  for (const position of [0, 10, 0, 10, 40]) {
+    const insertion = "@Settings ";
+    const next = input.slice(0, position) + insertion + input.slice(position);
+    widgets = replaceConfirmedComposerWidget(
+      updateConfirmedComposerWidgets(input, next, widgets, { start: position, end: position }),
+      anchorComposerMentionWidget(widget, next, position),
+    );
+    input = next;
+    assert.equal(composerInlineMentionParts(input, widgets).filter((part) => part.mention).length, widgets.length);
+  }
+  assert.equal(widgets.length, 5);
+  assert.equal(new Set(widgets.map((item) => item.id)).size, 1);
+  const rawDuplicate = `${input}@Settings`;
+  const retained = updateConfirmedComposerWidgets(input, rawDuplicate, widgets, { start: input.length, end: input.length });
+  assert.equal(composerInlineMentionParts(rawDuplicate, retained).filter((part) => part.mention).length, 5);
+  assert.deepEqual(composerInlineMentionParts(rawDuplicate, retained).at(-1), { mention: false, text: " @Settings" });
+});
 
 test("entity mention queries retain real catalog identities and filter explicit kinds", () => {
   const candidates = [
