@@ -32,7 +32,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            python .github/scripts/install_locked_python_test_dependencies.py
+          else
+            python -m pip install pytest
+          fi
 
       - name: Test compact runner directly
         run: python -m pytest scripts/quality/test_compact_test_runner.py -q

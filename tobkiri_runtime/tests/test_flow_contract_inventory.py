@@ -1,5 +1,9 @@
 """Coverage diagnostics are specific to operations and do not infer semantics."""
+import pytest
+
 from scripts.quality.scan_flow_contracts import classify, inventory
+
+pytestmark = pytest.mark.contract
 
 
 def test_schema_classification_distinguishes_empty_generic_and_composite():

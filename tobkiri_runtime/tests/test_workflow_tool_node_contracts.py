@@ -9,6 +9,8 @@ from ecosystem.rumi_tool_validation_pack.runtime.validator import _host_bind as 
 from ecosystem.rumi_tool_result_pack.runtime.normalizer import _host_bind as result_bind
 from tobkiri_protocol.canonical import canonical_digest
 
+pytestmark = pytest.mark.contract
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
