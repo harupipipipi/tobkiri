@@ -1,0 +1,141 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "acceptance.presentation.transcript.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "pure"
+          ],
+          "error_schema_digest": "sha256:229f408b84219531425b54c418bfcb064f7c40cabeaf2d03f17a1a52265f84a4",
+          "idempotency": {
+            "mode": "replayable"
+          },
+          "input_schema_digest": "sha256:4c3e0365682ba4b233613f325c31d93b3ea16f2d6c2115c8bd10b7d913c172f4",
+          "operation_id": "acceptance.presentation.render",
+          "output_schema_digest": "sha256:c8c297ff29e844dda76de77c3671f200e508637bae731dd703c2d76572919723",
+          "scope_semantics": "declarative",
+          "timeout_default_ms": 1000,
+          "timeout_hard_max_ms": 5000
+        }
+      ],
+      "owner": "acceptance.cli.presentation",
+      "provenance": {
+        "evidence": [],
+        "generator": "acceptance.cli.presentation.authoring",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "working-tree",
+        "repository_tree": "76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97",
+        "source_kind": "repository",
+        "source_path": "../source/render.py"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {},
+        "provider_id": "acceptance.cli.presentation",
+        "required_capabilities": [],
+        "security": "public"
+      },
+      "revision_digest": "sha256:532fecb74b63e757fe249f9fd9163718d689777ec63867de67069b67981d30df",
+      "schema_catalog": {
+        "sha256:229f408b84219531425b54c418bfcb064f7c40cabeaf2d03f17a1a52265f84a4": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "enum": [
+                "invalid_input",
+                "output_limit"
+              ]
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "type": "object"
+        },
+        "sha256:4c3e0365682ba4b233613f325c31d93b3ea16f2d6c2115c8bd10b7d913c172f4": {
+          "additionalProperties": false,
+          "properties": {
+            "columns": {
+              "maximum": 200,
+              "minimum": 20,
+              "type": "integer"
+            },
+            "messages": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "system",
+                      "tool"
+                    ]
+                  },
+                  "text": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "maxItems": 128,
+              "type": "array"
+            },
+            "output_limit": {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "messages",
+            "columns",
+            "output_limit"
+          ],
+          "type": "object"
+        },
+        "sha256:c8c297ff29e844dda76de77c3671f200e508637bae731dd703c2d76572919723": {
+          "additionalProperties": false,
+          "properties": {
+            "exit_status": {
+              "const": 0
+            },
+            "stderr": {
+              "const": ""
+            },
+            "stdout": {
+              "type": "string"
+            },
+            "stream": {
+              "const": "complete"
+            }
+          },
+          "required": [
+            "stdout",
+            "stderr",
+            "exit_status",
+            "stream"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "draft",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "acceptance.cli.presentation",
+  "source_identity": "sha256:76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97"
+}

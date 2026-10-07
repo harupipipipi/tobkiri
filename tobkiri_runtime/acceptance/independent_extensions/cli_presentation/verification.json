@@ -1,0 +1,35 @@
+{
+  "evidence_kind": "offline_source_and_public_schema_checks",
+  "captured_authority": false,
+  "production_broker_execution": false,
+  "production_packvm_execution": false,
+  "product_cli_frontend_replaced": false,
+  "tests_passed": 12,
+  "rebuild_byte_identical_json_documents": 8,
+  "contract_id": "acceptance.presentation.transcript.v1",
+  "operation_id": "acceptance.presentation.render",
+  "provider_id": "acceptance.cli.presentation",
+  "denial_cases": [
+    "terminal_control_injection",
+    "approval_and_identity_fields",
+    "unknown_message_role_or_field",
+    "boolean_integer_bounds",
+    "utf8_output_limit"
+  ],
+  "missing_public_contracts": [
+    "production PackVM invocation ABI and canonical digest generation",
+    "complete explicit CLI Application composition and presentation binding"
+  ],
+  "unperformed_host_checks": [
+    "signed_admission",
+    "approval_and_activation",
+    "composition_and_removal",
+    "renamed_pack_ids",
+    "unselected_provider_denial",
+    "unknown_route_denial",
+    "conflicting_provider_denial"
+  ],
+  "canonical_pack_execution": "official_declarative_only_empty_variants",
+  "executable_draft": null,
+  "draft_contract_path": "contracts.draft.v4.json"
+}

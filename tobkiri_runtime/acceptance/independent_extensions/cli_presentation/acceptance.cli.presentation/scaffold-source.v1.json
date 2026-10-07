@@ -1,0 +1,9 @@
+{
+  "authority": "none",
+  "display_name": "acceptance.cli.presentation",
+  "intent": "",
+  "pack_id": "acceptance.cli.presentation",
+  "profile": "minimal",
+  "source_api_version": "io.tobkiri.pack-scaffold-source.v1",
+  "version": "0.1.0"
+}

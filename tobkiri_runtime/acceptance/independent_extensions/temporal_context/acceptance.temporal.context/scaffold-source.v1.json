@@ -1,0 +1,9 @@
+{
+  "authority": "none",
+  "display_name": "acceptance.temporal.context",
+  "intent": "",
+  "pack_id": "acceptance.temporal.context",
+  "profile": "minimal",
+  "source_api_version": "io.tobkiri.pack-scaffold-source.v1",
+  "version": "0.1.0"
+}
