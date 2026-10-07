@@ -1,13 +1,14 @@
 """Fixed guest continuation routing and cancellation, without provider authority."""
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 
 from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, TARGETS
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.saved_conversation import MAX_SAVED_TURN_LIFETIME_SECONDS
+from tobkiri_protocol.turn_progress_v1 import AI_STREAM
 
 
 def request() -> dict:
@@ -124,3 +125,63 @@ def test_saved_guest_retains_pending_strategy_roundtrip_for_shared_budget() -> N
 
     assert resumed["state"] == "pending"
     assert ledger.contains("domain", "turn") is True
+
+
+@pytest.mark.parametrize("mode", ["auto", "manual"])
+@pytest.mark.parametrize("replacement", [None, TARGETS[2], ("unknown", "unknown")])
+def test_enabled_stream_plan_seals_only_acknowledged_ai_target(
+    mode: str, replacement: tuple[str, str] | None,
+) -> None:
+    """Real guest ABI and ledger keep stream selection inside the exact seal."""
+    from ecosystem.defaultspack.runtime import saved_conversation
+
+    transport = request()
+    transport["payload"]["request"]["tool_selection"] = {"mode": mode}
+    ledger = SavedGuestTurns(clock=lambda: 10.0)
+    deadlines: list[float] = []
+
+    def execute(
+        _transport: dict[str, Any], arguments: dict[str, Any],
+        deadline: float, guard: Callable[[], None],
+    ) -> dict[str, Any]:
+        guard()
+        deadlines.append(deadline)
+        intent = saved_conversation.tobkiri_packvm_invoke("saved_complete", arguments)
+        if intent["hop"] == 2 and replacement is not None:
+            intent["target"] = dict(
+                zip(("contract_id", "operation_id"), replacement)
+            )
+        return intent
+
+    pending = ledger.begin(transport, "sha256:" + "c" * 64, execute)
+    read = result(pending)
+    read["bridge_result"]["outcome"]["value"] = {
+        "conversation": {
+            "id": "conversation", "conversation_revision": 1,
+            "model_reference": "model", "messages": [], "current_node_id": None,
+        },
+        "delivery_mode": "incremental",
+    }
+    pending = ledger.resume("domain", "turn", read, execute)
+    append = result(pending)
+    append["bridge_result"]["outcome"]["value"] = {
+        "action": "message_appended",
+        "message": pending["host_bridge_request"]["bridge_request"]["payload"][
+            "message"
+        ],
+        "conversation_revision": 2,
+    }
+    if replacement is not None:
+        with pytest.raises(ValueError, match="captured step"):
+            ledger.resume("domain", "turn", append, execute)
+        with pytest.raises(ValueError, match="unavailable"):
+            ledger.resume("domain", "turn", append, execute)
+    else:
+        pending = ledger.resume("domain", "turn", append, execute)
+        frame = pending["host_bridge_request"]["bridge_request"]
+        assert frame["hop"] == 2
+        assert frame["target"] == dict(
+            zip(("contract_id", "operation_id"), AI_STREAM)
+        )
+        assert frame["state"]["ai_mode"] == "incremental"
+    assert deadlines == [10 + MAX_SAVED_TURN_LIFETIME_SECONDS] * 3

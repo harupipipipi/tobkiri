@@ -94,7 +94,9 @@ class SavedGuestTurns:
                 identity,
                 tuple(dict.fromkeys((*TARGETS, STRATEGY, TOOL)))
                 if plan.strategy_reference is not None else
-                tuple(dict.fromkeys((*TARGETS, TOOL))) if plan.enabled else
+                # Host read acknowledgement selects buffered or incremental
+                # AI; the exact selector still permits only that chosen step.
+                tuple(dict.fromkeys((*TARGETS, TOOL, AI_STREAM))) if plan.enabled else
                 tuple(dict.fromkeys((*TARGETS, AI_STREAM))),
                 chains=self._chains,
                 target_selector=(lambda: plan.target) if tool_plan else None,

@@ -439,7 +439,7 @@ class InteractiveEffectStatus:
     approval_request_id: str
     state: str
     expires_at: float
-    redacted_metadata: Mapping[str, str]
+    redacted_metadata: Mapping[str, str | list[str]]
 
 
 class InteractiveEffectPort(Protocol):

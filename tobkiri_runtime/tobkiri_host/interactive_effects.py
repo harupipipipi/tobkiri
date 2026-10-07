@@ -112,6 +112,7 @@ class PendingEffectStatus:
     revision: int
     expires_at: float
     presentation_metadata: Mapping[str, str]
+    workspace_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1432,6 +1433,16 @@ def _permits_transition(
 def _status(record: _PendingEffect, revision: int) -> PendingEffectStatus:
     """Project only metadata safe for a future Host presentation surface."""
 
+    workspace_ids: tuple[str, ...] = ()
+    if (
+        record.prepared.contract_id == "tobkiri.service.workspace.project.v1"
+        and record.prepared.operation_id == "workspace.mount.execute"
+    ):
+        from core_runtime.workspace_mount_effect import project_mount_status_ids
+
+        workspace_ids = project_mount_status_ids(
+            record.prepared.to_dict()["normalized_payload"]
+        )
     return PendingEffectStatus(
         effect_id=record.effect_id,
         approval_request_id=record.approval_request_id,
@@ -1439,6 +1450,7 @@ def _status(record: _PendingEffect, revision: int) -> PendingEffectStatus:
         revision=revision,
         expires_at=record.expires_at,
         presentation_metadata=dict(record.presentation_metadata),
+        workspace_ids=workspace_ids,
     )
 
 

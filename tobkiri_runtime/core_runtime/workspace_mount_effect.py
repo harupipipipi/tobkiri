@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from tobkiri_protocol.canonical import canonical_digest
 
 _PROJECT_PLAN_KEYS = frozenset(
@@ -138,6 +138,51 @@ def validate_project_plan(request: Mapping[str, Any], plan: Mapping[str, Any]) -
     if "roots" in plan and plan["primary_workspace_id"] != plan["workspace_id"]:
         raise PermissionError("project primary workspace is invalid")
 
+
+def project_mount_presentation(
+    request: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    *,
+    redact: Callable[[str], str],
+) -> dict[str, str]:
+    """Show every sealed root within native approval's existing display bounds.
+
+    Consecutive detail fields preserve the complete redacted review text. If
+    it cannot fit, preparation fails closed rather than approving hidden roots.
+    """
+    validate_project_plan(request, plan)
+    roots = project_plan_roots(plan)
+    review = f"Primary workspace: {plan['workspace_id']}\n"
+    review += "\n".join(
+        f"Folder {index + 1}: {redact(root['display_name'])}\nWorkspace: {root['workspace_id']}"
+        for index, root in enumerate(roots)
+    )
+    chunks = [review[offset : offset + 512] for offset in range(0, len(review), 512)]
+    # Four scalar fields leave 28 detail fields under the authority's 32-key cap.
+    if not chunks or len(chunks) > 28:
+        raise PermissionError("complete project folder review is unavailable")
+    metadata = {
+        "action": "Mount project folders",
+        "summary": (
+            f"Register all {len(roots)} exact folders as untrusted workspaces "
+            "and select the displayed primary. Numbered detail fields continue "
+            "the complete folder review."
+        ),
+        "confirmation_phrase": "EXECUTE",
+        "workspace_id": plan["workspace_id"],
+    }
+    for index, chunk in enumerate(chunks):
+        metadata["detail" if index == 0 else f"folder_details_{index + 1:02}"] = chunk
+    return metadata
+
+
+def project_mount_status_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Derive only redacted identities from the durable, validated execute plan."""
+    request, plan = payload.get("request"), payload.get("plan")
+    if not isinstance(request, Mapping) or not isinstance(plan, Mapping):
+        raise PermissionError("project workspace plan is invalid")
+    validate_project_plan(request, plan)
+    return tuple(root["workspace_id"] for root in project_plan_roots(plan))
 
 class ProjectMountPersistenceUncertain(RuntimeError):
     """A canonical mount persistence attempt may have completed before failure."""

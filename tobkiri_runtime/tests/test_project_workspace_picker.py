@@ -12,6 +12,7 @@ from core_runtime.interactive_effect_coordinator import (
     InteractiveEffectUnavailable,
 )
 from core_runtime.project_directory_port import ProjectDirectoryPort
+from core_runtime.workspace_mount_effect import project_mount_status_ids
 from ecosystem.rumi_workspace_mount_pack.runtime.mounts import (
     HOST_PROVIDER_FACTORY,
     WorkspaceMountStore,
@@ -358,7 +359,11 @@ def test_multiple_roots_explicit_second_primary_and_atomic_mount(tmp_path):
             request_digest=canonical_digest(plan),
         ),
     )
-    assert metadata["workspace_ids"] == [r["workspace_id"] for r in plan["roots"]]
+    assert "workspace_ids" not in metadata
+    assert all(isinstance(value, str) and len(value) <= 512 for value in metadata.values())
+    assert project_mount_status_ids({"request": request, "plan": plan}) == tuple(
+        r["workspace_id"] for r in plan["roots"]
+    )
     result = execute("workspace.mount.execute", {"request": request, "plan": plan}, inv)
     assert len(result["mounts"]) == 2
     assert result["mount"]["root_path"] == str(other)
@@ -454,3 +459,44 @@ def test_existing_second_root_collision_preserves_entire_mount_snapshot(tmp_path
             "workspace.mount.execute", {"request": request, "plan": plan}, Invocation()
         )
     assert store.snapshot() == before
+
+
+def test_complete_folder_review_fails_closed_when_display_bounds_are_exceeded(tmp_path):
+    """Native approval never authorizes roots omitted by a display truncation."""
+    _, _, acquire, prepare, _ = workflow(tmp_path)
+    inv = Invocation()
+    choice = acquire("workspace.directory.acquire", {}, inv)
+    request = {"selection_id": choice["selection_id"]}
+    plan = prepare("workspace.mount.prepare", request, inv)
+    plan["display_name"] = "x" * (512 * 28)
+    payload = {"request": request, "plan": plan}
+    with pytest.raises(PermissionError, match="complete project folder review"):
+        _presentation_metadata(
+            INTERACTIVE_EFFECT_SPECS["workspace_mount"],
+            SimpleNamespace(normalized_payload=payload, request_digest=canonical_digest(payload)),
+        )
+    assert not WorkspaceMountStore(PROFILE, user_data_root=tmp_path).path.exists()
+
+
+def test_status_root_ids_revalidate_frozen_plan_and_ignore_client_display(tmp_path):
+    """Only sealed roots become UI identities; client presentation grants nothing."""
+    from copy import deepcopy
+
+    _, _, acquire, prepare, _ = workflow(tmp_path)
+    inv = Invocation()
+    choice = acquire("workspace.directory.acquire", {}, inv)
+    request = {"selection_id": choice["selection_id"]}
+    plan = prepare("workspace.mount.prepare", request, inv)
+    payload = {
+        "request": request,
+        "plan": plan,
+        "redacted_metadata": {"workspace_ids": ["client-substitution"]},
+    }
+    identities = project_mount_status_ids(payload)
+    assert identities == (plan["workspace_id"],)
+    changed = deepcopy(payload)
+    changed["plan"]["workspace_id"] = "client-substitution"
+    with pytest.raises(PermissionError):
+        project_mount_status_ids(changed)
+    assert identities == (plan["workspace_id"],)
+    assert not WorkspaceMountStore(PROFILE, user_data_root=tmp_path).path.exists()

@@ -18,7 +18,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, ContextManager, Mapping, TypedDict
 
 from core_runtime.authority.v4 import AuthorityScope
-from core_runtime.workspace_mount_effect import validate_project_plan
+from core_runtime.workspace_mount_effect import (
+    project_mount_presentation, validate_project_plan,
+)
 from core_runtime.workspace_task_effect import (
     workspace_task_payload,
     workspace_task_snapshot,
@@ -842,16 +844,11 @@ def _presentation_metadata(
         if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
         _execute_payload(spec, request, plan)
-        metadata: dict[str, Any] = dict(_presentation(
-            action="Mount project folders", summary="Register these exact folders as untrusted workspaces and select the primary.",
-            detail="\n".join(
-                f"Folder: {_display_text(_required_text(root.get('display_name')))}\nWorkspace: {_display_text(_required_text(root.get('workspace_id')))}"
-                for root in plan.get("roots", [plan])
-            ) + f"\nPrimary workspace: {_display_text(_required_text(plan.get('workspace_id')))}",
-        ))
-        metadata["workspace_id"] = _required_text(plan.get("workspace_id"))
-        metadata["workspace_ids"] = [root["workspace_id"] for root in plan.get("roots", [plan])]
-        return metadata
+        return project_mount_presentation(
+            request, plan,
+            # Redact credentials without truncating any selected folder name.
+            redact=lambda value: _display_text(value, max_length=max(512, len(value))),
+        )
     if spec.kind == "mcp_connect":
         plan, request = payload.get("plan"), payload.get("request")
         if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
@@ -1295,7 +1292,10 @@ def _port_status(status: PendingEffectStatus) -> InteractiveEffectStatus:
         approval_request_id=status.approval_request_id,
         state=status.state.value,
         expires_at=status.expires_at,
-        redacted_metadata=dict(status.presentation_metadata),
+        redacted_metadata={
+            **status.presentation_metadata,
+            **({"workspace_ids": list(status.workspace_ids)} if status.workspace_ids else {}),
+        },
     )
 
 

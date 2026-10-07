@@ -1720,6 +1720,7 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
     [
         "normal",
         "auto",
+        "incremental",
         "calculator",
         "system_prompt",
         "provider_error",
@@ -1738,6 +1739,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
     from tobkiri_protocol.saved_context import PROMPT_TARGET
+    from tobkiri_protocol.turn_progress_v1 import AI_STREAM, ACTION, ACTION_OPERATION
 
     original = V4DispatchSession.invoke
     ai_calls = []
@@ -1747,6 +1749,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     selected_tools = []
     tool_results = []
     prompt_reads = []
+    incremental_quotes = []
+    progress_begins = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
@@ -1758,8 +1762,19 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             # Auto tool selection offers tools without making tool_calling a
             # hard routing requirement; only manual/must_use selections do.
             assert "tool_calling" not in payload
+            if payload.get("delivery_mode") == "incremental":
+                incremental_quotes.append(payload)
+                # Existing completion adapters implement buffered AI only.
+                # The explicit incremental case implements the stream ABI.
+                return {
+                    "ready": completion == "incremental",
+                    "model_profile_id": "model-profile-1",
+                }
             return {"ready": True, "model_profile_id": "model-profile-1"}
-        if (contract_id, operation_id) == TARGETS[2]:
+        if (contract_id, operation_id) in {TARGETS[2], AI_STREAM}:
+            assert (contract_id, operation_id) == (
+                AI_STREAM if completion == "incremental" else TARGETS[2]
+            )
             ai_calls.append(payload)
             if completion == "provider_error":
                 return {"status": "error", "private": "provider diagnostic"}
@@ -1781,6 +1796,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 assert "Calculated: 6*7 = 42" in payload["messages"][-1]["content"]
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (
+            (contract_id, operation_id) == (ACTION, ACTION_OPERATION)
+            and payload.get("phase") == "begin"
+        ):
+            progress_begins.append((payload, result))
         if (contract_id, operation_id) == PROMPT_TARGET:
             prompt_reads.append(result)
         if (contract_id, operation_id) == DEFINITION and payload.get("operation") == "select":
@@ -1815,7 +1835,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         packvm_backends=BackendRegistry(
             (
                 _SavedToolPackVmBackend()
-                if completion in {"auto", "calculator"}
+                if completion in {"auto", "incremental", "calculator"}
                 else _SavedPackVmBackend(),
             )
         ),
@@ -1845,11 +1865,12 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 "content": "Hello",
             }
         }
-        if completion in {"auto", "calculator"}:
+        if completion in {"auto", "incremental", "calculator"}:
             body["request"]["tool_selection"] = {
                 "mode": "auto",
                 "include": [],
-                "exclude": ["calculator"] if completion == "auto" else [],
+                "exclude": ["calculator"]
+                if completion in {"auto", "incremental"} else [],
                 "scope": "turn",
                 "must_use": False,
             }
@@ -1982,8 +2003,22 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert all(set(item["definitions"]) == {"calculator"} for item in selected_tools)
         else:
             assert "tools" not in ai_calls[0]
-        if completion == "auto":
+        if completion in {"auto", "incremental"}:
             assert selected_tools == [{"tools": [], "definitions": {}}] * 3
+        if completion == "incremental":
+            # This proves the enabled stream plan sealed and dispatched through
+            # the real captured progress owner, before the AI-only adapter.
+            assert len(incremental_quotes) == 1
+            assert len(progress_begins) == 1
+            beginning, reservation = progress_begins[0]
+            assert beginning["turn_id"] == completed_turn["id"]
+            assert beginning["request_id"] == completed_turn["request_id"]
+            assert beginning["input_digest"] == completed_turn["input_digest"]
+            assert beginning["conversation_revision"] == 2
+            assert beginning["parent_id"] == reference["user_message_id"]
+            assert reservation["progress_id"] == ai_calls[0]["progress_id"]
+        else:
+            assert not progress_begins
         if completion != "provider_error":
             assert [
                 message["content"]
@@ -2841,11 +2876,21 @@ def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approva
 
     path = "/api/projects/workspace"
     for index, (count, primary, legacy) in enumerate(
-        ((1, 0, False), (2, 0, False), (2, 1, False), (1, 0, True))
+        ((1, 0, False), (2, 0, False), (2, 1, False), (1, 0, True), (32, 31, False), (2, 1, False))
     ):
-        roots = [tmp_path / f"folder-{index}-{item}" for item in range(count)]
+        roots = [
+            tmp_path
+            / (
+                f"folder-{index}-{item}".ljust(255, "x")
+                if count == 32
+                else f"folder-{index}-{item}"
+            )
+            for item in range(count)
+        ]
+        if index == 5:
+            roots = [tmp_path / f"parent-{item}" / "same-name" for item in range(count)]
         for root in roots:
-            root.mkdir()
+            root.mkdir(parents=True)
         status, picked = post("/api/ui/select-directory", {})
         assert status == 200
         choice = picked["data"]
@@ -2867,6 +2912,7 @@ def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approva
                 {"selection_ids": [tokens[0], tokens[0]], "primary_selection_id": tokens[0]},
                 {**request, "approved": True},
                 {**request, "path": str(roots[0])},
+                {**request, "workspace_ids": ["client-substitution"]},
                 {**request, "primary_selection_id": "outside"},
             )
             for invalid in invalid_requests:
@@ -2897,6 +2943,8 @@ def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approva
         metadata = effect["redacted_metadata"]
         assert len(metadata["workspace_ids"]) == count
         assert metadata["workspace_id"] == metadata["workspace_ids"][primary]
+        assert len(set(metadata["workspace_ids"])) == count
+        assert all(str(root) not in json.dumps(prepared) for root in roots)
         assert all(token not in json.dumps(prepared) for token in tokens)
         assert not mounts.path.exists()
         status, detail = post(
@@ -2908,7 +2956,32 @@ def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approva
         assert status == 200, detail
         assert detail["data"]["state"] == "pending"
         assert detail["data"]["typed_confirmation_required"] is True
-        assert detail["data"]["redacted_metadata"] == metadata
+        approval_metadata = detail["data"]["redacted_metadata"]
+        assert approval_metadata == {
+            key: value for key, value in metadata.items() if key != "workspace_ids"
+        }
+        assert len(approval_metadata) <= 32
+        assert all(
+            isinstance(value, str) and len(value) <= 512 for value in approval_metadata.values()
+        )
+        review = approval_metadata["detail"] + "".join(
+            approval_metadata[key]
+            for key in sorted(approval_metadata)
+            if key.startswith("folder_details_")
+        )
+        assert review == (
+            f"Primary workspace: {metadata['workspace_id']}\n"
+            + "\n".join(
+                f"Folder {item + 1}: {root.name}\nWorkspace: {metadata['workspace_ids'][item]}"
+                for item, root in enumerate(roots)
+            )
+        )
+        status, recovered = post(
+            path,
+            {"phase": "status", "effect_id": effect["effect_id"]},
+        )
+        assert status == 200, recovered
+        assert recovered["data"]["redacted_metadata"] == metadata
         if index % 2:
             status, denied = post(
                 "/api/interactive-approval/v1/deny",
@@ -2932,7 +3005,6 @@ def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approva
         assert status == 200, cancelled
         assert cancelled["data"]["state"] == "cancelled"
         assert not mounts.path.exists()
-
 
 def test_workspace_reads_use_the_real_captured_owner_without_mutation(
     production_server,
