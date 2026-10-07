@@ -242,21 +242,8 @@ class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
     _OPERATION_ID = "saved_complete"
 
     def invoke(self, request: object) -> ProviderOutcome:
-        from ecosystem.defaultspack.runtime import saved_conversation
-        from tests.test_saved_bridge_callbacks import _frame
-
-        assert isinstance(request, RequestEnvelope)
-        assert request.target_domain.value == self._target_domain_id
-        assert request.contract_id == self._CONTRACT_ID
-        assert request.operation_id == self._OPERATION_ID
-        self._saved_preflight(request)
-        intent = saved_conversation.start(request.payload["request"])
-        for _ in range(4):
-            if intent.get("kind") != "tobkiri.packvm.continuation.intent.v2":
-                break
-            outcome = self._saved_callback(request, _frame(intent, request.context.request_id))
-            intent = saved_conversation.resume(intent["state"], outcome)
-        return ProviderOutcome(intent)
+        """Use the real saved chain, including owner-projected optional context."""
+        return _SavedToolPackVmBackend.invoke(self, request)
 
 
 class _SavedToolPackVmBackend(_SavedPackVmBackend):
@@ -345,6 +332,9 @@ def _resume_until_terminal(
         if state not in {"claimed", "dispatched"}:
             return result
         assert time.monotonic() < deadline, result
+        # Resume crosses the effect boundary once. Status observes its receipt;
+        # a dispatched resume is deliberately fenced against a second effect.
+        body = {**body, "phase": "status"}
         time.sleep(0.02)
 
 

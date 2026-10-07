@@ -139,6 +139,7 @@ def _capability_snapshot(active_runtime, operations) -> dict[str, object]:
             "function_id": row["function_id"],
             "artifact_digest": row["artifact_digest"],
             "owner_pack_id": row["owner_pack_id"],
+            "read_only": False,
         }
         for row in operations
     ]
@@ -263,6 +264,16 @@ def test_capability_invocation_hash_binds_the_application_map() -> None:
     for changed in (None, "sha256:" + "c" * 64):
         assert resolve({**snapshot, "application_artifact_digest": changed},
                        active=active, operation=operation) is None
+    for changed in (
+        {"read_only": True},
+        {"read_only": "false"},
+        {"input_schema_digest": "sha256:" + "d" * 64},
+    ):
+        tampered = {
+            **snapshot,
+            "targets": [{**snapshot["targets"][0], **changed}],
+        }
+        assert resolve(tampered, active=active, operation=operation) is None
 
 
 @pytest.mark.parametrize("surface", ["profile", "operations"])

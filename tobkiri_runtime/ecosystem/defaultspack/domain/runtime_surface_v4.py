@@ -2666,13 +2666,27 @@ def _capability_invocation_target(
         "function_id",
         "artifact_digest",
     )
-    digest_targets: list[dict[str, str]] = []
+    digest_targets: list[dict[str, object]] = []
     for target in targets:
-        if any(not isinstance(target.get(key), str) for key in required) or not isinstance(
-            target.get("owner_pack_id"), str
+        if (
+            any(not isinstance(target.get(key), str) for key in required)
+            or not isinstance(target.get("owner_pack_id"), str)
+            or type(target.get("read_only")) is not bool
         ):
             return None
-        digest_targets.append({key: str(target[key]) for key in required})
+        digest_target: dict[str, object] = {
+            key: str(target[key]) for key in required
+        }
+        digest_target["read_only"] = target["read_only"]
+        if "input_schema_digest" in target:
+            schema_digest = target["input_schema_digest"]
+            if (
+                not isinstance(schema_digest, str)
+                or DIGEST_PATTERN.fullmatch(schema_digest) is None
+            ):
+                return None
+            digest_target["input_schema_digest"] = schema_digest
+        digest_targets.append(digest_target)
     expected_hash = canonical_digest(
         {
             "profile_id": profile_id,

@@ -1489,12 +1489,12 @@
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:266196dfa8c468bcae03f3ac436bbae48d87846621b2796a7ac849ffb42c5438"
+      "digest": "sha256:f9761e1ff4e16828c4baeb854c881eed3a0c1d8e4cf685d1a73e43caaebb9ad3"
     },
     {
       "path": "packs/tobkiri_workflow_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:52dfac426cab140d2710bef8e39c2da19bddef6f2e4c5bb36dba85f41ec31fba"
+      "digest": "sha256:0548ef0c56aa2f4c784f24d94a316af1b7b253976cd72fdd547865af6804a65b"
     },
     {
       "path": "defaults-basepack.base.v1.json",

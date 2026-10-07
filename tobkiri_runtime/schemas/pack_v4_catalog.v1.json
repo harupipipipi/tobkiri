@@ -31704,7 +31704,7 @@
           "path": "frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:981110c65d6f6a849e104413ea25737cbc6b6bf95e6053de8d94da6b56708c11",
+          "digest": "sha256:b952c8933beeb52bcf3b43bb487e45b458a20d175c7f33f3abe11c638d018a98",
           "index_role": "asset",
           "kind": "asset",
           "path": "backend-integrity.v4.json"
