@@ -8,6 +8,7 @@ import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
 import { normalizeProjectFolderSelections } from "./projectFolderDraft";
+import { confirmedChatReferenceCatalog } from "./chatReferenceCatalog";
 import { mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./registeredSlashCommands";
 import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateFeatureFlagEnabled, templateToolPolicySettings } from "./templateAiInput";
 import {
@@ -58,6 +59,53 @@ function requestTarget(input: RequestInfo | URL): string {
   const separator = operation.indexOf(" ");
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
+
+test("chat reference catalog preserves canonical GET transport and pagination", async (context) => {
+  const now = Date.now();
+  const snapshot = {
+    kind: "tobkiri.chat.reference.snapshot.v1", profile_id: "local",
+    store_revision: 1, project_revision: 1, snapshot_time: now,
+    expires_at: now + 600_000, next_cursor: null, truncated: false,
+    references: [{ kind: "chat", id: "fixture-chat", label: "Fixture chat",
+      conversation_ids: ["fixture-chat"], snapshot_digest: `sha256:${"a".repeat(64)}`,
+      member_count: 1, membership_complete: true }],
+  };
+  const expectedQueries = ["limit=100", "limit=25&cursor=cursor%3A%2B%2F%3D"];
+  const requestIds = new Set<string>();
+  let calls = 0;
+  context.mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(
+      `GET /api/chat/references?${expectedQueries[calls++]}`,
+    )}`);
+    assert.equal(init?.method, "GET");
+    assert.equal(init?.cache, "no-store");
+    assert.equal(init?.body, undefined);
+    const requestId = new Headers(init?.headers).get("X-Tobkiri-Request-ID");
+    assert.ok(requestId);
+    requestIds.add(requestId);
+    return new Response(JSON.stringify({ success: true, data: snapshot }));
+  });
+  for (const options of [undefined, { limit: 25, cursor: "cursor:+/=" }]) {
+    const raw = await api.listChatReferences(options);
+    assert.deepEqual(raw, snapshot);
+    assert.equal(confirmedChatReferenceCatalog(raw, "local").candidates[0]?.id, "fixture-chat");
+  }
+  assert.equal(calls, 2);
+  assert.equal(requestIds.size, 2);
+});
+
+test("chat reference catalog propagates Host failure without a legacy fallback", async (context) => {
+  let calls = 0;
+  context.mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+    calls++;
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(
+      "GET /api/chat/references?limit=100",
+    )}`);
+    return new Response(JSON.stringify({ success: false, error: "Unavailable" }), { status: 503 });
+  });
+  await assert.rejects(api.listChatReferences(), /503/);
+  assert.equal(calls, 1);
+});
 
 function bindChatStream(body: string, init?: RequestInit): string {
   const request = JSON.parse(String(init?.body ?? "{}")) as { idempotency_key?: string };

@@ -6831,10 +6831,10 @@ export const api = {
   },
 
   listChatReferences(options?: { cursor?: string; limit?: number }) {
-    const query = new URLSearchParams();
-    query.set("limit", String(options?.limit ?? 100));
-    if (options?.cursor) query.set("cursor", options.cursor);
-    return request<unknown>(`${defaultspackContractRoute("api/chat/references")}?${query.toString()}`, { cache: "no-store" });
+    return request<unknown>(withQuery(defaultspackContractRoute("api/chat/references"), {
+      limit: options?.limit ?? 100,
+      cursor: options?.cursor,
+    }), { cache: "no-store" });
   },
   resolveChatReferences(references: Array<{ kind: "chat" | "group"; id: string }>) {
     return request<unknown>(defaultspackContractRoute("api/chat/references/resolve"), {
