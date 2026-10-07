@@ -1958,6 +1958,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 "reconciliation_required" if lose_owner_reply else "completed"
             ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        calls_before_repeat = (
+            len(ai_calls), len(tool_results), len(progress_begins),
+        )
         status, repeated, _ = _request(
             server,
             "POST",
@@ -1969,7 +1972,20 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         if lose_owner_reply:
             assert repeated["data"]["status"] == "completed", repeated
         else:
-            assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
+            assert repeated["data"] == {
+                "status": "existing",
+                "turn": payload["data"]["turn"],
+                "input_context_receipt": payload["data"]["input_context_receipt"],
+            }
+            assert repeated["data"]["input_context_receipt"] == {
+                "source_input_digest": canonical_digest(body),
+                "accepted_input_digest": repeated["data"]["turn"]["input_digest"],
+                "task_context_digest": canonical_digest(None),
+                "delivery_status": "not_applicable",
+            }
+        assert (
+            len(ai_calls), len(tool_results), len(progress_begins),
+        ) == calls_before_repeat
         completed_turn = repeated["data"]["turn"]
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
         if completion == "provider_error":

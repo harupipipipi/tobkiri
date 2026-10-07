@@ -12,6 +12,7 @@ from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity
 from tobkiri_host.continuation_envelope import seal_continuation_intent
+from tobkiri_host.saved_workspace_context import WORKSPACE_TARGET
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_context import PROMPT_TARGET
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
@@ -37,7 +38,7 @@ def _setup(tmp_path: Path):
 
     def require_targets(request, targets):
         assert request is outer
-        assert targets in (REQUIRED_TARGETS, (PROMPT_TARGET,))
+        assert targets in (REQUIRED_TARGETS, (PROMPT_TARGET,), (WORKSPACE_TARGET,))
 
     def dispatch(request, target, payload):
         assert request is outer
@@ -58,6 +59,23 @@ def _setup(tmp_path: Path):
                 "prompt": PromptStudioStore("defaults", user_data_root=tmp_path).get(
                     payload["prompt_id"]
                 ),
+            }
+        elif target == WORKSPACE_TARGET:
+            from ecosystem.rumi_workspace_mount_pack.runtime.mounts import (
+                WorkspaceMountStore,
+            )
+
+            assert payload == {"operation": "binding", "workspace_id": "workspace-1"}
+            # The negative fixture has no accepted mount to resolve.
+            assert WorkspaceMountStore(
+                "defaults", user_data_root=tmp_path
+            ).get(payload["workspace_id"]) is None
+            return {
+                "status": "error",
+                "error": {
+                    "code": "WORKSPACE_UNAVAILABLE",
+                    "message": "Workspace mount is unknown.",
+                },
             }
         else:
             assert target == saved.TARGETS[2]
@@ -212,7 +230,11 @@ def test_owned_special_context_is_rejected_before_user_append(
     store.update("conversation-1", patch, expected_conversation_revision=1)
     outer.payload["request"]["conversation_revision"] = 2
     before = store.path.read_bytes()
-    with pytest.raises(AuthorityDenied, match="context resolution"):
+    workspace = patch.get("metadata", {}).get("workspace_id") == "workspace-1"
+    with pytest.raises(
+        AuthorityDenied,
+        match="workspace owner is unavailable" if workspace else "context resolution",
+    ):
         if stage == "preflight":
             callbacks.preflight(outer)
         else:
@@ -227,7 +249,9 @@ def test_owned_special_context_is_rejected_before_user_append(
             )
             callbacks(outer, _frame(intent))
     assert store.path.read_bytes() == before
-    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+    assert [target for target, _ in calls] == (
+        [saved.TARGETS[0], WORKSPACE_TARGET] if workspace else [saved.TARGETS[0]]
+    )
 
 
 def test_owned_agent_context_fails_before_guest_can_request_a_write(tmp_path: Path) -> None:
@@ -532,13 +556,11 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         item
         for item in profile["requested_edges"]
         if item["caller_function_id"]
-        not in {
-            saved_function,
-            "rumi_tool_broker_pack.tool-broker.invoke",
-            "rumi_tool_local_executor_pack.tool-executor.local",
-        }
+        != saved_function
         and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]
+    # Preserve the normal tool contribution edges: they bind the principals
+    # that call their own owner edges, even when this test selects no tools.
 
     def edge(caller, target, provider):
         pack = provider.split(".")[0]
@@ -646,7 +668,10 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         def invoke(self, contract_id, operation_id, payload, **kwargs):
             calls.append((contract_id, operation_id))
             if (contract_id, operation_id) == READINESS:
-                return {"ready": True, "model_profile_id": "model-profile-1"}
+                return {
+                    "ready": payload.get("delivery_mode") != "incremental",
+                    "model_profile_id": "model-profile-1",
+                }
             if (contract_id, operation_id) == saved.TARGETS[2]:
                 return {"status": "ok", "output": "Hi"}
             return original(self, contract_id, operation_id, payload, **kwargs)
@@ -675,7 +700,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         session.close()
 
 
-@pytest.mark.parametrize("lost_reply", [None, "guest", "owner"])
+@pytest.mark.parametrize("lost_reply", [None, "guest", "owner", "unconfirmed"])
 def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -718,7 +743,7 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         callback, preflight = backend.saved_callbacks
         preflight(envelope)
         intent = saved.start(envelope.payload["request"])
-        for _ in range(4):
+        for stage in range(4):
             intent = saved.resume(
                 intent["state"],
                 callback(
@@ -726,6 +751,8 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
                     _frame(intent, envelope.context.request_id),
                 ),
             )
+            if lost_reply == "unconfirmed" and stage == 1:
+                raise RuntimeError("guest execution outcome lost after user commit")
         if lost_reply == "guest":
             raise RuntimeError("guest reply lost after final owner commit")
         return ProviderOutcome(intent)
@@ -733,14 +760,23 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
     monkeypatch.setattr(backend, "invoke", guest)
     original = V4DispatchSession.invoke
     ai_calls = []
+    owner_appends = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
-            return {"ready": True, "model_profile_id": "model-profile-1"}
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
         if (contract_id, operation_id) == saved.TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (
+            (contract_id, operation_id) == saved.TARGETS[3]
+            and payload.get("operation") == "append_saved"
+        ):
+            owner_appends.append(payload["message"]["role"])
         if (
             lost_reply == "owner"
             and (contract_id, operation_id) == saved.TARGETS[3]
@@ -785,13 +821,42 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         assert result["status"] == ("reconciliation_required" if lost_reply else "completed"), (
             result
         )
+        expected_appends = (
+            ["user"] if lost_reply == "unconfirmed" else ["user", "assistant"]
+        )
+        assert len(guest_requests) == 1
+        assert len(ai_calls) == (0 if lost_reply == "unconfirmed" else 1)
+        assert owner_appends == expected_appends
+        receipt = store.saved_receipt("turn-1")
+        committed = receipt.get("result_reference")
+        if lost_reply == "unconfirmed":
+            assert committed is None
+            assert receipt["user_revision"] == 2
+        else:
+            assert committed["conversation_revision"] == 3
+        if lost_reply:
+            assert result["turn"]["status"] == "waiting"
+            assert result["turn"]["result_reference"] is None
+            assert result["turn"]["events"][-1]["details"] == {
+                "phase": "reconciliation_required",
+                "reason": "saved_execution_outcome_unconfirmed",
+            }
         with profile_capture_scope():
             repeated = session.invoke(
                 "tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved", initial
             )
-        if lost_reply:
+        if lost_reply == "unconfirmed":
+            # A partial owner receipt cannot confirm assistant completion or
+            # authorize another guest execution on an ordinary duplicate.
+            assert repeated["status"] == "existing", repeated
+            assert repeated["turn"] == result["turn"]
+            assert store.saved_receipt("turn-1") == receipt
+        elif lost_reply:
+            # Recovery reads the existing owner receipt; it never re-executes
+            # the guest or a possibly committed owner append.
             assert repeated["status"] == "completed", repeated
-            assert repeated["turn"]["result_reference"]["conversation_revision"] == 3
+            assert repeated["turn"]["status"] == "completed"
+            assert repeated["turn"]["result_reference"] == committed
         else:
             assert repeated["status"] == "existing"
             assert repeated["turn"] == result["turn"]
@@ -801,11 +866,13 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
             "task_context_digest": canonical_digest(None),
             "delivery_status": "not_applicable",
         }
-        assert len(guest_requests) == len(ai_calls) == 1
-        assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
-            "Hello",
-            "Hi",
-        ]
+        assert len(guest_requests) == 1
+        assert len(ai_calls) == (0 if lost_reply == "unconfirmed" else 1)
+        assert owner_appends == expected_appends
+        assert repeated["input_context_receipt"] == result["input_context_receipt"]
+        assert [item["content"] for item in store.get("conversation-1")["messages"]] == (
+            ["Hello"] if lost_reply == "unconfirmed" else ["Hello", "Hi"]
+        )
     finally:
         session.close()
 

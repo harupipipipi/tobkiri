@@ -719,6 +719,7 @@ class _PendingController:
             state=SimpleNamespace(value="approval_pending"),
             expires_at=123_456.0,
             presentation_metadata={"confirmation_phrase": "EXECUTE"},
+            workspace_ids=(),
         )
 
     def prepare(self, **kwargs: Any) -> Any:
