@@ -60,6 +60,9 @@ def _fixture(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     catalog = {"pack_ids": ["fixture_pack"], "excluded_packs": [], "packs": []}
     for name in ("manifest_authority.v1.json", "executable_sources.v1.json"):
         (root / "schemas" / name).write_text('{"packs": {}}')
+    profile = root / "ecosystem/defaultspack/v4/defaults.profile.v5.json"
+    profile.parent.mkdir(parents=True)
+    profile.write_text('{"packs": []}')
     return root, catalog, payload
 
 
@@ -278,9 +281,7 @@ def test_source_identity_is_disjoint_from_every_bundled_authority(
             json.dumps({"packs": {source_id + ".execute": {"pack_id": source_id}}})
         )
     else:
-        catalog["pack_ids"].append("defaultspack")
         profile = root / "ecosystem/defaultspack/v4/defaults.profile.v5.json"
-        profile.parent.mkdir(parents=True)
         profile.write_text(json.dumps({"packs": [{"pack_id": source_id}]}))
     _assert_denied(root, catalog)
 
@@ -292,6 +293,7 @@ def test_source_identity_is_disjoint_from_every_bundled_authority(
         "schemas/staged_source_inventory_v1.schema.json",
         "schemas/manifest_authority.v1.json",
         "schemas/executable_sources.v1.json",
+        "ecosystem/defaultspack/v4/defaults.profile.v5.json",
     ],
 )
 def test_missing_required_source_metadata_fails_closed(
@@ -314,7 +316,7 @@ def test_changed_schema_definition_fails_closed(tmp_path: Path) -> None:
     _assert_denied(root, catalog)
 
 
-@pytest.mark.parametrize("kind", ["root_parent", "authority_parent"])
+@pytest.mark.parametrize("kind", ["root_parent", "authority_parent", "profile_parent"])
 def test_intermediate_source_path_links_are_rejected(
     tmp_path: Path,
     kind: str,
@@ -328,10 +330,28 @@ def test_intermediate_source_path_links_are_rejected(
         alias = tmp_path / "linked-parent"
         alias.symlink_to(actual, target_is_directory=True)
         root = alias / "runtime"
-    else:
+    elif kind == "authority_parent":
         actual = tmp_path / "actual-schema"
         (root / "schemas").rename(actual)
         (root / "schemas").symlink_to(actual, target_is_directory=True)
+    else:
+        profile_directory = root / "ecosystem/defaultspack/v4"
+        actual = tmp_path / "actual-profile"
+        profile_directory.rename(actual)
+        profile_directory.symlink_to(actual, target_is_directory=True)
+    _assert_denied(root, catalog)
+
+
+def test_linked_mandatory_profile_metadata_cannot_hide_selection(
+    tmp_path: Path,
+) -> None:
+    """The required Profile input remains link-free without a selected Pack."""
+    root, catalog, _ = _fixture(tmp_path)
+    profile = root / "ecosystem/defaultspack/v4/defaults.profile.v5.json"
+    target = tmp_path / "outside-profile.json"
+    profile.rename(target)
+    profile.symlink_to(target)
+    assert "defaultspack" not in catalog["pack_ids"]
     _assert_denied(root, catalog)
 
 

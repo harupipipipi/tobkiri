@@ -33,7 +33,9 @@ def build_fixture(root: Path, gate: Any) -> SimpleNamespace:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value) + "\n", encoding="utf-8", newline="\n")
 
-    pack_id = "synthetic_fixture_pack"
+    # This independently authored synthetic Application root also carries the
+    # mandatory bundled Profile input; it is never copied into production.
+    pack_id = "defaultspack"
     runtime_root = root / "tobkiri_runtime"
     ecosystem = runtime_root / "ecosystem"
     pack_dir = ecosystem / pack_id
@@ -235,6 +237,7 @@ def build_fixture(root: Path, gate: Any) -> SimpleNamespace:
         "packs": [{"pack_id": pack_id, "authority": "v4-authoritative"}],
     })
     write(runtime_root / "schemas" / "executable_sources.v1.json", {"packs": {}})
+    write(pack_dir / "v4/defaults.profile.v5.json", {"packs": []})
     staged_records = []
     for source_id in (
         "tobkiri_surface_renderer_pack", "tobkiri_voice_agent_pack"

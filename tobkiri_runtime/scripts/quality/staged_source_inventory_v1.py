@@ -308,9 +308,8 @@ def load_staged_source_inventory(
         authority_paths = [
             "schemas/manifest_authority.v1.json",
             "schemas/executable_sources.v1.json",
+            "ecosystem/defaultspack/v4/defaults.profile.v5.json",
         ]
-        if "defaultspack" in catalog["pack_ids"]:
-            authority_paths.append("ecosystem/defaultspack/v4/defaults.profile.v5.json")
         for relative in authority_paths:
             authority, _ = _read_json(runtime_root / relative, MAX_AUTHORITY_BYTES)
             if not isinstance(authority, dict):

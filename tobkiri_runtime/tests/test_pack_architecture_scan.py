@@ -47,6 +47,9 @@ def _staged_sources(root: Path) -> None:
     )
     for name in ("manifest_authority.v1.json", "executable_sources.v1.json"):
         (inventory.parent / name).write_text(json.dumps({"packs": {}}))
+    profile = runtime / "ecosystem/defaultspack/v4/defaults.profile.v5.json"
+    profile.parent.mkdir(parents=True)
+    profile.write_text('{"packs": []}')
 
 
 def _scanner():
@@ -61,7 +64,7 @@ def _scanner():
 def _pack(root: Path, pack_id: str) -> Path:
     _staged_sources(root)
     pack = root / "tobkiri_runtime" / "ecosystem" / pack_id
-    pack.mkdir(parents=True)
+    pack.mkdir(parents=True, exist_ok=True)
     (pack / "ecosystem.json").write_text(json.dumps({"id": pack_id}), encoding="utf-8")
     catalog_root = root / "tobkiri_runtime" / "schemas"
     catalog_root.mkdir(parents=True, exist_ok=True)
@@ -80,12 +83,6 @@ def _pack(root: Path, pack_id: str) -> Path:
         ),
         encoding="utf-8",
     )
-    if "defaultspack" in pack_ids:
-        profile = (
-            root / "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
-        )
-        profile.parent.mkdir(parents=True, exist_ok=True)
-        profile.write_text("{}")
     return pack
 
 
