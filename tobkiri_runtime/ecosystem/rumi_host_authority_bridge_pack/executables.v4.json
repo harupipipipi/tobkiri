@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:c0b518b6f6fb70a81025f1e0c326a3cd3c48875b579ac692538438b031652038",
+  "catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:46f5e4aac1dab0fe7ef246115e6af18f59601df942325f495d92c53933c30fe1",
+  "source_identity": "sha256:e277b7785bf581e43ce47c7dd4af080f475512e6125f65a78ffbe382c1f7ea33",
   "variants": [
     {
       "architecture": "any",
@@ -762,19 +762,51 @@
                     "const": "prepare"
                   },
                   "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "selection_id": {
-                        "maxLength": 255,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_-]+$",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "selection_id"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -938,7 +970,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+          "revision_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

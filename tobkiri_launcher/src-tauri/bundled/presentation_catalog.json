@@ -698,7 +698,7 @@
     },
     {
       "contract_id": "tobkiri.service.interactive-effect.v1",
-      "digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+      "digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json"
     },
@@ -757,7 +757,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:75151db7935f243e0590643df85ebde331ee9f963e8575a8005fd3d72d4a4eed",
+  "default_profile_digest": "sha256:f95417ac819e7d2bbd32b2368a9b7e396d58e0b1abdc7c7accefc6599ff9d502",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -991,7 +991,7 @@
     "rumi_git_publish_pack": "sha256:dd6fde7640a7f77bab877d2badac4200bb09d22efa27bd0cbe6fde19267807be",
     "rumi_git_read_pack": "sha256:af8b7c96a7e9af792d42b22a882125a965cd78833aaff0ad22b8e7ff9d3598ec",
     "rumi_git_write_pack": "sha256:2f3b749d30a51919bc9c5c240b242fb90623e0b1157d089658c1a2eddc5ff0ac",
-    "rumi_host_authority_bridge_pack": "sha256:508519e35829f48a15544dda2060b5796f3653b137e96f270d4e790780fa4396",
+    "rumi_host_authority_bridge_pack": "sha256:85ad74c87cbbe6e1f1c0bd5e68691e86f816674e89034c7dbb029255f97f1feb",
     "rumi_job_action_broker_pack": "sha256:f30da7cbd62c2d37af5190baf8bd2e200e78e379e95d425a5d81aab85e069933",
     "rumi_kanban_state_store_pack": "sha256:7f42fca269df9a53acc48146a0020e81340b3c8c25c7d64026cf5cb298af8151",
     "rumi_model_catalog_pack": "sha256:7f8d37db361f06bf38e52ec60dc349acd4182aca698e44f53ac8b7acecf69266",

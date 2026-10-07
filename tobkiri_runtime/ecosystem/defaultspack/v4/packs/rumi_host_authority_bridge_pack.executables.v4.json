@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:46d678a1b15a073fd8a54ad5f931f2fc079acd7d65edba0b1048f4b27524e21d",
+  "source_identity": "sha256:5748d321413d085f4f0605cb3b56d0c0d6ffbbe44209112e9890bdc859ee5ddb",
   "variants": [
     {
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy.python",
@@ -631,7 +631,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+          "revision_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
           "operation_id": "interactive_effect.manage",
           "input_schema": {
             "additionalProperties": false,
@@ -761,19 +761,51 @@
                     "const": "prepare"
                   },
                   "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "selection_id": {
-                        "maxLength": 255,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_-]+$",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "selection_id"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -947,6 +979,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:c0b518b6f6fb70a81025f1e0c326a3cd3c48875b579ac692538438b031652038",
-  "catalog_digest": "sha256:778e39f8a222efd22687101e9151c661ecad21e64fdb3468e85c61f85c4f58bc"
+  "materialization_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+  "catalog_digest": "sha256:7f3d7abee48270e8dd927fed991007750096f99ad57530de2948a684c42d147a"
 }

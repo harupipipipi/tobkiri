@@ -209,7 +209,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:5381aaf24ceffb1c13ed7396cf018a9bd2aa8f5aeaff77f0a33e02c2a72c0e49",
+    "source_digest": "sha256:3c7dcaedbea3f56b1b27771ca8b4ec4685a6e563b0754784c5dd5f28f7321690",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -377,7 +377,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+        "semantics_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"
@@ -2714,7 +2714,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+        "semantics_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"
@@ -4471,7 +4471,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+        "semantics_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"
@@ -5219,7 +5219,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+        "semantics_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"

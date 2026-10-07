@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:3dd45e62b7815a3128f6cb91c3f43c3a7771f20b1663bb1fcbd3a9307521cb8f",
+      "digest": "sha256:a11a32ab3a7589715563a0a617699fcd27b0f26b600d26bfc0fbb50a885f6364",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -85,7 +85,7 @@
       "operations": [
         "interactive_effect.manage"
       ],
-      "revision_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11"
+      "revision_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242"
     }
   ],
   "functions": [
@@ -164,7 +164,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:9764a3afe8c2e1e2cab533e8db98eba9580affac82b89b3b4fa26d51ed1bfa11",
+      "contract_revision_digest": "sha256:87f5d2c6e9ee6430c26ba87fe91e05bf0c21bc34dbe553ca81971154eaa45242",
       "id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "implementation_digest": "sha256:beb670c951c79f4867033555b9ed82ce6bc72552c18ac6482229931432240410",
       "isolation": "dedicated_process",
@@ -175,9 +175,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f1d507355982508542098204dbe023e5ddef0a63928afaf52b1d54292e715b66",
-    "contract_catalog_digest": "sha256:fa9789214faa337756bc74be9565d3dfbb1636d9084a91cb96974d23cb889be2",
-    "source_identity": "sha256:46f5e4aac1dab0fe7ef246115e6af18f59601df942325f495d92c53933c30fe1"
+    "artifact_set_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+    "contract_catalog_digest": "sha256:9af2a4a7c033d7885a808acbfc1416cad8bcebf4cc19aaba92617de6dffa30e4",
+    "source_identity": "sha256:e277b7785bf581e43ce47c7dd4af080f475512e6125f65a78ffbe382c1f7ea33"
   },
   "migration": {
     "compatibility": "read_only",
@@ -323,7 +323,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f1d507355982508542098204dbe023e5ddef0a63928afaf52b1d54292e715b66",
+    "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
     "display_name": "Rumi Host Authority Bridge",
     "id": "rumi_host_authority_bridge_pack",
     "kind": "host_extension",
@@ -333,7 +333,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:46f5e4aac1dab0fe7ef246115e6af18f59601df942325f495d92c53933c30fe1",
+        "digest": "sha256:e277b7785bf581e43ce47c7dd4af080f475512e6125f65a78ffbe382c1f7ea33",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -344,7 +344,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:46f5e4aac1dab0fe7ef246115e6af18f59601df942325f495d92c53933c30fe1",
+    "source_digest": "sha256:e277b7785bf581e43ce47c7dd4af080f475512e6125f65a78ffbe382c1f7ea33",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
   },
