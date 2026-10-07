@@ -55,6 +55,64 @@ export function Example() {
         rules = {item.rule for item in scan_text("src/Example.tsx", source)}
         self.assertNotIn("ux.enabled-noop-button", rules)
 
+    def test_click_after_drag_expression_is_not_truncated_at_arrow(self) -> None:
+        for drag in (
+            "onDragStart={(event) => handleDrag(event, item)}",
+            "onDragStart={(event) => { handleDrag(event, {id: item.id}); }}",
+            'onDragStart={(event) => { if (event.x > 0) handleDrag(event); }}',
+            'onDragStart={(event) => { /* > } */ handleDrag(event); }}',
+            'onDragStart={(event) => { // > }\n handleDrag(event); }}',
+        ):
+            for attrs in (f'{drag} onClick={{select}}', f'onClick={{select}} {drag}'):
+                with self.subTest(attrs=attrs):
+                    source = f'<button type="button" {attrs}>Select</button>'
+                    rules = {item.rule for item in scan_text("src/History.tsx", source)}
+                    self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_greater_than_inside_quoted_attributes_does_not_end_tag(self) -> None:
+        for value in ('title="a > b"', "title='a > b'", 'title={`a > ${value}`}'):
+            with self.subTest(value=value):
+                rules = {item.rule for item in scan_text("src/History.tsx", f'<button {value} onClick={{select}}>Select</button>')}
+                self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_draggable_button_without_click_still_fails_with_full_span(self) -> None:
+        source = '<button\n onDragStart={(event) => { drag(event); }}\n title="a > b"\n>Drag only</button>'
+        findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual((findings[0].line, findings[0].end_line), (1, 4))
+
+    def test_regex_templates_and_jsx_quotes_do_not_hide_missing_handlers(self) -> None:
+        for attrs in (
+            r'title={/\{/.test(value) ? "Yes" : "No"}',
+            'title={`value ${`brace {`}`}',
+            r'title="C:\"',
+            'onDragStart={() => log("onClick")}',
+            'onDragStart={() => { /* onClick */ drag(); }}',
+            'onDragStart={() => { if (ok) /}}/.test(value); log("onClick"); }}',
+            'title="disabled onClick"',
+        ):
+            with self.subTest(attrs=attrs):
+                source = f'<button {attrs}>Missing</button>'
+                findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+                self.assertEqual(len(findings), 1)
+                self.assertEqual(findings[0].source_fragment, f'<button {attrs}>')
+
+    def test_regex_braces_and_comparison_before_click_are_not_tag_boundaries(self) -> None:
+        source = '<button data-v={/}/.test(value) && value > 0} onClick={select}>Select</button>'
+        findings = [item for item in scan_text("src/History.tsx", source) if item.rule == "ux.enabled-noop-button"]
+        self.assertEqual(findings, [])
+
+    def test_conservative_fallback_retains_known_handler_and_spread_names(self) -> None:
+        for attrs in (
+            'onClick={() => { const x = number++ / 2; act(x); }}',
+            r'onClick={() => { if (ok) /\{/.test(value); }}',
+            'onClick={() => render(<span>Text</span>)}',
+            '{...getProps(() => render(<span>Text</span>))}',
+        ):
+            with self.subTest(attrs=attrs):
+                findings = [item for item in scan_text("src/History.tsx", f'<button {attrs}>Action</button>') if item.rule == "ux.enabled-noop-button"]
+                self.assertEqual(findings, [])
+
     def test_qr_import_and_type_field_are_not_a_secret_payload(self) -> None:
         source = '''
 import QRCode from "qrcode";

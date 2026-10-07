@@ -440,32 +440,205 @@ def _scan_plaintext_secret_qr(path: str, suffix: str, text: str) -> Iterator[Fin
             )
 
 
-def _iter_opening_tags(text: str, tag: str) -> Iterator[re.Match[str]]:
-    pattern = re.compile(rf"<{tag}\b(?P<attrs>[^>]*)>", re.IGNORECASE | re.DOTALL)
-    yield from pattern.finditer(text)
+def _quoted_end(text: str, start: int, limit: int, *, escapes: bool = True) -> int | None:
+    quote = text[start]
+    position = start + 1
+    while position < limit:
+        if escapes and text[position] == "\\":
+            position += 2
+            continue
+        if text[position] == quote:
+            return position + 1
+        position += 1
+    return None
+
+
+def _jsx_expression_end(text: str, start: int, limit: int, nesting: int = 0) -> int | None:
+    """Skip balanced attribute code, including quoted/regex/template braces."""
+    if nesting > 64:
+        return None
+    position, depth, can_start_regex = start + 1, 1, True
+    while position < limit:
+        char = text[position]
+        if char.isspace():
+            position += 1
+            continue
+        if char in {"'", '"'}:
+            end = _quoted_end(text, position, limit)
+            if end is None:
+                return None
+            position, can_start_regex = end, False
+            continue
+        if char == "`":
+            position += 1
+            while position < limit:
+                if text[position] == "\\":
+                    position += 2
+                elif text[position] == "`":
+                    position += 1
+                    break
+                elif text.startswith("${", position):
+                    end = _jsx_expression_end(text, position + 1, limit, nesting + 1)
+                    if end is None:
+                        return None
+                    position = end
+                else:
+                    position += 1
+            else:
+                return None
+            can_start_regex = False
+            continue
+        if text.startswith("//", position):
+            newline = text.find("\n", position + 2, limit)
+            if newline == -1:
+                return None
+            position = newline + 1
+            continue
+        if text.startswith("/*", position):
+            end = text.find("*/", position + 2, limit)
+            if end == -1:
+                return None
+            position = end + 2
+            continue
+        if char == "/" and can_start_regex:
+            end, in_class = position + 1, False
+            while end < limit and text[end] not in "\r\n":
+                token = text[end]
+                if token == "\\":
+                    end += 2
+                    continue
+                if token == "[":
+                    in_class = True
+                elif token == "]":
+                    in_class = False
+                elif token == "/" and not in_class:
+                    end += 1
+                    while end < limit and text[end].isalpha():
+                        end += 1
+                    position, can_start_regex = end, False
+                    break
+                end += 1
+            else:
+                return None
+            continue
+        if char.isalnum() or char in "_$":
+            end = position + 1
+            while end < limit and (text[end].isalnum() or text[end] in "_$"):
+                end += 1
+            can_start_regex = text[position:end] in {
+                "return", "throw", "case", "yield", "await", "typeof", "void", "delete", "in", "of",
+            }
+            position = end
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return position + 1
+        can_start_regex = char not in ")]}."
+        position += 1
+    return None
+
+
+def _iter_opening_tags(text: str, tag: str) -> Iterator[tuple[int, int, str]]:
+    """Keep arrows/comparisons inside JSX attributes out of tag boundaries.
+
+    This is a bounded lexical guard, not a replacement for TypeScript parsing.
+    Unresolved syntax retains the old conservative span rather than hiding tags.
+    """
+    pattern = re.compile(rf"<{re.escape(tag)}\b", re.IGNORECASE)
+    for match in pattern.finditer(text):
+        position = match.end()
+        limit = min(len(text), position + 64 * 1024)
+        while position < limit:
+            char = text[position]
+            if char in {"'", '"'}:
+                end = _quoted_end(text, position, limit, escapes=False)
+                if end is None:
+                    break
+                position = end
+                continue
+            if char == "{":
+                end = _jsx_expression_end(text, position, limit)
+                if end is None:
+                    break
+                position = end
+                continue
+            if char == ">":
+                yield match.start(), position + 1, text[match.end():position]
+                break
+            position += 1
+        else:
+            position = limit
+        if position >= limit or text[position] != ">":
+            fallback = text.find(">", match.end(), limit)
+            if fallback != -1:
+                yield match.start(), fallback + 1, text[match.end():fallback]
+
+
+def _opening_attributes(attrs: str) -> Iterator[tuple[str, str]]:
+    """Read attribute names without treating strings in handlers as actions."""
+    position, limit = 0, len(attrs)
+    name_pattern = re.compile(r"[A-Za-z_:][A-Za-z0-9_:.-]*")
+    while position < limit:
+        if attrs[position].isspace() or attrs[position] == "/":
+            position += 1
+            continue
+        if attrs[position] == "{":
+            if attrs[position + 1:].lstrip().startswith("..."):
+                yield "<spread>", ""
+            end = _jsx_expression_end(attrs, position, limit)
+            if end is None:
+                return
+            position = end
+            continue
+        match = name_pattern.match(attrs, position)
+        if match is None:
+            # Do not harvest identifiers from unsupported handler syntax as
+            # though they were top-level attribute names.
+            return
+        name = match.group().lower()
+        position = match.end()
+        while position < limit and attrs[position].isspace():
+            position += 1
+        value = ""
+        if position < limit and attrs[position] == "=":
+            position += 1
+            while position < limit and attrs[position].isspace():
+                position += 1
+            start = position
+            if position < limit and attrs[position] in {"'", '"'}:
+                end = _quoted_end(attrs, position, limit, escapes=False)
+            elif position < limit and attrs[position] == "{":
+                end = _jsx_expression_end(attrs, position, limit)
+            else:
+                while position < limit and not attrs[position].isspace():
+                    position += 1
+                end = position
+            if end is None:
+                # The attribute name was already lexically established. An
+                # unsupported value expression must not erase a real handler.
+                yield name, ""
+                return
+            value, position = attrs[start:end], end
+        yield name, value
 
 
 def _scan_noop_buttons(path: str, suffix: str, text: str) -> Iterator[Finding]:
     if suffix not in JSX_EXTENSIONS:
         return
-    action_markers = (
-        "onclick",
-        "onpointer",
-        "onmouse",
-        "onkey",
-        "ontouch",
-        "formaction",
-        'type="submit"',
-        "type={'submit'}",
-        'type="reset"',
-        "{...",
-    )
-    for match in _iter_opening_tags(text, "button"):
-        attrs = match.group("attrs")
-        lowered = re.sub(r"\s+", "", attrs.lower())
-        if "disabled" in lowered or "aria-hidden" in lowered:
+    for start, end, attrs in _iter_opening_tags(text, "button"):
+        attributes = dict(_opening_attributes(attrs))
+        if "disabled" in attributes or "aria-hidden" in attributes:
             continue
-        if any(marker in lowered for marker in action_markers):
+        if any(name in {"onclick", "formaction", "<spread>"}
+               or name.startswith(("onpointer", "onmouse", "onkey", "ontouch"))
+               for name in attributes):
+            continue
+        button_type = re.sub(r"\s+", "", attributes.get("type", "").lower())
+        if button_type in {'"submit"', "'submit'", '{"submit"}', "{'submit'}",
+                           '"reset"', "'reset'", '{"reset"}', "{'reset'}"}:
             continue
         yield _finding(
             "ux.enabled-noop-button",
@@ -473,7 +646,8 @@ def _scan_noop_buttons(path: str, suffix: str, text: str) -> Iterator[Finding]:
             "Enabled production buttons must have an intentional, testable action.",
             path,
             text,
-            *match.span(),
+            start,
+            end,
         )
 
 
