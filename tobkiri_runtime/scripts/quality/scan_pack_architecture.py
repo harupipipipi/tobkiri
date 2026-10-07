@@ -14,6 +14,13 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.quality.staged_source_inventory_v1 import (  # noqa: E402
+    load_staged_source_inventory,
+)
+
 SOURCE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".dart"}
 IGNORED_SOURCE_DIRECTORY_NAMES = frozenset(
     {
@@ -344,12 +351,26 @@ def scan_repository(root: Path) -> list[Violation]:
         if (ecosystem / pack_id).is_dir()
     }
     violations: set[Violation] = set()
+    staged = load_staged_source_inventory(ecosystem.parent, catalog)
+    for finding in staged.findings:
+        violations.add(
+            _line_violation(
+                root,
+                finding.path,
+                1,
+                finding.rule,
+                "staged-source-inventory",
+                "non-admitted-source",
+                _value_fingerprint("staged-source-v1", finding.detail),
+            )
+        )
     violations.update(
         _scan_catalog_disk_alignment(
             root,
             ecosystem,
             pack_names,
             set(catalog["excluded_packs"]),
+            staged.source_ids,
         )
     )
     violations.update(_scan_catalog_graph(root, catalog, pack_names))
@@ -420,6 +441,7 @@ def _scan_catalog_disk_alignment(
     ecosystem: Path,
     pack_names: set[str],
     excluded_pack_names: set[str],
+    staged_source_names: frozenset[str] = frozenset(),
 ) -> set[Violation]:
     """Report Pack directories that disagree with the canonical inventory."""
     found: set[Violation] = set()
@@ -444,7 +466,9 @@ def _scan_catalog_disk_alignment(
                 _value_fingerprint("catalog-v1", f"missing:{pack_id}"),
             )
         )
-    for pack_id in sorted(disk_names - pack_names - excluded_pack_names):
+    for pack_id in sorted(
+        disk_names - pack_names - excluded_pack_names - staged_source_names
+    ):
         found.add(
             _line_violation(
                 root,

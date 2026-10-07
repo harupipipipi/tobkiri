@@ -38,7 +38,12 @@ def test_selected_admitted_data_is_pinned_and_cached(
     lock["effective_set"][0]["artifact_digest"] = "sha256:" + "0" * 64
     captured = owner.capture_for(_factory())
     assert captured[0].artifact_digest == digest
-    assert len(captured[0].files) == 30
+    assert len(captured[0].files) == 33
+    assert {
+        "tools/chat_list_targets/manifest.json",
+        "tools/chat_resolve_target/manifest.json",
+        "tools/chat_send_message/manifest.json",
+    } <= {item.path for item in captured[0].files}
     (root / "tools/calculator/manifest.json").write_text("changed after capture")
     assert owner.capture_for(_factory())[0] is captured[0]
     assert calls == [(PACK_ID, root.parent)]

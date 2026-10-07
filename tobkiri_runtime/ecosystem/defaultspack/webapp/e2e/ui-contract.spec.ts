@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../test-support/frontendContractFixture";
 import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -4025,18 +4026,22 @@ for (const tabsEnabled of [true, false]) {
     await installDefaultspackApiMocks(page, { applicationChat: true,
       initialSettingsValues: { general: { workspace_tabs_enabled: tabsEnabled } } });
     const requests: string[] = [];
+    const desktops = frontendFixtureBinding("desktopsList");
+    const providers = frontendFixtureBinding("runtimeProviders");
+    const templates = frontendFixtureBinding("sandboxTemplates");
+    const bootstrap = frontendFixtureBinding("kanbanCreate");
     await page.route("**/api/contracts/defaultspack/**", async (route) => {
-      const target = requestTarget(new URL(route.request().url()));
-      if (target.startsWith("/api/kanban")) {
-        requests.push(target);
+      const target = frontendFixtureRequest(route.request().url(), route.request().method());
+      if (target?.contractId === "tobkiri.resource.kanban.v1" || target?.contractId === "tobkiri.action.kanban.v1") {
+        requests.push(target.contributionId);
         return route.fulfill({ status: 404, json: { status: "error", error: { code: "CONTRACT_OPERATION_UNKNOWN", message: "Kanban endpoint unavailable" } } });
       }
-      if (target === "/api/desktops") {
-        requests.push(target);
+      if (matchesFrontendFixtureBinding(target, desktops)) {
+        requests.push(desktops.contributionId);
         return fulfill(route, { desktops: [] });
       }
-      if (target === "/api/runtime/providers") return fulfill(route, { providers: [] });
-      if (target === "/api/sandbox/templates") return fulfill(route, { templates: [] });
+      if (matchesFrontendFixtureBinding(target, providers)) return fulfill(route, { providers: [] });
+      if (matchesFrontendFixtureBinding(target, templates)) return fulfill(route, { templates: [] });
       return route.fallback();
     });
     await page.goto("/p/defaults/chat");
@@ -4062,25 +4067,27 @@ for (const tabsEnabled of [true, false]) {
     await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
-    expect(requests).toContain("/api/desktops");
-    expect(requests.some((target) => target.includes("bootstrap"))).toBe(false);
+    expect(requests).toContain(desktops.contributionId);
+    expect(requests).not.toContain(bootstrap.contributionId);
   });
 }
 
 for (const status of [401, 404, 503]) {
   test(`Kanban distinguishes endpoint ${status} from empty data and recovers on Retry`, async ({ page }) => {
     await installDefaultspackApiMocks(page, { applicationChat: true });
+    const list = frontendFixtureBinding("kanbanList");
+    const bootstrap = frontendFixtureBinding("kanbanCreate");
     let available = false;
     let bootstrapCalls = 0;
     const board = { revision: 1,
       board: { board_id: "local-board", title: "All Tobkiri Runs", scope_type: "global", scope_id: "default" },
       columns: [{ column_id: "todo", board_id: "local-board", title: "Backlog", position: 0 }], cards: [], events: [] };
     await page.route("**/api/contracts/defaultspack/**", async (route) => {
-      const target = requestTarget(new URL(route.request().url()));
-      if (target === "/api/kanban/boards") return available
+      const target = frontendFixtureRequest(route.request().url(), route.request().method());
+      if (matchesFrontendFixtureBinding(target, list)) return available
         ? fulfill(route, { revision: 0, boards: [] })
         : route.fulfill({ status, json: { status: "error", error: { message: `Kanban HTTP ${status}` } } });
-      if (target === "/api/kanban/boards/bootstrap") {
+      if (matchesFrontendFixtureBinding(target, bootstrap)) {
         bootstrapCalls += 1;
         expect(route.request().postDataJSON()).toMatchObject({ expected_revision: 0, scope_type: "global", scope_id: "default" });
         return fulfill(route, board);

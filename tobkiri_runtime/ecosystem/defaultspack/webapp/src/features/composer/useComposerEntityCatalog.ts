@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type McpServerRecord } from "../../lib/api";
 import { confirmedChatReferenceCatalog } from "../../lib/chatReferenceCatalog";
-import frontendContractMap from "../../../../defaultspack/frontend_contract_map.v4.json";
-import { useVerifiedFrontendHost, type VerifiedFrontendHost } from "../../host/VerifiedFrontendHostContext";
+import { useVerifiedFrontendHost } from "../../host/VerifiedFrontendHostContext";
 import {
-  buildComposerMcpCandidates, composerMcpMentionWidget,
+  buildComposerMcpCandidates,
   type ComposerEntityCandidate, type ComposerHistoryCandidate,
 } from "../../lib/composerEntityCandidates";
 import type { ComposerEntityReference } from "../../lib/composerReferences";
@@ -19,22 +18,9 @@ type ConfirmedSelection = { widget: DroppedWidget; reference: ComposerEntityRefe
 const UNAVAILABLE = "参照を確認できませんでした。もう一度お試しください。";
 const MCP_UNAVAILABLE = "MCPの接続を確認できませんでした。";
 
-/** A shipped route declaration alone never proves current Profile admission. */
-export function hasAdmittedComposerMcpRead(host: VerifiedFrontendHost | null, profileId: string): boolean {
-  if (!host || host.catalog.profile_id !== profileId
-    || host.catalog.plan_hash !== host.activePlanHash) return false;
-  return frontendContractMap.routes.some((route) => route.method === "GET"
-    && route.path === "/api/tools/mcp" && route.targets.some((target) => (
-      host.catalog.contributions.some((item) => item.kind === "data_source"
-        && item.read_only === true && item.contribution_id === target.contribution_id
-        && item.data_source_contract === target.contract_id && item.operation_id === target.operation_id
-        && item.resolved_profile_id === profileId
-        && item.resolved_profile_revision === host.catalog.profile_revision
-        && item.resolved_activation_id === host.catalog.activation_id
-        && item.resolved_plan_hash === host.activePlanHash
-        && !host.catalog.quarantined_pack_ids.includes(item.owner_pack_id))
-    )));
-}
+// The formal frontend catalog currently has no server-connection-list binding.
+// A tool-schema catalog is a different operation and cannot substitute for it.
+const MCP_NOT_PROVIDED = "MCPの接続先は現在参照できません。";
 
 /** Keep optional MCP availability separate from authenticated history reads. */
 export async function loadComposerEntityCatalog(
@@ -55,7 +41,7 @@ export async function loadComposerEntityCatalog(
     catalog,
     servers: validMcp ? mcpServers as McpServerRecord[] : [],
     status: history.status === "rejected" ? UNAVAILABLE : undefined,
-    mcpStatus: validMcp ? undefined : MCP_UNAVAILABLE,
+    mcpStatus: !readMcp ? MCP_NOT_PROVIDED : validMcp ? undefined : MCP_UNAVAILABLE,
   };
 }
 
@@ -64,7 +50,6 @@ export function useComposerEntityCatalog({ profileId, tools, enabled }: {
   profileId: string; tools: ComposerExtensionItem[]; enabled: boolean;
 }) {
   const verifiedHost = useVerifiedFrontendHost();
-  const mcpReadAvailable = hasAdmittedComposerMcpRead(verifiedHost, profileId);
   const activationId = verifiedHost?.catalog.activation_id;
   const planHash = verifiedHost?.activePlanHash;
   const [historyCandidates, setHistoryCandidates] = useState<ComposerHistoryCandidate[]>([]);
@@ -75,12 +60,8 @@ export function useComposerEntityCatalog({ profileId, tools, enabled }: {
   const [mcpStatus, setMcpStatus] = useState<string>();
   const generation = useRef(0);
   const activeProfile = useRef(profileId);
-  const activeTools = useRef(tools);
-  const activeMcpRead = useRef(mcpReadAvailable);
   const loadingMore = useRef(false);
   activeProfile.current = profileId;
-  activeTools.current = tools;
-  activeMcpRead.current = mcpReadAvailable;
 
   useEffect(() => {
     const current = ++generation.current;
@@ -91,15 +72,14 @@ export function useComposerEntityCatalog({ profileId, tools, enabled }: {
     if (!enabled || !capturedProfile) return;
     setStatus("読み込み中…");
     const currentRequest = () => generation.current === current && activeProfile.current === capturedProfile;
-    void loadComposerEntityCatalog(capturedProfile, () => api.listChatReferences({ limit: 100 }),
-      mcpReadAvailable ? () => api.listMcpServers() : undefined).then((result) => {
+    void loadComposerEntityCatalog(capturedProfile, () => api.listChatReferences({ limit: 100 })).then((result) => {
       if (!currentRequest()) return;
       setHistoryCandidates(result.catalog.candidates); setHistoryReferences(result.catalog.references);
       setCursor(result.catalog.nextCursor); setServers(result.servers);
       setStatus(result.status); setMcpStatus(result.mcpStatus);
     });
     return () => { ++generation.current; };
-  }, [profileId, enabled, mcpReadAvailable, activationId, planHash]);
+  }, [profileId, enabled, activationId, planHash]);
 
   const loadMore = useCallback(() => {
     if (!cursor || loadingMore.current || !enabled) return;
@@ -145,25 +125,14 @@ export function useComposerEntityCatalog({ profileId, tools, enabled }: {
   const confirm = useCallback(async (candidate: ComposerEntityCandidate): Promise<ConfirmedSelection | null> => {
     try {
       if (!candidate.available || activeProfile.current !== profileId) throw new Error(UNAVAILABLE);
-      if (candidate.kind === "mcp") {
-        if (!activeMcpRead.current) throw new Error(MCP_UNAVAILABLE);
-        const capturedProfile = profileId;
-        const current = generation.current;
-        const response = await api.listMcpServers();
-        if (activeProfile.current !== capturedProfile || generation.current !== current) throw new Error(UNAVAILABLE);
-        if (!Array.isArray(response.servers)) throw new Error(UNAVAILABLE);
-        const fresh = buildComposerMcpCandidates(response.servers, activeTools.current).find((item) => item.id === candidate.id);
-        const widget = fresh && composerMcpMentionWidget(fresh);
-        if (!fresh || !widget) throw new Error(UNAVAILABLE);
-        return { widget, reference: { kind: "mcp", id: fresh.id, syntax: fresh.syntax, label: fresh.label }, syntax: fresh.syntax };
-      }
+      if (candidate.kind === "mcp") throw new Error(MCP_NOT_PROVIDED);
       if (candidate.profileId !== profileId) throw new Error(UNAVAILABLE);
       const payload = candidate.kind === "chat"
         ? buildHistoryChatReference({ id: candidate.id, title: candidate.label }, profileId)
         : buildHistoryGroupReference({ id: candidate.id, title: candidate.label, chats: [], subGroups: [] }, profileId);
       if (!payload) throw new Error(UNAVAILABLE);
       return await resolveHistory(payload);
-    } catch { throw new Error(UNAVAILABLE); }
+    } catch { throw new Error(candidate.kind === "mcp" ? MCP_NOT_PROVIDED : UNAVAILABLE); }
   }, [profileId, resolveHistory]);
 
   const confirmHistoryDrop = useCallback(async (rawPayload: string): Promise<ConfirmedSelection | null> => {

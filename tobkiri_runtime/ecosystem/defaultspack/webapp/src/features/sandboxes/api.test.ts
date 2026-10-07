@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { sandboxesApi } from "./api";
+import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../../../test-support/frontendContractFixture";
 
 function routeKey(path: string): string {
   return `/${path}`;
@@ -582,9 +583,17 @@ test("desktop control renew normalizes expiry without requiring a lease token in
 
 test("managed desktop reads accept the canonical Host success envelope", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => new Response(JSON.stringify({ success: true, data:
-    requestTarget(input) === "/api/desktops" ? { desktops: [desktopResponse("running")] }
-      : requestTarget(input) === "/api/runtime/providers" ? { providers: [] } : { templates: [] }, error: null }));
+  const desktops = frontendFixtureBinding("desktopsList");
+  const providers = frontendFixtureBinding("runtimeProviders");
+  const templates = frontendFixtureBinding("sandboxTemplates");
+  globalThis.fetch = async (input, init) => {
+    const binding = frontendFixtureRequest(input, init?.method ?? "GET");
+    const data = matchesFrontendFixtureBinding(binding, desktops) ? { desktops: [desktopResponse("running")] }
+      : matchesFrontendFixtureBinding(binding, providers) ? { providers: [] }
+        : matchesFrontendFixtureBinding(binding, templates) ? { templates: [] } : null;
+    assert.notEqual(data, null, "Unexpected formal managed-desktop read");
+    return new Response(JSON.stringify({ success: true, data, error: null }));
+  };
   try {
     assert.equal((await sandboxesApi.listDesktops()).desktops[0].seat_id, "seat-1");
     assert.deepEqual(await sandboxesApi.listRuntimeProviders(), { providers: [] });

@@ -27,7 +27,7 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     status, body, _ = _request(server, "GET", route, headers=headers)
     assert status == 200, body
     catalog = body["data"]
-    assert catalog["count"] == len(catalog["tools"]) == 149
+    assert catalog["count"] == len(catalog["tools"]) == 152
     assert catalog["registry_revision"] == 0
     by_id = {item["tool_id"]: item for item in catalog["tools"]}
     assert by_id["calculator"]["summary"] == "Basic arithmetic helper."
@@ -39,17 +39,28 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     assert by_id["coding_file_write"]["minimum_permission"] == "confirm"
     assert by_id["settings_update"]["minimum_permission"] == "confirm"
     assert by_id["memo_note_upsert"]["tool_id"] == "memo_note_upsert"
-    assert by_id["calculator"]["connection_status"] == "connected"
+    connected_ids = {
+        "calculator", "coding_file_create", "coding_file_list", "coding_file_read",
+        "coding_file_search", "file_reader", "chat_list_targets", "chat_resolve_target",
+        "chat_send_message",
+    }
+    assert {item["tool_id"] for item in catalog["tools"] if (
+        item["connection_status"] == "connected"
+    )} == connected_ids
     assert all(
         item["connection_status"] == "unavailable"
-        for item in catalog["tools"] if item["tool_id"] != "calculator"
+        for item in catalog["tools"] if item["tool_id"] not in connected_ids
     )
-    assert sum(item["tool_count"] for item in catalog["services"]) == 149
+    assert sum(item["tool_count"] for item in catalog["services"]) == 152
     local = "tobkiri.service.tool.local.operation.v1"
     metadata = session.provider_metadata(local)
-    assert [(item["function_id"], item["operation_id"]) for item in metadata] == [
+    assert {(item["function_id"], item["operation_id"]) for item in metadata} == {
         ("rumi_default_tools_pack.calculator", "rumi_default_tools_pack.calculator-evaluate"),
-    ]
+        ("rumi_default_tools_pack.files-read", "rumi_default_tools_pack.files-read-operation"),
+        ("rumi_default_tools_pack.file-create-tool", "rumi_default_tools_pack.file-create-operation"),
+        ("rumi_default_tools_pack.chat-reference-tools", "rumi_default_tools_pack.chat-reference-operation"),
+        ("rumi_default_tools_pack.chat-message-tool", "rumi_default_tools_pack.chat-message-operation"),
+    }
     with pytest.raises(AuthorityDenied):
         session.invoke(local, "rumi_default_tools_pack.calculator-evaluate", {
             "tool_id": "calculator", "tool_call_id": "direct-call",

@@ -186,10 +186,58 @@ def test_shell_runtime_is_presentation_only_and_cannot_inherit_launcher_authorit
         "HostBrokerRuntime",
         "KernelManager",
         "DefaultspackManager",
-        "invoke_handler",
+        "open_authority_approval_window",
+        "authority_approval_context",
+        "reauthorize_panel_session",
         "tray::",
     ):
         assert forbidden not in shell_runtime
+    handlers = re.findall(
+        r"\.invoke_handler\(\s*tauri::generate_handler!\[(.*?)\]\s*\)",
+        shell_runtime,
+        re.DOTALL,
+    )
+    assert shell_runtime.count(".invoke_handler(") == 1
+    assert len(handlers) == 1
+    assert [command.strip() for command in handlers[0].split(",") if command.strip()] == [
+        "crate::task_pet_window::sync_task_pet",
+        "crate::task_pet_window::task_pet_context",
+        "crate::task_pet_window::drag_task_pet",
+        "crate::task_pet_window::hide_task_pet",
+    ]
+    for capability_name, window, permissions in (
+        (
+            "task-pet-main",
+            "main",
+            ["allow-sync-task-pet", "core:event:allow-listen", "core:event:allow-unlisten"],
+        ),
+        (
+            "task-pet-child",
+            "task-pet",
+            [
+                "allow-task-pet-context",
+                "allow-drag-task-pet",
+                "allow-hide-task-pet",
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+            ],
+        ),
+    ):
+        capability = _read_json(TAURI_ROOT / "capabilities" / f"{capability_name}.json")
+        assert capability["windows"] == [window]
+        assert capability["local"] is False
+        assert capability["remote"]["urls"] == ["http://127.0.0.1:*/*"]
+        assert capability["permissions"] == permissions
+
+    pet_runtime = (TAURI_ROOT / "src" / "task_pet_window.rs").read_text(encoding="utf-8")
+    assert "#[serde(rename_all = \"camelCase\", deny_unknown_fields)]" in pet_runtime
+    assert "checked_binding(&window, &state, false)?" in pet_runtime
+    assert "checked_binding(&window, &state, true)?" in pet_runtime
+    assert pet_runtime.count("checked_binding(&window, &locked, true)?") == 2
+    assert "Shell Profile is not admitted" in pet_runtime
+    assert "task pet caller is not admitted" in pet_runtime
+    assert "return label == LABEL && url == &binding.1" in pet_runtime
+    assert "task pet binding cannot change in a live Shell" in pet_runtime
     assert "consume_shell_handoff" in shell_runtime
     assert "navigation_is_allowed" in shell_runtime
     assert "env_logger::try_init()" in shell_runtime

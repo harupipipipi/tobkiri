@@ -2,7 +2,10 @@
 
 from copy import deepcopy
 from dataclasses import replace
+import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Iterator, Mapping
 
 import pytest
 
@@ -14,7 +17,11 @@ from tobkiri_protocol.canonical import canonical_digest
 
 
 @pytest.fixture
-def local_host(tmp_path):
+def local_host(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Any]:
+    # These private ports exercise only the pure _Client routing fixture.
+    # They neither mint authority nor prove production Saved/native admission.
+    port_failure = getattr(request, "param", None)
+    client = _Client()
     factory = executor.HOST_PROVIDER_FACTORY
     binding = SimpleNamespace(
         function=SimpleNamespace(function_id=factory.function_id, implementation_digest="impl"),
@@ -25,20 +32,65 @@ def local_host(tmp_path):
         principal_ref=OpaqueAuthorityRef("local-executor"),
         artifact=SimpleNamespace(digest="artifact"),
     )
+
+    def assert_owned(invocation: Any) -> None:
+        invocation.assert_current()
+        assert invocation is client.invocation
+        assert invocation.envelope.payload is client.payload
+        assert binding.function.function_id == factory.function_id
+        assert factory.function_id == f"{executor.PACK_ID}.tool-executor.local"
+        assert invocation.envelope.target_principal == binding.principal_ref
+        assert (invocation.envelope.contract_id, invocation.envelope.operation_id) == (
+            executor.CONTRACT, executor.OPERATION,
+        )
+
+    def mode_admission(invocation: Any) -> str:
+        assert_owned(invocation)
+        client.mode_calls.append(invocation)
+        if port_failure == "mode_denied":
+            raise PermissionError("fixture mode admission denied")
+        return "ask"
+
+    def consent(
+        invocation: Any, execution: Mapping[str, Any], payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        assert_owned(invocation)
+        assert execution is client.definition["execution"]
+        assert execution["contract_id"] == executor.LOCAL_OPERATION
+        assert execution["operation"] == "owner.invoke"
+        assert payload["arguments"] is client.payload["arguments"]
+        assert payload == {
+            key: client.payload[key]
+            for key in ("tool_id", "tool_call_id", "arguments")
+        }
+        client.consent_calls.append(invocation)
+        if port_failure == "consent_denied":
+            raise PermissionError("fixture consent denied")
+        return client.invoke(
+            executor.LOCAL_OPERATION, "owner.invoke", payload,
+            provider_instance_id="tool-adapter",
+        )
+
     context = HostProviderCaptureContextV4(
         profile_id="defaults", plan_digest="plan", security_epoch=1,
         activation={"activation_id": "active"}, state_root=tmp_path,
         provider_bindings=(binding,), catalog_bindings=(),
         domain_ids={(executor.CONTRACT, executor.OPERATION, "local-executor"): "domain"},
+        saved_tool_mode_admission=(
+            None if port_failure == "mode_missing" else mode_admission
+        ),
+        saved_tool_consent_port=(
+            None if port_failure == "consent_missing" else consent
+        ),
     )
     captured = factory.capture(context)
-    client = _Client()
 
-    def invoke(payload=None):
+    def invoke(payload: dict[str, Any] | None = None) -> Mapping[str, Any]:
         payload = payload if payload is not None else {
             "tool_id": "sample", "tool_call_id": "call-1", "arguments": {"value": 7},
             "definition": deepcopy(client.definition),
         }
+        client.payload = payload
         invocation = _Invocation(executor.OPERATION, payload)
         invocation.envelope.context.activation_digest = canonical_digest(dict(context.activation))
         invocation.envelope = replace(
@@ -78,6 +130,8 @@ class _Client:
         self.found = True
         self.cancel_after_read = False
         self.failure = None
+        self.mode_calls = []
+        self.consent_calls = []
 
     def providers(self, contract):
         assert contract == executor.LOCAL_OPERATION
@@ -121,6 +175,8 @@ def test_local_executor_rejects_serialized_authority_before_owner_read(local_hos
             "definition": client.definition, field: True,
         })
     assert client.calls == []
+    assert client.mode_calls == []
+    assert client.consent_calls == []
 
 
 @pytest.mark.parametrize("change", ["missing", "target", "boolean"])
@@ -156,14 +212,45 @@ def test_local_target_is_unavailable_without_one_exact_executable_route(local_ho
 def test_local_denial_propagates_once_and_cancellation_prevents_dispatch(local_host):
     invoke, client, _ = local_host
     client.failure = PermissionError("target denied by Host")
-    with pytest.raises(PermissionError, match="target denied"):
-        invoke()
+    result = invoke()
+    assert result["is_error"] is True
+    assert json.loads(result["result"])["error"]["code"] == (
+        "ACTION_APPROVAL_NATIVE_DENIED"
+    )
     assert len(client.calls) == 2
+    assert len(client.consent_calls) == 1
     client.calls.clear()
     client.cancel_after_read = True
     with pytest.raises(PermissionError, match="stale"):
         invoke()
     assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "local_host", ["mode_missing", "mode_denied"], indirect=True,
+)
+def test_missing_or_denied_mode_stops_before_any_owner_read(local_host: Any) -> None:
+    invoke, client, _ = local_host
+    result = invoke()
+    assert result["is_error"] is True
+    assert json.loads(result["result"])["error"]["code"].startswith("ACTION_APPROVAL_")
+    assert client.calls == []
+    assert client.consent_calls == []
+
+
+@pytest.mark.parametrize(
+    "local_host", ["consent_missing", "consent_denied"], indirect=True,
+)
+def test_missing_or_denied_consent_stops_after_exact_read_without_target_call(
+    local_host: Any,
+) -> None:
+    invoke, client, _ = local_host
+    result = invoke()
+    assert result["is_error"] is True
+    assert json.loads(result["result"])["error"]["code"].startswith("ACTION_APPROVAL_")
+    assert len(client.mode_calls) == 1
+    assert len(client.calls) == 1
+    assert client.calls[0][0] == executor.DEFINITION
 
 
 def test_closed_local_capture_cannot_read_or_execute(local_host):

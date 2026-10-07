@@ -12,6 +12,7 @@ import json
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from copy import deepcopy
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -233,6 +234,33 @@ def build_fixture(root: Path, gate: Any) -> SimpleNamespace:
         "pack_ids": [pack_id], "excluded_packs": [],
         "packs": [{"pack_id": pack_id, "authority": "v4-authoritative"}],
     })
+    write(runtime_root / "schemas" / "executable_sources.v1.json", {"packs": {}})
+    staged_records = []
+    for source_id in (
+        "tobkiri_surface_renderer_pack", "tobkiri_voice_agent_pack"
+    ):
+        source_dir = ecosystem / source_id
+        source_dir.mkdir()
+        source = b"Synthetic preserved Source; not an installed Pack or Host receipt.\n"
+        (source_dir / "README.md").write_bytes(source)
+        staged_records.append({
+            "source_id": source_id,
+            "source_root": f"ecosystem/{source_id}",
+            "state": "staged_unadmitted",
+            "runtime_authority": False,
+            "installed_claim": False,
+            "profile_selection": False,
+            "files": [{
+                "path": "README.md",
+                "sha256": "sha256:" + hashlib.sha256(source).hexdigest(),
+            }],
+        })
+    write(runtime_root / "schemas" / "staged_source_inventory.v1.json", {
+        "schema": "io.tobkiri.staged-source-inventory.v1", "records": staged_records,
+    })
+    (runtime_root / "schemas/staged_source_inventory_v1.schema.json").write_bytes(
+        (gate.RUNTIME / "schemas/staged_source_inventory_v1.schema.json").read_bytes()
+    )
     return SimpleNamespace(
         root=root, runtime_root=runtime_root, ecosystem=ecosystem,
         pack_id=pack_id, pack_dir=pack_dir, entry=entry, proof={pack_id: entry},
@@ -276,4 +304,3 @@ def bind_fixture(gate: Any, fixture: SimpleNamespace, *, snapshot: bool = False)
             ):
                 stack.enter_context(patch.object(gate, name, list))
         yield
-

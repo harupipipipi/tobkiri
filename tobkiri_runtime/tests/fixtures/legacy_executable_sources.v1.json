@@ -451,6 +451,37 @@
                         }
                       ]
                     },
+                    "context_binding": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "version",
+                        "profile_id",
+                        "parent_conversation_id",
+                        "parent_revision",
+                        "context_digest"
+                      ],
+                      "properties": {
+                        "version": {
+                          "const": "tobkiri.conversation-context-binding.v1"
+                        },
+                        "profile_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "parent_conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "parent_revision": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "context_digest": {
+                          "type": "string",
+                          "pattern": "^sha256:[0-9a-f]{64}$"
+                        }
+                      }
+                    },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"
                     },
@@ -4020,6 +4051,37 @@
                           "type": "array"
                         }
                       ]
+                    },
+                    "context_binding": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "version",
+                        "profile_id",
+                        "parent_conversation_id",
+                        "parent_revision",
+                        "context_digest"
+                      ],
+                      "properties": {
+                        "version": {
+                          "const": "tobkiri.conversation-context-binding.v1"
+                        },
+                        "profile_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "parent_conversation_id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "parent_revision": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "context_digest": {
+                          "type": "string",
+                          "pattern": "^sha256:[0-9a-f]{64}$"
+                        }
+                      }
                     },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"

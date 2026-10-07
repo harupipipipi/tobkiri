@@ -26,7 +26,7 @@ from domain.tool.service_catalog import (
     requires_explicit_intent,
 )
 from domain.tool.schema_adapter import tool_name_from_definition
-from domain.tool.service_mentions import explicit_service_member_ids
+from domain.chat.service_mentions import explicit_service_member_ids
 
 
 DEFAULT_SEMANTIC_CANDIDATE_LIMIT = 32

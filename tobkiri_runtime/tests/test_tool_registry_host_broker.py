@@ -4,12 +4,39 @@ This isolated Profile proves the owner edge, not ordinary Defaults or native UI.
 """
 
 from pathlib import Path
+import json
+from typing import Any
 
 import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from tests.conformance_support.host_profile import captured_host_profile
 from tobkiri_host.errors import ProviderExecutionError
+
+
+def _exclude_default_tools_incident_edges(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Close only this excluded-Pack fixture before its official Profile render."""
+    from tests.conformance_support import host_profile
+    from tests.conformance_support.packaged_profile import load_packaged_profile_catalog
+
+    manifest = load_packaged_profile_catalog().packs["rumi_default_tools_pack"]
+    function_ids = frozenset(item["id"] for item in manifest["functions"])
+    assert "rumi_default_tools_pack.file-create-prepare.service" in function_ids
+    official_render = host_profile.render
+
+    def render_without_excluded_edges(**kwargs: Any) -> dict[Path, bytes]:
+        intent_path = kwargs["intent_path"]
+        intent = json.loads(intent_path.read_bytes())
+        assert all(item["pack_id"] != "rumi_default_tools_pack" for item in intent["packs"])
+        intent["requested_edges"] = [
+            edge for edge in intent["requested_edges"]
+            if edge["caller_function_id"] not in function_ids
+            and edge["target_provider_id"] not in function_ids
+        ]
+        intent_path.write_text(json.dumps(intent, indent=2) + "\n")
+        return official_render(**kwargs)
+
+    monkeypatch.setattr(host_profile, "render", render_without_excluded_edges)
 
 
 @pytest.mark.parametrize("selected", [True, False])
@@ -20,6 +47,8 @@ def test_production_registry_uses_only_selected_pack_data(
 ) -> None:
     contract = "tobkiri.resource.tool.definition.v1"
     operation = "rumi_tool_registry_pack.tool-definition-resource"
+    if not selected:
+        _exclude_default_tools_incident_edges(monkeypatch)
     with captured_host_profile(
         tmp_path,
         monkeypatch,
@@ -44,7 +73,7 @@ def test_production_registry_uses_only_selected_pack_data(
                 "_session_id": "registry-data",
             },
         )
-        assert len(result["definitions"]) == (149 if selected else 119)
+        assert len(result["definitions"]) == (152 if selected else 119)
         assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
         assert {item["pack_id"] for item in result["pack_data_sources"]} == (
             {"defaultspack", "rumi_default_tools_pack"}
@@ -58,6 +87,13 @@ def test_production_registry_uses_only_selected_pack_data(
             "settings_update",
         } <= identifiers
         assert ("calculator" in identifiers) is selected
+        chat_ids = {"chat_list_targets", "chat_resolve_target", "chat_send_message"}
+        assert (chat_ids <= identifiers) if selected else identifiers.isdisjoint(chat_ids)
+        lock = json.loads((
+            tmp_path / "packaged-defaultspack/v4/defaults.profile.lock.v5.json"
+        ).read_bytes())
+        selected_packs = {item["identity"] for item in lock["effective_set"]}
+        assert ("rumi_default_tools_pack" in selected_packs) is selected
         with pytest.raises(ProviderExecutionError):
             session.invoke(
                 contract,
@@ -156,6 +192,10 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
             factory.function_id,
             local,
             "rumi_default_tools_pack.files-read",
+            "rumi_default_tools_pack.file-create-tool",
+            "rumi_default_tools_pack.chat-reference-tools",
+            "rumi_default_tools_pack.chat-message-tool",
+            "rumi_host_authority_bridge_pack.host-authority.approval-policy",
         ),
         edges=edges,
         backends=(),
@@ -167,22 +207,21 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
             "arguments": {"path": "readme.txt"},
             "_session_id": "tool-composition",
         }
-        with pytest.raises(
-            ProviderExecutionError, match="provider execution failed"
-        ) as failure:
-            session.invoke(broker.CONTRACT, broker.OPERATION, request)
-        cause = failure.value.__cause__
         if local_selected:
-            # The nested executor has its own redacted boundary. Keep its
-            # private cause observable to this Host-side test only.
-            assert isinstance(cause, ProviderExecutionError)
-            cause = cause.__cause__
-        assert isinstance(cause, PermissionError)
-        assert str(cause) == (
-            "selected local tool operation is unavailable"
-            if local_selected
-            else "selected tool executor is unavailable"
-        )
+            # A direct Shell call has no authenticated Saved request ancestry.
+            result = session.invoke(broker.CONTRACT, broker.OPERATION, request)
+            assert result["status"] == "error"
+            assert result["is_error"] is True
+            assert json.loads(result["result"])["error"]["code"] == (
+                "ACTION_APPROVAL_POLICY_UNAVAILABLE"
+            )
+        else:
+            with pytest.raises(
+                ProviderExecutionError, match="provider execution failed"
+            ) as failure:
+                session.invoke(broker.CONTRACT, broker.OPERATION, request)
+            assert isinstance(failure.value.__cause__, PermissionError)
+            assert str(failure.value.__cause__) == "selected tool executor is unavailable"
         with pytest.raises(
             ProviderExecutionError, match="provider execution failed"
         ) as failure:
@@ -203,21 +242,19 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
 
 
 @pytest.mark.parametrize(
-    "tool_id,arguments,expected",
+    "tool_id,arguments",
     [
-        ("calculator", {"expression": "2+2"}, "4"),
-        ("coding_file_read", {"path": "hello.txt"}, "owned file content"),
+        ("calculator", {"expression": "2+2"}),
+        ("coding_file_read", {"path": "hello.txt"}),
     ],
 )
-def test_defaults_finite_tools_execute_through_production_broker(
+def test_direct_shell_finite_tools_stop_without_saved_ancestry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     tool_id: str,
     arguments: dict,
-    expected: str,
 ) -> None:
-    """Use real signed owner edges and file jail, without any provider request."""
-    import json
+    """Keep direct Shell tools denied; real Saved/native success has separate proof."""
     from ecosystem.rumi_tool_broker_pack.runtime import broker
     from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore
 
@@ -261,6 +298,10 @@ def test_defaults_finite_tools_execute_through_production_broker(
                 "_session_id": "finite-owner-proof",
             },
         )
-        assert result["status"] == "success"
-        assert result["is_error"] is False
-        assert expected in json.dumps(result, ensure_ascii=False)
+        assert result["status"] == "error"
+        assert result["is_error"] is True
+        assert json.loads(result["result"])["error"]["code"] == (
+            "ACTION_APPROVAL_POLICY_UNAVAILABLE"
+        )
+        assert (workspace / "hello.txt").read_text(encoding="utf-8") == "owned file content"
+        assert sorted(path.name for path in workspace.iterdir()) == ["hello.txt"]

@@ -28,7 +28,17 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
 ) -> None:
     invoke, client = registry_host
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 30
+    assert len(result["definitions"]) == 33
+    by_id = {item["tool_id"]: item for item in result["definitions"]}
+    for tool_id, provider, operation in (
+        ("chat_list_targets", "chat-reference-tools", "chat-reference-operation"),
+        ("chat_resolve_target", "chat-reference-tools", "chat-reference-operation"),
+        ("chat_send_message", "chat-message-tool", "chat-message-operation"),
+    ):
+        execution = by_id[tool_id]["execution"]
+        assert execution["contract_id"] == "tobkiri.service.tool.local.operation.v1"
+        assert execution["provider_instance_id"] == f"rumi_default_tools_pack.{provider}"
+        assert execution["operation"] == f"rumi_default_tools_pack.{operation}"
     assert result["pack_data_sources"] == [
         {
             "pack_id": PACK_ID,
@@ -67,7 +77,7 @@ def test_stored_and_selected_contributions_remain_visible(captured_data, registr
         )
     ]
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 32
+    assert len(result["definitions"]) == 35
     assert result["aliases"]["component.alias"] == "component.read"
     assert result["revision"] == 1
     assert client.calls[0][1] == "component.list"
@@ -213,7 +223,7 @@ def test_captured_pack_names_are_rejected_before_any_mutation(
     assert not (tmp_path / "packs").exists()
     assert client.calls == []
     listed = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert listed["revision"] == 0 and len(listed["definitions"]) == 30
+    assert listed["revision"] == 0 and len(listed["definitions"]) == 33
 
 
 @pytest.fixture
@@ -244,7 +254,7 @@ def test_defaults_own_descriptors_join_the_selected_catalog(
     invoke, _client = registry_host
     data = (*captured_data, *defaults_data)
     result = invoke("definition", {"operation": "list"}, pack_data=data)
-    assert len(result["definitions"]) == 149
+    assert len(result["definitions"]) == 152
     definition = invoke(
         "definition", {"operation": "resolve", "tool_id": "artifact_file_read"},
         pack_data=data,

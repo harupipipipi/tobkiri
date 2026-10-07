@@ -39,6 +39,10 @@ from scripts.quality.migration_release_evidence import (
     load_runtime_receipts,
     release_evidence_errors,
 )
+from scripts.quality.staged_source_inventory_v1 import (
+    StagedSourceInventory,
+    load_staged_source_inventory,
+)
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.validation import load_schema, validate_file
 
@@ -331,6 +335,20 @@ def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _staged_source_inventory() -> StagedSourceInventory:
+    catalog = _load_json(RUNTIME / "schemas" / "pack_v4_catalog.v1.json")
+    return load_staged_source_inventory(
+        RUNTIME, catalog if isinstance(catalog, Mapping) else {}
+    )
+
+
+def _staged_source_findings() -> list[dict[str, Any]]:
+    return [
+        _finding(item.path, 1, item.rule, detail=item.detail)
+        for item in _staged_source_inventory().findings
+    ]
+
+
 def _production_pack_dirs() -> tuple[Path, ...]:
     """Return exactly the direct Pack roots under ``ecosystem``."""
     catalog = _load_json(RUNTIME / "schemas" / "pack_v4_catalog.v1.json")
@@ -339,6 +357,7 @@ def _production_pack_dirs() -> tuple[Path, ...]:
         if isinstance(catalog, Mapping) and isinstance(catalog.get("excluded_packs"), list)
         else frozenset()
     )
+    staged = _staged_source_inventory().source_ids
     return tuple(
         sorted(
             path
@@ -346,6 +365,7 @@ def _production_pack_dirs() -> tuple[Path, ...]:
             if path.is_dir()
             and path.name != "setup_pack"
             and path.name not in excluded
+            and path.name not in staged
             and not path.name.startswith(".")
         )
     )
@@ -1730,7 +1750,7 @@ def _migration_evidence_findings() -> list[dict[str, Any]]:
 
 def _authority_resolved_plan_findings() -> list[dict[str, Any]]:
     """Require exact Authority ownership and the narrow ResolvedPlan scope."""
-    findings: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = _staged_source_findings()
     manifest_path = RUNTIME / "schemas" / "manifest_authority.v1.json"
     v4_catalog_path = RUNTIME / "schemas" / "pack_v4_catalog.v1.json"
     v4_catalog = _load_json(v4_catalog_path)
@@ -2951,7 +2971,11 @@ def _audit_snapshot() -> dict[str, Any]:
     command_protocol = _frontend_command_protocol_findings()
     head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     source_sets = _authority_source_sets()
+    staged = _staged_source_inventory()
+    catalog = _load_json(RUNTIME / "schemas" / "pack_v4_catalog.v1.json")
+    aliases = catalog.get("excluded_packs", []) if isinstance(catalog, Mapping) else []
     gates = {
+        "staged_source_inventory": _staged_source_findings(),
         "artifact_contracts": artifact_findings,
         "declaration_disk_runtime": declaration_findings,
         "executable_source_registry": executable_source_findings,
@@ -2970,6 +2994,7 @@ def _audit_snapshot() -> dict[str, Any]:
     return {
         "schema": "io.tobkiri.quality.complete-v4-migration.v2",
         "head_sha": head_sha,
+        "staged_source_inventory": staged.proof(),
         "gate": {
             "status": "GREEN" if all(not findings for findings in gates.values()) else "RED",
             "clean": all(not findings for findings in gates.values()),
@@ -2982,6 +3007,19 @@ def _audit_snapshot() -> dict[str, Any]:
         "pack_inventory": {
             "production_pack_directories": len(pack_dirs),
             "catalog_pack_directories": len(source_sets["v4_ids"]),
+            "staged_source_directories": len(staged.source_ids),
+            "catalog_compatibility_aliases": (
+                len(aliases) if isinstance(aliases, list) else 0
+            ),
+            "compatibility_alias_directories": (
+                sum(
+                    1 for name in aliases
+                    if isinstance(name, str) and (ECOSYSTEM / name).is_dir()
+                ) if isinstance(aliases, list) else 0
+            ),
+            "unknown_source_directories": len(
+                {path.name for path in pack_dirs} - source_sets["v4_ids"]
+            ),
             "v4_artifacts_per_pack": len(PACK_ARTIFACTS),
             "v4_artifact_files": len(pack_dirs) * len(PACK_ARTIFACTS),
             "v4_pack_artifacts": [_relative(path) for path in _v4_pack_artifacts()],
@@ -3004,6 +3042,7 @@ def _assert_zero(name: str, findings: list[dict[str, Any]]) -> None:
 
 def test_production_v4_pack_and_profile_artifacts_are_complete() -> None:
     """Every declared Pack has the complete direct compiler input set."""
+    _assert_zero("staged Source inventory", _staged_source_findings())
     pack_count = len(_production_pack_dirs())
     _assert_zero("compatibility aliases", _compatibility_alias_findings())
     assert pack_count == len(_authority_source_sets()["v4_ids"])
@@ -3925,6 +3964,7 @@ def test_synthetic_evidence_is_green_when_pack_semantics_are_proved(
 def test_current_sha_evidence_reports_actual_production_proof_state() -> None:
     """A fresh report must preserve unproved production artifacts as RED."""
     report = _audit_snapshot()
+    _assert_zero("staged Source inventory", _staged_source_findings())
     assert report["head_sha"] == subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
     ).strip()
@@ -3942,6 +3982,57 @@ def test_current_sha_evidence_reports_actual_production_proof_state() -> None:
         assert "migration_release_proof_missing" in {item["rule"] for item in findings}
     for key in ("artifact_contracts", "declaration_disk_runtime", "executable_source_registry"):
         assert report["gates"][key]["status"] == "GREEN"
+
+
+def test_staged_source_proof_is_separate_from_synthetic_runtime_authority(
+    synthetic_migration_evidence: Any,
+) -> None:
+    """Validated Source roots do not become runtime or migration proof entries."""
+    fixture = synthetic_migration_evidence
+    report = _audit_snapshot()
+    assert report["pack_inventory"]["production_pack_directories"] == 1
+    assert report["pack_inventory"]["catalog_pack_directories"] == 1
+    assert report["pack_inventory"]["staged_source_directories"] == 2
+    assert report["pack_inventory"]["unknown_source_directories"] == 0
+    assert _authority_source_sets()["direct_ids"] == {fixture.pack_id}
+    assert {
+        record["pack_id"]
+        for record in report["pack_inventory"]["migration_status_records"]
+    } == {
+        fixture.pack_id
+    }
+    assert all(
+        record["runtime_authority"] is False
+        and record["installed_claim"] is False
+        and record["profile_selection"] is False
+        for record in report["staged_source_inventory"]["records"]
+    )
+
+
+def test_invalid_staged_source_is_not_omitted_from_runtime_disk_guard(
+    synthetic_migration_evidence: Any,
+) -> None:
+    """A changed Source byte restores every unclassified root to disk guards."""
+    fixture = synthetic_migration_evidence
+    (fixture.ecosystem / "tobkiri_voice_agent_pack" / "README.md").write_text(
+        "Source bytes changed without review"
+    )
+    assert _staged_source_findings()
+    assert len(_production_pack_dirs()) == 3
+    assert _staged_source_inventory().source_ids == frozenset()
+
+
+def test_unknown_source_root_is_not_classified_by_valid_stage_records(
+    synthetic_migration_evidence: Any,
+) -> None:
+    """An unrelated directory still creates the original runtime set mismatch."""
+    fixture = synthetic_migration_evidence
+    (fixture.ecosystem / "unreviewed_source").mkdir()
+    assert not _staged_source_findings()
+    assert _authority_source_sets()["direct_ids"] == {
+        fixture.pack_id, "unreviewed_source"
+    }
+    assert _audit_snapshot()["pack_inventory"]["unknown_source_directories"] == 1
 
 
 def test_independent_migration_proof_rejects_tampered_signature(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -10,6 +11,42 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCANNER_PATH = ROOT / "tobkiri_runtime" / "scripts" / "quality" / "scan_pack_architecture.py"
+STAGED_IDS = ("tobkiri_surface_renderer_pack", "tobkiri_voice_agent_pack")
+
+
+def _staged_sources(root: Path) -> None:
+    runtime = root / "tobkiri_runtime"
+    inventory = runtime / "schemas" / "staged_source_inventory.v1.json"
+    if inventory.exists():
+        return
+    records = []
+    for source_id in STAGED_IDS:
+        source_dir = runtime / "ecosystem" / source_id
+        source_dir.mkdir(parents=True)
+        raw = b"Synthetic preserved Source; not an installed Pack.\n"
+        (source_dir / "README.md").write_bytes(raw)
+        records.append({
+            "source_id": source_id,
+            "source_root": f"ecosystem/{source_id}",
+            "state": "staged_unadmitted",
+            "runtime_authority": False,
+            "installed_claim": False,
+            "profile_selection": False,
+            "files": [{
+                "path": "README.md",
+                "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            }],
+        })
+    inventory.parent.mkdir(parents=True, exist_ok=True)
+    inventory.write_text(json.dumps({
+        "schema": "io.tobkiri.staged-source-inventory.v1", "records": records,
+    }))
+    inventory.with_name("staged_source_inventory_v1.schema.json").write_bytes(
+        (ROOT / "tobkiri_runtime/schemas/staged_source_inventory_v1.schema.json")
+        .read_bytes()
+    )
+    for name in ("manifest_authority.v1.json", "executable_sources.v1.json"):
+        (inventory.parent / name).write_text(json.dumps({"packs": {}}))
 
 
 def _scanner():
@@ -22,13 +59,15 @@ def _scanner():
 
 
 def _pack(root: Path, pack_id: str) -> Path:
+    _staged_sources(root)
     pack = root / "tobkiri_runtime" / "ecosystem" / pack_id
     pack.mkdir(parents=True)
     (pack / "ecosystem.json").write_text(json.dumps({"id": pack_id}), encoding="utf-8")
     catalog_root = root / "tobkiri_runtime" / "schemas"
     catalog_root.mkdir(parents=True, exist_ok=True)
     pack_ids = sorted(
-        path.name for path in (root / "tobkiri_runtime" / "ecosystem").iterdir() if path.is_dir()
+        path.name for path in (root / "tobkiri_runtime" / "ecosystem").iterdir()
+        if path.is_dir() and path.name not in STAGED_IDS
     )
     (catalog_root / "pack_v4_catalog.v1.json").write_text(
         json.dumps(
@@ -41,6 +80,12 @@ def _pack(root: Path, pack_id: str) -> Path:
         ),
         encoding="utf-8",
     )
+    if "defaultspack" in pack_ids:
+        profile = (
+            root / "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        )
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text("{}")
     return pack
 
 
@@ -824,3 +869,55 @@ def test_runtime_policy_is_independent_of_checkout_directory_name(tmp_path: Path
     assert results[0] == results[1] == results[2]
     assert any("unscoped_pack_discovery" in item for item in results[0])
     assert any("unscoped_global_secret" in item for item in results[0])
+
+
+def test_valid_staged_source_still_receives_semantic_boundary_checks(
+    tmp_path: Path,
+) -> None:
+    """An exact Source inventory changes classification, never source scanning."""
+    _pack(tmp_path, "pack_b")
+    source = tmp_path / "tobkiri_runtime/ecosystem" / STAGED_IDS[0] / "consumer.py"
+    raw = b"from ecosystem.pack_b.private import value\n"
+    source.write_bytes(raw)
+    inventory = tmp_path / "tobkiri_runtime/schemas/staged_source_inventory.v1.json"
+    payload = json.loads(inventory.read_text())
+    payload["records"][0]["files"].append({
+        "path": "consumer.py", "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+    })
+    payload["records"][0]["files"].sort(key=lambda file: file["path"])
+    inventory.write_text(json.dumps(payload))
+    violations = _scanner().scan_repository(tmp_path)
+    assert not [item for item in violations if item.rule == "unlisted_pack_directory"]
+    assert not [
+        item for item in violations if item.rule == "staged_source_inventory_invalid"
+    ]
+    assert any(
+        item.rule == "cross_pack_import"
+        and item.path.endswith("consumer.py")
+        and item.target == "pack_b"
+        for item in violations
+    )
+
+
+def test_invalid_stage_records_restore_both_unlisted_source_findings(
+    tmp_path: Path,
+) -> None:
+    """One invalid Source never silently removes either preserved directory."""
+    _pack(tmp_path, "pack_a")
+    source = tmp_path / "tobkiri_runtime/ecosystem" / STAGED_IDS[0] / "README.md"
+    source.write_text("Changed without a reviewed Source digest")
+    violations = _scanner().scan_repository(tmp_path)
+    assert any(item.rule == "staged_source_inventory_invalid" for item in violations)
+    assert {
+        item.target for item in violations if item.rule == "unlisted_pack_directory"
+    } == set(STAGED_IDS)
+
+
+def test_unknown_third_source_root_remains_unlisted(tmp_path: Path) -> None:
+    """Two closed stage records are not a general directory exclusion rule."""
+    _pack(tmp_path, "pack_a")
+    (tmp_path / "tobkiri_runtime/ecosystem/unreviewed_source").mkdir()
+    violations = _scanner().scan_repository(tmp_path)
+    assert {
+        item.target for item in violations if item.rule == "unlisted_pack_directory"
+    } == {"unreviewed_source"}

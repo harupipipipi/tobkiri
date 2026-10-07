@@ -1417,6 +1417,7 @@ def defaultspack_v4_tool_dispatch(defaultspack_conversation_owner, monkeypatch):
 
     from core_runtime.di_container import get_container
     from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+    from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT
     # Initialize both historical import aliases inside this test-only fixture.
     # The retired production projection used to do this as an incidental side
     # effect before tests replaced its Registry class.
@@ -1556,7 +1557,9 @@ def defaultspack_v4_tool_dispatch(defaultspack_conversation_owner, monkeypatch):
             )
 
         def provider_metadata(self, contract_id):
-            if contract_id == definition_contract:
+            # This tool-only session has no selected context owner. Match the
+            # captured session's empty metadata; invoke still rejects it.
+            if contract_id in {definition_contract, CONTEXT_CONTRACT}:
                 return ()
             raise GlobalContractUnavailable(
                 f"test v4 tool dispatch does not provide {contract_id}"

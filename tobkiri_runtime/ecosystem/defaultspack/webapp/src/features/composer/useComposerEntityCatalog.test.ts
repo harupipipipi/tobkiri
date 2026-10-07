@@ -1,20 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasAdmittedComposerMcpRead, loadComposerEntityCatalog } from "./useComposerEntityCatalog";
-import type { VerifiedFrontendHost } from "../../host/VerifiedFrontendHostContext";
-
-const host: VerifiedFrontendHost = {
-  activePlanHash: "plan",
-  capabilities: {
-    invokeAction: async () => { throw new Error("No actions in this fixture"); },
-    readDataSource: async () => { throw new Error("No reads in this fixture"); },
-  },
-  catalog: {
-    version: "rumi.ui.contribution.v1", profile_id: "local", profile_revision: "revision",
-    activation_id: "activation", plan_hash: "plan", selected_entry_route: "/chat",
-    catalog_hash: "catalog", contributions: [], diagnostics: [], quarantined_pack_ids: [],
-  },
-};
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { loadComposerEntityCatalog, useComposerEntityCatalog } from "./useComposerEntityCatalog";
+import { api } from "../../lib/api";
+import { anchorComposerMentionWidget } from "../../lib/composerMentionAnchors";
+import { composerToolMentionWidget, filterComposerToolMentions } from "../../lib/composerWidgets";
+import { resolveComposerToolMentions } from "../../lib/composerToolMentions";
 
 function historySnapshot() {
   const now = Date.now();
@@ -28,19 +20,43 @@ function historySnapshot() {
   };
 }
 
-test("the shipped map and verified Profile do not declare an MCP read", async () => {
-  assert.equal(hasAdmittedComposerMcpRead(host, "local"), false);
-  assert.equal(hasAdmittedComposerMcpRead(null, "local"), false);
-  assert.equal(hasAdmittedComposerMcpRead(host, "other"), false);
+test("formally unavailable MCP connections stay optional and make zero legacy list calls", async () => {
   let mcpCalls = 0;
-  const readMcp = async () => { mcpCalls++; return { servers: [] }; };
-  const result = await loadComposerEntityCatalog("local", async () => historySnapshot(),
-    hasAdmittedComposerMcpRead(host, "local") ? readMcp : undefined);
-  assert.equal(mcpCalls, 0);
-  assert.equal(result.catalog.candidates[0]?.id, "fixture-chat");
-  assert.deepEqual(result.servers, []);
-  assert.equal(result.status, undefined);
-  assert.equal(result.mcpStatus, undefined);
+  const originalRead = api.listMcpServers;
+  api.listMcpServers = async () => { mcpCalls++; throw new Error("Unadmitted legacy read"); };
+  try {
+    const result = await loadComposerEntityCatalog("local", async () => historySnapshot());
+    assert.equal(mcpCalls, 0);
+    assert.equal(result.catalog.candidates[0]?.id, "fixture-chat");
+    assert.deepEqual(result.servers, []);
+    assert.equal(result.status, undefined);
+    assert.equal(result.mcpStatus, "MCPの接続先は現在参照できません。");
+    const tools = [{ id: "registered_mcp_read", label: "Registered MCP read", tags: ["mcp"] }];
+    assert.deepEqual(filterComposerToolMentions(tools, "MCP"), tools);
+    const input = "@Registered MCP read";
+    const widget = anchorComposerMentionWidget(composerToolMentionWidget(tools[0]), input, 0);
+    const draft = resolveComposerToolMentions(input, [widget], tools);
+    assert.deepEqual(draft.toolIds, ["registered_mcp_read"]);
+    assert.deepEqual(draft.include, [{ kind: "tool", id: "registered_mcp_read" }]);
+    assert.equal(draft.widgets.length, 1);
+  } finally { api.listMcpServers = originalRead; }
+});
+
+test("a client-supplied available MCP candidate cannot create an unprovided catalog read", async () => {
+  let confirm!: ReturnType<typeof useComposerEntityCatalog>["confirm"];
+  let listCalls = 0;
+  const originalRead = api.listMcpServers;
+  api.listMcpServers = async () => { listCalls++; throw new Error("Unadmitted legacy read"); };
+  function Fixture() {
+    confirm = useComposerEntityCatalog({ profileId: "local", tools: [], enabled: true }).confirm;
+    return null;
+  }
+  try {
+    renderToStaticMarkup(createElement(Fixture));
+    await assert.rejects(confirm({ kind: "mcp", id: "unprovided", label: "MCP",
+      syntax: "@mcp:unprovided", available: true, status: "connected", toolIds: ["registered_mcp_read"] }), { message: "MCPの接続先は現在参照できません。" });
+    assert.equal(listCalls, 0);
+  } finally { api.listMcpServers = originalRead; }
 });
 
 test("an optional MCP failure cannot turn a successful history read into failure", async () => {

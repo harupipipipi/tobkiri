@@ -237,8 +237,39 @@ def test_saved_turn_rejects_unbounded_thinking_level(level: object) -> None:
         saved.start(payload["request"])
 
 
-def test_saved_function_is_sealed_with_only_the_initial_input_schema() -> None:
-    """Registration pins the pure ABI, not guest resume or execution authority."""
+def _assert_registered_context_binding(schema: dict) -> None:
+    """Check the canonical bounded binding without introducing authority flags."""
+    from tobkiri_protocol.conversation_context import context_binding
+
+    validator = Draft202012Validator(schema)
+    payload = _input()
+    payload["request"]["context_binding"] = context_binding(
+        {"id": "parent-1", "conversation_revision": 1}, "defaults"
+    )
+    validator.validate(payload)
+    assert validate_saved_conversation_input(payload) == payload
+    for field, value in (
+        ("approved", True),
+        ("version", "other"),
+        ("parent_revision", True),
+        ("context_digest", "invalid-digest"),
+    ):
+        invalid = deepcopy(payload)
+        invalid["request"]["context_binding"][field] = value
+        assert not validator.is_valid(invalid)
+        with pytest.raises(ValueError):
+            validate_saved_conversation_input(invalid)
+    missing = deepcopy(payload)
+    del missing["request"]["context_binding"]["context_digest"]
+    assert not validator.is_valid(missing)
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(missing)
+
+
+def test_saved_function_is_sealed_with_only_the_initial_input_schema(
+    tmp_path: Path,
+) -> None:
+    """The guest adds only an owner snapshot to the sealed public initial ABI."""
     root = Path(__file__).resolve().parents[1]
     variants = json.loads((root / "ecosystem/defaultspack/executables.v4.json").read_text())["variants"]
     selected = [item for item in variants if item["function_id"] == "defaultspack.conversation.saved"]
@@ -257,11 +288,74 @@ def test_saved_function_is_sealed_with_only_the_initial_input_schema() -> None:
     schema = json.loads(
         (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
     )
-    assert operation["input_schema"] == schema
+    public_schema = deepcopy(operation["input_schema"])
+    internal_snapshot = public_schema["properties"]["request"]["properties"].pop(
+        "resolved_chat_references"
+    )
+    # This single Host-prepared snapshot is the only internal ABI addition.
+    # Every public field, including context_binding, stays exactly pinned.
+    assert public_schema == schema
+    assert internal_snapshot["type"] == "object"
+    assert internal_snapshot["additionalProperties"] is False
+    assert set(internal_snapshot["required"]) == {
+        "kind", "profile_id", "store_revision", "project_revision",
+        "snapshot_time", "expires_at", "references", "next_cursor", "truncated",
+    }
+    assert internal_snapshot["properties"]["references"]["maxItems"] == 16
     validator = Draft202012Validator(operation["input_schema"])
     validator.validate(_input())
+    _assert_registered_context_binding(operation["input_schema"])
     assert not validator.is_valid({"state": {}, "outcome": {}})
     assert not validator.is_valid({**_input(), "approved": True})
+
+    from ecosystem.rumi_conversation_store_pack.runtime.chat_reference import (
+        project_references,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.tobkiri_ui_settings_pack.runtime.projects import ProjectStateStore
+
+    owner = ConversationStore("defaults", user_data_root=tmp_path)
+    reference_id = "a1111111-1111-4111-8111-111111111111"
+    owner.create({"id": reference_id, "title": "Referenced chat"}, expected_revision=0)
+    projects = ProjectStateStore(tmp_path, "defaults", "shell.one")
+    snapshot = project_references(
+        {"profile_id": "defaults", "operation": "resolve", "references": [
+            {"kind": "chat", "id": reference_id},
+        ]},
+        owner.snapshot(), projects.read(), profile_id="defaults", now_ms=1,
+    )
+    prepared = _input()
+    prepared["request"].update({
+        "chat_references": [{
+            "kind": "chat", "id": reference_id, "profile_id": "defaults",
+        }],
+        "resolved_chat_references": snapshot,
+    })
+    validator.validate(prepared)
+    assert validate_saved_conversation_input(prepared) == prepared
+    assert not Draft202012Validator(schema).is_valid(prepared)
+    for field, value in (
+        ("approved", True), ("truncated", True), ("next_cursor", "other"),
+    ):
+        invalid = deepcopy(prepared)
+        invalid["request"]["resolved_chat_references"][field] = value
+        assert not validator.is_valid(invalid)
+        with pytest.raises(ValueError):
+            validate_saved_conversation_input(invalid)
+    for field, value in (
+        ("approved", True), ("membership_complete", False),
+        ("snapshot_digest", "invalid-digest"),
+    ):
+        invalid = deepcopy(prepared)
+        invalid["request"]["resolved_chat_references"]["references"][0][field] = value
+        assert not validator.is_valid(invalid)
+        with pytest.raises(ValueError):
+            validate_saved_conversation_input(invalid)
+    oversized = deepcopy(prepared)
+    oversized["request"]["resolved_chat_references"]["references"] *= 17
+    assert not validator.is_valid(oversized)
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(oversized)
 
 
 def test_defaults_saved_edge_requires_coordinator_and_ui_remains_separate() -> None:
@@ -275,10 +369,16 @@ def test_defaults_saved_edge_requires_coordinator_and_ui_remains_separate() -> N
             continue
         saved_edges = [edge for edge in edges
                        if edge["contract_id"] == "conversation.saved-turn.v1"]
-        assert len(saved_edges) == 1
-        assert saved_edges[0]["caller_function_id"] == "rumi_turn_runtime_pack.turn-runtime.saved"
-        assert saved_edges[0]["target_provider_id"] == "defaultspack.conversation.saved"
-        assert saved_edges[0]["operation_id"] == "saved_complete"
+        assert sorted(
+            (edge["caller_function_id"], edge["target_provider_id"],
+             edge["operation_id"])
+            for edge in saved_edges
+        ) == [
+            ("rumi_turn_runtime_pack.chat-saved-job-adapter",
+             "defaultspack.conversation.saved", "saved_complete"),
+            ("rumi_turn_runtime_pack.turn-runtime.saved",
+             "defaultspack.conversation.saved", "saved_complete"),
+        ]
         assert any(edge["caller_function_id"] == "shell.tauri.default"
                    and edge["contract_id"] == "tobkiri.action.turn.saved.v1" for edge in edges)
     routes = json.loads(
@@ -307,6 +407,10 @@ def test_saved_host_registration_has_separate_execution_capability() -> None:
         (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
     )
     assert variant["operations"][0]["input_schema"] == schema
+    _assert_registered_context_binding(variant["operations"][0]["input_schema"])
+    internal = _input()
+    internal["request"]["resolved_chat_references"] = {}
+    assert not Draft202012Validator(schema).is_valid(internal)
 
 
 def test_reconciliation_has_no_execution_edge_and_accepts_only_a_turn_identity() -> None:
@@ -331,4 +435,28 @@ def test_reconciliation_has_no_execution_edge_and_accepts_only_a_turn_identity()
              if edge["caller_function_id"] == variant["function_id"]]
     assert [(edge["contract_id"], edge["operation_id"]) for edge in edges] == [
         ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"),
+        ("tobkiri.action.conversation.completion.v1",
+         "rumi_conversation_store_pack.conversation-completion"),
     ]
+
+
+def test_tool_only_session_has_no_optional_context_provider(
+    defaultspack_v4_tool_dispatch,
+) -> None:
+    """Absence metadata cannot admit a context operation or unknown provider."""
+    from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+    from ecosystem.defaultspack.domain.chat.instruction_context import (
+        prepare_instruction_context,
+    )
+    from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT
+
+    session = defaultspack_v4_tool_dispatch
+    assert session.provider_metadata(CONTEXT_CONTRACT) == ()
+    assert prepare_instruction_context(session, "conversation-1", "input-1") is None
+    with pytest.raises(GlobalContractUnavailable, match="does not provide"):
+        session.invoke(CONTEXT_CONTRACT, "prepare_input_for_conversation", {})
+    unknown = "tobkiri.resource.unknown-context.v1"
+    with pytest.raises(GlobalContractUnavailable, match="does not provide"):
+        session.provider_metadata(unknown)
+    with pytest.raises(GlobalContractUnavailable, match="does not provide"):
+        session.invoke(unknown, "prepare_input_for_conversation", {})
