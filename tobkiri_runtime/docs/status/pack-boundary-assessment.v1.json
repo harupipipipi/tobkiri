@@ -1777,7 +1777,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/ecosystem.json",
-          "sha256": "bd5321365fad0c619540801eb2a2fd6ab3ac7f20bf21a4635d732bdd4c94a18a"
+          "sha256": "ae1961f6562bc238ab16b9ca65aa96e3e3ed6d797603bb75a359d65f0b26492b"
         }
       ]
     },
@@ -3409,7 +3409,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "sha256": "456627c4d3bb3eed93c98d7c083811cddc7ad653b4dc9e0d0609f3247b04ece5"
+          "sha256": "f9d9f1a6a1134ea4163a79af04f90c68bf51ba5e9178c156be78d1dbf3ccd8bc"
         }
       ]
     },
