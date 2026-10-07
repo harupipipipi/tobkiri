@@ -25,6 +25,7 @@ from tests.test_workflow_v4 import Authority, Catalog, Invoker, Validator, defin
 
 def _selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr(projections, "RUNTIME_ROOT", tmp_path)
+    monkeypatch.setattr(projections, "PROJECTION_ROOT", tmp_path / "profile_projections")
     root = tmp_path / "profile_projections/example/workflows"
     root.mkdir(parents=True)
     (root / "example.workflow.v4.json").write_text(json.dumps(definition()))
