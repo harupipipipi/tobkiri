@@ -1,136 +1,43 @@
 {
   "counts": {
-    "canonical_source_packs": 149,
+    "canonical_source_packs": 147,
     "catalog_pack_directories": 147,
     "gates": {
-      "artifact_contracts": 8,
-      "authority_resolved_plan_scope": 1,
+      "artifact_contracts": 0,
+      "authority_resolved_plan_scope": 0,
       "command_protocol_activation": 0,
-      "declaration_disk_runtime": 2,
+      "declaration_disk_runtime": 0,
       "double_authority": 0,
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 99,
-      "offline_projection": 0
+      "migration_evidence": 98,
+      "offline_projection": 0,
+      "staged_source_inventory": 0
     },
     "legacy_manifest_declared_packs": 147,
     "migration_status": {
       "generated-draft": 25,
-      "not-migrated": 2,
       "release-verified": 46,
       "semantically-reviewed": 76
     },
-    "production_pack_directories": 149,
-    "v4_artifact_files": 596,
+    "production_pack_directories": 147,
+    "v4_artifact_files": 588,
     "v4_artifacts_per_pack": 4,
-    "v4_only_packs": 11,
-    "v4_pack_artifacts": 149,
+    "v4_only_packs": 9,
+    "v4_pack_artifacts": 147,
     "v4_profile_artifacts": 1
   },
   "findings": {
-    "artifact_contracts": [
-      {
-        "artifact": "artifact-index.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/artifact-index.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "pack.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/pack.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "contracts.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/contracts.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "executables.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/executables.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "artifact-index.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/artifact-index.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "pack.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "contracts.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/contracts.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      },
-      {
-        "artifact": "executables.v4.json",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/executables.v4.json",
-        "rule": "missing_v4_artifact",
-        "symbol": "missing_v4_artifact"
-      }
-    ],
-    "authority_resolved_plan_scope": [
-      {
-        "extra": [
-          "tobkiri_surface_renderer_pack",
-          "tobkiri_voice_agent_pack"
-        ],
-        "line": 1,
-        "missing": [],
-        "path": "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
-        "rule": "v4_catalog_disk_scope_mismatch",
-        "symbol": "pack_v4_catalog"
-      }
-    ],
+    "artifact_contracts": [],
+    "authority_resolved_plan_scope": [],
     "command_protocol_activation": [],
-    "declaration_disk_runtime": [
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack",
-        "rule": "pack_missing_from_v4_catalog",
-        "symbol": "pack_missing_from_v4_catalog"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack",
-        "rule": "pack_missing_from_v4_catalog",
-        "symbol": "pack_missing_from_v4_catalog"
-      }
-    ],
+    "declaration_disk_runtime": [],
     "double_authority": [],
     "executable_source_registry": [],
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
-      {
-        "extra": [],
-        "line": 1,
-        "missing": [
-          "tobkiri_surface_renderer_pack",
-          "tobkiri_voice_agent_pack"
-        ],
-        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-        "rule": "independent_migration_proof_scope_mismatch",
-        "symbol": "independent_migration_proof_scope_mismatch"
-      },
       {
         "errors": [
           "pack_specific_semantic_comparison_unverified",
@@ -1347,15 +1254,15 @@
         ],
         "status_counts": {
           "generated-draft": 25,
-          "not-migrated": 2,
           "release-verified": 46,
           "semantically-reviewed": 76
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 103
+        "unverified_count": 101
       }
     ],
-    "offline_projection": []
+    "offline_projection": [],
+    "staged_source_inventory": []
   },
   "gate": {
     "clean": false,
@@ -1369,108 +1276,27 @@
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
       "migration_evidence": 0,
-      "offline_projection": 0
+      "offline_projection": 0,
+      "staged_source_inventory": 0
     },
     "status": "RED"
   },
   "gates": {
     "artifact_contracts": {
-      "findings": [
-        {
-          "artifact": "artifact-index.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/artifact-index.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "pack.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/pack.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "contracts.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/contracts.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "executables.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/executables.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "artifact-index.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/artifact-index.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "pack.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "contracts.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/contracts.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        },
-        {
-          "artifact": "executables.v4.json",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/executables.v4.json",
-          "rule": "missing_v4_artifact",
-          "symbol": "missing_v4_artifact"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "authority_resolved_plan_scope": {
-      "findings": [
-        {
-          "extra": [
-            "tobkiri_surface_renderer_pack",
-            "tobkiri_voice_agent_pack"
-          ],
-          "line": 1,
-          "missing": [],
-          "path": "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
-          "rule": "v4_catalog_disk_scope_mismatch",
-          "symbol": "pack_v4_catalog"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "command_protocol_activation": {
       "findings": [],
       "status": "GREEN"
     },
     "declaration_disk_runtime": {
-      "findings": [
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack",
-          "rule": "pack_missing_from_v4_catalog",
-          "symbol": "pack_missing_from_v4_catalog"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack",
-          "rule": "pack_missing_from_v4_catalog",
-          "symbol": "pack_missing_from_v4_catalog"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "double_authority": {
       "findings": [],
@@ -1490,17 +1316,6 @@
     },
     "migration_evidence": {
       "findings": [
-        {
-          "extra": [],
-          "line": 1,
-          "missing": [
-            "tobkiri_surface_renderer_pack",
-            "tobkiri_voice_agent_pack"
-          ],
-          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-          "rule": "independent_migration_proof_scope_mismatch",
-          "symbol": "independent_migration_proof_scope_mismatch"
-        },
         {
           "errors": [
             "pack_specific_semantic_comparison_unverified",
@@ -2717,17 +2532,20 @@
           ],
           "status_counts": {
             "generated-draft": 25,
-            "not-migrated": 2,
             "release-verified": 46,
             "semantically-reviewed": 76
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 103
+          "unverified_count": 101
         }
       ],
       "status": "RED"
     },
     "offline_projection": {
+      "findings": [],
+      "status": "GREEN"
+    },
+    "staged_source_inventory": {
       "findings": [],
       "status": "GREEN"
     }
@@ -2752,6 +2570,9 @@
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_migration_status_promotes_only_pack_specific_semantic_proof",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_synthetic_evidence_is_green_when_pack_semantics_are_proved",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_reports_actual_production_proof_state",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_staged_source_proof_is_separate_from_synthetic_runtime_authority",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_invalid_staged_source_is_not_omitted_from_runtime_disk_guard",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_unknown_source_root_is_not_classified_by_valid_stage_records",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_independent_migration_proof_rejects_tampered_signature",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_preserves_original_generated_receipt_validation",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_does_not_hide_a_tampered_generated_receipt",
@@ -2904,12 +2725,12 @@
       "tobkiri_host_pack_control",
       "tobkiri_mcp_connection_pack",
       "tobkiri_side_chat_pack",
-      "tobkiri_surface_renderer_pack",
       "tobkiri_ui_settings_pack",
-      "tobkiri_voice_agent_pack",
       "tobkiri_workflow_pack"
     ],
+    "catalog_compatibility_aliases": 4,
     "catalog_pack_directories": 147,
+    "compatibility_alias_directories": 4,
     "declared_source_sets": {
       "direct_ids": [
         "defaultspack",
@@ -3057,9 +2878,7 @@
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_side_chat_pack",
-        "tobkiri_surface_renderer_pack",
         "tobkiri_ui_settings_pack",
-        "tobkiri_voice_agent_pack",
         "tobkiri_workflow_pack"
       ],
       "manifest_ids": [
@@ -3509,14 +3328,11 @@
         "tobkiri_conversation_lifecycle_pack",
         "tobkiri_mcp_connection_pack",
         "tobkiri_side_chat_pack",
-        "tobkiri_surface_renderer_pack",
-        "tobkiri_ui_settings_pack",
-        "tobkiri_voice_agent_pack"
+        "tobkiri_ui_settings_pack"
       ]
     },
     "migration_status_counts": {
       "generated-draft": 25,
-      "not-migrated": 2,
       "release-verified": 46,
       "semantically-reviewed": 76
     },
@@ -4682,27 +4498,11 @@
         "v4_only": true
       },
       {
-        "classified_as": "not-migrated",
-        "declared_authority": null,
-        "legacy_manifest_authority": null,
-        "pack_id": "tobkiri_surface_renderer_pack",
-        "v4_artifacts": false,
-        "v4_only": true
-      },
-      {
         "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_ui_settings_pack",
         "v4_artifacts": true,
-        "v4_only": true
-      },
-      {
-        "classified_as": "not-migrated",
-        "declared_authority": null,
-        "legacy_manifest_authority": null,
-        "pack_id": "tobkiri_voice_agent_pack",
-        "v4_artifacts": false,
         "v4_only": true
       },
       {
@@ -4714,8 +4514,10 @@
         "v4_only": false
       }
     ],
-    "production_pack_directories": 149,
-    "v4_artifact_files": 596,
+    "production_pack_directories": 147,
+    "staged_source_directories": 2,
+    "unknown_source_directories": 0,
+    "v4_artifact_files": 588,
     "v4_artifacts_per_pack": 4,
     "v4_pack_artifacts": [
       "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
@@ -4863,9 +4665,7 @@
       "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_side_chat_pack/pack.v4.json",
-      "tobkiri_runtime/ecosystem/tobkiri_surface_renderer_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
-      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/pack.v4.json"
     ],
     "v4_profile_artifacts": [
@@ -4875,8 +4675,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "6ab6864b94a6e7aef9ce66e2c73a61a5e2e42fab",
-    "semantic_digest": "sha256:034eb5fec9b94a0aeda67387e903cda51df5d1744df7c7bd2960b94a6ab2e779",
+    "observed_head_sha": "a6406bc38e0e117f08672ebe6c1d6108822416da",
+    "semantic_digest": "sha256:4746be37a184fee7b22d7af267be467f82d0d24898702b466c2aff453c7a8967",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:d4d2c147fca654ac5de5350cff9246c514a98bb10f26a4a362c32648156a9b84",
+  "catalog_digest": "sha256:2c1dfa361d680d2c4ae566d3aa969a848aed998ef217cc29b6418253d8c9ad7e",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:6256187f8c1bff654dbbd06b4929c09e278826b9a09187558e587e9288fc65e6",
+  "source_identity": "sha256:a4bca2fac4768d9ffe87916c9e58db0d9f5c14d76df033fd0fff856761c6e9b0",
   "variants": [
     {
       "architecture": "any",
@@ -337,6 +337,37 @@
                         "type": "array"
                       }
                     ]
+                  },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -700,7 +731,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:e14fe210dadd4ce1e5d886c55dd7887c615df895cafa850f5269241e146cbb52",
+          "revision_digest": "sha256:5bd0b6d464b4d1a254f81b4729d532d8213d9a0d3e1181356af5210044fa5d4c",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

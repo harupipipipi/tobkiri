@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:b5686d59fd391c914f5ef81bd4227d3d5c2966cda96889b4a58d6efd820dff4e",
+  "source_identity": "sha256:41c09fa4182b99ec755edbd2000a2d91c06656d8bbb1ff3783253405e4430e8d",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.chat-message-deliver.python",
@@ -1811,7 +1811,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:40589812c5e77cf74594b45d478f25eda923a771a9b6366354b4dfb03db4382b",
+          "revision_digest": "sha256:b7dda70b162f84a9af42022f3025059c074d6a66dc5b7b2b7ef8b153d48fc8c9",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -1945,6 +1945,37 @@
                         "type": "array"
                       }
                     ]
+                  },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -2327,6 +2358,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:aa834dbdf57711cbc277e78b1773689ecb5b9a140d45c214f378f720351e357e",
-  "catalog_digest": "sha256:20a350cbf5ceef3b59659574698b0d8f19367fd2247d0b1d79c3f3f5d1ae7b78"
+  "materialization_catalog_digest": "sha256:7ae6882185657c505604573ae60fab5bcf36c7008de8546f1a2efcca9740a403",
+  "catalog_digest": "sha256:622e16f7ee38a4ee78714667fdab24e823bc116446a48dfc6adefea81b68c45a"
 }

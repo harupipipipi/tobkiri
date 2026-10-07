@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:aa834dbdf57711cbc277e78b1773689ecb5b9a140d45c214f378f720351e357e",
+  "catalog_digest": "sha256:7ae6882185657c505604573ae60fab5bcf36c7008de8546f1a2efcca9740a403",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:1a347ef7196e727714ba6fc64526f4a6e2e231545f3f6c838cece26800454285",
+  "source_identity": "sha256:6ead74ad8a1b63b51134a06daa5e630e74f2058f5b272d6c586fa3e909e6f2bb",
   "variants": [
     {
       "architecture": "any",
@@ -1960,6 +1960,37 @@
                       }
                     ]
                   },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
+                  },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
                   },
@@ -2214,7 +2245,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:40589812c5e77cf74594b45d478f25eda923a771a9b6366354b4dfb03db4382b",
+          "revision_digest": "sha256:b7dda70b162f84a9af42022f3025059c074d6a66dc5b7b2b7ef8b153d48fc8c9",
           "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }

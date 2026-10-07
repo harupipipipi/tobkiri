@@ -462,6 +462,37 @@
                   }
                 ]
               },
+              "context_binding": {
+                "additionalProperties": false,
+                "properties": {
+                  "context_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "parent_conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "parent_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "profile_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "version": {
+                    "const": "tobkiri.conversation-context-binding.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "profile_id",
+                  "parent_conversation_id",
+                  "parent_revision",
+                  "context_digest"
+                ],
+                "type": "object"
+              },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
               },
@@ -976,6 +1007,37 @@
                         "type": "array"
                       }
                     ]
+                  },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -29305,6 +29367,37 @@
                   }
                 ]
               },
+              "context_binding": {
+                "additionalProperties": false,
+                "properties": {
+                  "context_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "parent_conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "parent_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "profile_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "version": {
+                    "const": "tobkiri.conversation-context-binding.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "profile_id",
+                  "parent_conversation_id",
+                  "parent_revision",
+                  "context_digest"
+                ],
+                "type": "object"
+              },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
               },
@@ -29711,6 +29804,37 @@
                         "type": "array"
                       }
                     ]
+                  },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -37581,7 +37705,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:cd15257bf8c2c8609c1cbe94d84dd0e58c00f36cbb49ee19a217386fe3af9cc5",
+    "input_digest": "sha256:ed1d3f45e1effc82063a269aeee0cc5f0cdf9930aa32f8c85b87a98498874c2e",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -38332,7 +38456,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:7c41b3d026656be2e693560ae475c854fd60f2d3f76cd5975940f9455745b813",
+        "digest": "sha256:f32651c0e3ddae05eb589a73d69d09bc527c504ee329b030518bd4023a3be86c",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -38812,7 +38936,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:06abe1ad7a287cac565abd28cf559741c4f46a61e57aa5be3192da7db72f15dc",
+        "digest": "sha256:b4dbddc30f30e427fd7955d18286a8c601880ecc7ed46a03ca72f817cfafff76",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },
