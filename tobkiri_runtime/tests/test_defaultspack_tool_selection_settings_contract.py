@@ -428,14 +428,24 @@ def test_embedding_index_calls_ai_client_embed_with_selected_model(tmp_path, mon
     assert calls[1][0] == "google/text-embedding-004"
 
 
-def test_conversation_tool_preferences_mode_overrides_default_turn_selection():
+@pytest.mark.parametrize(
+    ("source", "expected_mode", "expected_count"),
+    [
+        ("default", "none", 0),
+        ("tool_selection", "auto", 3),
+        ("tool_selection_preview", "auto", 3),
+    ],
+)
+def test_conversation_preferences_and_explicit_turn_selection_keep_their_scope(
+    source: str, expected_mode: str, expected_count: int,
+) -> None:
     from domain.chat.tool_selection_schema import ToolSelectionRequest
     from domain.chat.tool_selection_service import ToolSelectionService
 
     decision = ToolSelectionService(settings={"tools": {"selection_strategy": "all_schemas"}}).select(
         "search the web",
         _tools(),
-        selection=ToolSelectionRequest(mode="auto", scope="turn", source="tool_selection"),
+        selection=ToolSelectionRequest(mode="auto", scope="turn", source=source),
         context={
             "conversation_tool_preferences": {
                 "mode": "none",
@@ -445,9 +455,11 @@ def test_conversation_tool_preferences_mode_overrides_default_turn_selection():
         },
     )
 
-    assert decision.mode == "none"
-    assert decision.selected_tools == []
-    assert decision.provider_schema_count == 0
+    assert decision.mode == expected_mode
+    assert decision.provider_schema_count == expected_count
+    assert [tool["tool_id"] for tool in decision.selected_tools] == (
+        [tool["tool_id"] for tool in _tools()] if expected_count else []
+    )
 
 
 def test_settings_permissions_auto_confirm_block_and_service_overrides():
