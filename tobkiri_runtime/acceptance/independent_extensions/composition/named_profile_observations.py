@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+import sys
 from typing import Any, Callable
 
 from jsonschema import Draft202012Validator
@@ -84,6 +85,7 @@ def observe_named_profiles(
     catalog: Any,
     admitted_roots: dict[str, Path],
     output_root: Path,
+    label: str = "named",
 ) -> list[dict[str, Any]]:
     """Compile new Profiles and bind selected resources; never execute a Pack."""
     cases: list[dict[str, Any]] = []
@@ -143,6 +145,18 @@ def observe_named_profiles(
             "authority_references": [],
             "profile_authority_snapshot_digest": None,
         }
+        value["base"].update(
+            artifact_digest=None,
+            definition_revision=None,
+            resolution="verified_exact_artifact_required",
+        )
+        value["shell"].update(
+            artifact_digest=None,
+            executable_artifact_digest=None,
+            definition_revision=None,
+        )
+        for pack in value["packs"]:
+            pack["artifact_digest"] = None
         for pack_id in selected:
             value["packs"].append({"pack_id": pack_id, "artifact_digest": None, "role": "provider"})
             manifest = catalog.packs[pack_id]
@@ -167,7 +181,7 @@ def observe_named_profiles(
 
     roots = tuple(admitted_roots.values())
     for index, selected in enumerate(((), (pack_ids[0],), (pack_ids[1],), pack_ids)):
-        prefix = "named." + "+".join(selected or ("unselected",))
+        prefix = label + "." + "+".join(selected or ("unselected",))
         author_intent = intent(selected, f"independent.composed.{index}")
         target = record(
             prefix + ".compile",
@@ -260,9 +274,33 @@ def observe_named_profiles(
                         engine, definition["definition_id"]
                     ),
                 )
-            from ecosystem.defaultspack.domain.capability.catalog import CapabilityCatalog
+            # The established Defaults entrypoint supplies this package root
+            # for its legacy absolute domain imports; use that same import
+            # layout, without changing a provider, authority or resource.
+            defaultspack = Path(__file__).resolve().parents[3] / "ecosystem/defaultspack"
+            if str(defaultspack) not in sys.path:
+                sys.path.insert(0, str(defaultspack))
+            from domain.capability.catalog import CapabilityCatalog
 
-            record(prefix + ".prompt-catalog", lambda: CapabilityCatalog().prompts())
+            def prompt_catalog() -> list[dict[str, Any]]:
+                prompts = CapabilityCatalog().prompts()
+                expected = {
+                    item["projection_id"] for item in resolved.profile["content_projections"]
+                }
+                actual = {
+                    item["source_projection_id"]
+                    for item in prompts
+                    if item.get("source_authority_kind") == "profile_projection"
+                }
+                assert actual == expected
+                for item in prompts:
+                    if item.get("source_projection_id") in expected:
+                        assert CapabilityCatalog().prompt_text(
+                            item["id"], item["source_projection_id"]
+                        )
+                return prompts
+
+            record(prefix + ".prompt-catalog", prompt_catalog)
             assert not store.list_definitions()
         finally:
             restore_resolved_profile(token)
@@ -271,7 +309,7 @@ def observe_named_profiles(
         value = intent((), "independent.removed.origin")
         value["content_projections"] = [deepcopy(projections[0])]
         record(
-            "named.removed-pack-kept-projection",
+            label + ".removed-pack-kept-projection",
             lambda: build_named_profile(
                 output_root / "removed-invalid",
                 template_bundle=bundle_root,

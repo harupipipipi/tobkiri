@@ -120,8 +120,10 @@ def _rename(root: Path, output: Path, pack_id: str) -> Path:
             }
         )
     functions = []
+    function_ids = {}
     for number, variant in enumerate(executables["variants"]):
         contract_id = variant["operations"][0]["contract_id"]
+        function_ids[variant["function_id"]] = pack_id + f".function{number}"
         functions.append(
             PythonPackFunction(
                 pack_id + f".function{number}",
@@ -131,6 +133,29 @@ def _rename(root: Path, output: Path, pack_id: str) -> Path:
                 (root / variant["implementation_path"]).read_bytes(),
             )
         )
+    generated = {
+        "pack.v4.json",
+        "contracts.v4.json",
+        "executables.v4.json",
+        "artifact-index.v4.json",
+        "authoring-source.v1.json",
+    }
+    implementations = {function.implementation_path for function in functions}
+    assets = {}
+    revisions = {contract["contract_id"]: contract["revision_digest"] for contract in contracts}
+    for artifact in manifest["artifacts"]:
+        relative = artifact["path"]
+        if relative in generated | implementations:
+            continue
+        raw = (root / relative).read_bytes()
+        if relative.endswith(".workflow.intent.v1.json"):
+            workflow = json.loads(raw)
+            for step in workflow["steps"]:
+                request = step["request"]
+                request["function_id"] = function_ids[request["function_id"]]
+                request["contract_revision_digest"] = revisions[request["contract_id"]]
+            raw = (json.dumps(workflow, indent=2, sort_keys=True) + "\n").encode()
+        assets[relative] = raw
     return build_python_pack(
         output,
         pack_id=pack_id,
@@ -138,6 +163,7 @@ def _rename(root: Path, output: Path, pack_id: str) -> Path:
         display_name="Renamed independent component",
         contracts=contracts,
         functions=functions,
+        assets=assets,
     )
 
 
@@ -356,6 +382,41 @@ def observe(roots: list[Path], bundle_root: Path, artifact_root: Path) -> dict[s
                     renamed_catalog,
                 ),
             )
+            renamed_content = _rename(
+                roots[1], temp / "renamed-content", "renamed.temporal.component"
+            )
+            _sign(renamed_content, trust, key)
+            record(
+                "renamed.content-signed-admit",
+                "allow",
+                lambda: admit_signed_external_pack(renamed_content, trust_store_path=trust),
+            )
+            content_snapshot = load_external_pack_catalog()
+            content_root = content_snapshot.roots["renamed.temporal.component"]
+            content_manifest = validate_file(content_root / "pack.v4.json", "pack")
+            content_catalog = replace(
+                catalog,
+                packs={**catalog.packs, "renamed.temporal.component": content_manifest},
+                executable_catalogs={
+                    **catalog.executable_catalogs,
+                    "renamed.temporal.component": load_admitted_external_executable_catalog(
+                        "renamed.temporal.component",
+                        content_manifest,
+                    ),
+                },
+            )
+            observations.extend(
+                observe_named_profiles(
+                    bundle_root=bundle_root,
+                    catalog=content_catalog,
+                    admitted_roots={
+                        pack_ids[0]: content_snapshot.roots[pack_ids[0]],
+                        "renamed.temporal.component": content_root,
+                    },
+                    output_root=temp / "named-renamed",
+                    label="named-renamed",
+                )
+            )
             conflicting_plan = select((*pack_ids, "renamed.extension.component"), renamed_catalog)
             conflicting_compiled = [
                 compile_pack_root(renamed_snapshot.roots[identity])
@@ -444,6 +505,8 @@ def observe(roots: list[Path], bundle_root: Path, artifact_root: Path) -> dict[s
         "test_policy_only": True,
         "authority_references": "synthetic offline resolver inputs, never stored or activated",
         "VM_Broker_API_execution": False,
+        "verified_activation": False,
+        "named_workflow_context": "offline structural view; real compilers and signed CAS, no Kernel authority",
         "bundle_lock_sha256": hashlib.sha256(
             (bundle_root / "bundle.lock.json").read_bytes()
         ).hexdigest(),
@@ -462,3 +525,5 @@ if __name__ == "__main__":
     result = observe(args.pack, args.bundle_root, args.artifact_root)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"all_expected": result["all_expected"], "cases": result["cases"]}))
+    if not result["all_expected"]:
+        raise SystemExit(1)
