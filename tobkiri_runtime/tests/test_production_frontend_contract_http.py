@@ -2812,6 +2812,128 @@ def test_history_list_reads_real_captured_store_without_mutation(
     assert store.path.read_bytes() == before
 
 
+def test_project_folder_prepare_http_accepts_bounded_roots_before_native_approval(
+    production_server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep HTTP/Broker/Host fences while replacing only the OS picker port."""
+    from core_runtime.authority.ui_operator import sign_ui_operator
+    from core_runtime.project_directory_launcher import LauncherDirectoryPickerPort
+    from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore
+
+    server, _session, authority = production_server
+    roots: list[Path] = []
+    monkeypatch.setattr(LauncherDirectoryPickerPort, "pick_directories", lambda _self: roots)
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    mounts = WorkspaceMountStore("defaults", user_data_root=tmp_path / "user-data")
+
+    def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+        status, result, _ = _request(
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, result
+
+    path = "/api/projects/workspace"
+    for index, (count, primary, legacy) in enumerate(
+        ((1, 0, False), (2, 0, False), (2, 1, False), (1, 0, True))
+    ):
+        roots = [tmp_path / f"folder-{index}-{item}" for item in range(count)]
+        for root in roots:
+            root.mkdir()
+        status, picked = post("/api/ui/select-directory", {})
+        assert status == 200
+        choice = picked["data"]
+        tokens = [item["selection_id"] for item in choice["selections"]]
+        assert choice["primary_selection_id"] == choice["selection_id"] == tokens[0]
+        request = (
+            {"selection_id": tokens[0]}
+            if legacy
+            else {"selection_ids": tokens, "primary_selection_id": tokens[primary]}
+        )
+        if index == 1:
+            pending_count = len(authority.list_host_pending_effects())
+            invalid_requests = (
+                {"selection_ids": [], "primary_selection_id": tokens[0]},
+                {
+                    "selection_ids": [f"unused-{item}" for item in range(33)],
+                    "primary_selection_id": "unused-0",
+                },
+                {"selection_ids": [tokens[0], tokens[0]], "primary_selection_id": tokens[0]},
+                {**request, "approved": True},
+                {**request, "path": str(roots[0])},
+                {**request, "primary_selection_id": "outside"},
+            )
+            for invalid in invalid_requests:
+                status, _rejected = post(
+                    path,
+                    {
+                        "phase": "prepare",
+                        "effect_kind": "workspace_mount",
+                        "correlation_id": str(uuid.uuid4()),
+                        "request": invalid,
+                    },
+                )
+                assert status in {400, 403, 503}
+                assert len(authority.list_host_pending_effects()) == pending_count
+                assert not mounts.path.exists()
+        status, prepared = post(
+            path,
+            {
+                "phase": "prepare",
+                "effect_kind": "workspace_mount",
+                "correlation_id": str(uuid.uuid4()),
+                "request": request,
+            },
+        )
+        assert status == 200, prepared
+        effect = prepared["data"]
+        assert effect["state"] == "approval_pending"
+        metadata = effect["redacted_metadata"]
+        assert len(metadata["workspace_ids"]) == count
+        assert metadata["workspace_id"] == metadata["workspace_ids"][primary]
+        assert all(token not in json.dumps(prepared) for token in tokens)
+        assert not mounts.path.exists()
+        status, detail = post(
+            "/api/interactive-approval/v1/get",
+            {
+                "request_id": effect["approval_request_id"],
+            },
+        )
+        assert status == 200, detail
+        assert detail["data"]["state"] == "pending"
+        assert detail["data"]["typed_confirmation_required"] is True
+        assert detail["data"]["redacted_metadata"] == metadata
+        if index % 2:
+            status, denied = post(
+                "/api/interactive-approval/v1/deny",
+                {
+                    "request_id": effect["approval_request_id"],
+                    "ui_operator": sign_ui_operator(
+                        effect["approval_request_id"],
+                        nonce=f"folder-denial-{index}",
+                        decision="deny",
+                        request_snapshot_digest=detail["data"]["request_snapshot_digest"],
+                        typed_confirmation_digest=None,
+                    ),
+                },
+            )
+            assert status == 200, denied
+            assert denied["data"]["state"] == "denied"
+            phase = "resume"
+        else:
+            phase = "cancel"
+        status, cancelled = post(path, {"phase": phase, "effect_id": effect["effect_id"]})
+        assert status == 200, cancelled
+        assert cancelled["data"]["state"] == "cancelled"
+        assert not mounts.path.exists()
+
+
 def test_workspace_reads_use_the_real_captured_owner_without_mutation(
     production_server,
     tmp_path: Path,

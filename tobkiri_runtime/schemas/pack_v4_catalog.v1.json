@@ -12971,19 +12971,51 @@
                       "const": "prepare"
                     },
                     "request": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "selection_id": {
-                          "maxLength": 255,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9_-]+$",
-                          "type": "string"
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "selection_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "selection_id"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "primary_selection_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "selection_ids": {
+                              "items": {
+                                "maxLength": 255,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]+$",
+                                "type": "string"
+                              },
+                              "maxItems": 32,
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            }
+                          },
+                          "required": [
+                            "selection_ids",
+                            "primary_selection_id"
+                          ],
+                          "type": "object"
                         }
-                      },
-                      "required": [
-                        "selection_id"
-                      ],
-                      "type": "object"
+                      ]
                     }
                   },
                   "required": [
