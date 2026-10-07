@@ -61,6 +61,8 @@ def test_production_registry_uses_only_selected_pack_data(
             else (
                 "rumi_tool_local_executor_pack.tool-executor.local",
                 "rumi_default_tools_pack.files-read",
+                "rumi_turn_runtime_pack.chat-message-deliver",
+                "rumi_host_authority_bridge_pack.host-authority.approval-policy",
             )
         ),
         backends=(),
