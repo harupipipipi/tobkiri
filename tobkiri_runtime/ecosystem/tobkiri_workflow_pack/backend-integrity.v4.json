@@ -1,6 +1,11 @@
 {
   "files": {
     "core_runtime/workflow_v4/__init__.py": "sha256:da40d71dce8a893305036c767481cd60fad1675fe2ca91e603ec899d8e77d16e",
+    "core_runtime/workflow_v4/attempt_adapter.py": "sha256:e4adc1736522fc97f05211d4839556b71ed76a0bcf45c9c8263c7f525753e53d",
+    "core_runtime/workflow_v4/attempt_binding.py": "sha256:c97d1969d4b4f88f2183bd5f459ec5a8a5e1d0049cca23312567c4d8bfc6d9ad",
+    "core_runtime/workflow_v4/attempt_port.py": "sha256:56e5259b9fbabc4ecec31f518bd62a5330e9ff71420f993047eb3bcfa36a0875",
+    "core_runtime/workflow_v4/attempt_service.py": "sha256:d2948dbdc7d2569bcec681db376e10be65bc4729a84e693b3a6ac11edabb0688",
+    "core_runtime/workflow_v4/attempt_store.py": "sha256:2ed3677317fbb6ed45386b3b2785e6a7a76d75b04e306ad036e2eb1c3bd20650",
     "core_runtime/workflow_v4/engine.py": "sha256:f4b54e9c6792360ec69a8d6872bb967a72cb425c6fcd374f726d9d546e5f5089",
     "core_runtime/workflow_v4/integration.py": "sha256:830b504b708e55da19683430f436eb0c6e572e3cbece47f59cc85f79ad515ffa",
     "core_runtime/workflow_v4/models.py": "sha256:b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684",

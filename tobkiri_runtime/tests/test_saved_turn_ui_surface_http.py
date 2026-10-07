@@ -203,7 +203,10 @@ def test_saved_send_model_unset_is_typed_rejection_without_writes(
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
             readiness_calls.append(payload)
-            return {"ready": True, "model_profile_id": "model-profile-1"}
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
@@ -260,7 +263,10 @@ def test_saved_turn_and_conversation_survive_runtime_recapture(
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
-            return {"ready": True, "model_profile_id": "model-profile-1"}
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}

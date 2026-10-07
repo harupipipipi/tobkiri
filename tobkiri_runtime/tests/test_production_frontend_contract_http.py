@@ -2336,7 +2336,11 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
-            return {"ready": True, "model_profile_id": "model-profile-1"}
+            # This explicit AI adapter implements buffered completion only.
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
@@ -2437,7 +2441,11 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
-            return {"ready": True, "model_profile_id": "model-profile-1"}
+            # Cancellation is tested through the buffered AI adapter below.
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
         if (contract_id, operation_id) == TARGETS[2]:
             signal = kwargs["parent_cancellation"]
             signals.append(signal)
