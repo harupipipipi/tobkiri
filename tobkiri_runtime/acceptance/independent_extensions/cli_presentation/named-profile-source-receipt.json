@@ -1,0 +1,14 @@
+{
+  "evidence_kind": "formal_named_profile_source_compile",
+  "intent_path": "independent.tauri.renderer.profile.intent.v1.json",
+  "generated_output": "named-profile-release",
+  "source_lock_digest": "sha256:1d20bc31c333f2e52e87c304a9e22e895c47cff4a3cc53ea7abadb60b2db9a1c",
+  "profile_revision": "sha256:f8c9707ef9650cd189450e150d82c94cb8db6a6d34972cfe778522216ed3f58b",
+  "activation_authority": "unbound",
+  "catalog_revision": "sha256:d0cc81e0aedfcc3f06e886a3001d24728c8c137c03c3de277b8ed6f445448ab9",
+  "profile_definition_digest": "sha256:4e3f06c13386659cea9e5bafc3f094c6e4683defcf90e789d8cf86587cba39d6",
+  "provenance_digest": "sha256:be27ca9c1ed937874c81e2d1e9e398a4676af06b52fb88c2645767ddf711a4c9",
+  "closure_digest": "sha256:f7b9dde190e4e101930027e01ec6d3815c03574cbaa06c13f13d1af360570be0",
+  "runtime_execution": false,
+  "product_frontend_binding": false
+}

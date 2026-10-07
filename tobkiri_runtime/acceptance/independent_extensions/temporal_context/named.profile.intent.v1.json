@@ -1,0 +1,49 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "defaults-basepack",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "content_projections": [
+    {
+      "artifact_root": "content",
+      "content_digest": null,
+      "kind": "profile_content",
+      "projection_id": "acceptance.temporal.rules",
+      "source_artifact_digest": null,
+      "source_pack_id": "acceptance.temporal.context"
+    }
+  ],
+  "display_name": "Tobkiri temporal context",
+  "intent_api_version": "io.tobkiri.profile-intent.v1",
+  "mode": "interactive",
+  "packs": [
+    {
+      "artifact_digest": null,
+      "pack_id": "runtime.tauri.application.default",
+      "role": "application"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "acceptance.temporal.context",
+      "role": "provider"
+    }
+  ],
+  "profile_authority_snapshot_digest": null,
+  "profile_id": "acceptance.temporal.named",
+  "requested_edges": [],
+  "shell": {
+    "architecture": "arm64",
+    "artifact_digest": null,
+    "contract_id": "app.shell.v1",
+    "definition_revision": null,
+    "executable_artifact_digest": null,
+    "pack_id": "shell.tauri.default",
+    "platform": "macos",
+    "provider_id": "shell.tauri.default"
+  },
+  "state": "needs_resolution"
+}

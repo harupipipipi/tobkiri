@@ -1,23 +1,38 @@
 {
-  "artifact_set_digest": "sha256:81d227b38ab1ecf4b6e9708b30d4b0f816932aeb228688ce5f4e748efb0b3d6d",
+  "artifact_set_digest": "sha256:d12ebf0b2b89e28741f1cf7a48319e7c3961bd67204b5a88c24d96843b2949b6",
   "artifacts": [
     {
-      "digest": "sha256:d819d9009bfc2be9f9eac6c71d43710d8a6b2f103e5dbbd41cf6b0add52ac12a",
+      "digest": "sha256:738ae4a6d481c8de733a9e320172f58c2c2a1fcd8669a3a9c596546e311c2ff1",
       "path": "authoring-source.v1.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:148018e56b17f9389a373e5de4c7c8850fdaa07cec6387104acc8612e2da6e4e",
+      "digest": "sha256:4b5c27b5076d338552ec377845232b27e8ba9523e968cd993e30f32ae70ecad5",
+      "path": "content/flows/acceptance.temporal.turn.flow.yaml",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c464b3795c745769b5eb93a1d7e9c1e0fedfc0f0d97ef45558932371a1275f69",
+      "path": "content/prompts/acceptance.temporal.rules.system.md",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:7b586ef644c940c93dcae08d2e049f804983ecb5a281e5c034487c47e0b9813c",
+      "path": "content/workflows/acceptance.temporal.context.workflow.intent.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:af7b18e18dd3d8dd362bd8b7da8109883df6f9ad113a25f28c393b7a9994d95b",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:e258e9ca172864963ddd892512ed00e12141799e91ae84e81a1f87b610c4124c",
+      "digest": "sha256:ee4a058a49d06a77f176fcc3810fdada106750e5f4bbaf680ecd1e03cfbaac16",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:fce06da9e6e34ce491b922df155c7de1a8f9a411ad28dc38866fb28b5a4fd629",
+      "digest": "sha256:8d5651cc55d31b3f27087ffed53cd4fbda345307612fd3d2fb633ad626fb09b2",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -25,33 +40,13 @@
       "digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
       "path": "runtime/temporal.py",
       "role": "runtime"
-    },
-    {
-      "digest": "sha256:2efee3c6f88860ed8f6b14008d77ce62e6967dba8ebbd80d9a8194d37e8d5f49",
-      "path": "temporal/flow.source.json",
-      "role": "sidecar"
-    },
-    {
-      "digest": "sha256:9ae9cc89f64cf200bdc8af223177017a2d90f0e81c1a47c47258e8283c00e9cb",
-      "path": "temporal/flow.without-temporal.source.json",
-      "role": "sidecar"
-    },
-    {
-      "digest": "sha256:1f5eb2cc800572827beb3711b102578f84a49af473e06ca08c363ea45cc51461",
-      "path": "temporal/prompt.md",
-      "role": "sidecar"
-    },
-    {
-      "digest": "sha256:c03c077abbfb735e6890ee8adee014f9e87882bf33e0a6723637f0e0cce33799",
-      "path": "temporal/prompt.without-temporal.md",
-      "role": "sidecar"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:2b1ad742d9d6508defd49cb6839c1f6ef0e8d20df5d15b441059b2f80ae75397"
+    "signed_digest": "sha256:aa3ddae37fa59a24ae36a8befe915751c60b7ce321ccd8c1be326590ecb72ab2"
   },
   "pack_id": "acceptance.temporal.context",
-  "source_identity": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe"
+  "source_identity": "sha256:b74d3808b51a771a1214b4c4c5383b7c1e9faa5a2ceeb846723321f05b825a6c"
 }

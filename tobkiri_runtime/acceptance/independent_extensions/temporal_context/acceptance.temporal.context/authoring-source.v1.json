@@ -253,11 +253,10 @@
   ],
   "display_name": "Tobkiri temporal context",
   "files": {
-    "runtime/temporal.py": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
-    "temporal/flow.source.json": "sha256:2efee3c6f88860ed8f6b14008d77ce62e6967dba8ebbd80d9a8194d37e8d5f49",
-    "temporal/flow.without-temporal.source.json": "sha256:9ae9cc89f64cf200bdc8af223177017a2d90f0e81c1a47c47258e8283c00e9cb",
-    "temporal/prompt.md": "sha256:1f5eb2cc800572827beb3711b102578f84a49af473e06ca08c363ea45cc51461",
-    "temporal/prompt.without-temporal.md": "sha256:c03c077abbfb735e6890ee8adee014f9e87882bf33e0a6723637f0e0cce33799"
+    "content/flows/acceptance.temporal.turn.flow.yaml": "sha256:4b5c27b5076d338552ec377845232b27e8ba9523e968cd993e30f32ae70ecad5",
+    "content/prompts/acceptance.temporal.rules.system.md": "sha256:c464b3795c745769b5eb93a1d7e9c1e0fedfc0f0d97ef45558932371a1275f69",
+    "content/workflows/acceptance.temporal.context.workflow.intent.v1.json": "sha256:7b586ef644c940c93dcae08d2e049f804983ecb5a281e5c034487c47e0b9813c",
+    "runtime/temporal.py": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74"
   },
   "functions": [
     {

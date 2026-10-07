@@ -1,0 +1,24 @@
+{
+  "activation_authority": "unbound",
+  "legacy_flow_execution": "V4_OPERATION_UNAVAILABLE (Root verification)",
+  "profile_id": "acceptance.temporal.named",
+  "projections": [
+    {
+      "artifact_root": "content",
+      "content_digest": "sha256:809f1cba9cd67939f87683d50e63dfddf3d711ba9461953568b5dfacc2d22efe",
+      "file_count": 3,
+      "kind": "profile_content",
+      "projection_id": "acceptance.temporal.rules",
+      "source_artifact_digest": "sha256:d12ebf0b2b89e28741f1cf7a48319e7c3961bd67204b5a88c24d96843b2949b6",
+      "source_pack_id": "acceptance.temporal.context"
+    }
+  ],
+  "recipe": "build_pack.build(new_pack); build_profile.build_profile(new_release, new_pack)",
+  "release_files": 319,
+  "ruff": "passed",
+  "source_only": true,
+  "template_bundle_lock_sha256": "6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba",
+  "tests_passed": 18,
+  "workflow_active_binding_verified_by_author": false,
+  "workflow_source_format": "io.tobkiri.profile-workflow-intent.v1"
+}

@@ -1,6 +1,6 @@
 {
   "evidence_kind": "public_producer_actual_compiler_and_local_source_tests",
-  "tests_passed": 14,
+  "tests_passed": 25,
   "public_producer": "core_runtime.pack_authoring.build_python_pack",
   "public_compiler": "tobkiri_host.artifact_compiler.compile_pack_root",
   "pack_id": "acceptance.cli.presentation",
@@ -25,5 +25,19 @@
     "unselected_provider_denial",
     "unknown_route_denial",
     "conflicting_provider_denial"
+  ],
+  "profile_authoring_schema_tests": 6,
+  "new_named_intent": "independent.tauri.renderer.profile.intent.v1.json",
+  "named_profile_compilation": "core_runtime.profile_authoring.build_named_profile",
+  "named_profile_compiler_tests": 5,
+  "named_profile_source_lock_digest": "sha256:1d20bc31c333f2e52e87c304a9e22e895c47cff4a3cc53ea7abadb60b2db9a1c",
+  "named_profile_revision": "sha256:f8c9707ef9650cd189450e150d82c94cb8db6a6d34972cfe778522216ed3f58b",
+  "named_profile_activation_authority": "unbound",
+  "profile_scenarios_passed": [
+    "single_selected_exact_pin",
+    "unselected_excluded",
+    "rebuilt_renamed_pack",
+    "unknown_id_denial",
+    "duplicate_id_denial"
   ]
 }

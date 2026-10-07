@@ -1,8 +1,0 @@
-{
-  "flow_id": "acceptance.temporal.turn",
-  "version": "0.1.0",
-  "description": "Authoring proposal; binding to trusted lifecycle/store/hidden context ports is unresolved.",
-  "inputs": ["namespace", "state", "event"],
-  "outputs": ["state", "internal_temporal_context"],
-  "steps": [{"id": "temporal", "type": "function", "function": "acceptance.temporal.context.reduce", "input": {"namespace": "{{ namespace }}", "state": "{{ state }}", "event": "{{ event }}"}, "output": "temporal_result", "on_error": "fail_closed"}]
-}

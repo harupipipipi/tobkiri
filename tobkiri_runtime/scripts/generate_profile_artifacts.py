@@ -32,7 +32,9 @@ from tobkiri_protocol.validation import SCHEMA_DIR, validate_document  # noqa: E
 from core_runtime.profile_content_projection import (  # noqa: E402
     resolve_intent_projection,
     selected_projection_roots,
+    verify_resolved_projection,
 )
+from core_runtime.profile_pack_projection import ProjectionPackSource  # noqa: E402
 from scripts.profile_compatibility_provenance import (  # noqa: E402
     compatibility_profile_provenance,
     validate_compatibility_profile,
@@ -48,6 +50,7 @@ LOCAL_INPUTS = (
     ROOT / "tobkiri_protocol" / "provenance.py",
     ROOT / "tobkiri_protocol" / "validation.py",
     ROOT / "core_runtime" / "profile_content_projection.py",
+    ROOT / "core_runtime" / "profile_pack_projection.py",
     ROOT / "scripts" / "profile_compatibility_provenance.py",
 )
 COMPATIBILITY_PROVENANCE_INPUTS = LOCAL_INPUTS
@@ -338,6 +341,7 @@ def _compile_profile(
     catalog: ProfileCatalog,
     intent: Mapping[str, Any],
     compatibility_path: Path,
+    projection_pack_sources: Mapping[str, ProjectionPackSource] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
@@ -346,6 +350,12 @@ def _compile_profile(
     dict[str, str],
 ]:
     selected, requested_roles = _resolve_closure(catalog, intent)
+    selected_sources = {
+        pack_id: source
+        for pack_id, source in (projection_pack_sources or {}).items()
+        if pack_id in selected
+        and source.artifact_digest == catalog.packs[pack_id]["pack"]["artifact_digest"]
+    }
     profile: dict[str, Any] = {}
     for key, value in intent.items():
         if key == "intent_api_version":
@@ -356,6 +366,14 @@ def _compile_profile(
     resolved_edges = []
     for source_edge in intent["requested_edges"]:
         edge = dict(source_edge)
+        callers = [
+            function
+            for pack_id in selected
+            for function in catalog.packs[pack_id]["functions"]
+            if function["id"] == edge["caller_function_id"]
+        ]
+        if len(callers) != 1:
+            raise ValueError("Profile edge caller must be one selected Function")
         manifest, function, contract, variant = _edge_variant(catalog, selected, edge)
         template = {
             key: value
@@ -391,13 +409,13 @@ def _compile_profile(
     projections = []
     projection_inputs: dict[str, str] = {}
     for source in intent.get("content_projections") or []:
-        resolved, files = resolve_intent_projection(source)
+        resolved, files = resolve_intent_projection(source, pack_sources=selected_sources)
         projections.append(resolved)
-        root = ROOT / resolved["artifact_root"]
+        root = verify_resolved_projection(resolved, pack_sources=selected_sources)
         for relative, digest in files.items():
             projection_inputs[_relative(root / relative)] = digest
     profile["content_projections"] = sorted(projections, key=lambda item: item["projection_id"])
-    selected_projection_roots(profile["content_projections"])
+    selected_projection_roots(profile["content_projections"], pack_sources=selected_sources)
     provenance = compatibility_profile_provenance(
         root=ROOT,
         profile=profile,
@@ -596,6 +614,7 @@ def render(
     lock_path: Path,
     provenance_path: Path,
     source_bundle_root: Path | None = None,
+    projection_pack_sources: Mapping[str, ProjectionPackSource] | None = None,
 ) -> dict[Path, bytes]:
     """Render one Named Profile release without reading generated Profile bytes.
 
@@ -616,7 +635,7 @@ def render(
     intent_raw = intent_path.read_bytes()
     intent = validate_document(intent_raw, "profile_intent")
     profile, selected, _, pins, projection_inputs = _compile_profile(
-        catalog, intent, compatibility_path
+        catalog, intent, compatibility_path, projection_pack_sources
     )
     compatibility_raw = _pretty(profile)
     bundle_lock = catalog.bundle_lock_with(compatibility_raw)

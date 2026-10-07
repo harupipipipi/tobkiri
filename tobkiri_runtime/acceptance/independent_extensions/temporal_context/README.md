@@ -22,8 +22,9 @@ no admission, Profile selection, activation, approval, or execution authority.
   revision rule. The producer preserves `draft`; it does not invent acceptance.
 - `build_pack.py` uses public `PythonPackFunction` / `build_python_pack`, which
   compiles fresh output before publishing it. Both Pack and Function IDs can vary.
-- Temporal and removal Flow/prompt variants are authored under
-  `profile_projections/temporal/` and captured as immutable `temporal/*` assets.
+- Temporal catalog resources are authored under
+  `profile_projections/temporal/prompts/*.system.md` and `flows/*.flow.yaml`, and captured
+  as immutable `content/*` assets. Prior loose drafts remain in `draft_resources/`.
   They have no automatic turn-lifecycle/prompt-consumer binding. Removing or
   replacing their selected consumer is Root's integration work, not demonstrated
   by simply including asset bytes.
@@ -58,8 +59,9 @@ function_id)` with a nonexistent output path. Ancestors must not be symlinks.
 The checked-in `acceptance.temporal.context/` is fresh public-producer output,
 not hand-sealed metadata or a fabricated release/activation lock.
 
-Ten tests cover seven reducer scenarios plus deterministic byte-identical public
-builds, actual public compiler routing, configurable ID compilation, ABI outcome,
+Eighteen tests cover seven reducer scenarios plus deterministic byte-identical public
+builds, actual public compiler routing, configurable ID compilation, actual named
+Profile selected/unselected/removal/renamed source compilation, ABI outcome,
 unknown operation and malformed input. Reducer scenarios include 3599/3600 seconds,
 hours/day/week, offsets/DST, baseline reset, tools/errors/cancellation, no baseline,
 corrupt snapshot, naive/invalid/backward timestamps, stale/duplicate events,
@@ -82,3 +84,54 @@ Flow/prompt resources. No broad foundation change is attempted here.
 Tests are authoring and offline compiler evidence, **not** signed admission,
 Broker/VM execution, provider API acceptance, UI replacement, or live approval.
 Root owns real runtime selection/admission testing separately.
+
+## Actual named Profile source release
+
+`named.profile.intent.v1.json` explicitly selects a new `acceptance.temporal.named`
+Profile, published `defaults-basepack`, `shell.tauri.default` macOS/arm64,
+`runtime.tauri.application.default`, this temporal Pack and its Pack-origin
+`content` projection. `named-profile-release/` is genuine output from documented
+`core_runtime.profile_authoring.build_named_profile`, using the exact locked
+`ecosystem/defaultspack/v4` template and this Pack root. No generated release
+artifact was edited by hand.
+
+The compiler pins the selected source Pack artifact, subtree digest and three files;
+its source lock retains `activation_authority: unbound`. Omitting the projection
+produces no selected content; removing Pack and projection succeeds; removing the
+Pack while retaining its projection fails closed. The actual error is preserved
+in `removed-pack-projection-denial.log`. Rebuilding under new explicit Pack and
+Function IDs and updating the intent/projection also compiles. None of these
+source releases has a built Shell binary or runtime activation.
+
+Prompt source is plain `prompts/acceptance.temporal.rules.system.md`; the filename
+supplies the catalog ID, with no frontmatter. The legacy Flow YAML is retained as a
+non-executable draft: actual v4 alias dispatch reports `V4_OPERATION_UNAVAILABLE`
+according to Root's consumer verification. There is no public
+`functions/*.function.yaml` registration format; none is invented.
+Requested operation edges in the Tauri source intent remain empty, avoiding an
+invented caller principal. YAML format and projection compilation do not prove
+that a runtime Flow calls this reducer. Root verifies selected runtime resource
+consumption separately. Trusted lifecycle, durable state, and typed hidden model
+context remain the Issue #1409 integration gaps.
+
+## Exact Workflow source intent
+
+`author_workflow.py` creates public-schema-valid source at
+`content/workflows/<pack-id>.workflow.intent.v1.json`, with API version
+`io.tobkiri.profile-workflow-intent.v1`. The request pins the exact authored Function
+ID, Contract ID/revision and `temporal.reduce`; it never contains a guessed runtime
+principal. Source input uses public `${inputs.namespace}`, `${inputs.state}` and
+`${inputs.event}` expressions. These supplied inputs remain untrusted: the file
+does not establish completion provenance, durable state, or internal model input.
+
+The selected compiler must match all four exact binding fields against its actual
+captured operation palette, require exactly one candidate, derive that principal,
+and run the real formal Workflow compiler. Root owns that active binding test.
+This author uses public schema/producer/compiler tests without a fake engine,
+principal, palette, approval, or Run. The legacy Flow remains a non-executable draft.
+
+The 319-file generated release remains on disk and is ignored by this directory's
+`.gitignore`. `named-profile-verification.json` contains concise real source pins.
+Reproduce in fresh nonexistent outputs with `build_pack.build(new_pack_path)` and
+`build_profile.build_profile(new_release_path, new_pack_path)` after importing this
+owned author directory. Existing outputs are never overwritten by the producers.

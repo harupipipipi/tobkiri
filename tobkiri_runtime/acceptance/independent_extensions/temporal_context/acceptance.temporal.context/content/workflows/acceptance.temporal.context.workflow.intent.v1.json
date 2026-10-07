@@ -1,0 +1,21 @@
+{
+  "max_concurrency": 1,
+  "name": "Tobkiri temporal reducer source intent",
+  "steps": [
+    {
+      "id": "temporal.reduce",
+      "request": {
+        "contract_id": "acceptance.temporal.context.v1",
+        "contract_revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
+        "function_id": "acceptance.temporal.context.reduce",
+        "input": {
+          "event": "${inputs.event}",
+          "namespace": "${inputs.namespace}",
+          "state": "${inputs.state}"
+        },
+        "operation_id": "temporal.reduce"
+      }
+    }
+  ],
+  "workflow_intent_api_version": "io.tobkiri.profile-workflow-intent.v1"
+}

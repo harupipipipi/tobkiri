@@ -6,27 +6,149 @@
     "intentProjection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["projection_id", "kind", "artifact_root", "content_digest"],
+      "required": [
+        "projection_id",
+        "kind",
+        "artifact_root",
+        "content_digest"
+      ],
       "properties": {
-        "projection_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
-        "kind": {"enum": ["profile_content", "ui_projection"]},
-        "artifact_root": {"type": "string", "pattern": "^profile_projections/[a-z0-9][a-z0-9._/-]*$"},
-        "content_digest": {"type": "null"},
-        "source_legacy_pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}
-      }
+        "projection_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "profile_content",
+            "ui_projection"
+          ]
+        },
+        "artifact_root": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+        },
+        "content_digest": {
+          "type": "null"
+        },
+        "source_legacy_pack_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "source_pack_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "source_artifact_digest": {
+          "type": "null"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "source_pack_id",
+            "source_artifact_digest"
+          ],
+          "not": {
+            "required": [
+              "source_legacy_pack_id"
+            ]
+          }
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "source_pack_id"
+                ]
+              },
+              {
+                "required": [
+                  "source_artifact_digest"
+                ]
+              }
+            ]
+          },
+          "properties": {
+            "artifact_root": {
+              "pattern": "^profile_projections/[a-z0-9][a-z0-9._/-]*$"
+            }
+          }
+        }
+      ]
     },
     "resolvedProjection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["projection_id", "kind", "artifact_root", "content_digest", "file_count"],
+      "required": [
+        "projection_id",
+        "kind",
+        "artifact_root",
+        "content_digest",
+        "file_count"
+      ],
       "properties": {
-        "projection_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
-        "kind": {"enum": ["profile_content", "ui_projection"]},
-        "artifact_root": {"type": "string", "pattern": "^profile_projections/[a-z0-9][a-z0-9._/-]*$"},
-        "content_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
-        "file_count": {"type": "integer", "minimum": 1},
-        "source_legacy_pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}
-      }
+        "projection_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "profile_content",
+            "ui_projection"
+          ]
+        },
+        "artifact_root": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+        },
+        "content_digest": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_legacy_pack_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "source_pack_id": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"
+        },
+        "source_artifact_digest": {
+          "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "source_pack_id",
+            "source_artifact_digest"
+          ],
+          "not": {
+            "required": [
+              "source_legacy_pack_id"
+            ]
+          }
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "source_pack_id"
+                ]
+              },
+              {
+                "required": [
+                  "source_artifact_digest"
+                ]
+              }
+            ]
+          },
+          "properties": {
+            "artifact_root": {
+              "pattern": "^profile_projections/[a-z0-9][a-z0-9._/-]*$"
+            }
+          }
+        }
+      ]
     }
   }
 }

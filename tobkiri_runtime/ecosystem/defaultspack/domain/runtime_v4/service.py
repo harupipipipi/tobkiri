@@ -1213,12 +1213,21 @@ def resolve_default_profile(
         resolve_profile_projection,
         selected_projection_roots,
     )
+    from core_runtime.profile_pack_projection import admitted_projection_sources
+
+    projection_sources = admitted_projection_sources(
+        source.get("content_projections") or [],
+        {item["pack"]["id"]: item["pack"]["artifact_digest"] for item in selected},
+    )
 
     profile["content_projections"] = sorted(
-        [resolve_profile_projection(item) for item in source.get("content_projections") or []],
+        [
+            resolve_profile_projection(item, pack_sources=projection_sources)
+            for item in source.get("content_projections") or []
+        ],
         key=lambda item: item["projection_id"],
     )
-    selected_projection_roots(profile["content_projections"])
+    selected_projection_roots(profile["content_projections"], pack_sources=projection_sources)
     profile["authority_references"] = references
     profile["profile_authority_snapshot_digest"] = snapshot_digest
     catalog_revision = canonical_digest(
@@ -3084,8 +3093,13 @@ class ActivationStore:
         ):
             raise ProfileResolutionDenied("Profile closure digest is stale")
         from core_runtime.profile_content_projection import selected_projection_roots
+        from core_runtime.profile_pack_projection import admitted_projection_sources
 
-        selected_projection_roots(plan["content_projections"])
+        projection_sources = admitted_projection_sources(
+            plan["content_projections"],
+            {item["identity"]: item["artifact_digest"] for item in plan["effective_set"]},
+        )
+        selected_projection_roots(plan["content_projections"], pack_sources=projection_sources)
         effective_ids = [item["identity"] for item in plan["effective_set"]]
         if len(effective_ids) != len(set(effective_ids)):
             raise ProfileResolutionDenied("Profile closure contains duplicate artifacts")
