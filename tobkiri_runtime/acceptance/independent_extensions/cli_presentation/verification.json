@@ -30,8 +30,8 @@
   "new_named_intent": "independent.tauri.renderer.profile.intent.v1.json",
   "named_profile_compilation": "core_runtime.profile_authoring.build_named_profile",
   "named_profile_compiler_tests": 5,
-  "named_profile_source_lock_digest": "sha256:1d20bc31c333f2e52e87c304a9e22e895c47cff4a3cc53ea7abadb60b2db9a1c",
-  "named_profile_revision": "sha256:f8c9707ef9650cd189450e150d82c94cb8db6a6d34972cfe778522216ed3f58b",
+  "named_profile_source_lock_digest": "sha256:9ddbbbf9d0de88955ed3ada001ef02515f4c970b8dfb36f6b1bf131d2e6b0209",
+  "named_profile_revision": "sha256:bdad5ca408e4073aa7e525f82410a4333594cf8733f8f4c3bac45a8126f5427f",
   "named_profile_activation_authority": "unbound",
   "profile_scenarios_passed": [
     "single_selected_exact_pin",
@@ -39,5 +39,7 @@
     "rebuilt_renamed_pack",
     "unknown_id_denial",
     "duplicate_id_denial"
-  ]
+  ],
+  "named_profile_provenance_digest": "sha256:33427b1a84564811896080658935e59c349e55d19188275a6dff512a0f9fe7cc",
+  "template_bundle_lock_file_sha256": "sha256:6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba"
 }

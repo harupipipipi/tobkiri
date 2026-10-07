@@ -1,58 +1,51 @@
 # Public boundary for Issue #1409 and named selection
 
-`author_profile.render_intent` authors a new named unresolved Profile from supplied
-public Base/Shell/catalog identities, an explicit provider selection, exact requested
-operation edge, and `profile_projections/temporal` content selection. It never emits
-a handwritten source-release lock, activation record, or approval. Source selection
-is not proof that a Flow executes or that a prompt becomes model input.
+The independent temporal Pack and named Profile source are authored through public
+producers. Exact Pack-origin projection selection and Workflow source binding are
+separate from runtime execution and completion/context integration. No source lock,
+activation, approval, active principal, or engine is fabricated by this author.
 
-Sources read:
+## Existing public interfaces
 
-- `docs/profile-artifact-generation.md`: official source-release generation and
-  unbound activation authority; generic bundle generation needs verified catalog.
-- Public `profile_intent_v1` / `profile_content_projection_v1` JSON schemas:
-  explicit projection root and unresolved digest fields; not lifecycle or IO hooks.
-- `docs/flow_spec.md`: function alias step fields; does not publish a v4 request
-  target binding or trustworthy turn lifecycle subscription for that format.
-- `docs/prompt_authoring.md` / `docs/prompt_workspace.md`: passive rules, stable IDs,
-  source precedence and approved reads/writes; no independent v4 model input port.
-- Public Workflow Pack `workflow-definition.v4.schema.json`: a different finite
-  Workflow definition with exact Contract revision/Operation/principal requests.
-  This may document standalone Workflow calls; it is not the Defaults turn Flow.
-- Published neutral `profile_projections/local-agent/prompts/planner.system.md`
-  sample: Markdown prompt resources. It provides no executable authority.
+- `docs/python_pack_authoring.md` supplies the executable Python Normal Pack ABI,
+  public producer and actual offline artifact compiler.
+- `docs/named_profile_authoring.md`, Profile intent/projection schemas and
+  `profile_workflow_intent_v1.schema.json` supply named source selection, exact
+  Pack-origin content pins and exact Workflow Function/Contract/revision/Operation
+  source bindings. The selected compiler derives a principal only from exactly one
+  matching actual captured operation-palette entry.
+- Prompt resources use `prompts/*.system.md`: plain Markdown, filename ID, no
+  frontmatter. Legacy `flows/*.flow.yaml` aliases fail `V4_OPERATION_UNAVAILABLE`.
+  There is no `functions/*.function.yaml` registration format.
+- `docs/public_conversation_lifecycle.md` and public
+  `tobkiri_protocol.conversation_lifecycle` already document durable owner-confirmed
+  completion and next-user receipt timing, UTC gap projections, and separate system
+  model-message delivery in the native saved-turn bridge. These are existing
+  repository interfaces, not missing APIs or independent-extension achievements.
 
-Precise remaining requirements:
+## Remaining independent composition
 
-1. A formally selected trusted event source for final assistant task/turn completion
-   and next user receipt, with host time, namespace, final outcome, event identity,
-   and ordered/deduplicated delivery. Tool events cannot substitute completion.
-2. A namespace-bound durable snapshot Contract with atomic concurrency/replay rules,
-   allowing baseline replacement only by authenticated successful final completion.
-3. A separately typed internal-context model input path. Runtime-computed previous
-   completion, current receipt, and elapsed duration must not modify user text.
-4. A public selected Flow catalog format and operation binding that routes the
-   reducer through the approved v4 Broker while retaining existing tool policy.
-5. A typed internal model context consumer alongside the now-documented prompt
-   catalog (`prompts/*.system.md`, filename ID, plain Markdown, no frontmatter).
-   Correct prompt selection still does not establish hidden AI context delivery.
+Obtain owner-bound conversation data through the selected, captured
+`tobkiri.resource.conversation.v1` Contract, Operation
+`rumi_conversation_store_pack.conversation-resource`, using `operation: get` with the
+captured `profile_id` and exact `conversation_id`. The owner binds Profile/store
+identity, confirms final completion against durable turn/receipt evidence, and
+stores next-user timing in its transaction. Tool events, waiting, cancellation,
+failed work and stale parallel terminals cannot establish successful completion.
+The SDK projections do not authenticate arbitrary mappings supplied by callers.
 
-The public `docs/named_profile_authoring.md` API is now used successfully by this
-worker. It resolves named source selection and exact Pack-origin content capture.
-Selected/unselected/removal/renamed public compiler cases pass, including expected
-failure when a removed Pack retains its projection. That source selection is
-separate from execution and product acceptance. Catalog resource paths now follow
-published `prompts/*.md` and `flows/*.flow.yaml`; no unpublished function catalog
-record or approved alias binding is fabricated. The executable
-Pack authoring ABI/compiler is already published and validated; it is no longer a
-missing API. Issue #1409 remains incomplete until the lifecycle, store, and model
-context integrations actually exist and pass acceptance.
+This independent reducer still receives caller-supplied namespace/event/snapshot
+values. Its selected Workflow source and successful compiler checks do not turn
+those values into authenticated owner evidence. The remaining work is connecting
+the independent selected Workflow to the existing trusted owner and native
+saved-turn/request context bridge, preserving unchanged user text and existing
+tool/approval policy. Reuse the owner's durable completion baseline; do not replace
+that path with a second timestamp store.
 
-Public documentation now explicitly rejects `functions/*.function.yaml`
-registration and confirms legacy Flow aliases fail `V4_OPERATION_UNAVAILABLE`.
-Those are no longer proposed integration routes. A schema-valid Workflow v4
-source intent is captured in this Pack's `content/workflows` subtree, with
-exact Function ID, Contract ID/revision and Operation. The public selected compiler
-obtains a principal only from exactly one matching actual captured palette entry. The public selected-Workflow lookup and real compile-preview route
-are documented; Root owns Host-captured engine verification. No fake engine,
-active palette, authority, or Flow execution evidence is authored here.
+The author has verified public schemas, deterministic Pack builds, actual source
+compiler routes, selected/unselected/removal/renamed Profile compilation, and
+expected retained-projection denial. Root owns captured-palette binding and
+selected runtime-consumer verification. Neither author tests nor compile-preview
+alone demonstrate trusted owner settlement, native model delivery, live Launcher,
+Host/PackVM execution, activation, or completion of this extension's Issue #1409
+integration. No private runtime implementation or Root adapter is used here.

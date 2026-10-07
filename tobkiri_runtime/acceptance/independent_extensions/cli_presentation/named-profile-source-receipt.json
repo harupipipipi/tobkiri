@@ -2,13 +2,14 @@
   "evidence_kind": "formal_named_profile_source_compile",
   "intent_path": "independent.tauri.renderer.profile.intent.v1.json",
   "generated_output": "named-profile-release",
-  "source_lock_digest": "sha256:1d20bc31c333f2e52e87c304a9e22e895c47cff4a3cc53ea7abadb60b2db9a1c",
-  "profile_revision": "sha256:f8c9707ef9650cd189450e150d82c94cb8db6a6d34972cfe778522216ed3f58b",
+  "source_lock_digest": "sha256:9ddbbbf9d0de88955ed3ada001ef02515f4c970b8dfb36f6b1bf131d2e6b0209",
+  "profile_revision": "sha256:bdad5ca408e4073aa7e525f82410a4333594cf8733f8f4c3bac45a8126f5427f",
   "activation_authority": "unbound",
   "catalog_revision": "sha256:d0cc81e0aedfcc3f06e886a3001d24728c8c137c03c3de277b8ed6f445448ab9",
   "profile_definition_digest": "sha256:4e3f06c13386659cea9e5bafc3f094c6e4683defcf90e789d8cf86587cba39d6",
-  "provenance_digest": "sha256:be27ca9c1ed937874c81e2d1e9e398a4676af06b52fb88c2645767ddf711a4c9",
+  "provenance_digest": "sha256:33427b1a84564811896080658935e59c349e55d19188275a6dff512a0f9fe7cc",
   "closure_digest": "sha256:f7b9dde190e4e101930027e01ec6d3815c03574cbaa06c13f13d1af360570be0",
   "runtime_execution": false,
-  "product_frontend_binding": false
+  "product_frontend_binding": false,
+  "template_bundle_lock_file_sha256": "sha256:6cd844a16a205d34d8027543d80c908663c76a0c3867d992d4baaa328edbaaba"
 }

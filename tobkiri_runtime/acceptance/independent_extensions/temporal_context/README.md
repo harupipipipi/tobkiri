@@ -2,8 +2,9 @@
 
 A genuine executable Normal Sandbox Pack is produced entirely through the public
 `core_runtime.pack_authoring` API documented in `docs/python_pack_authoring.md`.
-**Issue #1409 is not complete:** trusted completion events, durable snapshot storage,
-hidden AI context insertion, and actual Defaults Flow integration remain missing.
+**This independent extension's Issue #1409 integration is incomplete:** it is not
+connected to the existing trusted lifecycle owner or native saved-turn context
+bridge. Those public owner/storage/context paths already exist in the repository.
 The component is offline and capability-free; authoring/compiler success grants
 no admission, Profile selection, activation, approval, or execution authority.
 
@@ -31,19 +32,20 @@ no admission, Profile selection, activation, approval, or execution authority.
 
 ## Useful reducer behavior
 
-Input is a trusted namespace, ordered authenticated lifecycle event, and caller-owned
-snapshot. Successful final `assistant.completed` replaces the completion baseline.
+Input contains a namespace, ordered lifecycle event, and caller-owned snapshot.
+These supplied values remain untrusted; this pure reducer cannot authenticate them.
+An `assistant.completed` label replaces its illustrative completion baseline.
 Tool completion, error, and cancellation consume event order without changing it.
 A `user.received` event emits separate internal context only at 3600 seconds or more.
 Offset-aware timestamps are compared in UTC, including DST. It never receives or
 modifies user text, executes tools, performs network requests, or writes storage.
 The output is the raw Contract outcome; it does not manufacture PackVM envelopes.
 
-The future composer must authenticate final-turn events, serialize them, and durably
-commit snapshots within the profile/conversation namespace. Caller-supplied labels
-and sequence values do not establish authenticity. Snapshot serialization tests do
-not prove durable persistence. Computing internal metadata does not prove that a
-model receives it as system/developer/runtime context.
+Composition must use the existing captured conversation owner for confirmed
+completion and durable receipt timing, rather than creating a second timestamp
+store. Caller-supplied labels and sequence values do not establish authenticity.
+Snapshot serialization tests do not prove persistence or owner settlement.
+Computing metadata in this reducer does not prove native model-context delivery.
 
 ## Build and verify offline
 
@@ -73,13 +75,24 @@ The new authoring API resolves the earlier executable ABI/compiler authoring gap
 `compile_pack_root` now verifies the actual component. The prior official minimal
 scaffold's empty executable catalog is no longer the final artifact.
 
-The public authoring docs explicitly do not provide conversation completion events,
-durable storage, hidden-context insertion, CLI Shell/Application composition, or
-automatic Flow/prompt binding. Those gaps still prevent Issue #1409 acceptance and
-product Flow replacement. Required next public interfaces are authenticated final
-lifecycle/user receipt delivery; namespace-bound atomic snapshot storage; separately
-typed internal context model input; and a selected consumer for these immutable
-Flow/prompt resources. No broad foundation change is attempted here.
+`docs/public_conversation_lifecycle.md` and the dependency-free public SDK
+`tobkiri_protocol.conversation_lifecycle` document existing owner-confirmed durable
+completion, transaction-bound next-user receipt, UTC gap projections and separate
+system-message context delivery in the saved-turn bridge. SDK functions project
+owner data; they do not authenticate arbitrary mappings supplied by callers.
+
+The trusted read source is the selected, captured `tobkiri.resource.conversation.v1`
+Contract, Operation `rumi_conversation_store_pack.conversation-resource`, with
+`operation: get` and the captured Profile/conversation identities. Its durable
+owner validates final-turn evidence and rejects tool/wait/cancellation/stale
+completion candidates. No ambient path or supplied completion flag replaces it.
+
+The remaining extension task is to compose this independently selected Workflow
+with that owner-bound source and the native saved-turn/request bridge, retaining
+existing tool/approval policy and unchanged user text. This extension has not
+verified those connections or native model delivery. The public named source SDK
+also does not provide a complete CLI Application or live Shell binary. No broad
+foundation changes or duplicate timestamp store are proposed.
 
 Tests are authoring and offline compiler evidence, **not** signed admission,
 Broker/VM execution, provider API acceptance, UI replacement, or live approval.
@@ -111,8 +124,8 @@ according to Root's consumer verification. There is no public
 Requested operation edges in the Tauri source intent remain empty, avoiding an
 invented caller principal. YAML format and projection compilation do not prove
 that a runtime Flow calls this reducer. Root verifies selected runtime resource
-consumption separately. Trusted lifecycle, durable state, and typed hidden model
-context remain the Issue #1409 integration gaps.
+consumption separately. Connecting this extension to the existing trusted lifecycle
+owner and native context bridge remains the Issue #1409 composition gap.
 
 ## Exact Workflow source intent
 
