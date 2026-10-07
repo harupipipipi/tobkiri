@@ -150,7 +150,8 @@ def test_owner_read_dependency_execution_reaches_saved_system_context_once(
     store = WorkflowStoreV4(tmp_path / "workflow.sqlite3")
     provider = WorkflowProviderV4(
         WorkflowEngineV4(
-            store=store, catalog=Catalog(), authority=authority, invoker=port, validator=Validator()
+            store=store, catalog=Catalog(), authority=authority, invoker=port,
+            validator=Validator(), clock=lambda: 100.0,
         )
     )
     original = exchange.callback._dispatch

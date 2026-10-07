@@ -171,7 +171,9 @@ def test_denied_bootstrap_does_not_fallback(endpoint):
 def test_application_source_uses_actual_compiler_and_normal_boundaries(tmp_path: Path):
     root = _build(tmp_path / "application", application=True)
     compiled = compile_pack_root(root)
-    assert compiled.artifact.package_kind is PackageKind.APPLICATION
+    # Application is the composition role; it remains a normal sandbox artifact.
+    assert compiled.artifact.package_kind is PackageKind.NORMAL
+    assert json.loads((root / "pack.v4.json").read_text())["pack"]["kind"] == "application"
     manifest = json.loads((root / "pack.v4.json").read_text())
     assert manifest["requirements"]["capabilities"] == []
     assert manifest["requirements"]["execution_boundary"] == "sandbox"
