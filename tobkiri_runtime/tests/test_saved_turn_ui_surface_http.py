@@ -289,6 +289,7 @@ def test_saved_turn_and_conversation_survive_runtime_recapture(
         assert status == 200, payload
         assert payload["data"]["status"] == "completed"
         completed_turn = payload["data"]["turn"]
+        completed_input_receipt = payload["data"]["input_context_receipt"]
         reference = completed_turn["result_reference"]
         assert reference["conversation_revision"] == 3
 
@@ -338,7 +339,11 @@ def test_saved_turn_and_conversation_survive_runtime_recapture(
         # A repeat of the same send is a read, never a second execution.
         status, repeated, _ = _post(server, headers, "/api/chat/turn", _turn_body())
         assert status == 200, repeated
-        assert repeated["data"] == {"status": "existing", "turn": completed_turn}
+        assert repeated["data"] == {
+            "status": "existing",
+            "turn": completed_turn,
+            "input_context_receipt": completed_input_receipt,
+        }
         assert len(ai_calls) == 1
 
         # Owner reopen over the same data root agrees with the served state:
