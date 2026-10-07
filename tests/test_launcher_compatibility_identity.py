@@ -12,10 +12,10 @@ GENERATED_PANEL = "tobkiri_runtime/core_runtime/core_pack/core_control_panel/web
 GENERATED_FILES = {
     "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
 }
-# Keep scanning the executable inventory; its generated registry exceeds the
-# ordinary source-file budget. Do not exempt it from identity validation.
+# Keep scanning the executable inventory as integrated packs grow its generated
+# registry. Use a finite 2 MiB budget without exempting identity validation.
 SOURCE_BYTE_LIMITS = {
-    "tobkiri_runtime/schemas/executable_sources.v1.json": 1024 * 1024,
+    "tobkiri_runtime/schemas/executable_sources.v1.json": 2 * 1024 * 1024,
 }
 ALLOWED_DERIVED_IDENTIFIERS = {
     "dev.tobkiri.launcher.ci-e2e": frozenset(

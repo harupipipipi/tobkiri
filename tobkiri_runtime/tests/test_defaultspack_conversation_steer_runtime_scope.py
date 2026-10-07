@@ -340,8 +340,32 @@ def test_frontend_map_exposes_exact_turn_read_without_legacy_steer_route():
                 "tobkiri.action.turn.lifecycle.v1",
             ),
             "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-        )
+        ),
+        (
+            "rumi_turn_runtime_pack.chat-saved-job-adapter",
+            _generated_operation(
+                "rumi_turn_runtime_pack",
+                "tobkiri.action.turn.lifecycle.v1",
+            ),
+            "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+        ),
     ]
+    for edge in lifecycle_edges:
+        # Omission means profile_grant in the canonical Profile compiler.
+        assert edge.get("authority_mode", "profile_grant") == "profile_grant"
+        assert edge["requested_scope_template"] == {
+            "capability": "operation.invoke",
+            "dimensions": {
+                "contract": ["tobkiri.action.turn.lifecycle.v1"],
+                "operation": [_generated_operation(
+                    "rumi_turn_runtime_pack",
+                    "tobkiri.action.turn.lifecycle.v1",
+                )],
+            },
+            "quotas": {},
+            "exact_request_digest": None,
+            "opaque": False,
+        }
     guidance_edges = [
         edge
         for edge in intent["requested_edges"]
