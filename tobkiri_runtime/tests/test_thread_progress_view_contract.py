@@ -14,6 +14,8 @@ from jsonschema.exceptions import ValidationError
 
 from ecosystem.defaultspack.defaultspack.v4_view_contract import validate_catalog_view
 
+pytestmark = pytest.mark.contract
+
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "ecosystem/tobkiri_side_chat_pack"
 DESCRIPTOR = "frontend/contributions/side-chat.json"

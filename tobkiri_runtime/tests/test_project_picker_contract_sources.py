@@ -6,6 +6,8 @@ import json
 import pytest
 from jsonschema import Draft202012Validator
 
+pytestmark = pytest.mark.contract
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = "tobkiri.service.workspace.project.v1"
 PACK = "rumi_workspace_mount_pack"

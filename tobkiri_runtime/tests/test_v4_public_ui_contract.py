@@ -38,6 +38,8 @@ from core_runtime.pack_sdk import refresh_scaffold_artifacts, scaffold_pack
 from tobkiri_protocol.canonical import canonical_digest
 
 
+pytestmark = pytest.mark.contract
+
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,

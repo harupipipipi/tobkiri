@@ -186,6 +186,14 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "runtime/saved_conversation.py",
         "runtime/application_presentation.py",
         "update_metadata.v1.json",
+        "defaultspack/chat_reference_presentation.py",
+        "defaultspack/frontend_contract_map.v4.json",
+        "defaultspack/http_surface_presentation.py",
+        "defaultspack/kanban_presentation.py",
+        "defaultspack/managed_desktop_presentation.py",
+        "defaultspack/model_access_presentation.py",
+        "defaultspack/provider_status_presentation.py",
+        "defaultspack/turn_progress_presentation.py",
     } | tool_paths
     assert all(
         artifact["role"] == "sidecar"
@@ -205,6 +213,27 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
             (DEFAULTSPACK_ROOT / "executables.v4.json").read_bytes()
         ).hexdigest()
     )
+    presentation_paths = {
+        "defaultspack/chat_reference_presentation.py",
+        "defaultspack/frontend_contract_map.v4.json",
+        "defaultspack/http_surface_presentation.py",
+        "defaultspack/kanban_presentation.py",
+        "defaultspack/managed_desktop_presentation.py",
+        "defaultspack/model_access_presentation.py",
+        "defaultspack/provider_status_presentation.py",
+        "defaultspack/turn_progress_presentation.py",
+    }
+    for artifact in artifact_index["artifacts"]:
+        if artifact["path"] in presentation_paths:
+            assert artifact["role"] == (
+                "asset" if artifact["path"].endswith(".json") else "runtime"
+            )
+            assert artifact["digest"] == (
+                "sha256:"
+                + hashlib.sha256(
+                    (DEFAULTSPACK_ROOT / artifact["path"]).read_bytes()
+                ).hexdigest()
+            )
     assert not (DEFAULTSPACK_ROOT / "ecosystem.json").exists()
 
 
