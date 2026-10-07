@@ -1752,6 +1752,37 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     prompt_reads = []
     incremental_quotes = []
     progress_begins = []
+    saved_envelopes = []
+    execution_trace = []
+
+    if completion == "calculator":
+        from tobkiri_host.saved_tool_consent import SavedToolConsentExecution
+
+        original_consent = SavedToolConsentExecution.__call__
+
+        def observe_consent(self, invocation, execution, payload):
+            execution_trace.append({"phase": "consent_enter"})
+            try:
+                return original_consent(self, invocation, execution, payload)
+            except Exception as error:
+                # Keep only Source locations and the error type, never lease,
+                # payload, exception text, credential or traceback locals.
+                frames = []
+                trace = error.__traceback__
+                while trace is not None:
+                    frames.append({
+                        "file": Path(trace.tb_frame.f_code.co_filename).name,
+                        "line": trace.tb_lineno,
+                    })
+                    trace = trace.tb_next
+                execution_trace.append({
+                    "phase": "consent_rejected",
+                    "type": type(error).__name__,
+                    "frames": frames[-8:],
+                })
+                raise
+
+        monkeypatch.setattr(SavedToolConsentExecution, "__call__", observe_consent)
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
@@ -1777,6 +1808,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 AI_STREAM if completion == "incremental" else TARGETS[2]
             )
             ai_calls.append(payload)
+            execution_trace.append({"phase": "ai_enter", "generation": len(ai_calls)})
             if completion in {"auto", "incremental", "calculator"}:
                 selected = selected_tools[-1]
                 # Compare the offered model schemas with the real admitted
@@ -1794,6 +1826,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 return {"status": "error", "private": "provider diagnostic"}
             if completion == "calculator":
                 if len(ai_calls) == 1:
+                    execution_trace.append({"phase": "calculator_intent"})
                     return {
                         "status": "ok",
                         "output": "",
@@ -1810,6 +1843,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             return {"status": "ok", "output": "Hi"}
         if contract_id == "tobkiri.service.tool.invoke.v1":
             tool_requests.append(payload)
+            execution_trace.append({"phase": "tool_invoke"})
         result = original(self, contract_id, operation_id, payload, **kwargs)
         if (
             (contract_id, operation_id) == (ACTION, ACTION_OPERATION)
@@ -1822,6 +1856,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             selected_tools.append(result)
         if contract_id == "tobkiri.service.tool.invoke.v1":
             tool_results.append(result)
+            execution_trace.append({
+                "phase": "tool_returned",
+                "status": result.get("status"),
+                "is_error": result.get("is_error"),
+            })
         if (
             lose_owner_reply
             and (contract_id, operation_id) == TARGETS[3]
@@ -1844,16 +1883,23 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         return result
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    saved_backend = (
+        _SavedToolPackVmBackend()
+        if completion in {"auto", "incremental", "calculator"}
+        else _SavedPackVmBackend()
+    )
+    original_guest = saved_backend.invoke
+
+    def observe_saved(request: RequestEnvelope) -> ProviderOutcome:
+        assert isinstance(request, RequestEnvelope)
+        saved_envelopes.append(request)
+        return original_guest(request)
+
+    monkeypatch.setattr(saved_backend, "invoke", observe_saved)
     servers = _captured_production_server(
         tmp_path,
         monkeypatch,
-        packvm_backends=BackendRegistry(
-            (
-                _SavedToolPackVmBackend()
-                if completion in {"auto", "incremental", "calculator"}
-                else _SavedPackVmBackend(),
-            )
-        ),
+        packvm_backends=BackendRegistry((saved_backend,)),
     )
     server, _session, _authority = next(servers)
     try:
@@ -1971,7 +2017,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert status == 200, payload
             assert payload["data"]["status"] == (
                 "reconciliation_required" if lose_owner_reply else "completed"
-            ), payload
+            ), {
+                "status": payload["data"]["status"],
+                "turn_status": payload["data"]["turn"]["status"],
+                "execution_trace": execution_trace,
+            }
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         calls_before_repeat = (
             len(ai_calls), len(tool_requests), len(tool_results),
@@ -2051,9 +2101,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             # the real captured progress owner, before the AI-only adapter.
             assert len(incremental_quotes) == 1
             assert len(progress_begins) == 1
+            assert len(saved_envelopes) == 1
             beginning, reservation = progress_begins[0]
             assert beginning["turn_id"] == completed_turn["id"]
-            assert beginning["request_id"] == completed_turn["request_id"]
+            assert beginning["request_id"] == saved_envelopes[0].context.request_id
+            assert ai_calls[0]["request_id"] == saved_envelopes[0].context.request_id
             assert beginning["input_digest"] == completed_turn["input_digest"]
             assert beginning["conversation_revision"] == 2
             assert beginning["parent_id"] == reference["user_message_id"]

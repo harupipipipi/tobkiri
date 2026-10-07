@@ -531,6 +531,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         capture_profile,
         host_profile_catalog,
         prepare_profile_confirmation,
+        profile_capture_scope,
     )
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
     from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
@@ -540,6 +541,8 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
     from tests.test_live_production_v4_dispatch import _CapturedBackend, _bundle_root, _digest
     from tobkiri_host.backends import BackendRegistry
+    from tobkiri_host.broker import RequestEnvelope
+    from tobkiri_host.effects import ProviderOutcome
     from tobkiri_host.models import OpaqueAuthorityRef
     from tobkiri_host.runtime import V4DispatchSession
 
@@ -627,6 +630,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     )
     principal = FunctionPrincipal.from_dict(binding["function_principal"])
     backend = _CapturedBackend(_digest("saved-capture"))
+    backend.target_executable_digest = principal.function_implementation_digest
     session = capture_production_dispatch(
         active,
         bundle_root=_bundle_root(),
@@ -687,13 +691,32 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
             assert not calls
             assert store.path.read_bytes() == before
             return
-        preflight(outer)
-        assert store.path.read_bytes() == before
-        intent = saved.start(outer.payload["request"])
-        for _ in range(4):
-            intent = saved.resume(
-                intent["state"], callback(outer, _frame(intent, context.request_id))
+        envelopes = []
+
+        def execute_saved(request: RequestEnvelope) -> ProviderOutcome:
+            assert isinstance(request, RequestEnvelope)
+            envelopes.append(request)
+            preflight(request)
+            assert store.path.read_bytes() == before
+            intent = saved.start(request.payload["request"])
+            for _ in range(4):
+                intent = saved.resume(
+                    intent["state"],
+                    callback(request, _frame(intent, request.context.request_id)),
+                )
+            return ProviderOutcome(intent)
+
+        monkeypatch.setattr(backend, "invoke", execute_saved)
+        with profile_capture_scope():
+            intent = session.invoke(
+                "conversation.saved-turn.v1",
+                "saved_complete",
+                {
+                    "request": outer.payload["request"],
+                    "_session_id": "session.panel.saved",
+                },
             )
+        assert len(envelopes) == 1
         assert intent["status"] == "ok", intent
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == [
             "Hello",
