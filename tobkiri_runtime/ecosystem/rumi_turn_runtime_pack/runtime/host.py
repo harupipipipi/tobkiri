@@ -19,6 +19,7 @@ from ecosystem.rumi_turn_runtime_pack.runtime.delivery import delivery_host_fact
 from ecosystem.rumi_turn_runtime_pack.runtime.progress_host import progress_operation
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    validate_saved_turn_start,
     RECONCILE_CONTRACTS, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
@@ -308,8 +309,14 @@ class TurnHostFactoryV4:
                     consumer_pack_id=_PACK,
                     include_credentials=False,
                 )
+                values = {
+                    key: value for key, value in payload.items() if key != "_session_id"
+                }
+                validate_saved_turn_start(
+                    store, values, client=client, guard=invocation.assert_current,
+                )
                 return execute_with_input_context(
-                    {key: value for key, value in payload.items() if key != "_session_id"},
+                    values,
                     client=client, guard=invocation.assert_current,
                     recover_input=store.saved_input,
                     bind_input=store.bind_saved_input,

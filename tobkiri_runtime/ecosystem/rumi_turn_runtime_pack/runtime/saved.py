@@ -90,21 +90,17 @@ def reconcile_saved_turn(
     return recovered or {"status": "existing", "turn": record}
 
 
-def execute_saved_turn(
+def validate_saved_turn_start(
     store: DurableTurnRuntime,
     payload: Mapping[str, Any],
     *,
     client: GlobalContractClient,
     guard: Callable[[], None],
-    track_execution: Callable[[str], AbstractContextManager[None]] = lambda _: nullcontext(),
-    _guidance_depth: int = 0,
 ) -> dict[str, Any]:
-    """Dispatch only a claim winner through a captured, restricted client.
+    """Check owner prerequisites before retaining a new accepted input.
 
-    The Host supplies ``guard`` to check the original deadline, cancellation
-    and capture validity. Nested dispatch must inherit that same invocation.
-    Neither dependency comes from request data. A claim is scheduling state,
-    not permission to bypass the client's Authority/Broker checks.
+    Existing executions keep their recovery semantics. New and queued reserved
+    turns must pass fresh owner reads before optional context or durable capture.
     """
     initial = validate_saved_conversation_input(payload)
     if (
@@ -174,6 +170,28 @@ def execute_saved_turn(
             raise SavedTurnNotStartedError(
                 "saved conversation model reference is required"
             )
+    return initial
+
+
+def execute_saved_turn(
+    store: DurableTurnRuntime,
+    payload: Mapping[str, Any],
+    *,
+    client: GlobalContractClient,
+    guard: Callable[[], None],
+    track_execution: Callable[[str], AbstractContextManager[None]] = lambda _: nullcontext(),
+    _guidance_depth: int = 0,
+) -> dict[str, Any]:
+    """Dispatch only a claim winner through a captured, restricted client.
+
+    The Host supplies ``guard`` to check the original deadline, cancellation
+    and capture validity. Nested dispatch must inherit that same invocation.
+    Neither dependency comes from request data. A claim is scheduling state,
+    not permission to bypass the client's Authority/Broker checks.
+    """
+    initial = validate_saved_turn_start(
+        store, payload, client=client, guard=guard,
+    )
     guard()
     begun = client.invoke(
         LIFECYCLE_CONTRACT,
@@ -386,6 +404,7 @@ def _drain_guidance(
                 track_execution=track_execution, _guidance_depth=depth + 1,
             )
 
+        validate_saved_turn_start(store, source, client=client, guard=guard)
         child_result = execute_with_input_context(
             source, client=client, guard=guard,
             recover_input=lambda lean: store.saved_input(lean) or (
