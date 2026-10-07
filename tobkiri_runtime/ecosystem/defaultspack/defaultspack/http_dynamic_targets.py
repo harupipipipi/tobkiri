@@ -34,6 +34,13 @@ def defaultspack_dynamic_capability_targets(
     packs = catalog.get("packs")
     if not isinstance(packs, list):
         return ()
+    # Explicit Application contributions own their identity and payload schema.
+    # A catalog alias must not make the same operation ambiguous or provide a
+    # fallback around a stale/unready explicitly declared target.
+    explicit = {
+        (target.contract_id, target.operation_id, target.provider_id, target.function_id)
+        for target in binding.targets
+    }
     targets: list[HTTPContractTarget] = []
     for pack in packs:
         if (
@@ -59,6 +66,8 @@ def defaultspack_dynamic_capability_targets(
             provider_id = str(operation.get("provider_id") or "").strip()
             function_id = str(operation.get("function_id") or provider_id).strip()
             if not contract_id or not operation_id or not provider_id:
+                continue
+            if (contract_id, operation_id, provider_id, function_id) in explicit:
                 continue
             targets.append(
                 HTTPContractTarget(

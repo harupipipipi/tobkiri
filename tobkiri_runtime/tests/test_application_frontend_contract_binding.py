@@ -686,3 +686,62 @@ def test_active_pack_digest_keeps_host_identity_and_readiness_fences(fault):
     assert len(snapshot.targets) == (1 if fault is None else 0)
     if fault is None:
         assert snapshot.targets[0].artifact_digest == digest
+
+
+@pytest.mark.parametrize("different", [None, "contract_id", "operation_id", "provider_id", "function_id"])
+def test_dynamic_alias_never_shadows_an_exact_explicit_contribution(different):
+    from core_runtime.global_contracts.http_contract_dispatch import HTTPContractTarget
+
+    identity = {"contract_id": "fixture.read.v1", "operation_id": "read",
+                "provider_id": "fixture.provider", "function_id": "fixture.function"}
+    explicit = HTTPContractTarget(
+        contribution_id="app.explicit.read", owner_pack_id="app.fixture",
+        allowed_payload_keys=frozenset({"pack_id"}), **identity,
+    )
+    binding = FrontendContractBinding(
+        method="POST", path="/api/ui/capability/invoke",
+        presentation="capability_result", targets=(explicit,),
+    )
+    dynamic = dict(identity)
+    if different:
+        dynamic[different] = "different"
+    catalog = {"packs": [{"pack_id": "fixture", "enabled": True, "approved": True,
+                           "pack_artifact_digest": "sha256:" + "a" * 64,
+                           "operations": [{**dynamic, "invokable": True}]}]}
+    targets = defaultspack_dynamic_capability_targets(binding, catalog=catalog)
+    assert len(targets) == (0 if different is None else 1)
+    assert binding.targets == (explicit,)
+    assert explicit.contribution_id == "app.explicit.read"
+    assert explicit.owner_pack_id == "app.fixture"
+    assert explicit.allowed_payload_keys == frozenset({"pack_id"})
+
+
+@pytest.mark.parametrize("fault", [None, "stale-artifact", "not-ready"])
+def test_explicit_target_is_preserved_without_dynamic_fallback(fault):
+    from core_runtime.global_contracts.capability_capture import capture_capability_binding_snapshot
+    from core_runtime.global_contracts.http_contract_dispatch import HTTPContractTarget
+
+    digest = "sha256:" + "a" * 64
+    identity = {"contract_id": "fixture.read.v1", "operation_id": "read",
+                "provider_id": "fixture.provider", "function_id": "fixture.function"}
+    target = HTTPContractTarget(
+        contribution_id="app.explicit.read", owner_pack_id="app.fixture",
+        allowed_payload_keys=frozenset({"pack_id"}), artifact_digest=(
+            "sha256:" + "b" * 64 if fault == "stale-artifact" else digest), **identity,
+    )
+    binding = FrontendContractBinding(method="POST", path="/api/ui/capability/invoke",
+                                     presentation="capability_result", targets=(target,))
+    def ready(*_args):
+        if fault == "not-ready":
+            raise RuntimeError("not ready")
+    session = SimpleNamespace(**CONTEXT, assert_operation_ready=ready,
+                              provider_metadata=lambda _: [{**identity, **CONTEXT,
+                                                            "artifact_digest": digest}])
+    catalog = {"packs": [{"pack_id": "fixture", "enabled": True, "approved": True,
+                           "pack_artifact_digest": digest,
+                           "operations": [{**identity, "invokable": True}]}]}
+    snapshot = capture_capability_binding_snapshot(
+        binding, session=session, catalog=catalog,
+        dynamic_target_factory=defaultspack_dynamic_capability_targets,
+    )
+    assert snapshot.targets == ((target,) if fault is None else ())
