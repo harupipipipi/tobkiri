@@ -3,16 +3,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import tempfile
 from pathlib import Path
+
+from core_runtime.pack_authoring import PythonPackFunction, build_python_pack
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_host.artifact_compiler import compile_pack_root
 
 ROOT = Path(__file__).parent
 PACK = ROOT / 'acceptance.cli.presentation'
 
 
 def canonical(value: object) -> str:
-    """Hash deterministic JSON source bytes for this authoring package."""
-    data = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-    return 'sha256:' + hashlib.sha256(data.encode()).hexdigest()
+    """Use the public protocol canonical digest rule."""
+    return canonical_digest(value)
 
 
 def write(path: Path, value: object) -> None:
@@ -20,15 +25,21 @@ def write(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
 
 
-def build() -> None:
+def build(
+    pack_id: str = 'acceptance.cli.presentation',
+    contract_id: str = 'acceptance.presentation.transcript.v1',
+    function_id: str = 'acceptance.cli.presentation.render',
+    operation_id: str = 'acceptance.presentation.render',
+    destination: Path = PACK,
+) -> dict:
     """Render a closed pure presentation contract and unresolved profile intent."""
-    pid = 'acceptance.cli.presentation'
-    cid = 'acceptance.presentation.transcript.v1'
-    fid = 'acceptance.cli.presentation.render'
-    op = 'acceptance.presentation.render'
+    if destination.is_symlink():
+        raise ValueError('output symlink denied')
+    destination.resolve().relative_to(ROOT.resolve())
+    pid, cid, fid, op = pack_id, contract_id, function_id, operation_id
     source = 'sha256:' + hashlib.sha256((ROOT / 'source/render.py').read_bytes()).hexdigest()
     provenance = {'schema': 'io.tobkiri.provenance.v1', 'source_kind': 'repository',
-                  'source_path': '../source/render.py', 'source_digest': source,
+                  'source_path': 'source/render.py', 'source_digest': source,
                   'repository_commit': 'working-tree', 'repository_tree': source[7:],
                   'generator': 'acceptance.cli.presentation.authoring',
                   'generator_version': '1.0.0', 'normative': False, 'evidence': []}
@@ -60,7 +71,9 @@ def build() -> None:
                     'security': 'public', 'failure': 'fail_closed',
                     'isolation': 'sandbox', 'required_capabilities': [],
                     'lifecycle': {}}, 'provenance': provenance}
-    contract['revision_digest'] = canonical(contract)
+    contract['revision_digest'] = canonical({
+        key: value for key, value in contract.items() if key != 'provenance'
+    })
     contracts = {'catalog_api_version': 'io.tobkiri.pack-contract-catalog.v4',
                  'pack_id': pid, 'source_identity': source, 'contracts': [contract]}
     write(ROOT / 'contracts.draft.v4.json', contracts)
@@ -86,6 +99,27 @@ def build() -> None:
                              'operation_id': op, 'requested_scope_template': {}}],
         'authority_references': [], 'profile_authority_snapshot_digest': None}
     write(ROOT / 'cli.profile.intent.v1.json', intent)
+    source_bytes = (ROOT / 'source/render.py').read_bytes().replace(
+        b"'acceptance.presentation.render'", repr(op).encode())
+    # The producer refuses existing destinations: always render to a fresh path.
+    with tempfile.TemporaryDirectory(dir=ROOT, prefix='build-') as temporary:
+        fresh = Path(temporary) / pid
+        build_python_pack(
+            fresh, pack_id=pid, version='1.0.0',
+            display_name='Tobkiri CLI transcript presentation',
+            contracts=[contract], functions=[PythonPackFunction(
+                function_id=fid, contract_id=cid, operation_ids=(op,),
+                implementation_path='runtime/render.py', source=source_bytes)],
+        )
+        compiled = compile_pack_root(fresh)
+        route = compiled.routes[(cid, op)]
+        assert route['runtime_abi'] == 'python3.13'
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(fresh, destination)
+    return {'pack_id': pid, 'contract_id': cid, 'operation_id': op,
+            'runtime_abi': route['runtime_abi']}
+
 
 
 if __name__ == '__main__':

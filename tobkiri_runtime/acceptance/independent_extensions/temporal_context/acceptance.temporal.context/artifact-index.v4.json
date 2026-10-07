@@ -1,37 +1,57 @@
 {
-  "artifact_set_digest": "sha256:ef8caf25f33266117e4e7aeb20d04d18c9d02f6a8349ca297f9fbaf04488ae48",
+  "artifact_set_digest": "sha256:81d227b38ab1ecf4b6e9708b30d4b0f816932aeb228688ce5f4e748efb0b3d6d",
   "artifacts": [
     {
-      "digest": "sha256:bcdee67fcb111c7ac90b2aa7a43604dce45c7356a25d956cf4c72bad2b34422d",
-      "path": "pack.v4.json",
-      "role": "canonical_manifest"
+      "digest": "sha256:d819d9009bfc2be9f9eac6c71d43710d8a6b2f103e5dbbd41cf6b0add52ac12a",
+      "path": "authoring-source.v1.json",
+      "role": "sidecar"
     },
     {
-      "digest": "sha256:7ac4e76c5082cdda68750eb056b5f2c30651d2d0604a734584d9d37d0ccbf03b",
+      "digest": "sha256:148018e56b17f9389a373e5de4c7c8850fdaa07cec6387104acc8612e2da6e4e",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:72282db53fb1eeb255de51d6ed9009a966a7b723d0a4c0badc6ab5154815e0a8",
-      "path": "README.md",
-      "role": "sidecar"
-    },
-    {
-      "digest": "sha256:2b991adeb7175b48480c9a75373b26c0f9bede308611a07c5a58714155883377",
-      "path": "scaffold-source.v1.json",
-      "role": "sidecar"
-    },
-    {
-      "digest": "sha256:32839b0fe8ee63d1cc5c73cddbedd65b8cd089cb5e136b39e6df3faf2cf4fe11",
+      "digest": "sha256:e258e9ca172864963ddd892512ed00e12141799e91ae84e81a1f87b610c4124c",
       "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:fce06da9e6e34ce491b922df155c7de1a8f9a411ad28dc38866fb28b5a4fd629",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+      "path": "runtime/temporal.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2efee3c6f88860ed8f6b14008d77ce62e6967dba8ebbd80d9a8194d37e8d5f49",
+      "path": "temporal/flow.source.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:9ae9cc89f64cf200bdc8af223177017a2d90f0e81c1a47c47258e8283c00e9cb",
+      "path": "temporal/flow.without-temporal.source.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:1f5eb2cc800572827beb3711b102578f84a49af473e06ca08c363ea45cc51461",
+      "path": "temporal/prompt.md",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c03c077abbfb735e6890ee8adee014f9e87882bf33e0a6723637f0e0cce33799",
+      "path": "temporal/prompt.without-temporal.md",
       "role": "sidecar"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:20f9e18eae0bf670f97ba36e9b6a5e7902b3d29ed3da8415aa80e843f2a55824"
+    "signed_digest": "sha256:2b1ad742d9d6508defd49cb6839c1f6ef0e8d20df5d15b441059b2f80ae75397"
   },
   "pack_id": "acceptance.temporal.context",
-  "source_identity": "sha256:73daed94dc40d679a6a9f894ea16fdade968e6d4ac2c67303904a742d33ff6ca"
+  "source_identity": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe"
 }

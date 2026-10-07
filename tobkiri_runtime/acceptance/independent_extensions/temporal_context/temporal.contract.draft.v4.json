@@ -21,9 +21,9 @@
     "generator_version": "0.1.0",
     "normative": false,
     "repository_commit": "working-tree",
-    "repository_tree": "841741e79ed4e144dff99b9badca21001f29be918381cbda81a0a4ba8a8c3456",
+    "repository_tree": "290e4ea7a653837e2f7e6704ed0bc8e98fd35a3c6d44a48df90862160a7d7f26",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:841741e79ed4e144dff99b9badca21001f29be918381cbda81a0a4ba8a8c3456",
+    "source_digest": "sha256:290e4ea7a653837e2f7e6704ed0bc8e98fd35a3c6d44a48df90862160a7d7f26",
     "source_kind": "generated",
     "source_path": "author_contract.py"
   },
@@ -32,11 +32,11 @@
     "failure": "fail_closed",
     "isolation": "sandbox",
     "lifecycle": {},
-    "provider_id": "acceptance.temporal.provider",
+    "provider_id": "acceptance.temporal.context.provider",
     "required_capabilities": [],
     "security": "internal"
   },
-  "revision_digest": "sha256:acf752226517b75e5e26b1f75afe660df3955107a447d40e6a0440a3a09fc63e",
+  "revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
   "schema_catalog": {
     "sha256:4a39ca524ba3f1b49f4f77903b94477d045e71f1c15c26db957a9817b57aa8f7": {
       "additionalProperties": false,

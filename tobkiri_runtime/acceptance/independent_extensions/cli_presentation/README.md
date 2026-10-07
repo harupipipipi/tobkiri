@@ -1,88 +1,75 @@
-# Independent CLI presentation authoring experiment
+# Independent executable CLI presentation component
 
-This independent Normal Sandbox Pack owns a bounded plain-text transcript
-presentation. It renders user/assistant/system/tool messages, wraps text, preserves
-blank lines, escapes ANSI/OSC/control/bidi sequences and rejects output exceeding
-a UTF-8 byte limit. It executes no shell commands and needs no network, cloud key,
-secret, filesystem or Host capability.
+This independent `normal_sandbox` Pack provides a bounded plain-text transcript
+renderer. It wraps messages, preserves blank lines, escapes ANSI/OSC/control/bidi
+sequences and rejects output exceeding a UTF-8 byte limit. It executes no terminal
+commands and requests no Host capabilities, network or secrets.
 
-The canonical four Pack documents are the unmodified official minimal scaffold:
-empty Functions, contracts and executable variants, with `declarative_only`
-execution. The renderer source is deliberately outside its indexed runtime
-closure. `contracts.draft.v4.json` and `function.draft.v4.json` are separate
-non-authoritative authoring sketches, not a captured executable Pack.
+Canonical declarations use the **public producer** documented in
+`docs/python_pack_authoring.md`: `PythonPackFunction` / `build_python_pack`, public
+canonical digest rules and `compile_pack_root`. Each build renders a fresh
+producer output, validates it with the actual compiler, then replaces only this
+owned generated Pack directory. No handwritten seals or invented ABI remain.
+The self-contained renderer implements the existing synchronous
+`tobkiri_packvm_invoke(operation_id,payload)->dict` ABI, pinned to `python3.13`
+and backend `tobkiri.python-pack-v4`.
 
-The explicit draft contract is `acceptance.presentation.transcript.v1`, operation
+The draft Contract is `acceptance.presentation.transcript.v1`, exact Operation
 `acceptance.presentation.render`, provider `acceptance.cli.presentation`, Function
-`acceptance.cli.presentation.render`. Inputs and outputs are closed schemas;
-request-supplied approval, paths, commands and identity fields are rejected. This
-is a presentation replacement component rather than a duplicate web frontend.
+`acceptance.cli.presentation.render`. Closed schemas reject request-supplied
+approval, paths, commands and identity fields. `contracts.draft.v4.json` and
+`function.draft.v4.json` retain separate authoring sketches. The public producer
+preserves draft status and non-normative author source provenance.
 
-## Reproduce offline source checks
+## Reproduce offline checks
 
-From `tobkiri_runtime`, using the preexisting environment:
+From `tobkiri_runtime`, using an existing environment; no dependencies installed:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 /path/to/existing/repository/.venv/bin/python -B acceptance/independent_extensions/cli_presentation/build.py
+PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 /path/to/existing/repository/.venv/bin/python -B acceptance/independent_extensions/cli_presentation/build.py
 PYTHONDONTWRITEBYTECODE=1 /path/to/existing/repository/.venv/bin/python -B -m unittest discover -s acceptance/independent_extensions/cli_presentation -p test_cli_presentation.py -v
 ```
 
-12 source tests pass: offline rendering, terminal-control denial, identity and
-approval injection denial, unknown role/field denial, boolean bounds denial,
-multibyte output limits, wrapping, official and draft public schema validations, execution-binding absence, exact indexed
-file digests, input/output conformance and absence of activation authority.
+14 tests pass: offline rendering, controls/identity/approval/unknown-field denial,
+boolean bounds, UTF-8 output limits, wrapping, public schemas, exact indexed file
+bytes, input/output schemas, exact actual compiler route, unknown-operation ABI
+denial, byte-identical producer builds and absence of activation authority.
+`build()` accepts generic Pack/Contract/Function/Operation IDs and an owned output
+destination for later independent composition; no runtime legacy ID fallback.
 
-## Explicit CLI Profile source
+## Explicit unresolved CLI Profile source
 
 `cli.profile.intent.v1.json` is a public-schema-valid `needs_resolution` authoring
-intent. It selects a CLI Shell and the **explicit**, independent
-`acceptance.cli.application` Application identity. That Application and
-`acceptance.base` are unresolved required inputs, not claimed installed artifacts.
-It requests one exact presentation edge. All artifact/revision/authority fields
-remain null or empty. There is no generated source-release lock, active
-ProfileLock, ResolvedPlan, ActivationRecord, approval or captured authority.
+intent. It requests a CLI Shell, the explicit independent
+`acceptance.cli.application` Application and one exact renderer edge. That
+Application and `acceptance.base` are unresolved required inputs, not installed
+artifacts. All artifact/revision/authority fields remain null or empty. There
+is no generated source-release lock, active ProfileLock, ResolvedPlan,
+ActivationRecord, approval or captured authority.
 
-## Public authoring gaps and minimal reproduction
+## Remaining product boundary
 
-Only the permitted public docs, public schemas, generated SDK and official scaffold
-CLI were consulted. No runtime/Host/Defaults/other-Pack private implementation,
-existing test internals, APIs, credentials or live checkout were used.
+`cli_io_v1.schema.json` permits only `health`, `echo`, `profile.identity` commands;
+this component does not invent a new Shell command. The public Python authoring
+API explicitly does not create CLI Shell/Application composition or presentation
+bindings. `docs/pack_v4_minimal_profile.md` says complete canonical CLI Application
+closure is future work. A renderer with a valid production-compatible executable
+catalog therefore **does not establish replacement of the product frontend**.
 
-1. Run the documented `python -m core_runtime.pack_scaffold` with `--template
-   minimal` or `capability` in a fresh owned destination. Both generated v4
-   declarations have empty Functions/contracts/executable variants. The capability
-   example's `run(context,args)` is not documented as a production PackVM ABI.
-2. `docs/pack-development-guide.md` describes PackVM integrity/admission but does
-   not define a public invocation ABI or complete canonical self-reference digest
-   construction. `build.py` uses an explicitly local source-digest convention;
-   schema-valid digest fields and verified file bytes are **not** production
-   capture validation. No executable sketch, runtime ABI or backend binding is declared for this
-   component.
-3. `cli_io_v1.schema.json` allows only `health`, `echo`, `profile.identity` commands.
-   It has no arbitrary presentation or terminal-app launch command. The result
-   projection here matches its stdout/stderr/status shape; it does not add an
-   undeclared CLI command or call a private dispatcher.
-4. `docs/pack_v4_minimal_profile.md` explicitly says the CLI Shell does not yet
-   have a complete canonical CLI Application/frontend composition. The web map's
-   frontend selection is not a public CLI Application authoring API. Merely changing
-   Shell IDs or relabeling a Tauri Application would not establish a CLI product.
-
-The generic missing surface is documented PackVM authoring ABI/digest generation
-and an explicit CLI Application composition/presentation binding API. No
-feature-specific core edit, legacy fallback or invented grant was added.
-
-## Evidence boundary
+Only public docs/schemas/SDK/API and this worker's files were used; no runtime,
+Host, Defaults, other-Pack implementation or existing test internals were read.
 
 | Check | Evidence |
 | --- | --- |
-| Useful offline success and input/output denial | 12 local source/schema tests |
-| Normal Sandbox canonical declarations | Unmodified official declarative-only scaffold; empty variants |
-| Explicit CLI Profile source selection | Unbound, unresolved public-schema-valid intent |
-| Host canonical digest/capture compatibility | Not established |
+| Useful offline success and denial | 14 local component/source/schema tests |
+| Canonical executable Pack | Official public producer plus actual compiler validation |
+| Deterministic output | All producer files byte-identical across fresh builds |
+| Explicit CLI Profile source | Unbound, unresolved public-schema-valid intent |
 | Signed admission/install/approval/activation | Not performed |
 | Production Broker/PackVM invocation | Not performed |
-| Actual CLI frontend replacement | Blocked on explicit public CLI Application composition |
-| Host composition/removal/renamed IDs/unselected/unknown/conflict | Root-owned acceptance, not simulated here |
+| Actual CLI frontend replacement | Unresolved public CLI Application integration |
+| Composition/removal/renamed IDs/unselected/unknown/conflict | Root-owned Host acceptance |
 
-The Pack is unsigned, untrusted and disabled. Source provenance is non-normative.
-Historical data and the live acceptance checkout are untouched.
+Compiler validation is offline, and ABI invocation here is local source execution.
+Neither is captured Broker/VM execution. The Pack remains unsigned, untrusted and
+disabled. Historical data and the live acceptance checkout are untouched.

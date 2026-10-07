@@ -218,3 +218,13 @@ def test_missing_real_python_abi_denied(tmp_path: Path) -> None:
             ),
         )
     assert not (tmp_path / "pack").exists()
+
+
+@pytest.mark.parametrize("source", [SOURCE + b'\nnew_syntax = t"template"\n', b"\xff"])
+def test_host_newer_syntax_or_invalid_utf8_cannot_claim_guest_abi(
+    tmp_path: Path,
+    source: bytes,
+) -> None:
+    with pytest.raises(PackAuthoringError, match="UTF-8 Python 3.13"):
+        _build(tmp_path / "pack", function=replace(_function(), source=source))
+    assert not (tmp_path / "pack").exists()

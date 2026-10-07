@@ -1,25 +1,22 @@
 {
-  "evidence_kind": "offline_source_and_public_schema_checks",
+  "evidence_kind": "public_producer_actual_compiler_and_local_source_tests",
+  "tests_passed": 14,
+  "public_producer": "core_runtime.pack_authoring.build_python_pack",
+  "public_compiler": "tobkiri_host.artifact_compiler.compile_pack_root",
+  "pack_id": "acceptance.cli.presentation",
+  "artifact_digest": "sha256:408da52e4dc5a217790a8ee45859598e5ed73a04828d487cfe121bcbefc46778",
+  "executable_catalog_digest": "sha256:768bb670a1160cd95625e2f3cc4aaec3129f14378311957e59bff858a2c4ed07",
+  "contract_id": "acceptance.presentation.transcript.v1",
+  "contract_revision_digest": "sha256:d5a9cc040a591e09527f2901e4226215ac03a9ba466c0e5223d3205d0815b0c9",
+  "operation_id": "acceptance.presentation.render",
+  "runtime_abi": "python3.13",
+  "backend": "tobkiri.python-pack-v4",
+  "deterministic_build": "all files byte-identical across two fresh producer outputs",
   "captured_authority": false,
   "production_broker_execution": false,
   "production_packvm_execution": false,
   "product_cli_frontend_replaced": false,
-  "tests_passed": 12,
-  "rebuild_byte_identical_json_documents": 8,
-  "contract_id": "acceptance.presentation.transcript.v1",
-  "operation_id": "acceptance.presentation.render",
-  "provider_id": "acceptance.cli.presentation",
-  "denial_cases": [
-    "terminal_control_injection",
-    "approval_and_identity_fields",
-    "unknown_message_role_or_field",
-    "boolean_integer_bounds",
-    "utf8_output_limit"
-  ],
-  "missing_public_contracts": [
-    "production PackVM invocation ABI and canonical digest generation",
-    "complete explicit CLI Application composition and presentation binding"
-  ],
+  "remaining_public_integration": "explicit complete CLI Application/Shell presentation binding",
   "unperformed_host_checks": [
     "signed_admission",
     "approval_and_activation",
@@ -28,8 +25,5 @@
     "unselected_provider_denial",
     "unknown_route_denial",
     "conflicting_provider_denial"
-  ],
-  "canonical_pack_execution": "official_declarative_only_empty_variants",
-  "executable_draft": null,
-  "draft_contract_path": "contracts.draft.v4.json"
+  ]
 }

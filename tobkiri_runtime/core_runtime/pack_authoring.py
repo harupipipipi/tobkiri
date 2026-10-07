@@ -388,7 +388,10 @@ def _add_file(files: dict[str, bytes], name: str, content: bytes) -> None:
 
 
 def _check_python_entry(source: bytes) -> None:
-    module = ast.parse(source.decode("utf-8"))
+    try:
+        module = ast.parse(source.decode("utf-8"), feature_version=(3, 13))
+    except (SyntaxError, UnicodeDecodeError) as error:
+        raise PackAuthoringError("source must be valid UTF-8 Python 3.13") from error
     entries = [
         node
         for node in module.body

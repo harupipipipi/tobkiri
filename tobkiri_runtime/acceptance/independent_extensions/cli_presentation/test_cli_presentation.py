@@ -5,6 +5,8 @@ import hashlib
 import importlib.util
 import json
 import unittest
+import tempfile
+import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -13,6 +15,13 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).parent
 PACK = ROOT / 'acceptance.cli.presentation'
 RUNTIME = ROOT.parents[2]
+# Standalone discovery needs the repository import root before this public API.
+sys.path.insert(0, str(RUNTIME))
+from tobkiri_host.artifact_compiler import compile_pack_root  # noqa: E402
+
+build_spec = importlib.util.spec_from_file_location('cli_build', ROOT / 'build.py')
+builder = importlib.util.module_from_spec(build_spec)
+build_spec.loader.exec_module(builder)
 spec = importlib.util.spec_from_file_location('cli_render', ROOT / 'source/render.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -98,14 +107,34 @@ class CliPresentationTests(unittest.TestCase):
         Draft202012Validator(schemas[operation['output_schema_digest']]).validate(
             module.render(self.payload()))
 
-    def test_official_scaffold_has_no_execution_binding(self) -> None:
+    def test_public_compiler_has_exact_existing_python_route(self) -> None:
+        compiled = compile_pack_root(PACK)
+        route = compiled.routes[(
+            'acceptance.presentation.transcript.v1',
+            'acceptance.presentation.render')]
+        self.assertEqual(route['runtime_abi'], 'python3.13')
+        self.assertEqual(route['backend'], 'tobkiri.python-pack-v4')
         manifest = json.loads((PACK / 'pack.v4.json').read_text())
-        executables = json.loads((PACK / 'executables.v4.json').read_text())
-        self.assertEqual(manifest['functions'], [])
-        self.assertEqual(manifest['contracts'], [])
-        self.assertEqual(executables['variants'], [])
-        self.assertEqual(manifest['requirements']['execution_boundary'],
-                         'declarative_only')
+        self.assertEqual(manifest['pack']['kind'], 'normal_sandbox')
+        self.assertEqual(manifest['requirements']['capabilities'], [])
+
+    def test_existing_abi_denies_unknown_operation(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'unknown operation'):
+            module.tobkiri_packvm_invoke('unknown.operation', self.payload())
+        result = module.tobkiri_packvm_invoke(
+            'acceptance.presentation.render', self.payload())
+        self.assertEqual(result, module.render(self.payload()))
+
+    def test_public_builder_output_is_byte_identical(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+            first, second = Path(temporary) / 'first', Path(temporary) / 'second'
+            builder.build(destination=first)
+            builder.build(destination=second)
+            first_files = {str(p.relative_to(first)): p.read_bytes()
+                           for p in first.rglob('*') if p.is_file()}
+            second_files = {str(p.relative_to(second)): p.read_bytes()
+                            for p in second.rglob('*') if p.is_file()}
+            self.assertEqual(first_files, second_files)
 
     def test_profile_has_no_activation_authority(self) -> None:
         intent = json.loads((ROOT / 'cli.profile.intent.v1.json').read_text())

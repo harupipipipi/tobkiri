@@ -1,5 +1,5 @@
 {
-  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "authority": "none",
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -136,6 +136,23 @@
       "version": "1.0.0"
     }
   ],
+  "display_name": "Tobkiri CLI transcript presentation",
+  "files": {
+    "runtime/render.py": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7"
+  },
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:d5a9cc040a591e09527f2901e4226215ac03a9ba466c0e5223d3205d0815b0c9",
+      "id": "acceptance.cli.presentation.render",
+      "implementation_digest": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7",
+      "isolation": "pack_vm",
+      "operations": [
+        "acceptance.presentation.render"
+      ],
+      "role": "pure"
+    }
+  ],
   "pack_id": "acceptance.cli.presentation",
-  "source_identity": "sha256:880b6188a7780e6be965b82aa5b0b4d75ea6c9401a18bf42e5502ce7ee03f19b"
+  "source_api_version": "io.tobkiri.python-pack-source.v1",
+  "version": "1.0.0"
 }

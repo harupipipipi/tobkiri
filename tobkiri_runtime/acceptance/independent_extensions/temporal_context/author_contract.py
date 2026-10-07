@@ -1,5 +1,6 @@
 """Render draft public Contract schemas; never produce activation authority."""
 import hashlib
+from tobkiri_protocol.canonical import canonical_digest
 import json
 from pathlib import Path
 
@@ -13,7 +14,7 @@ def digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def render() -> dict:
+def render(pack_id: str = "acceptance.temporal.context") -> dict:
     """Return exact proposed reducer contract for composition review."""
     identifier = {"type": "string", "minLength": 1, "maxLength": 128}
     offset_time = {"type": "string", "maxLength": 64,
@@ -63,9 +64,9 @@ def render() -> dict:
                   "repository_commit": "working-tree", "repository_tree":
                   digest(source).split(":")[1], "normative": False, "evidence": []}
     contract = {"contract_api_version": "io.tobkiri.contract.v4",
-                "contract_id": "acceptance.temporal.context.v1",
+                "contract_id": f"{pack_id}.v1",
                 "version": "0.1.0", "revision_digest": digest(schemas),
-                "owner": "acceptance.temporal.context", "status": "draft",
+                "owner": pack_id, "status": "draft",
                 "operations": [{"operation_id": "temporal.reduce",
                     "input_schema_digest": digest(input_schema),
                     "output_schema_digest": digest(output_schema),
@@ -73,11 +74,15 @@ def render() -> dict:
                     "scope_semantics": "declarative",
                     "idempotency": {"mode": "none"}}],
                 "schema_catalog": {digest(schema): schema for schema in schemas},
-                "provider_semantics": {"provider_id": "acceptance.temporal.provider",
+                "provider_semantics": {"provider_id": f"{pack_id}.provider",
                     "cardinality": "one", "security": "internal",
                     "failure": "fail_closed", "isolation": "sandbox",
                     "required_capabilities": [], "lifecycle": {}},
                 "provenance": provenance}
+    contract["revision_digest"] = canonical_digest({
+        key: value for key, value in contract.items()
+        if key not in {"revision_digest", "provenance"}
+    })
     return contract
 
 

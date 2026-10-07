@@ -1,7 +1,119 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:65ecab72936c839ba25ed725ccffb964d7786adc6988cff3b8dfed689b7fcc9a",
+  "catalog_digest": "sha256:768bb670a1160cd95625e2f3cc4aaec3129f14378311957e59bff858a2c4ed07",
   "pack_id": "acceptance.cli.presentation",
-  "source_identity": "sha256:85530c4c0888e6eb75e5d28f88ca8fb18728e6d2a43a2e2991a9b0eb7d84b03d",
-  "variants": []
+  "source_identity": "sha256:880b6188a7780e6be965b82aa5b0b4d75ea6c9401a18bf42e5502ce7ee03f19b",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "acceptance.cli.presentation.render",
+      "implementation_digest": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7",
+      "implementation_path": "runtime/render.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "acceptance.presentation.transcript.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "enum": [
+                  "invalid_input",
+                  "output_limit"
+                ]
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "type": "object"
+          },
+          "idempotency": "replayable",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "columns": {
+                "maximum": 200,
+                "minimum": 20,
+                "type": "integer"
+              },
+              "messages": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "role": {
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "system",
+                        "tool"
+                      ]
+                    },
+                    "text": {
+                      "maxLength": 8192,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 128,
+                "type": "array"
+              },
+              "output_limit": {
+                "maximum": 1048576,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "messages",
+              "columns",
+              "output_limit"
+            ],
+            "type": "object"
+          },
+          "operation_id": "acceptance.presentation.render",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "exit_status": {
+                "const": 0
+              },
+              "stderr": {
+                "const": ""
+              },
+              "stdout": {
+                "type": "string"
+              },
+              "stream": {
+                "const": "complete"
+              }
+            },
+            "required": [
+              "stdout",
+              "stderr",
+              "exit_status",
+              "stream"
+            ],
+            "type": "object"
+          },
+          "revision_digest": "sha256:d5a9cc040a591e09527f2901e4226215ac03a9ba466c0e5223d3205d0815b0c9",
+          "timeout_default_ms": 1000,
+          "timeout_hard_max_ms": 5000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "acceptance.cli.presentation.render.python"
+    }
+  ]
 }

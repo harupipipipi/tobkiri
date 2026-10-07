@@ -1,27 +1,66 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:72282db53fb1eeb255de51d6ed9009a966a7b723d0a4c0badc6ab5154815e0a8",
-      "kind": "asset",
-      "path": "README.md"
-    },
-    {
-      "digest": "sha256:2b991adeb7175b48480c9a75373b26c0f9bede308611a07c5a58714155883377",
+      "digest": "sha256:d819d9009bfc2be9f9eac6c71d43710d8a6b2f103e5dbbd41cf6b0add52ac12a",
       "kind": "sidecar",
-      "path": "scaffold-source.v1.json"
+      "path": "authoring-source.v1.json"
     },
     {
-      "digest": "sha256:32839b0fe8ee63d1cc5c73cddbedd65b8cd089cb5e136b39e6df3faf2cf4fe11",
+      "digest": "sha256:e258e9ca172864963ddd892512ed00e12141799e91ae84e81a1f87b610c4124c",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+      "kind": "executable",
+      "path": "runtime/temporal.py"
+    },
+    {
+      "digest": "sha256:2efee3c6f88860ed8f6b14008d77ce62e6967dba8ebbd80d9a8194d37e8d5f49",
+      "kind": "sidecar",
+      "path": "temporal/flow.source.json"
+    },
+    {
+      "digest": "sha256:9ae9cc89f64cf200bdc8af223177017a2d90f0e81c1a47c47258e8283c00e9cb",
+      "kind": "sidecar",
+      "path": "temporal/flow.without-temporal.source.json"
+    },
+    {
+      "digest": "sha256:1f5eb2cc800572827beb3711b102578f84a49af473e06ca08c363ea45cc51461",
+      "kind": "sidecar",
+      "path": "temporal/prompt.md"
+    },
+    {
+      "digest": "sha256:c03c077abbfb735e6890ee8adee014f9e87882bf33e0a6723637f0e0cce33799",
+      "kind": "sidecar",
+      "path": "temporal/prompt.without-temporal.md"
     }
   ],
-  "contracts": [],
-  "functions": [],
+  "contracts": [
+    {
+      "contract_id": "acceptance.temporal.context.v1",
+      "operations": [
+        "temporal.reduce"
+      ],
+      "revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
+      "id": "acceptance.temporal.context.reduce",
+      "implementation_digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+      "isolation": "pack_vm",
+      "operations": [
+        "temporal.reduce"
+      ],
+      "role": "pure"
+    }
+  ],
   "integrity": {
-    "artifact_set_digest": "sha256:ef8caf25f33266117e4e7aeb20d04d18c9d02f6a8349ca297f9fbaf04488ae48",
-    "contract_catalog_digest": "sha256:7ac4e76c5082cdda68750eb056b5f2c30651d2d0604a734584d9d37d0ccbf03b",
-    "source_identity": "sha256:73daed94dc40d679a6a9f894ea16fdade968e6d4ac2c67303904a742d33ff6ca"
+    "artifact_set_digest": "sha256:81d227b38ab1ecf4b6e9708b30d4b0f816932aeb228688ce5f4e748efb0b3d6d",
+    "contract_catalog_digest": "sha256:148018e56b17f9389a373e5de4c7c8850fdaa07cec6387104acc8612e2da6e4e",
+    "source_identity": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe"
   },
   "migration": {
     "compatibility": "none",
@@ -29,10 +68,19 @@
     "removal_wave": 0,
     "sunset_at": "2026-08-05"
   },
-  "operation_catalog": [],
+  "operation_catalog": [
+    {
+      "contract_reference": "acceptance.temporal.context.v1",
+      "effect_ceiling": [],
+      "operation_id": "temporal.reduce",
+      "owner": "acceptance.temporal.context",
+      "provider_id": "acceptance.temporal.context.reduce",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
   "pack": {
-    "artifact_digest": "sha256:ef8caf25f33266117e4e7aeb20d04d18c9d02f6a8349ca297f9fbaf04488ae48",
-    "display_name": "acceptance.temporal.context",
+    "artifact_digest": "sha256:81d227b38ab1ecf4b6e9708b30d4b0f816932aeb228688ce5f4e748efb0b3d6d",
+    "display_name": "Tobkiri temporal context",
     "id": "acceptance.temporal.context",
     "kind": "normal_sandbox",
     "version": "0.1.0"
@@ -41,27 +89,36 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:73daed94dc40d679a6a9f894ea16fdade968e6d4ac2c67303904a742d33ff6ca",
-        "path": "scaffold-source.v1.json",
-        "rule_id": "canonical-pack-v4-scaffold-source"
+        "digest": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe",
+        "path": "authoring-source.v1.json",
+        "rule_id": "canonical-python-pack-authoring-source"
       }
     ],
-    "generator": "tobkiri.core_runtime.pack_sdk",
-    "generator_version": "4.0.0",
+    "generator": "tobkiri.core_runtime.pack_authoring",
+    "generator_version": "1.0.0",
     "normative": true,
     "repository_commit": "working-tree",
-    "repository_tree": "73daed94dc40d679a6a9f894ea16fdade968e6d4ac2c67303904a742d33ff6ca",
+    "repository_tree": "91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:73daed94dc40d679a6a9f894ea16fdade968e6d4ac2c67303904a742d33ff6ca",
+    "source_digest": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe",
     "source_kind": "generated",
-    "source_path": "scaffold-source.v1.json"
+    "source_path": "authoring-source.v1.json"
   },
-  "provider_catalog": [],
+  "provider_catalog": [
+    {
+      "contract_reference": "acceptance.temporal.context.v1",
+      "operations": [
+        "temporal.reduce"
+      ],
+      "owner": "acceptance.temporal.context",
+      "provider_id": "acceptance.temporal.context.reduce"
+    }
+  ],
   "requirements": {
     "approval_policy": "none",
     "capabilities": [],
     "contract_dependencies": [],
-    "execution_boundary": "declarative_only",
+    "execution_boundary": "sandbox",
     "network": {
       "allowed_domains": [],
       "allowed_ports": []

@@ -1,5 +1,5 @@
 {
-  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "authority": "none",
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -251,6 +251,27 @@
       "version": "0.1.0"
     }
   ],
+  "display_name": "Tobkiri temporal context",
+  "files": {
+    "runtime/temporal.py": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+    "temporal/flow.source.json": "sha256:2efee3c6f88860ed8f6b14008d77ce62e6967dba8ebbd80d9a8194d37e8d5f49",
+    "temporal/flow.without-temporal.source.json": "sha256:9ae9cc89f64cf200bdc8af223177017a2d90f0e81c1a47c47258e8283c00e9cb",
+    "temporal/prompt.md": "sha256:1f5eb2cc800572827beb3711b102578f84a49af473e06ca08c363ea45cc51461",
+    "temporal/prompt.without-temporal.md": "sha256:c03c077abbfb735e6890ee8adee014f9e87882bf33e0a6723637f0e0cce33799"
+  },
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:4c26c5c88f1f3b55d8e94cfa5d2f02bc1dbb1d3cbc05217ba47dd9d1ec5c6556",
+      "id": "acceptance.temporal.context.reduce",
+      "implementation_digest": "sha256:f47d1af8d5c916a4cd011376052adbf3c79d5507714196cd5f2d0d2f7720ca74",
+      "isolation": "pack_vm",
+      "operations": [
+        "temporal.reduce"
+      ],
+      "role": "pure"
+    }
+  ],
   "pack_id": "acceptance.temporal.context",
-  "source_identity": "sha256:91d8f14aa7f1bafc105e2c8cf9425dc47e458795a60cb3ba879e7ea019c25ebe"
+  "source_api_version": "io.tobkiri.python-pack-source.v1",
+  "version": "0.1.0"
 }

@@ -28,11 +28,11 @@
         "generator_version": "1.0.0",
         "normative": false,
         "repository_commit": "working-tree",
-        "repository_tree": "76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97",
+        "repository_tree": "fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97",
+        "source_digest": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7",
         "source_kind": "repository",
-        "source_path": "../source/render.py"
+        "source_path": "source/render.py"
       },
       "provider_semantics": {
         "cardinality": "one",
@@ -43,7 +43,7 @@
         "required_capabilities": [],
         "security": "public"
       },
-      "revision_digest": "sha256:532fecb74b63e757fe249f9fd9163718d689777ec63867de67069b67981d30df",
+      "revision_digest": "sha256:d5a9cc040a591e09527f2901e4226215ac03a9ba466c0e5223d3205d0815b0c9",
       "schema_catalog": {
         "sha256:229f408b84219531425b54c418bfcb064f7c40cabeaf2d03f17a1a52265f84a4": {
           "additionalProperties": false,
@@ -137,5 +137,5 @@
     }
   ],
   "pack_id": "acceptance.cli.presentation",
-  "source_identity": "sha256:76cf487cf7f1428a494384beaf41922468b9f9c2b421b5f75ea301bfb679ea97"
+  "source_identity": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7"
 }
