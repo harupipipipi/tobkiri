@@ -25416,7 +25416,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.chat-message-deliver",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -25741,7 +25741,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -27047,7 +27047,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -27061,7 +27061,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -27106,7 +27106,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -27361,7 +27361,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -27639,7 +27639,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -27653,7 +27653,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -27698,7 +27698,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.progress",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -28008,7 +28008,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -28447,7 +28447,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -28486,7 +28486,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -28879,7 +28879,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -28921,7 +28921,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -28973,7 +28973,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "oneOf": [
@@ -29022,7 +29022,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "oneOf": [
@@ -29232,7 +29232,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "$defs": {
@@ -29670,7 +29670,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "$defs": {
@@ -30131,7 +30131,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-      "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -30173,7 +30173,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+          "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -37705,7 +37705,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:ed1d3f45e1effc82063a269aeee0cc5f0cdf9930aa32f8c85b87a98498874c2e",
+    "input_digest": "sha256:258d566e9ee58384bd1b39f14d7b58918b045d90189ae7511425c721efece1b4",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -37956,17 +37956,17 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+        "digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+        "digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:c41fe8605924eba3aaea4e6fe49cdee2b846a0279ca724b876d50fc5c0be1b48",
+        "digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
@@ -38456,7 +38456,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:f32651c0e3ddae05eb589a73d69d09bc527c504ee329b030518bd4023a3be86c",
+        "digest": "sha256:a9b019d11078dd59a24662d39724bfc22982ac68e91d4779b291816dfa0da6d8",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -38936,7 +38936,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:b4dbddc30f30e427fd7955d18286a8c601880ecc7ed46a03ca72f817cfafff76",
+        "digest": "sha256:78dde99f587cc4ddb6ad42c6eb6d0e89ab7b36541dff3ca63583e21a451d121f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

@@ -333,6 +333,21 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
         return ProviderOutcome(pending["outcome"])
 
 
+def _resume_until_terminal(
+    post: Callable[[str, dict], tuple[int, dict]], path: str, body: dict,
+) -> dict:
+    """Observe one approved effect without preparing or executing another one."""
+    deadline = time.monotonic() + EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
+    while True:
+        status, result = post(path, body)
+        assert status == 200, result
+        state = result["data"]["state"]
+        if state not in {"claimed", "dispatched"}:
+            return result
+        assert time.monotonic() < deadline, result
+        time.sleep(0.02)
+
+
 def _contract(method: str, target: str) -> str:
     return "/api/contracts/defaultspack/" + quote(f"{method.upper()} {target}", safe="")
 
@@ -4333,8 +4348,9 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     )
     assert status == 200, approved
     for _ in range(2):
-        status, result = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
-        assert status == 200, result
+        result = _resume_until_terminal(
+            post, path, {"phase": "resume", "effect_id": effect["effect_id"]},
+        )
         assert result["data"]["state"] == "succeeded", result
         assert secret not in json.dumps(result)
         snapshot = registry.snapshot()
@@ -4771,12 +4787,11 @@ def test_all_high_risk_commands_http_require_host_approval_and_run_once(
         assert before_effect() == expected_before
 
         approve(str(pending["data"]["approval_request_id"]), invocation_id)
-        status, completed = post(
-            "/api/command-protocol/v1/high-risk",
+        completed = _resume_until_terminal(
+            post, "/api/command-protocol/v1/high-risk",
             {"phase": "resume", "invocation_id": invocation_id},
         )
-        assert status == 200, completed
-        assert completed["data"]["state"] == "succeeded"
+        assert completed["data"]["state"] == "succeeded", completed
         expected_after = after_effect()
         assert expected_after != expected_before
 

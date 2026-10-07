@@ -616,8 +616,9 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    # Receipt settlement and completion confirmation each recheck the capture.
-    assert len(guards) == 13
+    # Fresh owner preflight, receipt settlement and completion confirmation
+    # each recheck the capture.
+    assert len(guards) == 15
     repeated = invoke(factory.operation_id, session.initial, invocation)
     assert repeated["status"] == "existing"
     assert repeated["turn"] == result["turn"]

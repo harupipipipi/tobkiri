@@ -231,6 +231,43 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         "tobkiri_ui_settings_pack", "rumi_conversation_store_pack",
         "rumi_turn_runtime_pack",
     }
+    # The predecessor must be a valid selection: a retained consumer cannot
+    # require a contract whose only provider is one of the source additions.
+    # Derive removal from the public manifest, retaining all resolver checks.
+    selected_ids = {
+        row["pack_id"] for row in previous_definition["packs"]
+        if row.get("selected", True)
+    } | {
+        previous_definition["base"]["pack_id"],
+        previous_definition["shell"]["pack_id"],
+    }
+    while True:
+        retained = selected_ids - added_packs
+        contracts = {
+            contract["contract_id"]
+            for pack_id in retained
+            for contract in predecessor_catalog.packs[pack_id]["contracts"]
+        }
+        dependents = {
+            pack_id for pack_id in retained
+            if any(
+                required not in retained
+                for required in predecessor_catalog.packs[pack_id]["requirements"][
+                    "pack_dependencies"
+                ]
+            ) or any(
+                not dependency.get("optional", False)
+                and dependency["contract_id"] not in contracts
+                for dependency in predecessor_catalog.packs[pack_id]["requirements"][
+                    "contract_dependencies"
+                ]
+            )
+        }
+        if not dependents:
+            break
+        added_packs.update(dependents)
+    assert previous_definition["base"]["pack_id"] not in added_packs
+    assert previous_definition["shell"]["pack_id"] not in added_packs
     previous_definition["packs"] = [
         row for row in previous_definition["packs"] if row["pack_id"] not in added_packs
     ]

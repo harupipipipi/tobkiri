@@ -224,9 +224,9 @@ def test_saved_send_model_unset_is_typed_rejection_without_writes(
         status, payload, _ = _post(
             server, headers, "/api/chat/turn", _turn_body()
         )
-        assert status == 400, payload
+        assert status == 409, payload
         assert payload["data"]["state"] == "error"
-        assert payload["data"]["code"] == "INVALID_REQUEST"
+        assert payload["data"]["code"] == "SAVED_TURN_NOT_STARTED"
         assert payload["data"]["retryable"] is False
         assert store.get("conversation-1")["messages"] == []
         assert store.path.read_bytes() == before

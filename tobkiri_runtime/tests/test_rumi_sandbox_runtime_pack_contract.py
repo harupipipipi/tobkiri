@@ -80,7 +80,15 @@ def test_pack_required_assets_metadata_and_schema_validity() -> None:
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
     assert ecosystem["metadata"]["executable_code"] is False
     assert ecosystem["metadata"]["registers_tools"] is False
-    assert _asset_index_paths(ecosystem) == (
+    canonical = read_json(PACK_DIR / "pack.v4.json")
+    runtime_assets = {
+        artifact["path"]
+        for artifact in canonical["artifacts"]
+        if artifact["kind"] == "executable"
+    }
+    # Compatibility metadata indexes declarative assets; executable ownership
+    # belongs to the canonical v4 artifact declaration.
+    assert _asset_index_paths(ecosystem) | runtime_assets == (
         _meaningful_pack_assets() - V4_AUTHORITY_ARTIFACTS
     )
 
