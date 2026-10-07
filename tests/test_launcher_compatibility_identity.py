@@ -49,6 +49,7 @@ ALLOWED_DERIVED_IDENTIFIERS = {
             "tobkiri_launcher/packvm-vz-helper/Sources/PackVMVZCore/LaunchAssets.swift",
             "tobkiri_launcher/packvm-vz-helper/Sources/PackVMVZCore/VZSupervisor.swift",
             "tobkiri_launcher/scripts/package_macos_dmg.sh",
+            "tobkiri_launcher/scripts/start_development_launcher.py",
             "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/"
             "macos_vz_provisioner.py",
         }
