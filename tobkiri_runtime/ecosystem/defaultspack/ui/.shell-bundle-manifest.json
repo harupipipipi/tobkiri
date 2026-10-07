@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "95b235a8a4056d2648bb5edee4f0b1c485ba9529af81d1d003e6c9efbb5c365b",
+    "digest": "ab19fa793f0bc9e01de97b114e10274a1e4298a66cbb2446502ca3e6165f8053",
     "entries": [
       {
         "path": "index.html",
@@ -11,7 +11,7 @@
       {
         "path": "package-lock.json",
         "size": 140033,
-        "sha256": "0a8e13ac353c239b481564fdb03e1a45f31b6a83a6cc9acb04a87300aeb38983"
+        "sha256": "488dd2e782d36e83dead2799fb0ce3d0fb94a67111e7ae0ef3e55ff14435fe4f"
       },
       {
         "path": "package.json",
