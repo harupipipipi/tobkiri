@@ -16,7 +16,7 @@ from core_runtime.profile_content_projection import (
 )
 from core_runtime.profile_pack_projection import ProjectionPackSource
 from tobkiri_protocol.validation import validate_document
-from test_pack_authoring import _build
+from tests.test_pack_authoring import _build
 
 
 ROOT = Path(__file__).resolve().parents[1]

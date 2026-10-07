@@ -20,7 +20,7 @@ from core_runtime.resolved_profile_scope import (
 from core_runtime.workflow_v4.engine import WorkflowEngineV4
 from core_runtime.workflow_v4.models import WorkflowValidationError
 from core_runtime.workflow_v4.store import WorkflowStoreV4
-from test_workflow_v4 import Authority, Catalog, Invoker, Validator, definition
+from tests.test_workflow_v4 import Authority, Catalog, Invoker, Validator, definition
 
 
 def _selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
