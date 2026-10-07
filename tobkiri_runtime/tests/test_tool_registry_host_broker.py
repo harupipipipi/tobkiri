@@ -89,11 +89,16 @@ def test_production_registry_uses_only_selected_pack_data(
         assert ("calculator" in identifiers) is selected
         chat_ids = {"chat_list_targets", "chat_resolve_target", "chat_send_message"}
         assert (chat_ids <= identifiers) if selected else identifiers.isdisjoint(chat_ids)
-        lock = json.loads((
-            tmp_path / "packaged-defaultspack/v4/defaults.profile.lock.v5.json"
-        ).read_bytes())
-        selected_packs = {item["identity"] for item in lock["effective_set"]}
+        from core_runtime.bootstrap.profile_capture import capture_active_profile
+
+        session.assert_current()
+        active = capture_active_profile()
+        assert active.resolved.profile["profile_id"] == session.profile_id
+        selected_packs = {
+            item["identity"] for item in active.resolved.lock["effective_set"]
+        }
         assert ("rumi_default_tools_pack" in selected_packs) is selected
+        session.assert_current()
         with pytest.raises(ProviderExecutionError):
             session.invoke(
                 contract,
