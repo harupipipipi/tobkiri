@@ -18,7 +18,7 @@ from core_runtime.resolved_profile_scope import (
     restore_resolved_profile,
 )
 from core_runtime.workflow_v4.engine import WorkflowEngineV4
-from core_runtime.workflow_v4.models import WorkflowValidationError
+from core_runtime.workflow_v4.models import WorkflowDenied, WorkflowValidationError
 from core_runtime.workflow_v4.store import WorkflowStoreV4
 from tests.test_workflow_v4 import Authority, Catalog, Invoker, Validator, definition
 
@@ -70,8 +70,10 @@ def test_selected_workflow_uses_real_compiler_without_authority_or_store_writes(
             compile_selected_workflow(engine, "example")
         catalog.value = Catalog().value
         catalog.value["operations"].append(catalog.value["operations"][0])
-        with pytest.raises(WorkflowValidationError, match="duplicate"):
+        with pytest.raises(WorkflowDenied, match="active Contract catalog is invalid") as denied:
             compile_selected_workflow(engine, "example")
+        assert isinstance(denied.value.__cause__, WorkflowValidationError)
+        assert "duplicate operation identity" in str(denied.value.__cause__)
     finally:
         store.close()
         restore_resolved_profile(token)
