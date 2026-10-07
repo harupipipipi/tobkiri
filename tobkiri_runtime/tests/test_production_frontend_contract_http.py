@@ -403,8 +403,11 @@ def _captured_production_server(
     *,
     packvm_backends: BackendRegistry | None = None,
     credential_store_factory=None,
+    authority_approval_window_open: (
+        Callable[[str], Mapping[str, object]] | None
+    ) = None,
 ) -> Iterator[tuple[PackAPIServer, object, AuthorityStore]]:
-    """Start one production capture, optionally with a test PackVM supervisor."""
+    """Start a production capture with optional guest and native transport ports."""
 
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
@@ -433,11 +436,16 @@ def _captured_production_server(
     def runtime_capture_inputs(current: object | None = None):
         """Bind refreshes to this test's explicit packaged Profile bundle."""
 
-        return replace(
+        inputs = replace(
             defaultspack_runtime_capture_inputs(current),
             bundle_root=bundle_root,
             ecosystem_root=RUNTIME_ROOT / "ecosystem",
         )
+        if authority_approval_window_open is not None:
+            inputs = replace(
+                inputs, authority_approval_window_open=authority_approval_window_open
+            )
+        return inputs
 
     catalog = BundledCatalog.load(bundle_root)
     bindings = load_frontend_contract_bindings(
@@ -445,6 +453,10 @@ def _captured_production_server(
         catalog.packs["runtime.tauri.application.default"],
     )
     composition = defaultspack_runtime_capture_inputs(active)
+    if authority_approval_window_open is not None:
+        composition = replace(
+            composition, authority_approval_window_open=authority_approval_window_open
+        )
     panel_auth = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
     session = capture_production_dispatch(
         active,
@@ -1754,10 +1766,97 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     progress_begins = []
     saved_envelopes = []
     execution_trace = []
+    native_commands = {}
+    native_decisions = []
+    calculator_effects = []
+    native_window = None
 
     if completion == "calculator":
+        from core_runtime.authority.ui_operator import sign_ui_operator
+        from core_runtime.authority.v4 import interactive_confirmation_digest
+        from ecosystem.rumi_default_tools_pack.runtime import calculator
+        from tobkiri_host.authority_approval_window import (
+            AuthorityApprovalWindowController,
+        )
+        from tobkiri_host.ports import (
+            AuthorityApprovalWindowOpenCommand,
+            InteractiveApprovalDecisionCommand,
+        )
         from tobkiri_host.saved_tool_consent import SavedToolConsentExecution
 
+        original_window = (
+            AuthorityApprovalWindowController.open_authority_approval_window
+        )
+
+        def observe_window(self, command: AuthorityApprovalWindowOpenCommand):
+            assert command.request_id not in native_commands
+            native_commands[command.request_id] = command
+            return original_window(self, command)
+
+        def decide_native(request_id: str) -> Mapping[str, object]:
+            """Test transport only; let real AuthorityControl verify the decision."""
+
+            assert request_id in native_commands
+            assert not native_decisions and not calculator_effects
+            command = native_commands[request_id]
+            pending = _authority.get_interactive_approval_request(request_id)
+            assert pending is not None
+            assert pending.target.operation_id == "host_consent.admit"
+            assert _authority.interactive_approval_state(request_id) == "pending"
+            assert _authority.get_interactive_approval_decision(request_id) is None
+            confirmation = ""
+            if pending.typed_confirmation_digest is not None:
+                confirmation = pending.redacted_metadata["confirmation_phrase"]
+                assert isinstance(confirmation, str) and confirmation
+                assert interactive_confirmation_digest(confirmation) == (
+                    pending.typed_confirmation_digest
+                )
+            proof = sign_ui_operator(
+                request_id,
+                nonce=str(uuid.uuid4()),
+                decision="approve",
+                request_snapshot_digest=pending.digest.removeprefix("sha256:"),
+                typed_confirmation_digest=(
+                    pending.typed_confirmation_digest.removeprefix("sha256:")
+                    if pending.typed_confirmation_digest is not None else None
+                ),
+            )
+            result = _session.authority_control.approve_interactive_approval(
+                InteractiveApprovalDecisionCommand(
+                    context=command.context,
+                    request_id=request_id,
+                    actor_id="test-native-user",
+                    confirmation_text=confirmation,
+                    ui_operator=proof,
+                )
+            )
+            assert result.request_id == request_id and result.state == "approved"
+            decision = _authority.get_interactive_approval_decision(request_id)
+            assert decision is not None and decision.decision == "approved"
+            assert decision.request_snapshot_digest == pending.digest
+            assert decision.typed_confirmation_verified == (
+                pending.typed_confirmation_digest is not None
+            )
+            native_decisions.append(request_id)
+            return {"opened": True}
+
+        monkeypatch.setattr(
+            AuthorityApprovalWindowController,
+            "open_authority_approval_window",
+            observe_window,
+        )
+        native_window = decide_native
+        original_calculate = calculator.calculate
+
+        def observe_calculate(expression: str) -> int | float:
+            """Count actual Calculator provider execution, excluding preflight."""
+
+            assert len(native_decisions) == 1
+            result = original_calculate(expression)
+            calculator_effects.append((expression, result))
+            return result
+
+        monkeypatch.setattr(calculator, "calculate", observe_calculate)
         original_consent = SavedToolConsentExecution.__call__
 
         def observe_consent(self, invocation, execution, payload):
@@ -1900,6 +1999,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         tmp_path,
         monkeypatch,
         packvm_backends=BackendRegistry((saved_backend,)),
+        authority_approval_window_open=native_window,
     )
     server, _session, _authority = next(servers)
     try:
@@ -2026,7 +2126,14 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         calls_before_repeat = (
             len(ai_calls), len(tool_requests), len(tool_results),
             len(progress_begins), len(selected_tools),
+            len(saved_envelopes) if completion == "calculator" else 0,
+            len(native_commands), len(native_decisions),
+            len(calculator_effects),
         )
+        approvals_before_repeat = tuple(
+            request.request_id
+            for request in _authority.list_interactive_approval_requests()
+        ) if completion == "calculator" else ()
         status, repeated, _ = _request(
             server,
             "POST",
@@ -2052,7 +2159,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert (
             len(ai_calls), len(tool_requests), len(tool_results),
             len(progress_begins), len(selected_tools),
+            len(saved_envelopes) if completion == "calculator" else 0,
+            len(native_commands), len(native_decisions),
+            len(calculator_effects),
         ) == calls_before_repeat
+        if completion == "calculator":
+            assert tuple(
+                request.request_id
+                for request in _authority.list_interactive_approval_requests()
+            ) == approvals_before_repeat
         completed_turn = repeated["data"]["turn"]
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
         if completion == "provider_error":
@@ -2079,6 +2194,10 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             ]
             assert "system_prompt_digest" not in ai_calls[0]
         if completion == "calculator":
+            assert len(native_commands) == len(native_decisions) == 1
+            assert tuple(native_commands) == tuple(native_decisions)
+            assert approvals_before_repeat == tuple(native_decisions)
+            assert calculator_effects == [("6*7", 42)]
             assert len(tool_requests) == 1
             assert tool_requests[0]["tool_id"] == "calculator"
             assert tool_requests[0]["tool_call_id"] == "calc-1"
