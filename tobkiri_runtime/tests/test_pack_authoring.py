@@ -14,7 +14,8 @@ from core_runtime.pack_authoring import (
     build_python_pack,
 )
 from tobkiri_host.artifact_compiler import compile_pack_root
-from tobkiri_host.errors import ResolutionError
+from tobkiri_host.errors import InvalidArtifactError
+from tobkiri_host.models import PackageKind
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -114,7 +115,7 @@ def test_public_producer_compiles_without_importing_pack_code(tmp_path: Path) ->
     assert route["backend"] == "tobkiri.python-pack-v4"
     assert route["runtime_abi"] == "python3.13"
     assert route["execution_kind"] == "pack_vm"
-    assert compiled.artifact.package_kind == "normal_sandbox"
+    assert compiled.artifact.package_kind is PackageKind.NORMAL
     manifest = json.loads((root / "pack.v4.json").read_text())
     assert manifest["requirements"]["capabilities"] == []
     assert manifest["requirements"]["execution_boundary"] == "sandbox"
@@ -129,7 +130,7 @@ def test_deterministic_build_and_tampered_source_rejected(tmp_path: Path) -> Non
         path.relative_to(second): path.read_bytes() for path in second.rglob("*") if path.is_file()
     }
     (first / "runtime/main.py").write_bytes(SOURCE + b"# mutation\n")
-    with pytest.raises(ResolutionError, match="implementation|digest"):
+    with pytest.raises(InvalidArtifactError, match="implementation|digest"):
         compile_pack_root(first)
 
 
