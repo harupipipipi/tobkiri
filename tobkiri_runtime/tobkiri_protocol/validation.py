@@ -409,6 +409,24 @@ def _duplicate_identity_diagnostics(document: Mapping[str, Any]) -> list[str]:
 def _profile_security_diagnostics(document: Mapping[str, Any]) -> list[str]:
     diagnostics: list[str] = []
     state = document.get("state")
+    optional_ids = [
+        item.get("pack_id")
+        for item in document.get("optional_pack_revisions", [])
+        if isinstance(item, Mapping)
+    ]
+    if len(optional_ids) != len(set(optional_ids)):
+        diagnostics.append("$.optional_pack_revisions: duplicate Pack intent")
+    reserved_ids = {
+        item.get("pack_id")
+        for item in (document.get("base"), document.get("shell"))
+        if isinstance(item, Mapping)
+    }
+    if state != "resolved":
+        reserved_ids.update(
+            item.get("pack_id") for item in document.get("packs", []) if isinstance(item, Mapping)
+        )
+    if set(optional_ids) & reserved_ids:
+        diagnostics.append("$.optional_pack_revisions: optional intent overlaps a required Pack")
     if state == "resolved":
         base = document.get("base")
         if not isinstance(base, Mapping) or not isinstance(base.get("artifact_digest"), str):

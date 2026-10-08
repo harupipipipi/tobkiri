@@ -427,10 +427,15 @@ def pack_revision_catalog_transaction() -> Iterator[None]:
         yield
 
 
-def external_pack_content_digest(pack_id: str) -> str | None:
+def external_pack_content_digest(
+    pack_id: str,
+    *,
+    artifact_digest: str | None = None,
+) -> str | None:
     """Return a reverified CAS content digest for one external Normal Pack."""
 
-    entry = load_external_pack_catalog().entries.get(str(pack_id or "").strip())
+    pins = {pack_id: artifact_digest} if artifact_digest is not None else None
+    entry = load_external_pack_catalog(pins).entries.get(str(pack_id or "").strip())
     if entry is None:
         return None
     return str(entry["content_digest"])

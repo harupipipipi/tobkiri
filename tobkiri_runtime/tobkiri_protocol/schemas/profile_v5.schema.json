@@ -52,6 +52,19 @@
         }
       }
     },
+    "optional_pack_revisions": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pack_id", "artifact_digest"],
+        "properties": {
+          "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      }
+    },
     "content_projections": {
       "type": "array",
       "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json#/$defs/resolvedProjection"},

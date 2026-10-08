@@ -19,3 +19,10 @@ test('retained revisions require an exact selected digest and finite identities'
   assert.throws(() => parseProfilePackVersions({...view(), profile_id: '../profile'}), /invalid/);
   assert.throws(() => parseProfilePackVersions({...view(), store_generation: -1}), /invalid/);
 });
+test('optional revision intent is finite and carries no enablement or approval', () => {
+  const optional = view(); optional.packs[0].role = 'optional';
+  assert.deepEqual(parseProfilePackVersions(optional), optional);
+  assert.throws(() => parseProfilePackVersions({...optional, packs: [{...optional.packs[0], enabled: true}]}), /invalid/);
+  optional.packs[0].role = 'host';
+  assert.throws(() => parseProfilePackVersions(optional), /invalid/);
+});

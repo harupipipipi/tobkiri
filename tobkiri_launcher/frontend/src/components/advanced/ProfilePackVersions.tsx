@@ -61,6 +61,7 @@ export function ProfilePackVersions({profileId, definitionDigest, disabled, onSa
       {!view && !error ? <p role="status">{t('pack_versions.loading')}</p> : null}
       {view?.packs.map((pack) => <div key={pack.pack_id} className="mb-3 flex flex-wrap items-end gap-3">
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">{pack.pack_id}
+          {pack.role === 'optional' ? <span className="text-xs text-text-secondary">{t('pack_versions.optional')}</span> : null}
           <select aria-label={t('pack_versions.choose', {pack: pack.pack_id})} value={choices[pack.pack_id] ?? pack.selected_digest}
             disabled={disabled || busy} className="rounded-md border border-border bg-bg-main px-3 py-2"
             onChange={(event) => setChoices((current) => ({...current, [pack.pack_id]: event.target.value}))}>

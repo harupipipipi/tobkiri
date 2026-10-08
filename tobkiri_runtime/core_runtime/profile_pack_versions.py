@@ -32,7 +32,36 @@ def profile_pack_versions(profile_id: str) -> dict[str, Any]:
         raise ProfileDefinitionNotFound(profile_id)
     external = load_external_pack_catalog()
     rows: list[dict[str, Any]] = []
-    for selection in profile.profile["packs"]:
+    from .pack_control_v4 import _required_profile_pack_ids
+
+    required = _required_profile_pack_ids(profile_id, catalog=catalog)
+    optional_pins = {
+        row["pack_id"]: row["artifact_digest"]
+        for row in profile.profile.get("optional_pack_revisions", [])
+    }
+    optional_ids = (
+        {
+            pack_id
+            for pack_id, manifest in catalog.packs.items()
+            if manifest["pack"]["kind"] == "normal_sandbox"
+        }
+        | {
+            pack_id
+            for pack_id, versions in external.versions.items()
+            if all(
+                entry["catalog_record"]["kind"] == "normal_sandbox" for entry in versions.values()
+            )
+        }
+        | set(optional_pins)
+    )
+    selections = [
+        *profile.profile["packs"],
+        *(
+            {"pack_id": pack_id, "artifact_digest": optional_pins.get(pack_id), "role": "optional"}
+            for pack_id in sorted(optional_ids - required)
+        ),
+    ]
+    for selection in selections:
         pack_id = str(selection["pack_id"])
         baseline = catalog.packs.get(pack_id)
         versions: dict[str, dict[str, Any]] = {}
@@ -135,9 +164,21 @@ def _select_profile_pack_version_locked(payload: Mapping[str, Any]) -> dict[str,
     if current.profile_revision != payload["expected_profile_revision"]:
         raise ProfileDefinitionStoreConflict("Profile Pack version selection is stale")
     candidate = deepcopy(dict(current.profile))
-    for row in candidate["packs"]:
-        if row["pack_id"] == payload["pack_id"]:
-            row["artifact_digest"] = payload["artifact_digest"]
+    if matches[0]["role"] == "optional":
+        pins = {
+            row["pack_id"]: row["artifact_digest"]
+            for row in candidate.get("optional_pack_revisions", [])
+        }
+        pins[str(payload["pack_id"])] = str(payload["artifact_digest"])
+        candidate["optional_pack_revisions"] = [
+            {"pack_id": pack_id, "artifact_digest": digest}
+            for pack_id, digest in sorted(pins.items())
+        ]
+        _validate_optional_revision(candidate, str(payload["pack_id"]))
+    else:
+        for row in candidate["packs"]:
+            if row["pack_id"] == payload["pack_id"]:
+                row["artifact_digest"] = payload["artifact_digest"]
     # No source paths, Contract/Operation changes, grants, or copied authority
     # enter this patch. Normal resolution must accept the exact retained graph;
     # changed operation semantics require the existing Profile wiring review.
@@ -209,3 +250,21 @@ def _validate_candidate(candidate: Mapping[str, Any]) -> None:
             },
             security_epoch=authority.security_epoch,
         )
+
+
+def _validate_optional_revision(candidate: Mapping[str, Any], pack_id: str) -> None:
+    """Verify retained optional bytes/dependencies without deriving authority."""
+    from .pack_control_v4 import catalog_with_admitted_pack_closure
+    from .profile_pack_intents import profile_artifact_pins
+
+    catalog, _ = catalog_with_admitted_pack_closure(
+        host_profile_catalog(),
+        [pack_id],
+        artifact_pins=profile_artifact_pins(candidate),
+    )
+    manifest = catalog.packs[pack_id]
+    if (
+        manifest["pack"]["kind"] != "normal_sandbox"
+        or manifest["requirements"]["execution_boundary"] != "sandbox"
+    ):
+        raise ValueError("optional revision must be an admitted Normal Pack")

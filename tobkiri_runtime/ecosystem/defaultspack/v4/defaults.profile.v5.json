@@ -211,7 +211,7 @@
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
     "source_digest": "sha256:7bd85f6f218a577cbfd43ac95879b93ff03c8fe3b7ebee25d616377e6f1e98fa",
     "repository_commit": "working-tree",
-    "repository_tree": "25972fb7a37ce7105bbe0cda4b62a2a38eedb3642269b1ed3205b453baa88e39",
+    "repository_tree": "6ebccc55341af8aa74305a4a133710dabeb10d042b012502c81f048548f9504b",
     "generator": "tobkiri-profile-artifacts",
     "generator_version": "1.0.0",
     "normative": false,
@@ -259,7 +259,7 @@
       {
         "path": "tobkiri_protocol/validation.py",
         "rule_id": "compatibility-projection-input-bytes",
-        "digest": "sha256:91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb"
+        "digest": "sha256:aa80a70cbd7ad37bf8f5bc80fad28273c43eed15231ff6613d87b4aaa1f2abee"
       }
     ]
   },

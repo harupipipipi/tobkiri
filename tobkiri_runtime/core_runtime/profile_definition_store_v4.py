@@ -276,6 +276,22 @@ class ProfileDefinitionStore:
                 return self._stored_from_entry(entry)
         return None
 
+    def get_profile_revision(
+        self,
+        profile_id: str,
+        profile_revision: str,
+    ) -> Mapping[str, Any] | None:
+        """Read one verified immutable definition, never substitute the head."""
+        safe_id = _safe_profile_id(profile_id)
+        validate_artifact_digest(profile_revision, field="profile_revision")
+        for entry in self.snapshot()["profiles"]:
+            if entry["profile_id"] != safe_id or entry["tombstone"]:
+                continue
+            for revision in entry["revisions"]:
+                if revision["profile_revision"] == profile_revision and not revision["tombstone"]:
+                    return copy.deepcopy(revision["profile"])
+        return None
+
     def require_current_profile(
         self,
         profile_id: str,
