@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a2ce18f4b8c8bdd352b6c50e2c706cb75d378125d712782feec630b2b03049e7",
+  "catalog_digest": "sha256:61145f7925e7b7289a3cf06e079658c4ca9e3d0e5174872c95ce2a2167cbc31a",
   "pack_id": "rumi_model_registry_pack",
-  "source_identity": "sha256:39fa5eca4dcd22f0980d14a504e9b8f62d1020efd47bc32b7c8494da4838da30",
+  "source_identity": "sha256:21e271f13770a9813bf3f3a7d7932d8e9e615cdb496bc095773479e538721937",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [

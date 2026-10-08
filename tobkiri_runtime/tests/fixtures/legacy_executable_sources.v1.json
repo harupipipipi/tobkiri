@@ -12751,7 +12751,7 @@
       "legacy_functions": [
         {
           "function_id": "rumi_model_registry_pack.model-registry.profile",
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "operation_ids": [
             "rumi_model_registry_pack.model-profile-resource"

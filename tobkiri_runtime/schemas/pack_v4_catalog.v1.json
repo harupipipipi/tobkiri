@@ -1732,7 +1732,7 @@
           "path": "defaultspack/managed_desktop_presentation.py"
         },
         {
-          "digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+          "digest": "sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9",
           "index_role": "asset",
           "kind": "asset",
           "path": "defaultspack/frontend_contract_map.v4.json"
@@ -1767,7 +1767,7 @@
         "owner": "defaultspack",
         "source_format": "pack.v4.json"
       },
-      "version": "4.0.0",
+      "version": "4.0.1",
       "workspace_boundary": "pack_local"
     },
     {
@@ -2570,7 +2570,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe"
+              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2603,7 +2603,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe"
+              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2636,7 +2636,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe"
+              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2746,7 +2746,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
@@ -2754,6 +2754,11 @@
           "digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2",
           "kind": "executable",
           "path": "runtime/route_quote.py"
+        },
+        {
+          "digest": "sha256:d57cfdb76c328ae9c54c045e1d5446b7d51f5afce9735ecc6052eff870f50608",
+          "kind": "executable",
+          "path": "runtime/model_parameters.py"
         }
       ],
       "secrets": [],
@@ -2775,7 +2780,7 @@
         "owner": "rumi_ai_gateway_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "host_brokered"
     },
     {
@@ -16313,7 +16318,7 @@
             {
               "entrypoint_id": "model-profile-manage",
               "id": "rumi_model_registry_pack.model-profile-manage",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+              "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -16348,7 +16353,7 @@
             {
               "entrypoint_id": "model-registry-migrate",
               "id": "rumi_model_registry_pack.model-registry-migrate",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+              "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -16386,7 +16391,7 @@
               ],
               "entrypoint_id": "model-profile-resource",
               "id": "rumi_model_registry_pack.model-profile-resource",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+              "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d"
             },
             {
               "effect_ceiling": [
@@ -16394,7 +16399,7 @@
               ],
               "entrypoint_id": "model-profile-resource.generate",
               "id": "rumi_model_registry_pack.model-profile-resource.generate",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+              "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d"
             },
             {
               "effect_ceiling": [
@@ -16402,7 +16407,7 @@
               ],
               "entrypoint_id": "model-profile-resource.stream",
               "id": "rumi_model_registry_pack.model-profile-resource.stream",
-              "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+              "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -16585,17 +16590,17 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "kind": "executable",
           "path": "runtime/process.py"
         },
         {
-          "digest": "sha256:e35a376f5bb191e8524da6e1e261c2d0e288eb14cc00b64639198a398e241d6a",
+          "digest": "sha256:914f3ae52ad43642c3f366ae698b9efece647e840780b8f209fda925a8dad20a",
           "kind": "executable",
           "path": "runtime/registry.py"
         },
         {
-          "digest": "sha256:8276438b203636f1f8d724cd97d4320b55e3a32f1368c7daf4325e25a17c6844",
+          "digest": "sha256:b3e7c21f73a930f765c3fc1c44c40588d2eac37ccfb1fbd9212ddcc15ca795c3",
           "kind": "executable",
           "path": "runtime/service.py"
         }
@@ -16619,7 +16624,7 @@
         "owner": "rumi_model_registry_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "host_brokered"
     },
     {

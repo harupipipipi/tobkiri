@@ -171,7 +171,7 @@ def test_native_update_reuses_exact_publisher_key_and_retains_both_revisions(mon
     for version in ("1.0.0", "1.1.0"):
         directory = tmp_path / version
         directory.mkdir()
-        releases.append(fixture_module._signed_external_pack(directory, version=version, signing_key=key))
+        releases.append(fixture_module._signed_external_pack(directory, version=version, signing_key=key, runtime_suffix="\n# native release " + version + "\n"))
     public = tmp_path / "publisher.pem"
     public.write_bytes(key.public_key().public_bytes(
         encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))

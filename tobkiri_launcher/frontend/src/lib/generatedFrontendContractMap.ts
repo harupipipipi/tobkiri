@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092
+// Raw source digest: sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+  "artifact_digest": "sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9",
   "routes": [
     {
       "method": "GET",
@@ -1053,7 +1053,8 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "provider_instance_id",
             "display_name",
             "expected_revision",
-            "provider_registry_revision"
+            "provider_registry_revision",
+            "max_output_tokens"
           ]
         }
       ]
@@ -2728,7 +2729,8 @@ const EXPECTED_ROUTES = {
           "provider_instance_id",
           "display_name",
           "expected_revision",
-          "provider_registry_revision"
+          "provider_registry_revision",
+          "max_output_tokens"
         ]
       }
     ]

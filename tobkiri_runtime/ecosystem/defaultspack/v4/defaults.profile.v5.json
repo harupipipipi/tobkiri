@@ -211,7 +211,7 @@
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
     "source_digest": "sha256:7bd85f6f218a577cbfd43ac95879b93ff03c8fe3b7ebee25d616377e6f1e98fa",
     "repository_commit": "working-tree",
-    "repository_tree": "caae0aed66047a4f467737717a0a29fdc21ab9f8cfa0fa51c084f607fc397d9e",
+    "repository_tree": "25972fb7a37ce7105bbe0cda4b62a2a38eedb3642269b1ed3205b453baa88e39",
     "generator": "tobkiri-profile-artifacts",
     "generator_version": "1.0.0",
     "normative": false,
@@ -224,7 +224,7 @@
       {
         "path": "core_runtime/profile_pack_projection.py",
         "rule_id": "compatibility-projection-input-bytes",
-        "digest": "sha256:5886c01ec2c734cf0c0f15b1738d05877457a0ed140550524246e6e73c3caac0"
+        "digest": "sha256:9495cea4be873131eb881e42286c1a5353f3bb4f52901baaf56843e751cd82f1"
       },
       {
         "path": "scripts/generate_profile_artifacts.py",
@@ -259,7 +259,7 @@
       {
         "path": "tobkiri_protocol/validation.py",
         "rule_id": "compatibility-projection-input-bytes",
-        "digest": "sha256:2ac005f422774b97371285a066a9e209b2750161aea75bf48bc6e4dfa30c2143"
+        "digest": "sha256:91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb"
       }
     ]
   },

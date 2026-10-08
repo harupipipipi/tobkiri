@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:d05dc44621730a38eb42b5e76d1272b89765b7e1ca74f8084f95f9ef26b58a10",
+  "artifact_set_digest": "sha256:53a28b74c8a15bb878bc32b024f68c36c66956b5f124808c90c94ccfb9d7af3a",
   "artifacts": [
     {
-      "digest": "sha256:4ad26561875b0f13577dd0f9b9ae360aeff3a4ae6ae48398046be2d759a5f459",
+      "digest": "sha256:4631f21a5c1eababb00b95851978d3a0209c50cb8293fdc3dee3c6c3d8b55840",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+      "digest": "sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9",
       "path": "defaultspack/frontend_contract_map.v4.json",
       "role": "asset"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:144d2774c319c9a6d873d76f1c3652ea8667c9ffcb852735fe75646297044d0b",
+      "digest": "sha256:0872f7f3a007e9374ba55cdc58454f635035c45112547cda01b8bad4368a24ee",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:7ad99f8dd9d3c2b4011523108b0cc325626077aca25504f88f4bc5ed8e231c15",
+      "digest": "sha256:12a3fd27b30c59c76ffddfbb7393bde9c4e8558bc2187e8ce76eef44e5b6fcbe",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -680,8 +680,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:0f20df21edd088fbbc5b8522b917ebb548b2bd6ae26cf41f747b8cfce7066663"
+    "signed_digest": "sha256:8ebe0c3eca4eb30db71b1c8586aa5c49c35cf83413a21fde4fb4d06c69cd58ae"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:a4bca2fac4768d9ffe87916c9e58db0d9f5c14d76df033fd0fff856761c6e9b0"
+  "source_identity": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc"
 }

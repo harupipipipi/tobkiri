@@ -3849,7 +3849,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -3863,7 +3863,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4329,7 +4329,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4343,7 +4343,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4382,7 +4382,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4396,7 +4396,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -18720,7 +18720,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -18734,7 +18734,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18773,7 +18773,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -18787,7 +18787,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18826,7 +18826,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "additionalProperties": false,
@@ -18984,7 +18984,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19150,7 +19150,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19315,7 +19315,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:3984812ff37880b6da753b76756a63c895c3fd0d7dcbbe806a9d8c9d192ba37d",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -37705,7 +37705,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:258d566e9ee58384bd1b39f14d7b58918b045d90189ae7511425c721efece1b4",
+    "input_digest": "sha256:5f71a277d44db255cdd2d09511e81ae9eb19cdfbafe5c8805e0a52091d0444b7",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -37981,7 +37981,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:4136c9093a9ddcc9f701fedb3a2d52dedb7a189d8d04efa491def90d08236f2f",
+        "digest": "sha256:80e8bfb88eb4321508e98d99e266ab404eb7f12089924b5487c2cf76bceafc35",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json"
       },
@@ -38281,7 +38281,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_evals_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:67bf999723ad1e618aad22cd9467ccf72280cc2bfb3aed05bd1f3ec1788daaf4",
+        "digest": "sha256:ba316e4b25094d900e1ee225e51d071243fbd1fd586f6cbf997d1689367787e3",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/artifact-manifest.json"
       },
@@ -38456,7 +38456,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:a9b019d11078dd59a24662d39724bfc22982ac68e91d4779b291816dfa0da6d8",
+        "digest": "sha256:4a408913d33e18d73def90cb0799e66686d5051b6d87e8487ac33d6f762d0f88",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
