@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from contextlib import ExitStack, contextmanager
 import hashlib
 import hmac
@@ -59,6 +59,7 @@ class ExternalPackCatalogSnapshot:
     roots: Mapping[str, Path]
     entries: Mapping[str, Mapping[str, Any]]
     journal: tuple[Mapping[str, Any], ...]
+    versions: Mapping[str, Mapping[str, Mapping[str, Any]]] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,31 @@ def admit_signed_external_pack(
         )
 
 
+def admit_signed_pack_version(
+    source_root: Path,
+    *,
+    trust_store_path: Path,
+    expected_predecessor_digest: str,
+    expected_catalog_revision: str,
+    fault_injector: Callable[[str], None] | None = None,
+) -> Mapping[str, Any]:
+    """Admit a reviewed revision without replacing any selected Pack artifact."""
+    user_data = _user_data_root()
+    catalog_path = _catalog_path(user_data)
+    with _admission_policy_locks(trust_store_path, catalog_path) as policy_locks:
+        if not hmac.compare_digest(control_catalog_revision(), expected_catalog_revision):
+            raise ExternalPackCatalogDenied("Pack update catalog revision is stale")
+        return _admit_signed_external_pack_locked(
+            source_root,
+            trust_store_path=trust_store_path,
+            user_data=user_data,
+            catalog_path=catalog_path,
+            trust_policy_lock=policy_locks[0],
+            fault_injector=fault_injector,
+            expected_predecessor_digest=expected_predecessor_digest,
+        )
+
+
 @contextmanager
 def _admission_policy_locks(
     trust_store_path: Path,
@@ -130,6 +156,7 @@ def _admit_signed_external_pack_locked(
     catalog_path: Path,
     trust_policy_lock: HostPolicyLock,
     fault_injector: Callable[[str], None] | None,
+    expected_predecessor_digest: str | None = None,
 ) -> Mapping[str, Any]:
     source = Path(source_root)
     source_identity = _directory_identity(source)
@@ -142,12 +169,29 @@ def _admit_signed_external_pack_locked(
     pack_id = compiled.artifact.pack_id
     if pack_id != str(signed_manifest["pack_id"]):
         raise ExternalPackCatalogDenied("signed and v4 Pack identities differ")
-    if pack_id in load_pack_catalog():
+    if expected_predecessor_digest is None and pack_id in load_pack_catalog():
         raise ExternalPackCatalogDenied(
             "external Normal Pack cannot shadow the immutable bundled catalog"
         )
     record = _project_catalog_record(source, signed_manifest)
     artifact_digest = compiled.artifact.digest
+    catalog_key = pack_id
+    if expected_predecessor_digest is not None:
+        from .pack_version_selection import (
+            verify_version_predecessor, version_catalog_key,
+        )
+
+        try:
+            verify_version_predecessor(
+                pack_id,
+                expected_predecessor_digest,
+                versions=load_external_pack_catalog().versions,
+                publisher_id=str(signed_manifest["publisher_id"]),
+                version=str(signed_manifest["version"]),
+            )
+            catalog_key = version_catalog_key(pack_id, artifact_digest)
+        except (OSError, RuntimeError, ValueError) as error:
+            raise ExternalPackCatalogDenied("Pack update predecessor is invalid") from error
     content_digest = canonical_digest(
         {
             "signed_manifest": signed_manifest,
@@ -181,10 +225,14 @@ def _admit_signed_external_pack_locked(
         unsigned = _read_authenticated_catalog(catalog_path, allow_missing=True)
         entries = dict(unsigned["entries"])
         journal = list(unsigned["journal"])
-        current = entries.get(pack_id)
+        current = entries.get(catalog_key)
         if isinstance(current, Mapping):
             previous = _visible_entry(current)
             if previous is not None and previous.get("artifact_digest") == artifact_digest:
+                if previous.get("content_digest") != content_digest:
+                    raise ExternalPackCatalogDenied(
+                        "Pack artifact digest is already bound to different signed content"
+                    )
                 existing_root = _entry_root(previous, user_data)
                 _verify_entry_root(pack_id, previous, existing_root)
                 _require_current_trust_policy(
@@ -211,7 +259,7 @@ def _admit_signed_external_pack_locked(
             "previous": dict(previous) if previous is not None else None,
             "transaction_nonce": secrets.token_hex(32),
         }
-        entries[pack_id] = entry
+        entries[catalog_key] = entry
         _write_authenticated_catalog(catalog_path, entries, journal)
         prepared_written = True
         _inject(fault_injector, "prepared")
@@ -242,10 +290,10 @@ def _admit_signed_external_pack_locked(
         latest = _read_authenticated_catalog(catalog_path, allow_missing=False)
         latest_entries = dict(latest["entries"])
         latest_journal = list(latest["journal"])
-        current_prepared = latest_entries.get(pack_id)
+        current_prepared = latest_entries.get(catalog_key)
         if current_prepared != entry:
             raise ExternalPackCatalogDenied("external Pack catalog transaction was replaced")
-        latest_entries[pack_id] = committed
+        latest_entries[catalog_key] = committed
         latest_journal.append(_install_journal_event(committed, latest_journal))
         _write_authenticated_catalog(catalog_path, latest_entries, latest_journal)
         _inject(fault_injector, "committed")
@@ -256,12 +304,12 @@ def _admit_signed_external_pack_locked(
                 latest = _read_authenticated_catalog(catalog_path, allow_missing=False)
                 entries = dict(latest["entries"])
                 journal = list(latest["journal"])
-                current = entries.get(pack_id)
+                current = entries.get(catalog_key)
                 if isinstance(current, Mapping) and current.get("state") == "prepared":
                     if previous is None:
-                        entries.pop(pack_id, None)
+                        entries.pop(catalog_key, None)
                     else:
-                        entries[pack_id] = dict(previous)
+                        entries[catalog_key] = dict(previous)
                     _write_authenticated_catalog(catalog_path, entries, journal)
             except Exception:
                 # A prepared entry is never visible to readers; recovery can
@@ -280,34 +328,56 @@ def _admit_signed_external_pack_locked(
             shutil.rmtree(temporary)
 
 
-def load_external_pack_catalog() -> ExternalPackCatalogSnapshot:
-    """Load only committed, authenticated external Normal Pack entries."""
+def load_external_pack_catalog(
+    artifact_pins: Mapping[str, str] | None = None,
+) -> ExternalPackCatalogSnapshot:
+    """Verify every retained revision; project only explicit pins or baselines."""
+    from .pack_version_selection import catalog_key_identity
 
     user_data = _user_data_root()
     unsigned = _read_authenticated_catalog(_catalog_path(user_data), allow_missing=True)
     records: dict[str, Mapping[str, Any]] = {}
     roots: dict[str, Path] = {}
     entries: dict[str, Mapping[str, Any]] = {}
-    for pack_id, raw_entry in sorted(unsigned["entries"].items()):
+    versions: dict[str, dict[str, Mapping[str, Any]]] = {}
+    verified: dict[str, Mapping[str, Any]] = {}
+    for key, raw_entry in sorted(unsigned["entries"].items()):
         if not isinstance(raw_entry, Mapping):
             raise ExternalPackCatalogDenied("external Pack catalog entry is malformed")
         entry = _visible_entry(raw_entry)
         if entry is None:
             continue
+        try:
+            pack_id = catalog_key_identity(key, entry)
+        except ValueError as error:
+            raise ExternalPackCatalogDenied("Pack revision catalog key is invalid") from error
         _validate_entry(pack_id, entry)
         root = _entry_root(entry, user_data)
         _verify_entry_root(pack_id, entry, root)
         record = entry["catalog_record"]
         if not isinstance(record, Mapping) or record.get("pack_id") != pack_id:
             raise ExternalPackCatalogDenied("external Pack catalog record identity is invalid")
-        records[pack_id] = dict(record)
-        roots[pack_id] = root
-        entries[pack_id] = dict(entry)
+        digest = str(entry["artifact_digest"])
+        retained = versions.setdefault(pack_id, {})
+        if digest in retained and retained[digest] != entry:
+            raise ExternalPackCatalogDenied("Pack revision digest is duplicated")
+        retained[digest] = dict(entry)
+        verified[key] = dict(entry)
+        selected = (artifact_pins or {}).get(pack_id)
+        if (selected is None and key == pack_id) or selected == digest:
+            records[pack_id] = dict(record)
+            roots[pack_id] = root
+            entries[pack_id] = dict(entry)
+    for pack_id, digest in (artifact_pins or {}).items():
+        if pack_id in versions and digest not in versions[pack_id]:
+            # A bundled baseline is allowed only through its separate resolver.
+            if pack_id not in load_pack_catalog():
+                raise ExternalPackCatalogDenied("selected Pack revision is not admitted")
     revision = canonical_digest(
-        {"version": _CATALOG_VERSION, "entries": entries, "journal": unsigned["journal"]}
+        {"version": _CATALOG_VERSION, "entries": verified, "journal": unsigned["journal"]}
     )
     return ExternalPackCatalogSnapshot(
-        revision, records, roots, entries, tuple(unsigned["journal"])
+        revision, records, roots, entries, tuple(unsigned["journal"]), versions
     )
 
 
@@ -334,7 +404,7 @@ def control_catalog_revision() -> str:
     return canonical_digest(
         {
             "bundled": bundled,
-            "external_normal_packs": external.entries,
+            "external_normal_packs": external.versions,
         }
     )
 
@@ -364,7 +434,9 @@ def load_admitted_external_executable_catalog(
     normalized = str(pack_id or "").strip()
     if not normalized or not isinstance(expected_manifest, Mapping):
         raise ExternalPackCatalogDenied("external Pack executable request is invalid")
-    snapshot = load_external_pack_catalog()
+    snapshot = load_external_pack_catalog(
+        {normalized: str(expected_manifest["pack"]["artifact_digest"])}
+    )
     entry = snapshot.entries.get(normalized)
     root = snapshot.roots.get(normalized)
     if entry is None or root is None:
@@ -401,15 +473,23 @@ def load_admitted_external_executable_catalog(
 def resolve_admitted_pack_root(
     pack_id: str,
     bundled_root: Path | None = None,
+    *,
+    artifact_digest: str | None = None,
 ) -> Path:
     """Resolve one exact bundled or committed external Normal Pack root."""
 
     normalized = str(pack_id or "").strip()
     bundled = load_pack_catalog()
-    if normalized in bundled:
-        return resolve_pack_root(normalized, bundled_root)
-    snapshot = load_external_pack_catalog()
+    snapshot = load_external_pack_catalog(
+        {normalized: artifact_digest} if artifact_digest is not None else None
+    )
     root = snapshot.roots.get(normalized)
+    if root is None and normalized in bundled:
+        root = resolve_pack_root(normalized, bundled_root)
+        if artifact_digest is not None:
+            if compile_pack_root(root).artifact.digest != artifact_digest:
+                raise PackBoundaryError("selected bundled Pack revision is unavailable")
+        return root
     if root is None:
         raise PackBoundaryError(
             f"Pack is absent from the Host v4 catalog: {normalized}"
@@ -420,6 +500,8 @@ def resolve_admitted_pack_root(
 def resolve_admitted_pack_roots(
     pack_ids: tuple[str, ...],
     bundled_root: Path | None = None,
+    *,
+    artifact_pins: Mapping[str, str] | None = None,
 ) -> dict[str, Path]:
     """Resolve exactly the selected Host catalog Pack IDs."""
 
@@ -427,7 +509,9 @@ def resolve_admitted_pack_roots(
     if any(not item for item in normalized) or len(set(normalized)) != len(normalized):
         raise PackBoundaryError("selected Pack IDs must be unique and non-empty")
     return {
-        pack_id: resolve_admitted_pack_root(pack_id, bundled_root)
+        pack_id: resolve_admitted_pack_root(
+            pack_id, bundled_root, artifact_digest=(artifact_pins or {}).get(pack_id)
+        )
         for pack_id in normalized
     }
 
@@ -1395,6 +1479,7 @@ __all__ = [
     "ExternalPackCatalogDenied",
     "ExternalPackCatalogSnapshot",
     "admit_signed_external_pack",
+    "admit_signed_pack_version",
     "control_catalog_revision",
     "external_pack_content_digest",
     "load_admitted_external_executable_catalog",

@@ -9,7 +9,7 @@
     "version": {"const": "io.tobkiri.external-normal-pack-catalog.v4"},
     "entries": {
       "type": "object",
-      "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+      "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*(?:@sha256:[0-9a-f]{64})?$"},
       "additionalProperties": {"$ref": "#/$defs/entry"}
     },
     "journal": {

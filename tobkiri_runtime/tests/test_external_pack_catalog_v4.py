@@ -112,9 +112,16 @@ def _signed_external_pack(
     materialization_catalog_digest: str | None = None,
     with_frontend: bool = False,
     frontend_artifact_kind: str = "ui.contribution",
+    version: str = "1.0.0",
+    publisher_id: str = "publisher.conformance",
 ) -> tuple[Path, Path]:
     source = tmp_path / PACK_ID
     shutil.copytree(FIXTURE, source)
+    if version != "1.0.0":
+        path = source / "pack.v4.json"
+        value = json.loads(path.read_text())
+        value["pack"]["version"] = version
+        _write_json(path, value)
     if kind is not None:
         pack_manifest_path = source / "pack.v4.json"
         pack_manifest = json.loads(pack_manifest_path.read_text(encoding="utf-8"))
@@ -186,8 +193,8 @@ def _signed_external_pack(
     manifest = build_signed_manifest(
         source,
         pack_id=PACK_ID,
-        version="1.0.0",
-        publisher_id="publisher.conformance",
+        version=version,
+        publisher_id=publisher_id,
         core_compatibility=">=0",
         contract_versions={CONTRACT_ID: "1.0.0"},
         requested_capabilities=[],
@@ -207,7 +214,7 @@ def _signed_external_pack(
         trust_store,
         {
             "publishers": {
-                "publisher.conformance": {
+                publisher_id: {
                     "public_key_pem": public_pem,
                     "allowed_pack_namespaces": ["conformance"],
                     "revoked_key_ids": [],
@@ -222,9 +229,9 @@ def _signed_external_pack(
         install_path=source,
         record={
             "signature_required": True,
-            "publisher_id": "publisher.conformance",
+            "publisher_id": publisher_id,
             "key_id": signed["signature"]["key_id"],
-            "installed_version": "1.0.0",
+            "installed_version": version,
             "signed_manifest_path": ".tobkiri/signed-pack.json",
             "contract_versions": {CONTRACT_ID: "1.0.0"},
             "requested_capabilities": [],
