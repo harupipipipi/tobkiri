@@ -10,6 +10,7 @@ mod defaultspack_authority;
 mod defaultspack_manager;
 mod desktop_system_info;
 mod development_packvm;
+mod development_host_handover;
 mod frontend_entry;
 mod health_check;
 mod host_audit;
@@ -4044,6 +4045,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             signed_pack_admission_status,
             admit_signed_pack_from_folder,
             onboard_signed_pack_from_folder,
+            development_host_handover::handover_previous_development_host,
+            development_host_handover::recover_development_host_handover,
             close_current_window,
             open_authority_approval_window,
             open_ambient_trigger_window,

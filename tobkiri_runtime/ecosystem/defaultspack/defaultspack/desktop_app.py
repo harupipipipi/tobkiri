@@ -829,7 +829,12 @@ def main(argv: list[str] | None = None) -> int:
         defaultspack_runtime_capture_inputs,
     )
 
-    packvm_lifecycle = PackVMLifecycleV4(default_packvm_provisioner())
+    from .development_host_handover import DevelopmentHostHandover
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import MacOSVZProvisioner
+
+    provisioner = default_packvm_provisioner()
+    handover = DevelopmentHostHandover(provisioner, bootstrap_profile_id="defaults") if isinstance(provisioner, MacOSVZProvisioner) else None
+    packvm_lifecycle = PackVMLifecycleV4(provisioner, development_host_handover=handover)
     get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
     runtime_capture_factory = partial(
         defaultspack_runtime_capture_inputs,

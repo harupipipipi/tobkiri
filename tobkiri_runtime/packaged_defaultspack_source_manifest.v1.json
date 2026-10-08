@@ -105,8 +105,22 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/desktop_app.py",
       "type": "regular-file",
-      "size": 37497,
-      "sha256": "2dd758e73226e724993ee4eb062afa0ada130c5bdd045b495817fc4acb49cc8b",
+      "size": 37878,
+      "sha256": "10834d9e278f46565579407cba619b9f08c51f17329b7faa08736580fafb6866",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/defaultspack/development_host_data.py",
+      "type": "regular-file",
+      "size": 16914,
+      "sha256": "8e2edf824e07a8080587039a78ae1bcc06ee50afdc662ff8d178d9eceb4e1937",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/defaultspack/development_host_handover.py",
+      "type": "regular-file",
+      "size": 22255,
+      "sha256": "ca4689fb22a045cec5a3f9ac5c965cbeec501923e29d787ca3f071f9ce4b687b",
       "executable": false
     },
     {
@@ -203,8 +217,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/runtime_composition.py",
       "type": "regular-file",
-      "size": 20470,
-      "sha256": "3fda91e2b8d19e84d36f63fb9491200d115ce04b38e54f5fd0123405cf80989f",
+      "size": 20821,
+      "sha256": "1209e4035be5f8aa2f42fa3e2501f245464aead7a4b04ae41f0a1ec990195fdc",
       "executable": false
     },
     {

@@ -547,6 +547,71 @@ class ProfileDefinitionStore:
             self._write_state(state)
             return self._stored_from_entry(entry)
 
+    def import_profile_successors(
+        self,
+        profiles: Sequence[Mapping[str, Any]],
+        *,
+        expected_store_generation: int,
+        expected_snapshot_digest: str,
+        on_committed: Callable[[Mapping[str, Any]], None],
+    ) -> None:
+        """Publish a reviewed data-only import in one immutable CAS transaction.
+
+        The completion callback runs under the registry lock, so a migration
+        fence cannot open against a different destination snapshot. Existing
+        revisions remain in the ordinary immutable history on interruption.
+        """
+        candidates = [_profile_document(profile) for profile in profiles]
+        ids = [str(profile["profile_id"]) for profile in candidates]
+        if len(set(ids)) != len(ids):
+            raise ProfileDefinitionStoreError("Profile import contains duplicate IDs")
+        with self._locked():
+            state = self._read_state()
+            self._check_generation(state, expected_store_generation)
+            if canonical_digest(state) != expected_snapshot_digest:
+                raise ProfileDefinitionStoreConflict("Profile import snapshot changed")
+            now = self._now()
+            changed = False
+            for candidate, safe_id in zip(candidates, ids):
+                entry = self._entry_for_id(state, safe_id)
+                revision = canonical_digest(candidate)
+                if entry is None:
+                    state["profiles"].append(
+                        _new_entry(
+                            safe_id,
+                            candidate,
+                            revision=revision,
+                            order=len(state["profiles"]),
+                            now=now,
+                        )
+                    )
+                else:
+                    if entry["tombstone"]:
+                        raise ProfileDefinitionStoreConflict("Profile import ID is tombstoned")
+                    current = self._stored_from_entry(entry)
+                    if dict(current.profile) == candidate:
+                        continue
+                    entry["revisions"].append(
+                        _revision_record(
+                            candidate,
+                            revision=revision,
+                            parent_revision=current.profile_revision,
+                            now=now,
+                        )
+                    )
+                    entry["current_revision"] = revision
+                    entry["updated_at"] = now
+                changed = True
+            if changed:
+                state["generation"] += 1
+                state["updated_at"] = now
+                state["bootstrap"] = {
+                    "state": "not_required",
+                    "template_profile_revision": None,
+                }
+                self._write_state(state)
+            on_committed(self._read_state())
+
     def duplicate_profile(
         self,
         profile_id: str,

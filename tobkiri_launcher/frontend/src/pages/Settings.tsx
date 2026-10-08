@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 
 import {AdvancedSurfaceFrame} from '@/src/components/advanced/AdvancedSurfaceFrame';
+import {DevelopmentHostHandover} from '@/src/components/advanced/DevelopmentHostHandover';
 import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -240,6 +241,7 @@ export function Settings() {
             <p className="rounded-lg border border-border bg-bg-main px-4 py-3 text-xs leading-5 text-text-muted">
               {t('settings.update_bundle_note')}
             </p>
+            {devtoolsEnabled ? <DevelopmentHostHandover /> : null}
 
             {launcherUpdate ? (
               <div

@@ -2904,6 +2904,9 @@ class MacOSVZProvisioner:
             attestation, _canonical_digest(unsigned)
         ):
             raise ValueError("PackVM VZ attestation digest failed")
+        from .macos_vz_handover import require_finalized_handover
+
+        require_finalized_handover(self._state_dir, state)
         return state
 
     def _verify_state_bindings(

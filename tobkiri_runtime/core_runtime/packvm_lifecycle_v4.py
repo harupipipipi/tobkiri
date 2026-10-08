@@ -146,10 +146,12 @@ class PackVMLifecycleV4:
         *,
         archive_max_bytes: int = PACKVM_OPERATIONS_ARCHIVE_MAX_BYTES,
         archive_max_records: int = PACKVM_OPERATIONS_ARCHIVE_MAX_RECORDS,
+        development_host_handover: Any = None,
     ) -> None:
         # The selected Application composes the concrete VZ/Lima provisioner.
         # Core owns the authenticated ceremony and never imports a Pack backend.
         self._provisioner = provisioner
+        self.development_host_handover = development_host_handover
         self._plans: dict[str, tuple[Any, str]] = {}
         self._consents: dict[str, tuple[PackVMProvisioningRequest, Any]] = {}
         self._operations_path = self._provisioner.state_path.parent / "packvm-operations.json"

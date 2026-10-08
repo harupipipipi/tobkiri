@@ -118,6 +118,18 @@ export async function onboardSignedPackFromFolder(): Promise<NativePackAdmission
   return invoke<NativePackAdmission | null>('onboard_signed_pack_from_folder');
 }
 
+/** Native pickers and an exact native confirmation own the migration inputs. */
+export async function handoverPreviousDevelopmentHost(): Promise<unknown | null> {
+  const invoke = await requireTauriInvoke('Development Host handover');
+  return invoke<unknown | null>('handover_previous_development_host');
+}
+
+/** Re-read interrupted state and obtain separate native rollback consent. */
+export async function recoverDevelopmentHostHandover(): Promise<unknown | null> {
+  const invoke = await requireTauriInvoke('Development Host recovery');
+  return invoke<unknown | null>('recover_development_host_handover');
+}
+
 export async function fetchDebugApprovalStatus(): Promise<DebugApprovalStatus | null> {
   const invoke = await loadTauriInvoke();
   return invoke ? invoke<DebugApprovalStatus>('debug_approval_status') : null;

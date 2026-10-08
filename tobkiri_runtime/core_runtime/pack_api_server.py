@@ -3067,6 +3067,10 @@ class PackAPIHandler(
 
         self._reset_request_state()
         path = urlparse(self.path).path
+        from .native_host_handover_http import handle_native_host_handover
+
+        if handle_native_host_handover(self, "POST", path):
+            return
         if self._handle_packvm_acceptance("POST", path):
             return
         if self._handle_packvm_lifecycle("POST", path):

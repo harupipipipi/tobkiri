@@ -434,7 +434,11 @@ def create_defaultspack_kernel(
 
     install_defaultspack_profile_runtime()
     provisioner = default_packvm_provisioner()
-    lifecycle = PackVMLifecycleV4(provisioner)
+    from .development_host_handover import DevelopmentHostHandover
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import MacOSVZProvisioner
+
+    handover = DevelopmentHostHandover(provisioner, bootstrap_profile_id="defaults") if isinstance(provisioner, MacOSVZProvisioner) else None
+    lifecycle = PackVMLifecycleV4(provisioner, development_host_handover=handover)
     get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
     return Kernel(
         packvm_lifecycle=lifecycle,

@@ -10,6 +10,13 @@ export type Locale = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'settings.development_handover_title': 'Move data from a previous development Host',
+  'settings.development_handover_description': 'On macOS, review the previous developer app, its saved data and verified base VM storage. The destination must have no active Profile. Text history is imported; attachments and execution records stay in the previous data folder.',
+  'settings.development_handover_review': 'Review previous Host data',
+  'settings.development_handover_recovery': 'Check migration or review recovery',
+  'settings.development_handover_completed': 'Data imported. Register provider credentials again, then review and activate the new Profile.',
+  'settings.development_handover_restored': 'Previous VM storage restored. The updated destination remains fenced; its data and recovery evidence are retained.',
+  'settings.development_handover_copy_error': 'Copy migration error',
   'pack_versions.title': 'Pack versions',
   'pack_versions.description': 'Save a version for this Profile, then review and activate it below. The running Profile stays active until activation.',
   'pack_versions.loading': 'Loading verified Pack versions…',
@@ -309,6 +316,13 @@ const en: Dict = {
 };
 
 const ja: Dict = {
+  'settings.development_handover_title': '以前の開発版Hostからデータを引き継ぐ',
+  'settings.development_handover_description': 'macOSで、以前の開発版アプリ・保存データ・検証済みの基本VM保存領域を確認します。移行先に有効なProfileがないことが必要です。テキスト履歴を取り込み、添付物と実行記録は以前のデータフォルダに保持します。',
+  'settings.development_handover_review': '以前のHostデータを確認',
+  'settings.development_handover_recovery': '移行状態・復旧計画を確認',
+  'settings.development_handover_completed': 'データを取り込みました。接続の資格情報を再登録し、新しいProfileを確認して有効化してください。',
+  'settings.development_handover_restored': '以前のVM保存領域を復元しました。更新版での実行は停止したまま、データと復旧記録を保持しています。',
+  'settings.development_handover_copy_error': '移行エラーをコピー',
   'pack_versions.title': 'Packのバージョン',
   'pack_versions.description': 'このProfileで使う版を保存し、下でレビュー・有効化してください。有効化までは現在のProfileが動作します。',
   'pack_versions.loading': '確認済みのPackを読み込み中…',

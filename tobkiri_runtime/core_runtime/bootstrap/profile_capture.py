@@ -663,6 +663,9 @@ def capture_profile(
     except Exception as error:
         raise ProfileResolutionDenied("Profile ID is not canonical") from error
     user_data = _user_data_root(base_dir)
+    from ..development_host_handover_guard import require_completed_handover
+
+    require_completed_handover(user_data)
     workspace = user_data / "workspaces" / safe_profile_id
     state_root = workspace / "activation"
     active_pointer = state_root / "active.json"
@@ -864,6 +867,9 @@ def activation_audit_receipt(active: Any, *, base_dir: Path | None = None) -> di
 def capture_active_profile(*, base_dir: Path | None = None) -> Any:
     """Capture the exact Host-selected Profile without a bootstrap fallback."""
 
+    from ..development_host_handover_guard import require_completed_handover
+
+    require_completed_handover(_user_data_root(base_dir))
     _recover_bootstrap_publication(base_dir=base_dir)
     user_data = _user_data_root(base_dir)
     pointers = ActiveProfileStore(user_data)
@@ -1090,6 +1096,9 @@ def capture_bootstrap_profile(
     include_source_additions: bool = False,
 ) -> Any:
     """Serialize confirmed activation and finish interrupted exact publications."""
+    from ..development_host_handover_guard import require_completed_handover
+
+    require_completed_handover(_user_data_root(base_dir))
     # Invalid source-update requests remain read-only, including an absent Host
     # state root. Acquiring the publication lock would otherwise create it.
     if include_source_additions:
