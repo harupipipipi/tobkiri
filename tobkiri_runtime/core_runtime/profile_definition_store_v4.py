@@ -276,6 +276,26 @@ class ProfileDefinitionStore:
                 return self._stored_from_entry(entry)
         return None
 
+    def require_current_profile(
+        self,
+        profile_id: str,
+        *,
+        expected_profile_revision: str,
+        expected_store_generation: int,
+    ) -> StoredProfile:
+        """Validate a no-op selection under the same CAS lock as writes."""
+
+        safe_id = _safe_profile_id(profile_id)
+        with self._locked():
+            state = self._read_state()
+            self._check_generation(state, expected_store_generation)
+            entry = self._entry_for_id(state, safe_id)
+            if entry is None or entry["tombstone"]:
+                raise ProfileDefinitionNotFound(safe_id)
+            current = self._stored_from_entry(entry)
+            self._check_profile_revision(current, expected_profile_revision)
+            return current
+
     def create_profile(
         self,
         profile: Mapping[str, Any],

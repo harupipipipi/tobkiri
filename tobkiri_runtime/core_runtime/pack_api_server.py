@@ -3003,6 +3003,13 @@ class PackAPIHandler(
         if path == "/api/setup/migration/status":
             self._send_mapping_result(self._setup_get_migration_status())
             return
+        if path == "/api/v4/profiles/pack-versions":
+            from .profile_pack_version_http import handle_profile_pack_versions
+            from .bootstrap.profile_capture import profile_capture_scope
+
+            with profile_capture_scope():
+                handle_profile_pack_versions(self, "GET", path)
+            return
         if path == "/api/v4/profiles":
             from .bootstrap.profile_capture import profile_capture_scope
 
@@ -3148,6 +3155,13 @@ class PackAPIHandler(
                     # activation committed, a later disconnect must not keep
                     # this stale HostProfileControl process alive.
                     self._refresh_setup_runtime_after_response(result)
+            return
+        if path == "/api/v4/profiles/select-pack-version":
+            from .profile_pack_version_http import handle_profile_pack_versions
+            from .bootstrap.profile_capture import profile_capture_scope
+
+            with profile_capture_scope():
+                handle_profile_pack_versions(self, "POST", path)
             return
         profile_action = {
             "/api/v4/profiles/create": "create",

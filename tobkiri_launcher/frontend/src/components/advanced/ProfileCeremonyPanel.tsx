@@ -79,6 +79,7 @@ export function ProfileCeremonyPanel({
   authoritativeSelection,
   catalogSurface,
   onBusyChange,
+  externalBusy = false,
 }: {
   surface: RuntimeSurfaceState<unknown>;
   packs: Pack[];
@@ -92,6 +93,7 @@ export function ProfileCeremonyPanel({
   };
   catalogSurface: RuntimeSurfaceState<RuntimeProfileCatalogProjection>;
   onBusyChange?: (busy: boolean) => void;
+  externalBusy?: boolean;
 }) {
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>([]);
   const [ceremonyState, setCeremonyState] = useState<CeremonyState>('idle');
@@ -173,7 +175,7 @@ export function ProfileCeremonyPanel({
       }
       : null
   );
-  const ceremonyIsBusy = ['resolving', 'reviewing', 'approving', 'activating'].includes(ceremonyState);
+  const ceremonyIsBusy = externalBusy || ['resolving', 'reviewing', 'approving', 'activating'].includes(ceremonyState);
   const desiredPackIds = selectedPackIds;
   const currentBindingKey = [
     predecessorSnapshot ? snapshotKey(predecessorSnapshot) : 'no-runtime-snapshot',
@@ -254,7 +256,7 @@ export function ProfileCeremonyPanel({
   };
 
   const beginStep = (nextState: Extract<CeremonyState, 'resolving' | 'reviewing' | 'approving' | 'activating'>) => {
-    if (busyRef.current) return null;
+    if (busyRef.current || externalBusy) return null;
     const mutationKey = mutationKeyForStep(nextState);
     const mutationMetadata = {
       kind: 'profile.ceremony',
@@ -893,7 +895,7 @@ export function ProfileCeremonyPanel({
           className="min-h-11 self-start"
           onClick={() => void action()}
           loading={ceremonyIsBusy}
-          disabled={!isRuntimeReady || snapshotChanged || desiredPackIds.length === 0 || ceremonyState === 'active' || ceremonyState === 'result_unknown'}
+          disabled={externalBusy || !isRuntimeReady || snapshotChanged || desiredPackIds.length === 0 || ceremonyState === 'active' || ceremonyState === 'result_unknown'}
         >
           {actionLabel}
         </Button>

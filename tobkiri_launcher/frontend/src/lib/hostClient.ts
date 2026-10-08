@@ -33,6 +33,7 @@ const EXACT_HOST_API_ROUTES = [
   {method: 'POST', path: '/api/v4/profiles/update'},
   {method: 'POST', path: '/api/v4/profiles/duplicate'},
   {method: 'POST', path: '/api/v4/profiles/delete'},
+  {method: 'POST', path: '/api/v4/profiles/select-pack-version'},
   {method: 'GET', path: '/api/v4/updates'},
   {method: 'GET', path: '/api/v4/updates/settings'},
   {method: 'POST', path: '/api/v4/updates/settings'},
@@ -188,10 +189,15 @@ function isPackVMLifecyclePath(path: string): boolean {
   return EXACT_PACKVM_LIFECYCLE_PATHS.has(path) || isPackVMProgressPath(path);
 }
 
+function isProfilePackVersionsPath(path: string): boolean {
+  return /^\/api\/v4\/profiles\/pack-versions\?profile_id=[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(path)
+    && path.split('=')[1].length <= 128;
+}
+
 /** Host operations remain usable without loading any Application contract map. */
 export const hostApiFetch = createApiClient((path, method) => {
   const allowed = exactNonMapRouteAllowsMethod(path, method)
-    || (isPackVMProgressPath(path) && method === 'GET');
+    || ((isPackVMProgressPath(path) || isProfilePackVersionsPath(path)) && method === 'GET');
   if (!allowed) return null;
   const lifecycle = isPackVMLifecyclePath(path);
   return {

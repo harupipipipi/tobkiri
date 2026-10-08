@@ -360,7 +360,10 @@ class DefaultspackProfileRuntime:
         )
 
         executable_catalogs = dict(catalog.executable_catalogs)
-        external_pack_ids = set(packs) - set(catalog.packs)
+        external_pack_ids = {
+            pack_id for pack_id, manifest in packs.items()
+            if pack_id not in catalog.packs or manifest != catalog.packs[pack_id]
+        }
         for pack_id in sorted(external_pack_ids):
             manifest = packs[pack_id]
             if not isinstance(manifest, Mapping):

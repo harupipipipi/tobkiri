@@ -53,6 +53,8 @@ def project_profile_catalog(
     *,
     candidates: Mapping[str, Mapping[str, Any]] | None = None,
     selected_profile_id: str | None = None,
+    definition_catalogs: Mapping[str, Any] | None = None,
+    resolved_catalogs: Mapping[str, Any] | None = None,
 ) -> dict[str, object]:
     """Project all Profiles with browsing and execution identities separated."""
 
@@ -78,7 +80,7 @@ def project_profile_catalog(
     lock_digest = bundle_lock_digest(catalog)
     definitions = [
         _project_definition(
-            catalog,
+            (definition_catalogs or {}).get(profile_id, catalog),
             profile_id,
             definition,
             active_profile_id=active_profile_id,
@@ -97,6 +99,7 @@ def project_profile_catalog(
                 else None
             ),
             candidate=(candidates or {}).get(profile_id),
+            closure_catalog=(resolved_catalogs or {}).get(profile_id, catalog),
         )
         for profile_id, definition in sorted(catalog.profiles.items())
     ]
@@ -158,6 +161,7 @@ def _project_definition(
     active_profile: Mapping[str, Any] | None,
     active_effective_set: object,
     candidate: Mapping[str, Any] | None,
+    closure_catalog: Any | None = None,
 ) -> dict[str, object]:
     diagnostics: list[dict[str, str]] = []
     base_id = str(definition["base"]["pack_id"])
@@ -240,7 +244,7 @@ def _project_definition(
     )
     if isinstance(candidate_profile, Mapping) and isinstance(candidate_lock, Mapping):
         closure = _resolved_pack_closure(
-            catalog,
+            closure_catalog if closure_catalog is not None else catalog,
             candidate_profile,
             candidate_lock.get("effective_set"),
             diagnostics,
@@ -248,7 +252,7 @@ def _project_definition(
         )
     elif is_active and active_profile is not None:
         closure = _resolved_pack_closure(
-            catalog,
+            closure_catalog if closure_catalog is not None else catalog,
             active_profile,
             active_effective_set,
             diagnostics,

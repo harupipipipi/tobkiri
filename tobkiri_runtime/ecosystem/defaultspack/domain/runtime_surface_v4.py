@@ -1090,11 +1090,20 @@ class RuntimeSurfaceService:
                 str(record["review"]["profile"]["profile_id"]): record
                 for record in candidate_records
             }
-            effective_sets: list[object] = [active.resolved.lock["effective_set"]]
-            effective_sets.extend(
-                record["review"]["profile_lock"]["effective_set"] for record in candidate_records
-            )
-            catalog = _catalog_for_effective_sets(catalog, effective_sets)
+            # Definitions, the active predecessor and staged candidates may
+            # intentionally select different revisions of the same Pack ID.
+            # Verify each closure separately; never collapse them by Pack ID.
+            definition_catalogs = {
+                profile_id: _catalog_for_definition_revisions(catalog, definition)
+                for profile_id, definition in catalog.profiles.items()
+            }
+            resolved_catalogs = {
+                str(active.resolved.profile["profile_id"]): _catalog_for_active_closure(catalog, active)
+            }
+            resolved_catalogs.update({
+                profile_id: _catalog_for_effective_sets(catalog, (record["review"]["profile_lock"]["effective_set"],))
+                for profile_id, record in candidate_map.items()
+            })
             from core_runtime.profile_catalog_v4 import project_profile_catalog
 
             projection = project_profile_catalog(
@@ -1102,6 +1111,8 @@ class RuntimeSurfaceService:
                 active,
                 candidates=candidate_map,
                 selected_profile_id=selected_profile_id,
+                definition_catalogs=definition_catalogs,
+                resolved_catalogs=resolved_catalogs,
             )
         except ProfileResolutionDenied as error:
             raise _map_profile_error(error) from error
@@ -2733,7 +2744,9 @@ def _validated_contract_catalogs(
                 "selected Pack is absent from the verified manifest catalog",
             )
         try:
-            root = resolve_admitted_pack_root(pack_id)
+            root = resolve_admitted_pack_root(
+                pack_id, artifact_digest=str(manifest["pack"]["artifact_digest"])
+            )
             root_before = root.lstat()
         except PackBoundaryError:
             # Defaults bundle-only Base/Shell/Application artifacts do not have
@@ -2887,6 +2900,23 @@ def _operation_schema_projection(
     }
 
 
+def _catalog_for_definition_revisions(catalog: BundledCatalog, definition: Mapping[str, Any]) -> BundledCatalog:
+    """Project known revision choices; unknown pins remain visible diagnostics."""
+    from core_runtime.external_pack_catalog_v4 import load_external_pack_catalog
+
+    admitted = load_external_pack_catalog()
+    rows = definition.get("packs")
+    rows = rows if isinstance(rows, list) else []
+    pins = [
+        {"identity": row["pack_id"], "artifact_digest": row["artifact_digest"]}
+        for row in rows if isinstance(row, Mapping)
+        and isinstance(row.get("pack_id"), str)
+        and isinstance(row.get("artifact_digest"), str)
+        and row["artifact_digest"] in admitted.versions.get(row["pack_id"], {})
+    ]
+    return _catalog_for_effective_sets(catalog, (pins,))
+
+
 def _catalog_for_active_closure(
     catalog: BundledCatalog, active: ActiveDefaultProfile
 ) -> BundledCatalog:
@@ -2930,14 +2960,18 @@ def _catalog_for_effective_sets(
                     RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
                     "resolved Profile closure identity is inconsistent",
                 )
-    missing = {pack_id for pack_id in expected if pack_id not in catalog.packs}
+    missing = {
+        pack_id for pack_id, digest in expected.items()
+        if pack_id not in catalog.packs
+        or catalog.packs[pack_id]["pack"]["artifact_digest"] != digest
+    }
     if not missing:
         return catalog
     from core_runtime.external_pack_catalog_v4 import resolve_admitted_pack_root
 
     packs = dict(catalog.packs)
     for pack_id in sorted(missing):
-        root = resolve_admitted_pack_root(pack_id)
+        root = resolve_admitted_pack_root(pack_id, artifact_digest=expected[pack_id])
         manifest_path = root / "pack.v4.json"
         if manifest_path.is_symlink() or not manifest_path.is_file():
             raise RuntimeSurfaceError(
@@ -2960,15 +2994,9 @@ def _catalog_for_effective_sets(
                 "selected external Pack identity does not match",
             )
         packs[pack_id] = manifest
-    return BundledCatalog(
-        root=catalog.root,
-        packs=packs,
-        bases=catalog.bases,
-        shells=catalog.shells,
-        profiles=catalog.profiles,
-        artifact_root=catalog.artifact_root,
-        executable_catalogs=catalog.executable_catalogs,
-    )
+    from core_runtime.profile_runtime_port import require_profile_runtime
+
+    return require_profile_runtime().catalog_with_packs(catalog, packs)
 
 
 def _commit_authority_profile_approval(

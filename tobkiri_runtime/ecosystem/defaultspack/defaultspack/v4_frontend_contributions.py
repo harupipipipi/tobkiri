@@ -88,7 +88,7 @@ def _load_pack_routes(
     activation_id: str,
     plan_digest: str,
 ) -> list[dict[str, object]]:
-    root = resolve_admitted_pack_root(pack_id)
+    root = resolve_admitted_pack_root(pack_id, artifact_digest=expected_digest)
     if root.is_symlink() or not root.is_dir():
         raise FrontendPackDenied("selected Pack root is unavailable")
     if (root / "pack.v4.json").is_symlink() or (root / "artifact-index.v4.json").is_symlink():
@@ -256,7 +256,10 @@ def project_selected_declarative_routes(
     diagnostics: list[dict[str, str]] = []
     quarantined: set[str] = set()
     seen_pack_ids: set[str] = set()
-    admitted = load_admitted_pack_catalog()
+    admitted = load_admitted_pack_catalog({
+        str(row["identity"]): str(row["artifact_digest"])
+        for row in effective_set if row.get("role") == "pack"
+    })
     for item in effective_set:
         if item.get("role") != "pack":
             continue
@@ -372,7 +375,10 @@ def project_selected_ai_strategies(
     proposed: list[dict[str, object]] = []
     diagnostics: list[dict[str, str]] = []
     quarantined: set[str] = set()
-    admitted = load_admitted_pack_catalog()
+    admitted = load_admitted_pack_catalog({
+        str(row["identity"]): str(row["artifact_digest"])
+        for row in effective_set if row.get("role") == "pack"
+    })
     seen_pack_ids: set[str] = set()
     for item in effective_set:
         if item.get("role") != "pack":
@@ -465,7 +471,7 @@ def _load_pack_ai_strategies(
 ) -> list[dict[str, object]]:
     """Verify and project the strategy declarations from one exact Pack."""
 
-    root = resolve_admitted_pack_root(pack_id)
+    root = resolve_admitted_pack_root(pack_id, artifact_digest=expected_digest)
     if root.is_symlink() or not root.is_dir():
         raise FrontendPackDenied("selected Pack root is unavailable")
     if (root / "pack.v4.json").is_symlink() or (root / "artifact-index.v4.json").is_symlink():

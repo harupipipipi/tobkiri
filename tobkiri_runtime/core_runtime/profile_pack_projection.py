@@ -33,7 +33,9 @@ def admitted_projection_sources(
         if pack_id not in artifact_pins:
             raise ValueError("projection Pack is outside the selected Profile closure")
         result[pack_id] = ProjectionPackSource(
-            artifact_pins[pack_id], resolve_admitted_pack_root(pack_id)
+            artifact_pins[pack_id], resolve_admitted_pack_root(
+                pack_id, artifact_digest=artifact_pins[pack_id]
+            )
         )
     return result
 
@@ -61,7 +63,9 @@ def projection_pack_root(
             for pack in active.packs:
                 if pack.pack_id == pack_id:
                     sources[pack_id] = ProjectionPackSource(
-                        pack.content_hash, resolve_admitted_pack_root(pack_id)
+                        pack.content_hash, resolve_admitted_pack_root(
+                            pack_id, artifact_digest=pack.content_hash
+                        )
                     )
     source = sources.get(pack_id)
     if source is None or (

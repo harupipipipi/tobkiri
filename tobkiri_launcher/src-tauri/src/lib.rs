@@ -253,6 +253,8 @@ struct NativePackOnboardingPreview {
     contract_versions: std::collections::BTreeMap<String, String>,
     artifact_digest: String,
     preview_digest: String,
+    #[serde(default)]
+    predecessor_artifact_digest: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -634,10 +636,13 @@ async fn onboard_signed_pack_from_folder(
                 .map(|(name, version)| format!("{name}: {version}"))
                 .collect::<Vec<_>>().join(", ")
         };
+        let update_review = preview.predecessor_artifact_digest.as_ref().map(|digest| {
+            format!("\nRetained predecessor: {digest}\nThis adds a new revision. Existing Profiles keep their selected artifact until you review and activate an update.\n")
+        }).unwrap_or_default();
         let confirmed = window.dialog().message(format!(
-            "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
+            "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}{}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
             preview.pack_id, preview.version, preview.publisher_id,
-            preview.key_fingerprint, capabilities, contracts, preview.artifact_digest,
+            preview.key_fingerprint, capabilities, contracts, preview.artifact_digest, update_review,
         ))
         .title("Review signed Pack")
         .kind(MessageDialogKind::Warning)

@@ -189,8 +189,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
       "type": "regular-file",
-      "size": 18848,
-      "sha256": "1611c0352b597c2c9581c4720566b567b1f9ff8b590f5f712f2b222f1bddddfa",
+      "size": 18969,
+      "sha256": "b69315073bb1feb47d914f000000e502709ed9fa61b071a878b583e6a99797cd",
       "executable": false
     },
     {
@@ -252,8 +252,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/v4_frontend_contributions.py",
       "type": "regular-file",
-      "size": 24493,
-      "sha256": "9845eacb57ffe0d86b942a1dcbfda2f36e88a5b2fa1bc960faf2593d7cf4f6ee",
+      "size": 24813,
+      "sha256": "0af5cb874834b0ee2290f2be40d0329a3680d7c9e1bd44593ccc174820476389",
       "executable": false
     },
     {
@@ -301,8 +301,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_surface_v4.py",
       "type": "regular-file",
-      "size": 129867,
-      "sha256": "9ffdf51580e516f90332fe003c7bda99ace5ae0d3e55556dde5063003d012230",
+      "size": 131398,
+      "sha256": "6f90fdd1c0ff8477a84c35504280f3490da9e5cecc1e3bebf9943728e85c0217",
       "executable": false
     },
     {
@@ -4046,8 +4046,8 @@
     {
       "path": "tobkiri_protocol/schemas/external_normal_pack_catalog_v4.schema.json",
       "type": "regular-file",
-      "size": 6264,
-      "sha256": "d6ac4ab11eb98db47796cc05f6ce4639c2fcbe13e748b2ce59d277aa2d3cdf8b",
+      "size": 6280,
+      "sha256": "b7ca4ae44dab7cd38ed97e98c4b54764dbd03b9ebfb80cad3dbe70f95d7808f2",
       "executable": false
     },
     {
@@ -4319,8 +4319,8 @@
     {
       "path": "tobkiri_protocol/validation.py",
       "type": "regular-file",
-      "size": 20405,
-      "sha256": "2ac005f422774b97371285a066a9e209b2750161aea75bf48bc6e4dfa30c2143",
+      "size": 21024,
+      "sha256": "91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb",
       "executable": false
     },
     {

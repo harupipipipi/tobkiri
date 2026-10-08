@@ -51,7 +51,9 @@ class HostProviderDataCaptureV4:
                 continue
             if request not in self._data:
                 if request.pack_id not in self._roots:
-                    root = resolve_admitted_pack_root(request.pack_id, self._ecosystem_root)
+                    root = resolve_admitted_pack_root(
+                        request.pack_id, self._ecosystem_root, artifact_digest=digest
+                    )
                     self._roots[request.pack_id] = (root, _root_identity(root))
                 root, identity = self._roots[request.pack_id]
                 if _root_identity(root) != identity:

@@ -188,6 +188,7 @@ def _admit_signed_external_pack_locked(
                 versions=load_external_pack_catalog().versions,
                 publisher_id=str(signed_manifest["publisher_id"]),
                 version=str(signed_manifest["version"]),
+                artifact_digest=artifact_digest,
             )
             catalog_key = version_catalog_key(pack_id, artifact_digest)
         except (OSError, RuntimeError, ValueError) as error:
@@ -207,6 +208,7 @@ def _admit_signed_external_pack_locked(
     previous: Mapping[str, Any] | None = None
     prepared_written = False
     promoted = False
+    committed_written = False
     try:
         _copy_signed_pack(source, temporary, signed_manifest)
         _verify_cas_copy(
@@ -296,10 +298,11 @@ def _admit_signed_external_pack_locked(
         latest_entries[catalog_key] = committed
         latest_journal.append(_install_journal_event(committed, latest_journal))
         _write_authenticated_catalog(catalog_path, latest_entries, latest_journal)
+        committed_written = True
         _inject(fault_injector, "committed")
         return committed
     except Exception:
-        if prepared_written:
+        if prepared_written and not committed_written:
             try:
                 latest = _read_authenticated_catalog(catalog_path, allow_missing=False)
                 entries = dict(latest["entries"])
@@ -315,7 +318,7 @@ def _admit_signed_external_pack_locked(
                 # A prepared entry is never visible to readers; recovery can
                 # safely leave it as an inert transaction marker.
                 pass
-        if promoted and final_root.exists() and previous is None:
+        if promoted and not committed_written and final_root.exists() and previous is None:
             try:
                 _make_tree_writable(final_root)
                 shutil.rmtree(final_root)
@@ -381,15 +384,22 @@ def load_external_pack_catalog(
     )
 
 
-def load_admitted_pack_catalog() -> dict[str, Mapping[str, Any]]:
+def load_admitted_pack_catalog(
+    artifact_pins: Mapping[str, str] | None = None,
+) -> dict[str, Mapping[str, Any]]:
     """Return bundled records plus admitted Normal Packs without mutation."""
 
     bundled = load_pack_catalog()
-    external = load_external_pack_catalog()
+    external = load_external_pack_catalog(artifact_pins)
     collisions = set(bundled) & set(external.records)
-    if collisions:
+    unauthorized = {
+        pack_id for pack_id in collisions
+        if (artifact_pins or {}).get(pack_id) != external.records[pack_id]["artifact_digest"]
+        or bundled[pack_id].get("kind") not in {"normal_sandbox", "application"}
+    }
+    if unauthorized:
         raise ExternalPackCatalogDenied(
-            f"external Pack catalog shadows bundled Pack IDs: {sorted(collisions)}"
+            f"external Pack catalog shadows bundled Pack IDs: {sorted(unauthorized)}"
         )
     result = dict(bundled)
     result.update(external.records)
@@ -407,6 +417,14 @@ def control_catalog_revision() -> str:
             "external_normal_packs": external.versions,
         }
     )
+
+
+@contextmanager
+def pack_revision_catalog_transaction() -> Iterator[None]:
+    """Keep an exact revision choice stable through its Profile CAS commit."""
+
+    with exclusive_host_policy_lock(_catalog_path(_user_data_root())):
+        yield
 
 
 def external_pack_content_digest(pack_id: str) -> str | None:
@@ -665,7 +683,10 @@ def _project_catalog_record(
     executable = validate_file(root / "executables.v4.json", "executable_catalog")
     _require_external_catalog_identity(executable)
     pack_id = str(manifest["pack"]["id"])
-    if manifest["pack"]["kind"] != "normal_sandbox":
+    if (
+        manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
+        or manifest["requirements"]["execution_boundary"] != "sandbox"
+    ):
         raise ExternalPackCatalogDenied(
             "external admission accepts only Normal Sandbox Packs"
         )
@@ -1075,6 +1096,11 @@ def _require_external_catalog_identity(executable: Mapping[str, Any]) -> None:
         raise ExternalPackCatalogDenied(
             "external Pack cannot replace its executable catalog identity"
         )
+    if any(
+        variant["execution_kind"] not in {"wasm", "pack_vm"}
+        for variant in executable["variants"]
+    ):
+        raise ExternalPackCatalogDenied("external Normal Pack backend is not sandboxed")
 
 
 def _validate_entry(pack_id: str, entry: Mapping[str, Any]) -> None:

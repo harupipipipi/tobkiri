@@ -40,6 +40,7 @@ def verify_version_predecessor(
     versions: Mapping[str, Mapping[str, Mapping[str, Any]]],
     publisher_id: str,
     version: str,
+    artifact_digest: str | None = None,
 ) -> None:
     """Bind an update to a retained Normal Pack and its approved publisher.
 
@@ -57,13 +58,14 @@ def verify_version_predecessor(
         previous_version = str(previous["version_string"])
     else:
         record = load_pack_catalog().get(pack_id)
-        if record is None or record.get("kind") != "normal_sandbox":
+        if record is None or record.get("kind") not in {"normal_sandbox", "application"}:
             raise ValueError("Pack update predecessor is not a Normal Pack")
         root = resolve_pack_root(pack_id)
         manifest = validate_file(root / "pack.v4.json", "pack")
         compiled = compile_pack_root(root)
         if (
-            manifest["pack"]["kind"] != "normal_sandbox"
+            manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
+            or manifest["requirements"]["execution_boundary"] != "sandbox"
             or compiled.artifact.pack_id != pack_id
             or compiled.artifact.digest != expected_digest
         ):
@@ -73,6 +75,16 @@ def verify_version_predecessor(
         if publishers and publishers != {publisher_id}:
             raise ValueError("bundled Pack update publisher differs from retained revisions")
     try:
+        for retained in versions.get(pack_id, {}).values():
+            if Version(str(retained["version_string"])) == Version(version):
+                if retained["artifact_digest"] != artifact_digest:
+                    raise ValueError("Pack version is already bound to a different digest")
+                if retained["publisher_id"] != publisher_id:
+                    raise ValueError("Pack revision publisher is inconsistent")
+        if previous is not None and previous["artifact_digest"] == artifact_digest:
+            if Version(version) != Version(previous_version):
+                raise ValueError("Pack revision version is inconsistent")
+            return
         if Version(version) <= Version(previous_version):
             raise ValueError("Pack update must have a newer version")
     except InvalidVersion as error:

@@ -19,9 +19,12 @@ from .external_pack_catalog_v4 import (
     _project_catalog_record,
     _read_json_nofollow,
     admit_signed_external_pack,
+    admit_signed_pack_version,
+    control_catalog_revision,
+    load_external_pack_catalog,
 )
-from .pack_artifact_integrity import write_host_install_record
-from .pack_boundary import load_pack_catalog
+from .pack_artifact_integrity import read_host_policy_snapshot, write_host_install_record
+from .pack_boundary import load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 
 
@@ -70,8 +73,6 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
     verified = verify_signed_pack(
         source, signed, public_key, core_version=str(core_version)
     )
-    if verified["pack_id"] in load_pack_catalog():
-        raise ValueError("external Pack cannot replace a bundled Pack")
     _project_catalog_record(source, signed)  # Validates Normal Sandbox and v4 identity.
     compiled = compile_pack_root(source)
     if compiled.artifact.pack_id != verified["pack_id"]:
@@ -90,6 +91,37 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         "contract_versions": dict(signed["contract_versions"]),
         "artifact_digest": compiled.artifact.digest,
     }
+    snapshot = load_external_pack_catalog()
+    pack_id = str(verified["pack_id"])
+    retained = snapshot.versions.get(pack_id, {})
+    bundled = load_pack_catalog().get(pack_id)
+    predecessors = {
+        str(row["version_string"]): str(row["artifact_digest"])
+        for row in retained.values()
+    }
+    if bundled is not None:
+        if bundled.get("kind") not in {"normal_sandbox", "application"}:
+            raise ValueError("signed Normal Pack cannot replace a Host Extension, Base or Shell")
+        root = resolve_pack_root(pack_id)
+        manifest = _read_json_nofollow(root / "pack.v4.json", 4 * 1024 * 1024)
+        if not isinstance(manifest, dict):
+            raise ValueError("bundled update predecessor is unavailable")
+        predecessors[str(manifest["pack"]["version"])] = compile_pack_root(root).artifact.digest
+    if predecessors:
+        from packaging.version import Version
+        from .pack_version_selection import verify_version_predecessor
+
+        predecessor = (
+            compiled.artifact.digest if compiled.artifact.digest in retained
+            else predecessors[max(predecessors, key=Version)]
+        )
+        verify_version_predecessor(
+            pack_id, predecessor, versions=snapshot.versions,
+            publisher_id=str(verified["publisher_id"]), version=str(verified["version"]),
+            artifact_digest=compiled.artifact.digest,
+        )
+        preview["predecessor_artifact_digest"] = predecessor
+        preview["catalog_revision"] = control_catalog_revision()
     preview["preview_digest"] = canonical_digest(
         {
             "preview": preview,
@@ -128,6 +160,13 @@ def commit_signed_pack(
         expected_contract_versions=dict(preview["contract_versions"]),
         expected_capabilities=list(preview["requested_capabilities"]),
     )
+    predecessor = preview.get("predecessor_artifact_digest")
+    policy_arguments: dict[str, Any] = {}
+    if predecessor is not None:
+        policy = read_host_policy_snapshot(trust_store_path) if trust_store_path.exists() else {}
+        prior = policy.get("install_records", {}).get(str(preview["pack_id"]))
+        if prior is not None:
+            policy_arguments["expected_install_record"] = prior
     write_host_install_record(
         trust_store_path,
         pack_id=str(preview["pack_id"]),
@@ -141,10 +180,17 @@ def commit_signed_pack(
             "contract_versions": preview["contract_versions"],
             "requested_capabilities": preview["requested_capabilities"],
         },
+        **policy_arguments,
         publisher_record={
             "public_key_pem": canonical_pem,
             "allowed_pack_namespaces": [str(preview["pack_id"])],
             "revoked_key_ids": [],
         },
     )
+    if predecessor is not None:
+        return dict(admit_signed_pack_version(
+            source, trust_store_path=trust_store_path,
+            expected_predecessor_digest=str(predecessor),
+            expected_catalog_revision=str(preview["catalog_revision"]),
+        ))
     return dict(admit_signed_external_pack(source, trust_store_path=trust_store_path))

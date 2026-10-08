@@ -10,6 +10,17 @@ export type Locale = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'pack_versions.title': 'Pack versions',
+  'pack_versions.description': 'Save a version for this Profile, then review and activate it below. The running Profile stays active until activation.',
+  'pack_versions.loading': 'Loading verified Pack versions…',
+  'pack_versions.choose': 'Version of {pack}',
+  'pack_versions.save': 'Save version',
+  'pack_versions.bundled': 'Included with Tobkiri',
+  'pack_versions.saved': 'Version saved. Review and activate the Profile below.',
+  'pack_versions.unchanged': 'This version is already selected.',
+  'pack_versions.unavailable': 'Verified Pack versions could not be loaded.',
+  'pack_versions.save_failed': 'The save result could not be confirmed. Refresh the Profile before trying again.',
+  'pack_versions.refresh': 'Refresh versions',
   'nav.home': 'Home',
   'nav.packs': 'Packs',
   'nav.profile': 'Profile',
@@ -298,6 +309,17 @@ const en: Dict = {
 };
 
 const ja: Dict = {
+  'pack_versions.title': 'Packのバージョン',
+  'pack_versions.description': 'このProfileで使う版を保存し、下でレビュー・有効化してください。有効化までは現在のProfileが動作します。',
+  'pack_versions.loading': '確認済みのPackを読み込み中…',
+  'pack_versions.choose': '{pack}のバージョン',
+  'pack_versions.save': '版を保存',
+  'pack_versions.bundled': 'Tobkiri同梱',
+  'pack_versions.saved': '版を保存しました。下でProfileをレビュー・有効化してください。',
+  'pack_versions.unchanged': 'この版は選択済みです。',
+  'pack_versions.unavailable': '確認済みのPackを読み込めませんでした。',
+  'pack_versions.save_failed': '保存結果を確認できませんでした。Profileを更新してから再試行してください。',
+  'pack_versions.refresh': '版を再読み込み',
   'nav.home': '\u30db\u30fc\u30e0',
   'nav.packs': '\u30d1\u30c3\u30af',
   'nav.profile': '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb',

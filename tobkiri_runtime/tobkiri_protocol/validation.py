@@ -339,6 +339,19 @@ def _duplicate_identity_diagnostics(document: Mapping[str, Any]) -> list[str]:
                 else:
                     seen_edges[binding_identity] = index
             continue
+        if (
+            path == "$.journal"
+            and document.get("version") == "io.tobkiri.external-normal-pack-catalog.v4"
+        ):
+            seen_revisions: set[tuple[str, str]] = set()
+            for index, item in enumerate(value):
+                if not isinstance(item, Mapping):
+                    continue
+                identity = (str(item.get("pack_id")), str(item.get("artifact_digest")))
+                if identity in seen_revisions:
+                    diagnostics.append(f"{path}[{index}]: duplicate revision admission")
+                seen_revisions.add(identity)
+            continue
         if path == "$.variant_pins":
             seen_variants: dict[tuple[str, str], int] = {}
             for index, item in enumerate(value):

@@ -282,6 +282,7 @@ def test_signed_frontend_pack_projects_from_real_admitted_cas(
     )
     assert diagnostics == []
     assert quarantined == []
+    routes = [route for route in routes if route["owner_pack_id"] == PACK_ID]
     assert len(routes) == 1
     assert routes[0]["route"] == "/echo-pack-input"
     assert routes[0]["view"]["input"]["label"] == "Local note"

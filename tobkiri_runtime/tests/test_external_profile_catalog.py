@@ -30,12 +30,13 @@ def _inputs(monkeypatch, tmp_path):
     merged = SimpleNamespace(
         packs={
             **catalog.packs,
-            "external": {"pack": {"kind": "normal_sandbox", "artifact_digest": digest}},
+            "external": {"pack": {"kind": "normal_sandbox", "artifact_digest": digest}, "requirements": {"execution_boundary": "sandbox"}},
         },
         profiles=catalog.profiles,
     )
 
-    def authenticated_merge(original, roots):
+    def authenticated_merge(original, roots, *, artifact_pins):
+        assert artifact_pins["external"] == digest
         assert original is catalog
         assert set(roots) == {"base", "shell", "external"}
         assert runtime_user_data_root() == tmp_path

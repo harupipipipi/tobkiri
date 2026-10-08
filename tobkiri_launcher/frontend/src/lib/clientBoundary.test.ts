@@ -90,3 +90,16 @@ test('Host dependency graph does not load the optional Defaultspack generated cl
   assert.ok(visited.has(resolve(libraryRoot, 'apiTransport.ts')));
   assert.ok(visited.has(resolve(libraryRoot, 'desktopHost.ts')));
 });
+
+test('Pack revision metadata uses finite authenticated Host routes', async () => {
+  assert.deepEqual(await hostApiFetch('/api/v4/profiles/pack-versions?profile_id=my-profile'), {available: true});
+  assert.deepEqual(await hostApiFetch('/api/v4/profiles/select-pack-version', {method: 'POST', body: '{}'}), {available: true});
+  for (const path of [
+    '/api/v4/profiles/pack-versions?profile_id=my-profile&approved=true',
+    '/api/v4/profiles/pack-versions?profile_id=../profile',
+    '/api/v4/profiles/pack-versions?profile_id=my-profile&profile_id=another',
+    '/api/v4/profiles/pack-versions',
+  ]) await assert.rejects(hostApiFetch(path), /exact method\/path allowlist/);
+  await assert.rejects(hostApiFetch('/api/v4/profiles/select-pack-version'), /exact method\/path allowlist/);
+  await assert.rejects(defaultspackApiFetch('/api/v4/profiles/select-pack-version', {method: 'POST'}), /exact method\/path allowlist/);
+});

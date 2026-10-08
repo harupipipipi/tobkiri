@@ -8,6 +8,7 @@ import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/src/components/ui/Card';
 import {Input} from '@/src/components/ui/Input';
 import {ProfileCeremonyPanel} from '@/src/components/advanced/ProfileCeremonyPanel';
+import {ProfilePackVersions} from '@/src/components/advanced/ProfilePackVersions';
 import type {RuntimeSurfaceState} from '@/src/hooks/useRuntimeSurface';
 import type {ApiDynamicFrontendCatalog} from '@/src/lib/apiTypes';
 import {
@@ -312,6 +313,7 @@ export function ProfileCatalogSelector({
   const frontendCatalogError = useAppStore((state) => state.frontendCatalogError);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [ceremonyBusy, setCeremonyBusy] = useState(false);
+  const [versionBusy, setVersionBusy] = useState(false);
   const [query, setQuery] = useState('');
   const previousPackFingerprint = useRef<string | null>(null);
   const previousInitialSelectedProfileId = useRef<string | null | undefined>(undefined);
@@ -493,7 +495,7 @@ export function ProfileCatalogSelector({
                         availability: unavailableLabel,
                       })}
                       aria-pressed={selected}
-                      disabled={!entry.available || catalogSurface.stale || ceremonyBusy}
+                      disabled={!entry.available || catalogSurface.stale || ceremonyBusy || versionBusy}
                       onClick={() => {
                         setSelectedProfileId(entry.profile_id);
                         onSelectedProfileId?.(entry.profile_id);
@@ -545,6 +547,16 @@ export function ProfileCatalogSelector({
               </p>
             </CardContent>
           </Card>
+          <ProfilePackVersions
+            key={selectedEntry.profile_id}
+            profileId={selectedEntry.profile_id}
+            definitionDigest={selectedEntry.definition.digest}
+            disabled={Boolean(catalogSurface.stale) || ceremonyBusy}
+            onBusyChange={setVersionBusy}
+            onSaved={async () => {
+              await Promise.all([catalogSurface.refresh(true), profileSurface.refresh(true), loadPacks()]);
+            }}
+          />
         </>
       ) : null}
       {selectedEntry && catalogProjection && runtimeVerified ? (
@@ -555,6 +567,7 @@ export function ProfileCatalogSelector({
           client={client}
           onActivated={handleActivated}
           onBusyChange={setCeremonyBusy}
+          externalBusy={versionBusy}
           authoritativeSelection={{
             entry: selectedEntry,
             catalogDigest: catalogProjection.catalog_digest,

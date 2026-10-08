@@ -365,6 +365,7 @@ def write_host_install_record(
     install_path: Path,
     record: Mapping[str, Any],
     publisher_record: Mapping[str, Any] | None = None,
+    expected_install_record: Mapping[str, Any] | None = None,
 ) -> None:
     """Atomically persist a complete Host-owned Pack install policy.
 
@@ -501,7 +502,16 @@ def write_host_install_record(
         records = dict(records) if isinstance(records, Mapping) else {}
         if publisher_record is not None:
             prior_record = records.get(str(pack_id))
-            if prior_record is not None and prior_record != persisted_record:
+            if expected_install_record is not None:
+                if (
+                    prior_record != expected_install_record
+                    or not isinstance(prior_record, Mapping)
+                    or prior_record.get("signature_required") is not True
+                    or prior_record.get("publisher_id") != record["publisher_id"]
+                    or prior_record.get("key_id") != record["key_id"]
+                ):
+                    raise ValueError("Pack update install policy is stale or inconsistent")
+            elif prior_record is not None and prior_record != persisted_record:
                 raise ValueError("Pack ID is already bound to another install policy")
         records[str(pack_id)] = persisted_record
         payload["install_records"] = records

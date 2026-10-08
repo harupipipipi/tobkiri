@@ -1613,7 +1613,7 @@ def _active_profile(
 
 
 def catalog_with_admitted_pack_closure(
-    catalog: Any, pack_ids: list[str]
+    catalog: Any, pack_ids: list[str], *, artifact_pins: Mapping[str, str] | None = None,
 ) -> tuple[Any, set[str]]:
     """Extend a verified catalog only with admitted Pack manifests and dependencies."""
     external_packs = dict(catalog.packs)
@@ -1624,11 +1624,15 @@ def catalog_with_admitted_pack_closure(
         if pack_id not in requested_closure:
             requested_closure.add(pack_id)
         manifest = external_packs.get(pack_id)
-        if manifest is None:
-            record = load_pack_catalog().get(pack_id)
+        selected_digest = (artifact_pins or {}).get(pack_id)
+        if manifest is None or (
+            selected_digest is not None
+            and manifest["pack"]["artifact_digest"] != selected_digest
+        ):
+            record = load_pack_catalog(artifact_pins).get(pack_id)
             if record is None:
                 raise PackControlInvalidRequest("Pack is absent from the canonical v4 catalog")
-            root = resolve_pack_root(pack_id)
+            root = resolve_pack_root(pack_id, artifact_digest=selected_digest)
             manifest_path = root / "pack.v4.json"
             if manifest_path.is_symlink() or not manifest_path.is_file():
                 raise PackControlDigestMismatch("Pack v4 manifest is unavailable")
@@ -1640,7 +1644,8 @@ def catalog_with_admitted_pack_closure(
             if manifest["pack"]["id"] != pack_id or (
                 external_normal
                 and (
-                    manifest["pack"]["kind"] != "normal_sandbox"
+                    manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
+                    or manifest["requirements"]["execution_boundary"] != "sandbox"
                     or manifest["pack"]["artifact_digest"] != record.get("artifact_digest")
                 )
             ):
@@ -1715,10 +1720,17 @@ def resolve_profile_pack_set(
     elif not trusted_active_resolution:
         raise PackControlUnapproved("selected Profile requires exact catalog bindings")
     runtime = require_profile_runtime()
-    catalog, requested_closure = catalog_with_admitted_pack_closure(catalog, pack_ids)
     source = catalog.profiles.get(profile_id)
     if source is None:
         raise PackControlInvalidRequest("selected Profile is unavailable")
+    artifact_pins = {
+        str(row["pack_id"]): str(row["artifact_digest"])
+        for row in source["packs"] if row.get("artifact_digest") is not None
+    }
+    catalog, requested_closure = catalog_with_admitted_pack_closure(
+        catalog, list(dict.fromkeys([*pack_ids, *artifact_pins])),
+        artifact_pins=artifact_pins,
+    )
     if all(value is not None for value in authoritative_bindings):
         definition_pack_ids = {
             str(item["pack_id"]) for item in source["packs"] if item.get("role") != "application"

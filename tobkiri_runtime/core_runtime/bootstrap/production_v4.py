@@ -1707,6 +1707,10 @@ def capture_production_dispatch(
     pack_roots = resolve_admitted_pack_roots(
         tuple(sorted(binding_pack_ids)),
         ecosystem_root,
+        artifact_pins={
+            str(row["identity"]): str(row["artifact_digest"])
+            for row in lock["effective_set"]
+        },
     )
     captured_pack_root_identities = _pack_root_identities(pack_roots)
 
