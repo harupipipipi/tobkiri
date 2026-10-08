@@ -111,7 +111,7 @@ def normalize_native_filters(
             for unit, price in item.items():
                 if type(price) not in {int, float} or not math.isfinite(price) or price < 0:
                     raise ValueError("native price must be finite nonnegative USD")
-                prices[unit] = float(price)
+                prices[unit] = 0 if price == 0 else float(price)
             result_routing[key] = prices
     if set(result_routing.get("only", [])) & set(result_routing.get("ignore", [])):
         raise ValueError("a provider cannot be allowed and excluded")
