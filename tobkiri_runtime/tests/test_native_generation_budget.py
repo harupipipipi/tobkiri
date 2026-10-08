@@ -389,7 +389,7 @@ def native_transport_world(
 ):
     """Build Native-approved material with the restored production send guard."""
     from tests import test_authority_v4_lifecycle as lifecycle_tests
-    from test_generation_budget import FUNCTION, OPERATION, CONTRACT, transport
+    from tests.test_generation_budget import FUNCTION, OPERATION, CONTRACT, transport
 
     setup.contribution.invoke(
         CREDENTIAL_OPERATION,
@@ -434,7 +434,7 @@ def test_native_registered_credential_reaches_three_post_transport_cap(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Native-bound material and restored Host guard constrain actual POSTs."""
-    from test_generation_budget import transport
+    from tests.test_generation_budget import transport
 
     world = native_transport_world(setup, tmp_path, monkeypatch)
     for _ in range(3):
@@ -548,7 +548,7 @@ def test_native_missing_active_pointer_keeps_terminal_budget_code(
 ):
     """Host policy restore denial cannot become retryable provider-unavailable."""
     import sqlite3
-    from test_generation_budget import transport, CONTRACT, ENDPOINT
+    from tests.test_generation_budget import transport, CONTRACT, ENDPOINT
     from core_runtime.global_contract_dispatch import (
         GlobalContractClient,
         GlobalContractInvocationError,

@@ -132,6 +132,21 @@ class OwnerRouteClient:
             "usage": {"prompt_tokens": 3, "completion_tokens": 4},
         }
 
+    def stream_json_with_credential(self, **kwargs: Any) -> None:
+        """Record the selected handle and emit synthetic terminal stream frames."""
+        self.transport_requests.append(dict(kwargs))
+        on_event = kwargs["on_event"]
+        on_event({
+            "data": {
+                "choices": [{
+                    "delta": {"content": _REPLY},
+                    "finish_reason": "stop",
+                }],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+            },
+        })
+        on_event({"done": True})
+
 
 def _owners(
     root: Path, source: str, profile_handle: str | None,

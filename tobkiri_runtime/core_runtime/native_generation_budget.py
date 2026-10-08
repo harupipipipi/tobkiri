@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import secrets
-from typing import Any
+from typing import Any, NoReturn
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.authority.v4_models import authority_digest
@@ -106,7 +106,7 @@ class NativeGenerationBudgetOwner:
             self._deny()
 
     @staticmethod
-    def _deny() -> None:
+    def _deny() -> NoReturn:
         raise CredentialTransportDenied("generation_budget_invalid")
 
     def prepare(self, plan: Mapping[str, Any]) -> dict[str, Any]:

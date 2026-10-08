@@ -24,6 +24,18 @@ from ecosystem.rumi_credential_broker_pack.runtime.service import (
 from tests.conformance_support.host_contract import host_contract
 
 
+def _openai_provider(monkeypatch: pytest.MonkeyPatch) -> type:
+    """Supply the explicit Defaultspack import root for provider package imports."""
+    from ecosystem.defaultspack import domain
+
+    monkeypatch.syspath_prepend(str(Path(domain.__file__).resolve().parent.parent))
+    from ecosystem.defaultspack.domain.ai_client.providers.openai_provider import (
+        OpenAIProvider,
+    )
+
+    return OpenAIProvider
+
+
 def _created(tmp_path: Path) -> tuple[CredentialBrokerService, dict[str, object]]:
     service = CredentialBrokerService(user_data_root=tmp_path)
     created = service.invoke(
@@ -117,9 +129,7 @@ def test_ambient_environment_cannot_inject_host_or_provider_credential(monkeypat
     monkeypatch.setenv("OPENAI_API_KEY", "ambient-key")
 
     assert host_contract_value("desktop_api_token") == ""
-    from ecosystem.defaultspack.domain.ai_client.providers.openai_provider import (
-        OpenAIProvider,
-    )
+    OpenAIProvider = _openai_provider(monkeypatch)
 
     assert OpenAIProvider()._api_key == ""
     with bind_host_contract(
@@ -257,9 +267,7 @@ def test_eight_node_profile_credential_gate(
     elif case == "ambient_injection":
         monkeypatch.setenv("OPENAI_API_KEY", "attacker-controlled")
 
-        from ecosystem.defaultspack.domain.ai_client.providers.openai_provider import (
-            OpenAIProvider,
-        )
+        OpenAIProvider = _openai_provider(monkeypatch)
 
         assert OpenAIProvider()._api_key == ""
         return_value = {"api_key": ""}

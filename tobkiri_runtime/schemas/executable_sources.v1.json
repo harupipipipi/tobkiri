@@ -33321,6 +33321,26 @@
         {
           "contract_id": "tobkiri.workflow.v4",
           "contract_version": "1.0.0",
+          "entrypoint_id": "run.selected",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_path": "runtime/provider.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "run.selected",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "1.0.0",
           "entrypoint_id": "run.step.execute",
           "error_schema": {
             "type": "object"
@@ -33483,6 +33503,12 @@
         },
         {
           "entrypoint_id": "run.resume",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "run.selected",
           "kind": "legacy-explicit-entrypoint",
           "pack_source_id": "tobkiri_workflow_pack",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
@@ -37705,7 +37731,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:f5d54c6137a3e5b11f4762bdfb3d4c85ab87cb10b80bda6800618ea59ea4ea9f",
+    "input_digest": "sha256:a85a243fa60d6cfb17f5a725abaae9da8db58a5b2e49388e68b77a5fb225f224",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -38456,7 +38482,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:e65cf986c27718ad80fed0f78ba83d5d861a315964ca712bd5ca9d78f2c74072",
+        "digest": "sha256:e3426d0d52e98c4d0d5902a4d25870c41ab71ea4c98858bef83d0979c455a9d6",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

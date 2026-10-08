@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 import time
 import math
-from typing import Any
+from typing import Any, NoReturn
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.authority.v4_models import authority_digest
@@ -60,7 +60,7 @@ _BODY_KEYS = frozenset(
 )
 
 
-def _deny(code: str = "generation_budget_invalid") -> None:
+def _deny(code: str = "generation_budget_invalid") -> NoReturn:
     raise CredentialTransportDenied(code)
 
 

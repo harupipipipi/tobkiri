@@ -12483,6 +12483,7 @@
             "run.pause",
             "run.reconcile-recovery",
             "run.resume",
+            "run.selected",
             "run.step.execute",
             "run.step.resume",
             "run.step.retry"

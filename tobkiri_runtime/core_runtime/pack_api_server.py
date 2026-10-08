@@ -13,7 +13,15 @@ from dataclasses import dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Mapping,
+    Protocol,
+    cast,
+    runtime_checkable,
+)
 from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 from .api.api_response import APIResponse
@@ -66,6 +74,9 @@ from tobkiri_host.errors import (
     HostCoreError,
     SavedTurnNotStartedError,
 )
+
+if TYPE_CHECKING:
+    from .native_generation_budget import NativeGenerationBudgetTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +390,7 @@ class RuntimeCaptureInputs:
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None
     credential_store_factory: CredentialMaterialStoreFactory | None = None
     # Immutable application/Host policy; never supplied by HTTP or Pack input.
-    generation_budget_template: object | None = None
+    generation_budget_template: NativeGenerationBudgetTemplate | None = None
     acceptance_receipts: AcceptanceReceiptPort | None = None
     chat_continuation_approve: Callable[..., Mapping[str, object]] | None = None
     chat_continuation_resume: Callable[..., Mapping[str, object]] | None = None

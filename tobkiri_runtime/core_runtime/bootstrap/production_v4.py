@@ -2648,8 +2648,9 @@ def capture_production_dispatch(
             template=generation_budget_template,
         )
         admission = credential_store_binding.generation_admission
-        if admission is not None and callable(getattr(admission, "close", None)):
-            close_callbacks.append(admission.close)
+        close_admission = getattr(admission, "close", None)
+        if admission is not None and callable(close_admission):
+            close_callbacks.append(close_admission)
     elif generation_budget_template is not None:
         raise AuthorityDenied("generation budget requires Host credential storage")
 
