@@ -17,7 +17,9 @@ from typing import Any, Mapping
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from core_runtime.credential_transport import CredentialMaterialStoreBinding
+from core_runtime.credential_transport import (
+    CredentialMaterialStoreBinding, CredentialTransportDenied,
+)
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.runtime_locks import NamedLock
 
@@ -50,6 +52,8 @@ class HostCredentialMaterialStore:
         purpose: str = "provider.invoke",
         label: str = "",
         expires_at: float | None = None,
+        credential_handle: str | None = None,
+        generation_budget_binding: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Encrypt material and create one non-secret handle record."""
         self._prepare_storage()
@@ -67,9 +71,16 @@ class HostCredentialMaterialStore:
             raise ValueError("at least one credential scope is required")
         if not isinstance(secret_material, Mapping) or not secret_material:
             raise ValueError("secret_material is required")
-        handle = f"credential:{uuid.uuid4().hex}"
+        budget = _generation_budget_binding(generation_budget_binding)
+        if credential_handle is not None and budget is None:
+            raise ValueError("a predefined handle requires a generation budget")
+        handle = credential_handle or f"credential:{uuid.uuid4().hex}"
+        if not _identifier(handle, "credential_handle").startswith("credential:"):
+            raise ValueError("credential handle is invalid")
         with NamedLock(self.lock_root, "credential-broker"):
             state = self._read()
+            if handle in state["credentials"]:
+                raise PermissionError("credential handle cannot be replaced")
             record = {
                 "handle": handle,
                 "consumer_pack_id": consumer_pack_id,
@@ -94,6 +105,8 @@ class HostCredentialMaterialStore:
                 )
                 .decode("ascii"),
             }
+            if budget is not None:
+                record["required_generation_budget"] = budget
             record["record_mac"] = self._record_mac(record)
             state["credentials"][handle] = record
             state["revision"] += 1
@@ -168,6 +181,7 @@ class HostCredentialMaterialStore:
         key_version: str = "",
         purpose: str = "provider.invoke",
         expected_resource_binding: Mapping[str, Any] | None = None,
+        generation_budget_binding: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Decrypt only when caller, provider, scope, and expiry all match."""
         self._prepare_storage()
@@ -181,6 +195,7 @@ class HostCredentialMaterialStore:
                 key_version=key_version,
                 purpose=purpose,
                 expected_resource_binding=expected_resource_binding,
+                generation_budget_binding=generation_budget_binding,
             )
 
     def _resolve_unlocked(
@@ -194,6 +209,7 @@ class HostCredentialMaterialStore:
         key_version: str,
         purpose: str,
         expected_resource_binding: Mapping[str, Any] | None,
+        generation_budget_binding: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         state = self._read()
         record = state["credentials"].get(str(handle))
@@ -201,6 +217,12 @@ class HostCredentialMaterialStore:
             raise KeyError("credential handle is unknown")
         if not hmac.compare_digest(str(record.get("record_mac") or ""), self._record_mac(record)):
             raise PermissionError("credential record integrity check failed")
+        required_budget = _generation_budget_binding(
+            record.get("required_generation_budget")
+        )
+        supplied_budget = _generation_budget_binding(generation_budget_binding)
+        if required_budget != supplied_budget:
+            raise CredentialTransportDenied("generation_budget_invalid")
         if str(record.get("consumer_pack_id")) != consumer_pack_id:
             raise PermissionError("credential consumer is not bound")
         if str(record.get("provider_instance_id")) != provider_instance_id:
@@ -245,6 +267,22 @@ class HostCredentialMaterialStore:
         ]
         values.sort(key=lambda item: item["handle"])
         return {"credentials": values, "count": len(values)}
+
+    def requires_generation_budget(self, *, profile_id: str) -> bool:
+        """Keep required budget admission after loss of both policy databases."""
+        self._prepare_storage()
+        with NamedLock(self.lock_root, "credential-broker"):
+            state = self._read()
+            for record in state["credentials"].values():
+                if record.get("profile_id") != profile_id:
+                    continue
+                if not hmac.compare_digest(
+                    str(record.get("record_mac") or ""), self._record_mac(record)
+                ):
+                    raise PermissionError("credential record integrity check failed")
+                if _generation_budget_binding(record.get("required_generation_budget")):
+                    return True
+        return False
 
     def revoke(self, handle: str, *, profile_id: str) -> dict[str, Any]:
         """Delete encrypted material for one exact handle."""
@@ -666,3 +704,27 @@ def _hash(value: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _generation_budget_binding(
+    value: Mapping[str, str] | None,
+) -> dict[str, str] | None:
+    """Validate the immutable, non-secret transport requirement marker."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != {
+        "enrollment_id", "policy_digest",
+    }:
+        raise ValueError("generation budget binding is invalid")
+    enrollment = _identifier(value["enrollment_id"], "enrollment_id")
+    digest = value["policy_digest"]
+    if (
+        type(digest) is not str or not digest.startswith("sha256:")
+        or len(digest) != 71
+    ):
+        raise ValueError("generation budget binding is invalid")
+    try:
+        int(digest[7:], 16)
+    except ValueError:
+        raise ValueError("generation budget binding is invalid") from None
+    return {"enrollment_id": enrollment, "policy_digest": digest}

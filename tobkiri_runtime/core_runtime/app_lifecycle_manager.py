@@ -347,6 +347,7 @@ class AppLifecycleManager:
                     capability_binding_snapshot_factory=(inputs.capability_binding_snapshot_factory),
                     capability_binding_selector=inputs.capability_binding_selector,
                     credential_store_factory=inputs.credential_store_factory,
+                    generation_budget_template=inputs.generation_budget_template,
                     acceptance_receipts=inputs.acceptance_receipts,
                     chat_continuation_approve=inputs.chat_continuation_approve,
                     chat_continuation_resume=inputs.chat_continuation_resume,

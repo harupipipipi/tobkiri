@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.credential_transport import CredentialMaterialStoreFactory
+from core_runtime.native_generation_budget import NativeGenerationBudgetTemplate
 from core_runtime.global_contracts.http_contract_dispatch import HTTPContractBinding
 from core_runtime.pack_api_server import RuntimeCaptureInputs
 from tobkiri_host.backends import ExecutionBackend
@@ -205,6 +206,7 @@ def defaultspack_runtime_capture_inputs(
     credential_store_factory: CredentialMaterialStoreFactory = (
         host_credential_store_factory
     ),
+    generation_budget_template: NativeGenerationBudgetTemplate | None = None,
 ) -> RuntimeCaptureInputs:
     """Select one signed Defaultspack application map for a runtime refresh."""
 
@@ -256,6 +258,7 @@ def defaultspack_runtime_capture_inputs(
             else None
         ),
         credential_store_factory=credential_store_factory,
+        generation_budget_template=generation_budget_template,
         acceptance_receipts=delegates.acceptance_receipts,
         chat_continuation_approve=delegates.chat_continuation_approve,
         chat_continuation_resume=delegates.chat_continuation_resume,
@@ -404,6 +407,7 @@ def create_defaultspack_kernel(
     credential_store_factory: CredentialMaterialStoreFactory = (
         host_credential_store_factory
     ),
+    generation_budget_template: NativeGenerationBudgetTemplate | None = None,
 ) -> Kernel:
     """Compose the generic Host bootstrap with Defaultspack-owned services."""
 
@@ -447,6 +451,7 @@ def create_defaultspack_kernel(
             packvm_provisioner=lifecycle,
             bundle_root=bundle_root,
             credential_store_factory=credential_store_factory,
+            generation_budget_template=generation_budget_template,
         ),
         capability_snapshot_factory=defaultspack_capability_snapshot,
         application_presentation=DefaultspackHTTPPresentation(),

@@ -87,6 +87,7 @@ def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
 
 def prepare_configuration(
     registry: ProviderRegistry, payload: Mapping[str, Any],
+    *, budget_port: Any | None = None,
 ) -> dict[str, Any]:
     """Read the existing revision and describe a write without storing a key."""
     request = configuration_request(payload)
@@ -104,7 +105,7 @@ def prepare_configuration(
         _connection_record(request, plan, None),
         expected_revision=plan["expected_revision"],
     )
-    return plan
+    return budget_port.prepare(plan) if budget_port is not None else plan
 
 
 def _connection_record(
@@ -136,6 +137,7 @@ def execute_configuration(
     payload: Mapping[str, Any],
     *,
     consumer_pack_id: str,
+    budget_port: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one frozen setup after Broker approval, with no write retry."""
     if set(payload) != {"request", "plan"}:
@@ -146,7 +148,7 @@ def execute_configuration(
         raise ValueError("provider configuration execution is invalid")
     # Re-read before creating a credential. A stale approval cannot overwrite a
     # connection changed since prepare, nor leave a key behind for that conflict.
-    if dict(plan) != prepare_configuration(registry, request):
+    if dict(plan) != prepare_configuration(registry, request, budget_port=budget_port):
         raise PermissionError("provider configuration changed after preparation")
     prepared = registry.prepare_save(
         _connection_record(request, plan, None),

@@ -113,7 +113,9 @@ class ProviderRegistryHostFactoryV4:
                     context.profile_id, user_data_root=context.user_data_root,
                 )
                 if operation_id == PREPARE_OPERATION:
-                    return prepare_configuration(registry, payload)
+                    return prepare_configuration(
+                        registry, payload, budget_port=getattr(context, "generation_budget_port", None),
+                    )
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({CREDENTIAL_CONTRACT}),
                     consumer_pack_id="rumi_provider_registry_pack",
@@ -121,6 +123,7 @@ class ProviderRegistryHostFactoryV4:
                 )
                 return execute_configuration(
                     registry, client, payload, consumer_pack_id=credential_consumer,
+                    budget_port=getattr(context, "generation_budget_port", None),
                 )
             if self.readonly:
                 if set(payload) - {"profile_id"}:

@@ -212,6 +212,7 @@ class Kernel:
                             credential_store_factory=(
                                 inputs.credential_store_factory
                             ),
+                            generation_budget_template=inputs.generation_budget_template,
                             acceptance_receipts=inputs.acceptance_receipts,
                             chat_continuation_approve=(
                                 inputs.chat_continuation_approve

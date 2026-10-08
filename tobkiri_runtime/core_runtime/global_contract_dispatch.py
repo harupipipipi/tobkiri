@@ -28,6 +28,24 @@ class HostCredentialTransportError(RuntimeError):
         super().__init__(self.code)
 
 
+class HostGenerationBudgetError(RuntimeError):
+    """Safe terminal budget denial preserved across the Pack boundary."""
+
+    code = "generation_budget_denied"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+def _is_generation_budget_denial(error: Exception) -> bool:
+    from core_runtime.credential_transport import CredentialTransportDenied
+
+    return isinstance(error, CredentialTransportDenied) and error.code in {
+        "generation_budget_exhausted", "generation_budget_invalid",
+        "generation_budget_replay",
+    }
+
+
 class V4ContractDispatch(Protocol):
     """Explicit Host adapter; implementations own an immutable activation."""
 
@@ -235,6 +253,7 @@ class GlobalContractClient:
         """Keep credential application and per-frame redaction inside Host."""
         if self.host_credential_transport is None:
             raise PermissionError("Host credential transport is unavailable")
+        budget_denied = False
         try:
             self.host_credential_transport.stream_json(
                 endpoint=endpoint, headers=headers, body=body,
@@ -244,8 +263,10 @@ class GlobalContractClient:
                 deadline=deadline, on_event=on_event,
             )
             return
-        except Exception:
-            pass
+        except Exception as error:
+            budget_denied = _is_generation_budget_denial(error)
+        if budget_denied:
+            raise HostGenerationBudgetError
         raise HostCredentialTransportError
 
     def post_local_model_chat(
@@ -276,6 +297,7 @@ class GlobalContractClient:
         """Use the finite Host transport capability; never resolve material."""
         if self.host_credential_transport is None:
             raise PermissionError("Host credential transport is unavailable")
+        budget_denied = False
         try:
             value = self.host_credential_transport.post_json(
                 endpoint=endpoint,
@@ -290,8 +312,10 @@ class GlobalContractClient:
             if not isinstance(value, Mapping):
                 raise HostCredentialTransportError
             return dict(value)
-        except Exception:
-            pass
+        except Exception as error:
+            budget_denied = _is_generation_budget_denial(error)
+        if budget_denied:
+            raise HostGenerationBudgetError
         raise HostCredentialTransportError
 
     def select_git_https_credential(

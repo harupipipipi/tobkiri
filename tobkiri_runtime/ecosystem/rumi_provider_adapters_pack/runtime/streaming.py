@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Mapping
 
-from core_runtime.global_contract_dispatch import GlobalContractInvocationError
+from core_runtime.global_contract_dispatch import (
+    GlobalContractInvocationError, HostGenerationBudgetError,
+)
 from tobkiri_protocol.turn_progress_v1 import (
     ACTION,
     ACTION_OPERATION,
@@ -226,5 +228,9 @@ def stream_request(
                 on_event=stream.receive,
             )
         return stream.result()
+    except HostGenerationBudgetError:
+        raise GlobalContractInvocationError(
+            "generation_budget_denied", "Host generation budget denied",
+        ) from None
     except (OSError, PermissionError, RuntimeError, ValueError, TypeError):
         raise GlobalContractInvocationError("stream_failed", "provider stream failed") from None

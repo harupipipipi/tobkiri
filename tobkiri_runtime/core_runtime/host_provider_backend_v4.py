@@ -159,6 +159,9 @@ class HostProviderCaptureContextV4:
     action_approval_policy_capabilities_port: Callable[..., Mapping[str, Any]] | None = None
     # Host-private inheritance; no selected mode or authority is parsed from Pack payloads.
     selected_tool_policy_port: Callable[[Any], Any] | None = None
+    # Only exact Native configure and credential-manage hooks receive this
+    # Host-owned port. No budget decision is parsed from renderer flags.
+    generation_budget_port: Any | None = None
 
 
 @dataclass(frozen=True)

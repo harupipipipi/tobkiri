@@ -52,6 +52,9 @@ class CredentialTransportDenied(PermissionError):
         {
             "audit_failure",
             "binding_invalid",
+            "generation_budget_exhausted",
+            "generation_budget_invalid",
+            "generation_budget_replay",
             "material_invalid",
             "provider_failure",
             "response_invalid",
@@ -94,6 +97,7 @@ class CredentialMaterialStore(Protocol):
         key_version: str = "",
         purpose: str = "provider.invoke",
         expected_resource_binding: Mapping[str, Any] | None = None,
+        generation_budget_binding: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Resolve material only inside the Host transport boundary."""
 
@@ -110,12 +114,27 @@ class CredentialMaterialStore(Protocol):
         """Return one exact opaque handle record without secret material."""
 
 
+class GenerationSendAdmission(Protocol):
+    """Host-injected admission; payloads cannot select or disable this guard."""
+
+    @property
+    def credential_budget_binding(self) -> Mapping[str, str]:
+        """Return the Host-owned marker required for material resolution."""
+
+    def reserve(
+        self, *, binding: "CredentialTransportBinding", contract_id: str,
+        endpoint: str, body: Mapping[str, Any],
+    ) -> None:
+        """Consume one durable slot immediately before generation transport."""
+
+
 @dataclass(frozen=True)
 class CredentialMaterialStoreBinding:
     """One Host credential store and its exact opaque key-version binding."""
 
     store: CredentialMaterialStore
     key_version: str
+    generation_admission: GenerationSendAdmission | None = None
 
     def __post_init__(self) -> None:
         """Reject an incomplete factory result before provider dispatch."""
@@ -208,6 +227,7 @@ class HostBoundCredentialTransport:
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
         parent_guard: Callable[[], None] | None = None,
+        generation_admission: GenerationSendAdmission | None = None,
     ) -> None:
         self._envelope = envelope
         self._store = store
@@ -226,6 +246,7 @@ class HostBoundCredentialTransport:
         )
         self._consumed = False
         self._parent_guard = parent_guard
+        self._generation_admission = generation_admission
         self._lock = RLock()
 
     @classmethod
@@ -249,6 +270,7 @@ class HostBoundCredentialTransport:
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
         parent_guard: Callable[[], None] | None = None,
+        generation_admission: GenerationSendAdmission | None = None,
     ) -> "HostBoundCredentialTransport":
         """Capture a transport lease from the Broker-authenticated envelope."""
         bound_origin = _credential_origin(endpoint_origin)
@@ -303,6 +325,7 @@ class HostBoundCredentialTransport:
             invocation_token=invocation_token,
             binding=binding,
             parent_guard=parent_guard,
+            generation_admission=generation_admission,
             current_security_epoch=current_security_epoch,
             audit_sink=audit_sink,
             clock=clock,
@@ -412,6 +435,13 @@ class HostBoundCredentialTransport:
         secret_text = ""
         audit_status = "failed"
         try:
+            # Host admission failures retain their safe terminal budget code.
+            budget_arguments = (
+                {"generation_budget_binding": (
+                    self._generation_admission.credential_budget_binding
+                )}
+                if self._generation_admission is not None else {}
+            )
             try:
                 material = self._store.resolve(
                     self._binding.credential_handle,
@@ -422,7 +452,15 @@ class HostBoundCredentialTransport:
                     key_version=self._binding.credential_key_version,
                     purpose=self._binding.credential_purpose,
                     expected_resource_binding=self._expected_resource_binding,
+                    **budget_arguments,
                 )
+            except CredentialTransportDenied as denial:
+                if denial.code in {
+                    "generation_budget_exhausted", "generation_budget_invalid",
+                    "generation_budget_replay",
+                }:
+                    raise CredentialTransportDenied(denial.code) from None
+                raise CredentialTransportDenied("store_failure") from None
             except Exception:
                 raise CredentialTransportDenied("store_failure") from None
             if not isinstance(material, dict):
@@ -462,6 +500,17 @@ class HostBoundCredentialTransport:
             )
             if not self._authority_still_active():
                 raise CredentialTransportDenied("binding_invalid")
+            if self._generation_admission is not None:
+                self._generation_admission.reserve(
+                    binding=self._binding, contract_id=self._envelope.contract_id,
+                    endpoint=endpoint, body=json.loads(encoded_body),
+                )
+                remaining = _remaining_deadline_budget(
+                    initial_remaining=initial_remaining,
+                    started=deadline_started, clock=self._monotonic_clock,
+                )
+                if not self._authority_still_active():
+                    raise CredentialTransportDenied("binding_invalid")
             timeout = min(60.0, remaining)
             with self._opener(
                 request, timeout=timeout,
@@ -567,6 +616,9 @@ class HostBoundCredentialTransport:
         redacted status string.  Pack code never receives credential material,
         an askpass environment, or a reusable process handle.
         """
+
+        if self._generation_admission is not None:
+            raise CredentialTransportDenied("generation_budget_invalid")
 
         expected_resource = self._expected_resource_binding
         if (
@@ -751,6 +803,7 @@ class AuthorizedEnvelopeCredentialTransport:
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         parent_guard: Callable[[], None] | None = None,
+        generation_admission: GenerationSendAdmission | None = None,
     ) -> None:
         self._envelope = envelope
         self._provider_principal = provider_principal
@@ -763,6 +816,7 @@ class AuthorizedEnvelopeCredentialTransport:
         self._clock = clock
         self._monotonic_clock = monotonic_clock
         self._parent_guard = parent_guard
+        self._generation_admission = generation_admission
         self._used = False
         self._selection_used = False
         self._git_selection: dict[str, Any] | None = None
@@ -897,6 +951,7 @@ class AuthorizedEnvelopeCredentialTransport:
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
             parent_guard=self._parent_guard,
+            generation_admission=self._generation_admission,
         )
         method = transport.stream_json if _on_event is not None else transport.post_json
         extra = {"on_event": _on_event} if _on_event is not None else {}
@@ -990,6 +1045,7 @@ class AuthorizedEnvelopeCredentialTransport:
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
             parent_guard=self._parent_guard,
+            generation_admission=self._generation_admission,
         )
         return transport.push_git_https(
             git_executable=git_executable,

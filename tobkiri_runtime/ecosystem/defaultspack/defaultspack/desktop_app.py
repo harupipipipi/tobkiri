@@ -485,6 +485,7 @@ def _restore_active_profile_contracts(
     packvm_lifecycle: Any,
     *,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
+    generation_budget_template: object | None = None,
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None,
 ):
     """Capture the active Profile and verify its Application contract map."""
@@ -555,6 +556,7 @@ def _restore_active_profile_contracts(
         capability_binding_snapshot_factory=defaultspack_capability_snapshot_mapping,
         capability_binding_selector=defaultspack_capability_binding,
         credential_store_factory=credential_store_factory,
+        generation_budget_template=generation_budget_template,
         acceptance_receipts=delegates.acceptance_receipts,
         chat_continuation_approve=delegates.chat_continuation_approve,
         chat_continuation_resume=delegates.chat_continuation_resume,
@@ -783,7 +785,11 @@ def _require_host_panel_auth_manager(
     return manager
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    generation_budget_template: object | None = None,
+) -> int:
     if argv is not None:
         _parse_cli_args(argv)
     if not _IMPORT_PATH_READY:
@@ -840,6 +846,7 @@ def main(argv: list[str] | None = None) -> int:
         defaultspack_runtime_capture_inputs,
         packvm_provisioner=packvm_lifecycle,
         credential_store_factory=host_credential_store_factory,
+        generation_budget_template=generation_budget_template,
     )
     lifecycle = AppLifecycleManager(
         packvm_lifecycle=packvm_lifecycle,
@@ -850,6 +857,7 @@ def main(argv: list[str] | None = None) -> int:
         dispatch_session, contract_bindings = _restore_active_profile_contracts(
             packvm_lifecycle,
             credential_store_factory=host_credential_store_factory,
+            generation_budget_template=generation_budget_template,
         )
     except ProfileReconfirmationRequired as error:
         dispatch_session, contract_bindings = None, ()

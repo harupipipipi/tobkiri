@@ -68,7 +68,6 @@ class CredentialManagementHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation
             action = payload.get("operation")
             fields = {
                 "list": set(),
@@ -87,6 +86,8 @@ class CredentialManagementHostFactoryV4:
                 or set(payload) - fields[action] - {"operation", "profile_id"}
             ):
                 raise PermissionError("credential request is invalid")
+            if action == "create" and getattr(context, "generation_budget_port", None) is not None:
+                return getattr(context, "generation_budget_port", None).create(payload, invocation)
             return service.invoke(action, payload)
 
         return CapturedHostProviderV4((HostProviderContributionV4(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from core_runtime.global_contract_dispatch import HostGenerationBudgetError
+
 import hashlib
 import http.client
 import json
@@ -674,6 +676,10 @@ def _post(
             credential_scheme=credential_scheme,
             deadline=deadline,
         )
+    except HostGenerationBudgetError:
+        raise GlobalContractInvocationError(
+            "generation_budget_denied", "Host generation budget denied",
+        ) from None
     except (OSError, PermissionError, RuntimeError, ValueError) as exc:
         raise GlobalContractInvocationError("provider_unavailable", type(exc).__name__) from None
     if not isinstance(value, dict):

@@ -642,7 +642,7 @@ def _execute_payload(
     if spec.kind == "provider_configure":
         configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
-            set(configuration_plan) != {
+            set(configuration_plan) - {"generation_budget"} != {
                 "profile_id", "provider_instance_id", "adapter_id", "endpoint",
                 "expected_revision", "request_digest",
             }
@@ -651,6 +651,12 @@ def _execute_payload(
             or configuration_plan["expected_revision"] < 0
         ):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        if "generation_budget" in configuration_plan:
+            from core_runtime.generation_transport_budget import GenerationBudgetPolicy
+            try:
+                GenerationBudgetPolicy(**configuration_plan["generation_budget"])
+            except Exception:
+                raise InteractiveEffectUnavailable("interactive effect is unavailable") from None
         return {"request": dict(request), "plan": configuration_plan}
     if spec.kind == "shell_execute":
         plan = prepared_result.get("redacted_plan")
@@ -919,6 +925,16 @@ def _presentation_metadata(
             "API key is not required."
             if local else f"Credential: {_REDACTED}"
         )
+        budget_detail = ""
+        if "generation_budget" in plan:
+            budget = plan["generation_budget"]
+            budget_detail = (
+                f"\nGeneration requests over credential lifetime: {budget['max_requests']}"
+                f"\nModel: {budget['model']}"
+                f"\nMaximum output tokens: {budget['max_output_tokens']}"
+                "\nMaximum prompt/completion price: 0/0; fallback disabled."
+                "\nRestart, retry and continuation retain the same consumed budget."
+            )
         return _presentation(
             action="Configure Provider connection",
             summary=(
@@ -931,7 +947,7 @@ def _presentation_metadata(
                 f"Profile: {plan['profile_id']}\n"
                 f"Protocol: {plan['adapter_id']}\n"
                 f"Endpoint: {plan['endpoint']}\n"
-                f"{key_detail}"
+                f"{key_detail}{budget_detail}"
             ),
         )
     if spec.kind == "file_create":

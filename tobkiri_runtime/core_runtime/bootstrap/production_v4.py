@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from core_runtime.native_generation_budget import (
+    NativeGenerationBudgetTemplate, capture_native_generation_budget,
+    owner_startup_generation_budget_template,
+)
+
 import contextvars
 import json
 import math
@@ -1532,6 +1537,7 @@ def capture_production_dispatch(
     capability_binding_snapshot_factory: CapabilityBindingSnapshotFactory | None = None,
     capability_binding_selector: CapabilityBindingSelector | None = None,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
+    generation_budget_template: NativeGenerationBudgetTemplate | None = None,
     acceptance_receipts: AcceptanceReceiptPort | None = None,
     chat_continuation_approve: Callable[..., Mapping[str, Any]] | None = None,
     chat_continuation_resume: Callable[..., Mapping[str, Any]] | None = None,
@@ -1559,6 +1565,12 @@ def capture_production_dispatch(
         raise AuthorityDenied("Authority store path is not canonical")
     authority_user_data = authority_path.parent.parent
     profile_id = str(active.resolved.profile["profile_id"])
+    generation_budget_template = owner_startup_generation_budget_template(
+        generation_budget_template
+    )
+    if (generation_budget_template is not None
+            and generation_budget_template.profile_id != profile_id):
+        raise AuthorityDenied("Host generation budget Profile binding is invalid")
     authority_workspace = authority_user_data / "workspaces" / profile_id
     try:
         catalog = _host_profile_catalog(
@@ -2629,6 +2641,18 @@ def capture_production_dispatch(
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
     presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
+    if credential_store_binding is not None:
+        credential_store_binding = capture_native_generation_budget(
+            binding=credential_store_binding, authority_store=authority_store,
+            user_data_root=authority_user_data, profile_id=profile_id,
+            template=generation_budget_template,
+        )
+        admission = credential_store_binding.generation_admission
+        if admission is not None and callable(getattr(admission, "close", None)):
+            close_callbacks.append(admission.close)
+    elif generation_budget_template is not None:
+        raise AuthorityDenied("generation budget requires Host credential storage")
+
     parent_invocation_scopes = ParentInvocationScopesV4()
     caller_session_bindings_lock = threading.RLock()
 
@@ -2989,6 +3013,9 @@ def capture_production_dispatch(
                     authority_store=authority_store,
                     current_security_epoch=lambda: authority_store.security_epoch,
                     credential_key_version=credential_store_binding.key_version,
+                    generation_admission=(
+                        credential_store_binding.generation_admission
+                    ),
                     consumer_pack_id=consumer_pack_id,
                     parent_guard=self.assert_current,
                 )
@@ -3128,6 +3155,17 @@ def capture_production_dispatch(
             saved_tool_mode_admission=saved_tool_mode_port,
             action_approval_policy_capabilities_port=capabilities_port,
             selected_tool_policy_port=selected_tool_policy_port,
+            generation_budget_port=(
+                credential_store_binding.generation_admission
+                if credential_store_binding is not None
+                and credential_store_binding.generation_admission is not None
+                and all(item.function.function_id in {
+                    "rumi_provider_registry_pack.provider-configure.prepare",
+                    "rumi_provider_registry_pack.provider-configure.execute",
+                    "rumi_credential_broker_pack.credential-broker.manage",
+                } for item in provider_bindings)
+                else None
+            ),
             action_approval_policy_port=action_approval_policy_port,
         )
 
