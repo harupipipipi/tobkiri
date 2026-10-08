@@ -114,6 +114,7 @@ def _signed_external_pack(
     frontend_artifact_kind: str = "ui.contribution",
     version: str = "1.0.0",
     publisher_id: str = "publisher.conformance",
+    signing_key: Ed25519PrivateKey | None = None,
 ) -> tuple[Path, Path]:
     source = tmp_path / PACK_ID
     shutil.copytree(FIXTURE, source)
@@ -185,7 +186,7 @@ def _signed_external_pack(
             path.chmod(0o755)
         elif path.is_file():
             path.chmod(0o644)
-    private_key = Ed25519PrivateKey.generate()
+    private_key = signing_key or Ed25519PrivateKey.generate()
     manifest = build_signed_manifest(
         source,
         pack_id=PACK_ID,

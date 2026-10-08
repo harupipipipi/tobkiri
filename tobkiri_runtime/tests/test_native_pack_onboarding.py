@@ -160,3 +160,37 @@ def test_qa_frontend_pack_onboards_through_preview_commit_and_cas(
     assert admitted["artifact_digest"] == preview["artifact_digest"]
     policy = read_host_policy_snapshot(trust_store)
     assert policy["install_records"][PACK_ID]["signature_required"] is True
+
+
+def test_native_update_reuses_exact_publisher_key_and_retains_both_revisions(monkeypatch, tmp_path: Path) -> None:
+    from core_runtime.external_pack_catalog_v4 import load_external_pack_catalog, resolve_admitted_pack_root
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setattr(fixture_module, "write_host_install_record", lambda *_args, **_kwargs: None)
+    key = Ed25519PrivateKey.generate()
+    releases = []
+    for version in ("1.0.0", "1.1.0"):
+        directory = tmp_path / version
+        directory.mkdir()
+        releases.append(fixture_module._signed_external_pack(directory, version=version, signing_key=key))
+    public = tmp_path / "publisher.pem"
+    public.write_bytes(key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))
+    trust_dir = tmp_path / "native-policy"
+    trust_dir.mkdir(mode=0o700)
+    trust = trust_dir / "publisher-trust.json"
+    first_preview = native_pack_onboarding.preview_signed_pack(releases[0][0], public)
+    first = native_pack_onboarding.commit_signed_pack(releases[0][0], public,
+        expected_preview_digest=first_preview["preview_digest"], trust_store_path=trust)
+    old_root = resolve_admitted_pack_root(fixture_module.PACK_ID)
+    second_preview = native_pack_onboarding.preview_signed_pack(releases[1][0], public)
+    assert second_preview["predecessor_artifact_digest"] == first["artifact_digest"]
+    second = native_pack_onboarding.commit_signed_pack(releases[1][0], public,
+        expected_preview_digest=second_preview["preview_digest"], trust_store_path=trust)
+    assert second["artifact_digest"] != first["artifact_digest"]
+    assert resolve_admitted_pack_root(fixture_module.PACK_ID) == old_root
+    assert len(load_external_pack_catalog().versions[fixture_module.PACK_ID]) == 2
+    retry_preview = native_pack_onboarding.preview_signed_pack(releases[1][0], public)
+    retried = native_pack_onboarding.commit_signed_pack(releases[1][0], public,
+        expected_preview_digest=retry_preview["preview_digest"], trust_store_path=trust)
+    assert retried["artifact_digest"] == second["artifact_digest"]
+    assert len(load_external_pack_catalog().versions[fixture_module.PACK_ID]) == 2
