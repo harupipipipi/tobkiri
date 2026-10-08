@@ -405,3 +405,28 @@ def test_desktop_route_state_does_not_persist_secret_bearing_urls(tmp_path):
     serialized = desktop_app.route_state_path(root=tmp_path).read_text(encoding="utf-8")
     assert fake_secret not in serialized
     assert desktop_app.load_route_state(root=tmp_path)["target_url"] == ""
+
+
+def test_desktop_route_state_rejects_late_stale_write_after_cancel(tmp_path):
+    from ecosystem.search_home_pack import desktop_app
+
+    desktop_app.persist_route_state(
+        {
+            "query": "",
+            "target_url": "",
+            "issued_at": "2026-08-24T10:00:02.000Z",
+        },
+        root=tmp_path,
+    )
+    desktop_app.persist_route_state(
+        {
+            "query": "stale candidate",
+            "target_url": "https://example.com/stale",
+            "issued_at": "2026-08-24T10:00:01.000Z",
+        },
+        root=tmp_path,
+    )
+
+    restored = desktop_app.load_route_state(root=tmp_path)
+    assert restored["query"] == ""
+    assert restored["target_url"] == ""

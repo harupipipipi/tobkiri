@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import mimetypes
 import os
@@ -35,6 +36,7 @@ _SEARCH_HOME_ROUTE_POLICIES = {
     ("POST", "/api/settings/model"): {"approval_required": False},
     ("POST", "/api/route-state"): {"approval_required": False},
 }
+_ROUTE_STATE_LOCK = threading.Lock()
 
 
 def _search_home_contract_routes() -> dict[tuple[str, str], HTTPContractBinding]:
@@ -156,8 +158,32 @@ def persist_route_state(state: dict[str, Any], *, root: Path | None = None) -> P
     path = route_state_path(root=root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = _sanitize_route_state_for_persistence(dict(state or {}))
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _ROUTE_STATE_LOCK:
+        existing = load_route_state(root=root)
+        existing_version = _route_state_version(existing)
+        incoming_version = _route_state_version(payload)
+        if existing_version is not None and (
+            incoming_version is None or incoming_version < existing_version
+        ):
+            return path
+        temporary = path.with_suffix(f"{path.suffix}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
     return path
+
+
+def _route_state_version(state: dict[str, Any]) -> float | None:
+    """Return the comparable issue time for ordered route-state writes."""
+    value = state.get("issued_at")
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except (ValueError, OverflowError):
+        return None
 
 
 def _sanitize_route_state_for_persistence(value: Any, key: str = "") -> Any:

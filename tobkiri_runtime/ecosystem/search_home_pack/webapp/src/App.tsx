@@ -2,6 +2,7 @@ import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useR
 
 import {
   answerInput,
+  clearRouteStateRemotely,
   loadModelSettings,
   loadModels,
   loadRouteState,
@@ -25,6 +26,7 @@ import {
 import { NavigationReview } from "./NavigationReview";
 import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
 import { evaluateExplicitDestinationInput } from "./destinationPolicy";
+import { isFreshRestoredRouteState } from "./routeState";
 
 const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
@@ -161,13 +163,7 @@ function loadDecisionFromSessionStorage(storage: Storage | null): HydratedRouteS
     const session = storage.getItem(ROUTE_SESSION_STORAGE_KEY);
     if (session) {
       const parsed = JSON.parse(session) as Partial<RouteSessionState>;
-      const issuedAt = Date.parse(String(parsed.issued_at || ""));
-      const expiresAt = Date.parse(String(parsed.expires_at || ""));
-      const now = Date.now();
-      if (!/^[A-Za-z0-9_-]{16,128}$/.test(String(parsed.state_id || "")) ||
-          !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) ||
-          issuedAt > now + 30_000 || expiresAt <= now ||
-          expiresAt - issuedAt > 6 * 60 * 60 * 1000) {
+      if (!isFreshRestoredRouteState(parsed)) {
         storage.removeItem(ROUTE_SESSION_STORAGE_KEY);
         return null;
       }
@@ -282,6 +278,7 @@ export default function App() {
   const [answerTransportError, setAnswerTransportError] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [restoredReviewRequired, setRestoredReviewRequired] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
   const modelFilterRef = useRef<HTMLInputElement | null>(null);
@@ -367,13 +364,14 @@ export default function App() {
     if (restored) {
       const normalizedIndex = normalizeSelectedIndex(restored, restored.selected_index);
       setDecision(restored);
+      setRestoredReviewRequired(true);
       setSelectedIndex(normalizedIndex);
       setInput(restored.query);
       return;
     }
 
     void loadRouteState().then((payload) => {
-      if (!payload) {
+      if (!payload || !isFreshRestoredRouteState(payload)) {
         return;
       }
       const restoredDecision = coerceRouteDecision(payload) ?? decisionFromSessionState(payload);
@@ -381,6 +379,7 @@ export default function App() {
         return;
       }
       setDecision(restoredDecision);
+      setRestoredReviewRequired(true);
       setSelectedIndex(normalizeSelectedIndex(restoredDecision, restoredDecision.selected_index));
       if (restoredDecision.query) {
         setInput(restoredDecision.query);
@@ -428,6 +427,7 @@ export default function App() {
   const runAnswer = useCallback(
     async (query: string, baseDecision: RouteDecision = syntheticAnswerDecision(query)) => {
       setDecision(baseDecision);
+      setRestoredReviewRequired(false);
       setSelectedIndex(-1);
       persistRouteState(baseDecision, -1);
       const requestRevision = ++answerRequestRef.current;
@@ -473,6 +473,7 @@ export default function App() {
           };
           setInput("");
           setDecision(blockedDecision);
+          setRestoredReviewRequired(false);
           setSelectedIndex(-1);
           return;
         }
@@ -494,6 +495,7 @@ export default function App() {
             metadata: {},
           };
           setDecision(fallbackDecision);
+          setRestoredReviewRequired(false);
           setSelectedIndex(-1);
           return;
         }
@@ -501,6 +503,7 @@ export default function App() {
         const nextDecision = await routeInput(query, selectedModel);
         const nextIndex = normalizeSelectedIndex(nextDecision, nextDecision.selected_index);
         setDecision(nextDecision);
+        setRestoredReviewRequired(false);
         setSelectedIndex(nextIndex);
         persistRouteState(nextDecision, nextIndex);
         if (isAnswerRoute(nextDecision)) {
@@ -797,8 +800,20 @@ export default function App() {
             void navigator.clipboard.writeText(details);
           }}
           onCancel={() => {
+            const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+            storage?.removeItem(ROUTE_DECISION_STORAGE_KEY);
+            storage?.removeItem(ROUTE_SESSION_STORAGE_KEY);
+            clearRouteStateRemotely();
             setDecision(null);
             setSelectedIndex(-1);
+            setRestoredReviewRequired(false);
+          }}
+          shortcutsRequireReview={restoredReviewRequired}
+          onEnableShortcuts={() => {
+            const destination = reviewRouteDestination(
+              selectedCandidateUrl(currentDecision, selectedIndex),
+            );
+            if (destination.ok) setRestoredReviewRequired(false);
           }}
         />
       ) : null}

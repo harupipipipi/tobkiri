@@ -39,29 +39,6 @@
     }
   });
 
-  window.addEventListener(
-    "keydown",
-    (event) => {
-      if (!isSearchHomeHotkey(event)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      chrome.runtime.sendMessage({
-        type: "rumi:search-home:advance-candidate",
-        action: event.key === "ArrowLeft" ? "prev" : event.key === "ArrowRight" ? "next" : "open"
-      });
-    },
-    true
-  );
-
-  function isSearchHomeHotkey(event) {
-    if (Date.now() > searchHomeRouteStateExpiresAt) {
-      return false;
-    }
-    return event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "Enter";
-  }
-
   function refreshSearchHomeRouteState() {
     try {
       const maybePromise = chrome.runtime.sendMessage(
