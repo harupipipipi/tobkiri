@@ -1291,6 +1291,14 @@ def _required_profile_pack_ids(
     if source is None:
         raise PackControlDigestMismatch("selected Profile is unavailable")
     selected = [str(item["pack_id"]) for item in source["packs"]]
+    catalog, _ = catalog_with_admitted_pack_closure(
+        catalog,
+        selected,
+        artifact_pins={
+            str(row["pack_id"]): str(row["artifact_digest"])
+            for row in source["packs"] if row.get("artifact_digest") is not None
+        },
+    )
     pending = list(selected)
     while pending:
         current_id = pending.pop(0)
