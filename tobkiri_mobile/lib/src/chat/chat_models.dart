@@ -88,6 +88,8 @@ class Conversation {
     this.pinned = false,
     this.revision = 0,
     this.authority = ConversationAuthorityKind.local,
+    this.deletedAt,
+    this.deletedReplacementId,
   });
 
   final String id;
@@ -98,6 +100,8 @@ class Conversation {
   bool pinned;
   int revision;
   ConversationAuthorityKind authority;
+  DateTime? deletedAt;
+  String? deletedReplacementId;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -108,6 +112,8 @@ class Conversation {
         'pinned': pinned,
         'revision': revision,
         'authority': authority.name,
+        'deletedAt': deletedAt?.toIso8601String(),
+        'deletedReplacementId': deletedReplacementId,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
@@ -128,6 +134,12 @@ class Conversation {
         (e) => e.name == json['authority'],
         orElse: () => ConversationAuthorityKind.local,
       ),
+      deletedAt: json['deletedAt'] is String
+          ? DateTime.tryParse(json['deletedAt'] as String)
+          : null,
+      deletedReplacementId: json['deletedReplacementId'] is String
+          ? json['deletedReplacementId'] as String
+          : null,
     );
   }
 
