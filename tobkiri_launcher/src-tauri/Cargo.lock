@@ -4671,6 +4671,7 @@ version = "1.0.0-beta.3"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "block2",
  "dirs",
  "dispatch2",
  "ed25519-dalek",
