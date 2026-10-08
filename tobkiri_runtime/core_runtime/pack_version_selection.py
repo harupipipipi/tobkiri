@@ -65,7 +65,7 @@ def verify_version_predecessor(
         compiled = compile_pack_root(root)
         if (
             manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-            or manifest["requirements"]["execution_boundary"] != "sandbox"
+            or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
             or compiled.artifact.pack_id != pack_id
             or compiled.artifact.digest != expected_digest
         ):

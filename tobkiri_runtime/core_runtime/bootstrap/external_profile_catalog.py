@@ -47,7 +47,7 @@ def catalog_for_verified_active_profile(
         if (
             not isinstance(digest, str)
             or manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-            or manifest["requirements"]["execution_boundary"] != "sandbox"
+            or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
         ):
             raise AuthorityDenied("active external Pack identity is invalid")
         selected_rows = [row for row in rows if row["pack_id"] == pack_id]

@@ -685,7 +685,7 @@ def _project_catalog_record(
     pack_id = str(manifest["pack"]["id"])
     if (
         manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-        or manifest["requirements"]["execution_boundary"] != "sandbox"
+        or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
     ):
         raise ExternalPackCatalogDenied(
             "external admission accepts only Normal Sandbox Packs"
@@ -1100,7 +1100,7 @@ def _require_external_catalog_identity(executable: Mapping[str, Any]) -> None:
         variant["execution_kind"] not in {"wasm", "pack_vm"}
         for variant in executable["variants"]
     ):
-        raise ExternalPackCatalogDenied("external Normal Pack backend is not sandboxed")
+        raise ExternalPackCatalogDenied("external admission accepts only Normal Sandbox backends")
 
 
 def _validate_entry(pack_id: str, entry: Mapping[str, Any]) -> None:

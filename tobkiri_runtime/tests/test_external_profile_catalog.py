@@ -36,7 +36,7 @@ def _inputs(monkeypatch, tmp_path):
     )
 
     def authenticated_merge(original, roots, *, artifact_pins):
-        assert artifact_pins["external"] == digest
+        assert artifact_pins == {row["pack_id"]: row["artifact_digest"] for row in active.resolved.profile["packs"]}
         assert original is catalog
         assert set(roots) == {"base", "shell", "external"}
         assert runtime_user_data_root() == tmp_path

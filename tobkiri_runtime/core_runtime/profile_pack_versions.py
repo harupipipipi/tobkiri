@@ -63,18 +63,20 @@ def profile_pack_versions(profile_id: str) -> dict[str, Any]:
             if baseline is not None:
                 selected = baseline["pack"]["artifact_digest"]
             else:
-                entry = external.entries.get(pack_id)
-                if entry is None:
+                baseline_entry = external.entries.get(pack_id)
+                if baseline_entry is None:
                     raise ValueError("Profile Pack baseline is unavailable")
-                selected = entry["artifact_digest"]
+                selected = baseline_entry["artifact_digest"]
         if selected not in versions:
             raise ValueError("Profile Pack selected revision is unavailable")
-        rows.append({
-            "pack_id": pack_id,
-            "role": str(selection["role"]),
-            "selected_digest": selected,
-            "versions": [versions[key] for key in sorted(versions)],
-        })
+        rows.append(
+            {
+                "pack_id": pack_id,
+                "role": str(selection["role"]),
+                "selected_digest": selected,
+                "versions": [versions[key] for key in sorted(versions)],
+            }
+        )
     return {
         "profile_id": profile_id,
         "profile_definition_revision": profile.profile_revision,
@@ -88,15 +90,21 @@ def select_profile_pack_version(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Append a definition successor; activation and authority stay separate."""
 
     if set(payload) != {
-        "profile_id", "pack_id", "artifact_digest", "expected_selected_digest",
-        "expected_profile_revision", "expected_store_generation",
+        "profile_id",
+        "pack_id",
+        "artifact_digest",
+        "expected_selected_digest",
+        "expected_profile_revision",
+        "expected_store_generation",
         "expected_catalog_revision",
     }:
         raise ValueError("Profile Pack version selection fields are invalid")
     for field in ("profile_id", "pack_id"):
         validate_canonical_id(payload[field], field=field)
     for field in (
-        "artifact_digest", "expected_selected_digest", "expected_profile_revision",
+        "artifact_digest",
+        "expected_selected_digest",
+        "expected_profile_revision",
         "expected_catalog_revision",
     ):
         validate_artifact_digest(payload[field], field=field)
@@ -118,9 +126,7 @@ def _select_profile_pack_version_locked(payload: Mapping[str, Any]) -> dict[str,
     matches = [row for row in view["packs"] if row["pack_id"] == payload["pack_id"]]
     if len(matches) != 1 or matches[0]["selected_digest"] != payload["expected_selected_digest"]:
         raise ProfileDefinitionStoreConflict("Profile selected Pack revision is stale")
-    if payload["artifact_digest"] not in {
-        row["artifact_digest"] for row in matches[0]["versions"]
-    }:
+    if payload["artifact_digest"] not in {row["artifact_digest"] for row in matches[0]["versions"]}:
         raise ValueError("Profile Pack revision is not admitted")
     store = ProfileDefinitionStore(runtime_user_data_root())
     current = store.get_profile(str(payload["profile_id"]))
@@ -148,7 +154,8 @@ def _select_profile_pack_version_locked(payload: Mapping[str, Any]) -> dict[str,
             "activation_required": False,
         }
     updated = store.update_profile(
-        str(payload["profile_id"]), candidate,
+        str(payload["profile_id"]),
+        candidate,
         expected_profile_revision=str(payload["expected_profile_revision"]),
         expected_store_generation=payload["expected_store_generation"],
     )
@@ -163,7 +170,9 @@ def _validate_candidate(candidate: Mapping[str, Any]) -> None:
     """Run normal resolution without grants, activation, or store writes."""
     from .authority.v4 import AuthorityStore
     from .bootstrap.profile_capture import (
-        _authority_reference, _authority_snapshot_digest, _edge_key,
+        _authority_reference,
+        _authority_snapshot_digest,
+        _edge_key,
     )
     from .pack_control_v4 import catalog_with_admitted_pack_closure
     from .profile_catalog_v4 import bundle_lock_digest
@@ -173,18 +182,23 @@ def _validate_candidate(candidate: Mapping[str, Any]) -> None:
     catalog = host_profile_catalog()
     pins = {
         str(row["pack_id"]): str(row["artifact_digest"])
-        for row in candidate["packs"] if row.get("artifact_digest") is not None
+        for row in candidate["packs"]
+        if row.get("artifact_digest") is not None
     }
     catalog, _ = catalog_with_admitted_pack_closure(
-        catalog, [str(row["pack_id"]) for row in candidate["packs"]], artifact_pins=pins,
+        catalog,
+        [str(row["pack_id"]) for row in candidate["packs"]],
+        artifact_pins=pins,
     )
     catalog = runtime.catalog_with_profiles(
-        catalog, {**catalog.profiles, str(candidate["profile_id"]): dict(candidate)},
+        catalog,
+        {**catalog.profiles, str(candidate["profile_id"]): dict(candidate)},
     )
     with AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3") as authority:
         snapshot = _authority_snapshot_digest(authority, bundle_lock_digest(catalog))
         runtime.resolve_profile(
-            catalog, str(candidate["profile_id"]),
+            catalog,
+            str(candidate["profile_id"]),
             approved_artifact_digests={
                 str(manifest["pack"]["artifact_digest"]) for manifest in catalog.packs.values()
             },

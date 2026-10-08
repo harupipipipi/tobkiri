@@ -41,7 +41,11 @@ def handle_profile_pack_versions(handler: Any, method: str, path: str) -> bool:
     except ProfileDefinitionNotFound:
         handler._send_mapping_result({"error": "Profile was not found", "status_code": 404})
     except ProfileDefinitionStoreConflict:
-        handler._send_mapping_result({"error": "Pack revision selection is stale", "status_code": 409})
+        handler._send_mapping_result(
+            {"error": "Pack revision selection is stale", "status_code": 409}
+        )
     except (OSError, RuntimeError, ValueError, TypeError):
-        handler._send_mapping_result({"error": "Pack revision selection was denied", "status_code": 400})
+        handler._send_mapping_result(
+            {"error": "Pack revision selection was denied", "status_code": 400}
+        )
     return True

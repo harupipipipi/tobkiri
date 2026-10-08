@@ -1645,7 +1645,7 @@ def catalog_with_admitted_pack_closure(
                 external_normal
                 and (
                     manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-                    or manifest["requirements"]["execution_boundary"] != "sandbox"
+                    or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
                     or manifest["pack"]["artifact_digest"] != record.get("artifact_digest")
                 )
             ):
