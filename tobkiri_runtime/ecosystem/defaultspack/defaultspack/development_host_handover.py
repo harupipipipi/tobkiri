@@ -126,6 +126,7 @@ class DevelopmentHostHandover:
             if read_handover_journal(self._root) is not None:
                 raise ValueError("Host handover destination publication already exists")
             _verify_previous_host(Path(plan["source_root"]), Path(plan["source_executable"]))
+            _require_source_root(plan)
             transfer._require_owners_exited()
             self._require_target_snapshot(plan)
             data = prepare_host_data(
@@ -154,6 +155,7 @@ class DevelopmentHostHandover:
             # retain both the staged data and exact VM recovery evidence.
             self._require_target_snapshot(plan)
             transfer._require_owners_exited()
+            _require_source_root(plan)
             if (
                 prepare_host_data(
                     Path(plan["source_root"]), bootstrap_profile_id=self._bootstrap_profile_id
@@ -170,8 +172,8 @@ class DevelopmentHostHandover:
             write_handover_journal(self._root, journal)
             for relative in plan["publications"]:
                 source, destination = staging / relative, self._root / relative
-                if not source.exists():
-                    continue
+                if not source.exists() or source.is_symlink():
+                    raise ValueError("Host handover staged data owner is missing or changed")
                 _require_inactive(self._root)
                 _ensure_private_parents(destination.parent, self._root)
                 identity = staged_owners[relative]
@@ -181,6 +183,7 @@ class DevelopmentHostHandover:
             self._require_target_snapshot(plan)
             definitions = ProfileDefinitionStore(self._root)
             transfer._require_owners_exited()
+            _require_source_root(plan)
             if (
                 prepare_host_data(
                     Path(plan["source_root"]), bootstrap_profile_id=self._bootstrap_profile_id
@@ -191,6 +194,10 @@ class DevelopmentHostHandover:
 
             def complete(snapshot: Mapping[str, Any]) -> None:
                 _require_inactive(self._root)
+                _require_source_root(plan)
+                for relative, identity in staged_owners.items():
+                    if _identity(self._root / relative) != identity:
+                        raise ValueError("Host handover destination owner changed")
                 journal.update(
                     stage="completed",
                     destination_profile_generation=snapshot["generation"],
@@ -231,6 +238,7 @@ class DevelopmentHostHandover:
             _require_inactive(self._root)
             plan = journal["plan"]
             source_root = Path(plan["source_root"])
+            _require_source_root(plan)
             source_digest = _verify_previous_host(source_root, Path(plan["source_executable"]))
             source = copy(self._target)
             source._requested_state_dir = source_root / "packvm-vz"
@@ -280,6 +288,7 @@ class DevelopmentHostHandover:
             journal = read_handover_journal(self._root)
             if journal is None or canonical_digest(journal) != review["journal_digest"]:
                 raise ValueError("Host recovery journal changed after review")
+            _require_source_root(journal["plan"])
             transfer._require_owners_exited()
             staging = Path(journal["staging"])
             if not staging.is_relative_to(self._root / "development-host-staging"):
@@ -330,6 +339,11 @@ class DevelopmentHostHandover:
             or canonical_digest(snapshot) != plan["target_profile_snapshot_digest"]
         ):
             raise ValueError("Host handover destination Profile definitions changed")
+
+
+def _require_source_root(plan: Mapping[str, Any]) -> None:
+    if _identity(Path(plan["source_root"])) != plan["source_root_identity"]:
+        raise ValueError("Host handover source namespace changed")
 
 
 def _verify_previous_host(root: Path, executable: Path) -> str:

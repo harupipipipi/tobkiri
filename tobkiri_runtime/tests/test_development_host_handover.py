@@ -599,3 +599,56 @@ def test_private_native_route_rejects_origin_even_with_authenticated_launcher():
     )
     assert handle_native_host_handover(handler, "POST", "/api/internal/native-host-handover/commit")
     assert calls == ["discarded", 401]
+
+
+@pytest.mark.parametrize(
+    "witness",
+    [
+        "development-host-handover.key",
+        "development-host-staging",
+        "packvm-vz/development-host-handover.json",
+    ],
+)
+def test_missing_global_journal_cannot_release_migration_fence(tmp_path, witness):
+    root = tmp_path / "user_data"
+    path = root / witness
+    if witness == "development-host-staging":
+        SecureDirectory(path, create=True)
+    else:
+        SecureDirectory(path.parent, create=True).write_bytes_atomic(path.name, b"retained witness")
+    with pytest.raises(ValueError, match="authenticated recovery journal"):
+        require_completed_handover(root)
+
+
+def test_source_namespace_replacement_denies_before_staging(transfer_fixture, monkeypatch):
+    service, review = _service_review(transfer_fixture, monkeypatch)
+    root = transfer_fixture.source.state_path.parent.parent
+    moved = root.with_name("retained-original")
+    root.rename(moved)
+    SecureDirectory(root, create=True)
+    with pytest.raises(ValueError, match="source namespace changed"):
+        service.commit(_consented(review), native_secret="isolated-native-secret")
+    assert not (
+        transfer_fixture.target.state_path.parent.parent / "development-host-handover.key"
+    ).exists()
+
+
+def test_vanished_staged_owner_cannot_complete(transfer_fixture, monkeypatch):
+    service, review = _service_review(transfer_fixture, monkeypatch)
+    real_commit = storage.MacOSVZStorageHandover.commit
+    target_root = transfer_fixture.target.state_path.parent.parent
+
+    def remove_owner_after_vm_commit(transfer, *args, **kwargs):
+        result = real_commit(transfer, *args, **kwargs)
+        journal = read_handover_journal(target_root)
+        relative = journal["plan"]["publications"][0]
+        path = Path(journal["staging"]) / relative
+        path.rename(path.with_name("retained-missing-owner"))
+        return result
+
+    monkeypatch.setattr(storage.MacOSVZStorageHandover, "commit", remove_owner_after_vm_commit)
+    with pytest.raises(ValueError, match="staged data owner is missing"):
+        service.commit(_consented(review), native_secret="isolated-native-secret")
+    assert read_handover_journal(target_root)["stage"] == "vm-transferred"
+    with pytest.raises(ValueError, match="recovery before activation"):
+        require_completed_handover(target_root)

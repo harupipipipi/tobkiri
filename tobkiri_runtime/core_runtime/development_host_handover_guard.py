@@ -19,7 +19,18 @@ SCHEMA = "io.tobkiri.development-host-handover-journal.v1"
 
 def read_handover_journal(root: Path) -> dict[str, Any] | None:
     """Read exact authenticated migration evidence without creating state."""
-    if not root.exists() or (not (root / JOURNAL).exists() and not (root / JOURNAL).is_symlink()):
+    if not root.exists():
+        return None
+    if not (root / JOURNAL).exists() and not (root / JOURNAL).is_symlink():
+        witnesses = (
+            root / KEY,
+            root / "development-host-staging",
+            root / "packvm-vz" / JOURNAL,
+        )
+        if any(path.exists() or path.is_symlink() for path in witnesses):
+            raise ValueError(
+                "Development Host handover requires its authenticated recovery journal"
+            )
         return None
     storage = SecureDirectory(root, create=False)
     if not storage.exists(JOURNAL):
