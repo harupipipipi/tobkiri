@@ -6,12 +6,13 @@ import os
 import secrets
 import stat
 import ctypes
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from .durability import replace_file_durable
+from .durability import publish_file_durable, replace_file_durable
 from .platform_paths import canonical_platform_path
+from .windows_private_file import owner_only_security_attributes
 
 
 class SecurePersistenceError(OSError):
@@ -133,6 +134,7 @@ def _windows_open_file_descriptor(
     flags: int,
     *,
     disposition: int = _OPEN_EXISTING,
+    private: bool = False,
 ) -> tuple[int, _WindowsFileId]:
     """Open a non-reparse regular file without delete sharing."""
 
@@ -144,18 +146,28 @@ def _windows_open_file_descriptor(
     else:
         desired_access = _GENERIC_READ
     kernel32 = _windows_kernel32()
-    handle = kernel32.CreateFileW(
-        str(path),
-        desired_access,
-        _FILE_SHARE_READ | _FILE_SHARE_WRITE,
-        None,
-        disposition,
-        _FILE_FLAG_OPEN_REPARSE_POINT,
-        None,
-    )
+    if private and disposition != _CREATE_NEW:
+        raise ValueError("private security attributes require a newly created file")
+    security = owner_only_security_attributes() if private else nullcontext(None)
+    handle = None
     invalid_handle = ctypes.c_void_p(-1).value
-    if handle in {None, invalid_handle}:
-        raise _windows_error("CreateFileW")
+    try:
+        with security as attributes:
+            handle = kernel32.CreateFileW(
+                str(path),
+                desired_access,
+                0 if private else _FILE_SHARE_READ | _FILE_SHARE_WRITE,
+                None if attributes is None else ctypes.byref(attributes),
+                disposition,
+                _FILE_FLAG_OPEN_REPARSE_POINT,
+                None,
+            )
+            if handle in {None, invalid_handle}:
+                raise _windows_error("CreateFileW")
+    except BaseException:
+        if handle not in {None, invalid_handle}:
+            kernel32.CloseHandle(handle)
+        raise
     information = _ByHandleFileInformation()
     if not kernel32.GetFileInformationByHandle(handle, ctypes.byref(information)):
         kernel32.CloseHandle(handle)
@@ -557,8 +569,14 @@ class SecureDirectory:
         relative: str | Path,
         *,
         max_bytes: int | None,
+        verify_open_file: Callable[[Path, int], None] | None = None,
     ) -> bytes:
-        """Read one safe file while enforcing an optional allocation bound."""
+        """Read bounded bytes, optionally verifying the pinned file before/after.
+
+        The verifier must not mutate the entry. Windows retains no-delete-share
+        ancestor and file handles during path-based access-control verification.
+        POSIX verifiers must inspect the descriptor, not resolve the pathname.
+        """
 
         if max_bytes is not None and (
             isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 0
@@ -566,7 +584,9 @@ class SecureDirectory:
             raise ValueError("max_bytes must be a non-negative integer or None")
 
         if os.name == "nt":
-            return self._read_bytes_windows(relative, max_bytes=max_bytes)
+            return self._read_bytes_windows(
+                relative, max_bytes=max_bytes, verify_open_file=verify_open_file
+            )
         with self._parent_descriptor(relative, create=False) as (parent, name):
             before = self._stat_entry(parent, name, required=True)
             assert before is not None
@@ -583,6 +603,8 @@ class SecureDirectory:
                     before
                 ):
                     raise SecurePersistenceError("persistence entry changed before read")
+                if verify_open_file is not None:
+                    verify_open_file(self.root.joinpath(*self._parts(relative)), descriptor)
                 chunks: list[bytes] = []
                 total = 0
                 while True:
@@ -600,6 +622,8 @@ class SecureDirectory:
                     after_name
                 ) != _read_fingerprint(opened):
                     raise SecurePersistenceError("persistence entry changed during read")
+                if verify_open_file is not None:
+                    verify_open_file(self.root.joinpath(*self._parts(relative)), descriptor)
                 return b"".join(chunks)
             finally:
                 os.close(descriptor)
@@ -609,6 +633,7 @@ class SecureDirectory:
         relative: str | Path,
         *,
         max_bytes: int | None,
+        verify_open_file: Callable[[Path, int], None] | None = None,
     ) -> bytes:
         with self._windows_parent(relative, create=False) as (parent, name):
             descriptor, opened_id = _windows_open_file_descriptor(
@@ -621,6 +646,8 @@ class SecureDirectory:
                     raise SecurePersistenceError("persistence entry identity is unsafe")
                 if max_bytes is not None and opened.st_size > max_bytes:
                     raise SecurePersistenceError("persistence entry exceeds read limit")
+                if verify_open_file is not None:
+                    verify_open_file(parent / name, descriptor)
                 chunks: list[bytes] = []
                 total = 0
                 while True:
@@ -640,6 +667,8 @@ class SecureDirectory:
                 assert named is not None
                 if named[1] != opened_id:
                     raise SecurePersistenceError("persistence entry changed during read")
+                if verify_open_file is not None:
+                    verify_open_file(parent / name, descriptor)
                 return b"".join(chunks)
             finally:
                 os.close(descriptor)
@@ -659,20 +688,39 @@ class SecureDirectory:
         data: bytes,
         *,
         before_publish: Callable[[], None] | None = None,
+        prepare_new_file: Callable[[Path, int], None] | None = None,
+        create_only: bool = False,
     ) -> None:
-        """Durably replace an entry after an optional caller lifetime check."""
+        """Durably replace an entry, optionally securing its empty temporary.
+
+        The preparer runs before any bytes are written. Windows creates the
+        temporary with an owner-only protected DACL and denies data sharing;
+        no inherited-access data or security handle can precede verification.
+        create_only forbids replacing even a concurrently published destination;
+        callers must serialize POSIX readers across the short link/unlink step.
+        """
 
         if os.name == "nt":
-            self._write_bytes_windows(relative, data, before_publish=before_publish)
+            self._write_bytes_windows(
+                relative, data, before_publish=before_publish,
+                prepare_new_file=prepare_new_file, create_only=create_only,
+            )
             return
         with self._parent_descriptor(relative, create=True) as (parent, name):
             destination_before = self._stat_entry(parent, name, required=False)
+            if create_only and destination_before is not None:
+                raise FileExistsError(str(relative))
             temporary = f".{name}.{os.getpid()}.{secrets.token_hex(16)}.tmp"
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
             flags |= getattr(os, "O_NOFOLLOW", 0)
             descriptor = os.open(temporary, flags, 0o600, dir_fd=parent)
             published = False
             try:
+                if prepare_new_file is not None:
+                    temporary_path = self.root.joinpath(*self._parts(relative)).with_name(
+                        temporary
+                    )
+                    prepare_new_file(temporary_path, descriptor)
                 self._write_all(descriptor, data)
                 os.fchmod(descriptor, 0o600)
                 os.fsync(descriptor)
@@ -697,12 +745,16 @@ class SecureDirectory:
                     )
                 if before_publish is not None:
                     before_publish()
-                os.replace(
-                    temporary,
-                    name,
-                    src_dir_fd=parent,
-                    dst_dir_fd=parent,
-                )
+                if create_only:
+                    os.link(
+                        temporary, name, src_dir_fd=parent, dst_dir_fd=parent,
+                        follow_symlinks=False,
+                    )
+                    os.unlink(temporary, dir_fd=parent)
+                else:
+                    os.replace(
+                        temporary, name, src_dir_fd=parent, dst_dir_fd=parent,
+                    )
                 published = True
                 destination_after = self._stat_entry(parent, name, required=True)
                 assert destination_after is not None
@@ -725,10 +777,14 @@ class SecureDirectory:
         data: bytes,
         *,
         before_publish: Callable[[], None] | None = None,
+        prepare_new_file: Callable[[Path, int], None] | None = None,
+        create_only: bool = False,
     ) -> None:
         with self._windows_parent(relative, create=True) as (parent, name):
             destination = parent / name
             before = self._windows_stat_entry(parent, name, required=False)
+            if create_only and before is not None:
+                raise FileExistsError(str(relative))
             # Keep the sibling name bounded: repeating the destination and PID
             # can exceed MAX_PATH even when the final destination fits. The
             # 128-bit nonce and CREATE_NEW retain collision safety.
@@ -738,8 +794,11 @@ class SecureDirectory:
                     temporary,
                     os.O_WRONLY,
                     disposition=_CREATE_NEW,
+                    private=prepare_new_file is not None,
                 )
                 try:
+                    if prepare_new_file is not None:
+                        prepare_new_file(temporary, descriptor)
                     self._write_all(descriptor, data)
                     os.fsync(descriptor)
                     temporary_fingerprint = _fingerprint(os.fstat(descriptor))
@@ -765,7 +824,10 @@ class SecureDirectory:
                     )
                 if before_publish is not None:
                     before_publish()
-                replace_file_durable(temporary, destination)
+                if create_only:
+                    publish_file_durable(temporary, destination)
+                else:
+                    replace_file_durable(temporary, destination)
                 after = self._windows_stat_entry(parent, name, required=True)
                 assert after is not None
                 if after[0] != temporary_fingerprint or after[1] != temporary_id:

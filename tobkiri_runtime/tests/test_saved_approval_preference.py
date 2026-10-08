@@ -5,7 +5,7 @@ import unittest
 
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol import saved_conversation as protocol
-from ecosystem.defaultspack.runtime import saved_conversation as guest
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as guest
 
 ROOT = Path(__file__).resolve().parents[1]
 

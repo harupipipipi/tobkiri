@@ -122,7 +122,7 @@ if (-not $verified.AreAccessRulesProtected) {
   throw 'signing-key ACL inherits'
 }
 $rules = @($verified.GetAccessRules(
-  $true, $false, [System.Security.Principal.SecurityIdentifier]
+  $true, $true, [System.Security.Principal.SecurityIdentifier]
 ))
 if ($rules.Count -ne 1) {
   throw 'signing-key ACL has extra principals'

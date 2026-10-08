@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { MODEL_CATALOG_DEBOUNCE_MS } from '../../src/features/search/modelCatalogSearch';
+
+const fillConfirmedOpenAIQuery = async (page: Page, input: Locator) => {
+  await input.fill('@openai Fixture');
+  await expect(input.locator('..').locator('[data-search-token]')).toHaveCount(0);
+  await page.getByRole('listbox', { name: '参照候補' }).getByRole('option', { name: /@openai$/ }).click();
+  await expect(input.locator('..').locator('[data-search-token]')).toHaveText(['@openai']);
+};
 
 const chatSendRequests = new WeakMap<Page, string[]>();
 
@@ -12,7 +20,10 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/e2e/model-unification-fixture/index.html');
   await expect(page.getByLabel('使用するAPI')).toBeEnabled();
 });
-test.afterEach(async ({ page }) => expect(chatSendRequests.get(page)).toEqual([]));
+test.afterEach(async ({ page }) => {
+  expect(chatSendRequests.get(page)).toEqual([]);
+  expect(await page.evaluate(() => (window as any).fixture.accessWrites)).toEqual([]);
+});
 
 test('API identities, shared provider catalog, conflict and explicit save boundary', async ({ page }) => {
   const api = page.getByLabel('使用するAPI');
@@ -21,16 +32,20 @@ test('API identities, shared provider catalog, conflict and explicit save bounda
   await api.selectOption('beta');
   await expect(page.getByText('カスタムモデル・一覧にないモデル')).toHaveCount(0);
   const search = page.getByRole('combobox', { name: 'モデルを検索' });
-  await search.fill('@openai Fixture');
+  await fillConfirmedOpenAIQuery(page, search);
   await expect(page.getByRole('option', { name: /Fixture Remote Model/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).fixture.searches.length)).toBeGreaterThan(0);
   const requests = await page.evaluate(() => (window as any).fixture.searches);
   expect(requests.every((request: Record<string, unknown>) => request.connection_id === 'beta')).toBe(true);
   await search.fill('@anthropic Fixture');
+  await expect(page.getByRole('status').filter({ hasText: '固定の検索条件' })).toBeVisible();
   await expect(page.getByRole('option', { name: /Fixture Remote Model/ })).toHaveCount(0);
-  await search.fill('@openai Fixture');
+  await fillConfirmedOpenAIQuery(page, search);
   await page.getByRole('option', { name: /Fixture Remote Model/ }).click();
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
+  await expect(page.getByRole('button', { name: 'このモデルを使う' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).fixture.accessReads)).toEqual([{ profile_id: 'scope-A', provider_instance_id: 'beta' }]);
+  await expect.poll(() => page.evaluate(() => (window as any).fixture.accessCatalogs)).toEqual([{ profile_id: 'scope-A', provider_instance_id: 'beta' }]);
   await page.getByRole('button', { name: 'このモデルを使う' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).fixture.saves.length)).toBe(1);
   const [saved] = await page.evaluate(() => (window as any).fixture.saves);
@@ -91,16 +106,28 @@ test('composer returns exact registered route and generation blocks selection', 
   expect(await page.evaluate(() => (window as any).fixture.selections)).toEqual([{ profile_id: 'saved-route', display_name: 'Saved Fixture Route', model_id: 'saved-model', provider_id: 'openai', route_configured: true, supports_vision: true, defaults: { thinking: 'high' }, metadata: { fixture: 'route metadata' } }]);
   await page.getByRole('button', { name: 'Toggle generation' }).click();
   await page.getByRole('button', { name: 'Open composer dropdown' }).click();
-  await page.getByRole('option', { name: /Saved Fixture Route/ }).click();
+  await expect(page.getByRole('option', { name: /Saved Fixture Route/ })).toBeDisabled();
+  await page.getByRole('combobox', { name: 'モデルを検索' }).press('Enter');
+  await expect(page.getByRole('listbox', { name: '登録済みモデル' })).toBeVisible();
   expect(await page.evaluate(() => (window as any).fixture.selections.length)).toBe(1);
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
 });
 
-test('composer catalogue choice remains unregistered without saving or selecting', async ({ page }) => {
+test('composer searches only registered routes without catalog requests or selection side effects', async ({ page }) => {
+  await page.clock.install();
+  await expect(page.getByLabel('使用するAPI')).toHaveValue('');
   await page.getByRole('button', { name: 'Open composer dropdown' }).click();
-  await page.getByRole('combobox', { name: 'モデルを検索' }).fill('Fixture Remote');
-  await page.getByRole('option', { name: /Fixture Remote Model/ }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'このモデルは未登録です' })).toBeVisible();
+  const input = page.getByRole('combobox', { name: 'モデルを検索' });
+  const results = page.getByRole('listbox', { name: '登録済みモデル' });
+  await input.fill('@openai Fixture');
+  await expect(results.getByRole('option', { name: /Saved Fixture Route/ })).toBeVisible();
+  await input.fill('Fixture Remote');
+  await expect(results.getByRole('option')).toHaveCount(0);
+  await expect(results).toContainText('登録済みモデルが見つかりません');
+  await input.press('Enter');
+  await expect(results).toBeVisible();
+  await page.clock.runFor(MODEL_CATALOG_DEBOUNCE_MS + 1);
+  expect(await page.evaluate(() => (window as any).fixture.searches)).toEqual([]);
   expect(await page.evaluate(() => (window as any).fixture.selections)).toEqual([]);
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
 });
@@ -129,6 +156,31 @@ test('requested catalogue draft prefills exact connection without binding to ano
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
 });
 
+for (const access of ['missing', 'wrong-profile', 'wrong-connection', 'denied']) {
+  test(`requested model cannot save with ${access} model-access evidence`, async ({ page }) => {
+    await page.goto(`/e2e/model-unification-fixture/index.html?access=${access}`);
+    await expect(page.getByLabel('使用するAPI')).toBeEnabled();
+    await page.getByRole('button', { name: 'Request beta model' }).click();
+    await expect(page.getByLabel('使用するAPI')).toHaveValue('beta');
+    await expect(page.getByText('選択中:')).toContainText('fixture-model');
+    if (access === 'missing') {
+      await expect(page.getByText('このProfileのモデル許可を確認できません。再読み込みしてから保存してください。')).toBeVisible();
+      expect(await page.evaluate(() => (window as any).fixture.accessReads)).toEqual([]);
+    } else {
+      await expect.poll(() => page.evaluate(() => (window as any).fixture.accessReads)).toEqual([{ profile_id: 'scope-A', provider_instance_id: 'beta' }]);
+      if (access === 'denied') {
+        await expect(page.getByRole('status').filter({ hasText: 'このモデルは、このAPI接続の許可対象外です' })).toBeVisible();
+      } else {
+        await expect(page.getByRole('alert').filter({ hasText: 'この接続のモデル許可を確認できません' })).toBeVisible();
+        expect(await page.evaluate(() => (window as any).fixture.accessCatalogs)).toEqual([]);
+      }
+    }
+    await expect(page.getByRole('button', { name: 'このモデルを使う' })).toBeDisabled();
+    expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
+    expect(await page.evaluate(() => (window as any).fixture.selections)).toEqual([]);
+  });
+}
+
 test('new preferred connection supersedes retained older properties request', async ({ page }) => {
   await page.getByRole('button', { name: 'Request alpha model' }).click();
   await expect(page.getByLabel('使用するAPI')).toHaveValue('alpha');
@@ -137,14 +189,23 @@ test('new preferred connection supersedes retained older properties request', as
   await expect(page.getByRole('button', { name: 'このモデルを使う' })).toBeDisabled();
 });
 
-test('captured host scope does not consume another profile properties request', async ({ page }) => {
+test('captured host scope rejects foreign profile and stale activation properties requests', async ({ page }) => {
   await page.goto('/e2e/model-unification-fixture/index.html?modal&scoped');
-  await page.evaluate(() => (window as any).requestScopedFixtureProperties('scope-B'));
-  await expect(page.locator('[data-settings-profile-panel]')).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).readFixtureProperties('scope-B')?.scopeId)).toBe('scope-B');
+  const currentScope = await page.evaluate(() => (window as any).fixtureSearchScope('scope-A'));
+  expect(JSON.parse(currentScope)).toEqual([
+    'scope-A', 'scope-A', 'e2e-profile-revision', 'e2e-activation',
+    `sha256:${'b'.repeat(64)}`, `sha256:${'e'.repeat(64)}`, `sha256:${'b'.repeat(64)}`, 73,
+  ]);
+  for (const request of [{ profile: 'scope-B', stale: false }, { profile: 'scope-A', stale: true }]) {
+    const rejected = await page.evaluate(({ profile, stale }) => (window as any).requestScopedFixtureProperties(profile, stale), request);
+    expect(rejected.scopeId).not.toBe(currentScope);
+    await expect(page.locator('[data-settings-profile-panel]')).toHaveCount(0);
+    expect(await page.evaluate(scope => (window as any).readFixtureProperties(scope)?.requestId, rejected.scopeId)).toBe(rejected.requestId);
+    expect(await page.evaluate(scope => (window as any).readFixtureProperties(scope), currentScope)).toBeNull();
+  }
   await page.evaluate(() => (window as any).requestScopedFixtureProperties('scope-A'));
   await expect(page.locator('[data-settings-profile-panel]')).toBeVisible();
-  expect(await page.evaluate(() => (window as any).readFixtureProperties())).toBeNull();
+  await expect.poll(() => page.evaluate(() => (window as any).readFixtureProperties())).toBeNull();
 });
 
 test('full Settings modal standard hides legacy fields and registered navigation clears active search', async ({ page }) => {
@@ -166,7 +227,9 @@ test('full Settings modal standard hides legacy fields and registered navigation
   await expect(page.locator('input[value="Fixture original placeholder"]')).toHaveValue('Fixture original placeholder');
   const search = page.getByPlaceholder(/設定.*検索|Search settings/);
   await search.fill('never matches fixture');
-  await page.evaluate(() => (window as any).requestFixtureProperties());
+  const requested = await page.evaluate(() => (window as any).requestFixtureProperties());
+  const url = new URL(page.url());
+  expect(requested.scopeId).toBe(JSON.stringify([`${url.origin}${url.pathname}`]));
   await expect(search).toHaveValue('');
   await expect(page.locator('[data-settings-profile-panel]')).toBeVisible();
   await expect(page.locator('[data-settings-profile-panel]')).toContainText('saved-route');

@@ -118,9 +118,9 @@ class GitPushProviderV4:
         )
         try:
             if operation_id == PREPARE_OPERATION:
-                return self._prepare(payload, context, client, toolchain=toolchain)
+                return self._prepare(payload, invocation, client, toolchain=toolchain)
             if operation_id == PUSH_OPERATION:
-                return self._push(payload, context, client, toolchain=toolchain)
+                return self._push(payload, invocation, client, toolchain=toolchain)
         except ExecutableTrustError:
             raise PermissionError("GIT_EXECUTABLE_UNAVAILABLE") from None
         raise ValueError("Git publication operation is unavailable")
@@ -128,11 +128,12 @@ class GitPushProviderV4:
     def _prepare(
         self,
         payload: Mapping[str, Any],
-        context: Any,
+        invocation: HostProviderInvocationContextV4,
         client: Any,
         *,
         toolchain: Mapping[str, Any],
     ) -> Mapping[str, Any]:
+        context = invocation.envelope.context
         workspace_id = _required_text(payload.get("workspace_id"), "workspace_id")
         remote = _remote_name(payload.get("remote") or "origin")
         branch = _branch_name(payload.get("branch"))
@@ -161,7 +162,7 @@ class GitPushProviderV4:
             remote=remote,
             branch=branch,
             allow_non_fast_forward=allow_non_fast_forward,
-            context=context,
+            invocation=invocation,
             state_root_identity=self._state_root_identity,
             toolchain=toolchain,
             push_url=push_url,
@@ -173,11 +174,12 @@ class GitPushProviderV4:
     def _push(
         self,
         payload: Mapping[str, Any],
-        context: Any,
+        invocation: HostProviderInvocationContextV4,
         client: Any,
         *,
         toolchain: Mapping[str, Any],
     ) -> Mapping[str, Any]:
+        context = invocation.envelope.context
         plan_digest = _required_text(payload.get("plan_digest"), "plan_digest")
         supplied = payload.get("plan")
         if not isinstance(supplied, Mapping):
@@ -220,7 +222,7 @@ class GitPushProviderV4:
             remote=remote,
             branch=branch,
             allow_non_fast_forward=allow_non_fast_forward,
-            context=context,
+            invocation=invocation,
             state_root_identity=self._state_root_identity,
             toolchain=toolchain,
             push_url=push_url,
@@ -744,7 +746,24 @@ def _git_object_directory(repository: Path) -> Path:
     return path
 
 
-def _authority_binding(context: Any) -> dict[str, Any]:
+def _authority_binding(
+    invocation: HostProviderInvocationContextV4,
+) -> dict[str, Any]:
+    """Bind a durable plan to its Host-preserved owner across dispatch phases."""
+
+    context = invocation.envelope.context
+    owner_principal_id = getattr(invocation, "presentation_owner_principal_id", None)
+    owner_session_id = getattr(invocation, "presentation_owner_session_id", None)
+    if any(
+        not isinstance(value, str) or not value
+        for value in (owner_principal_id, owner_session_id)
+    ):
+        raise PermissionError("Git Host presentation owner binding is incomplete")
+    # Each dispatch's caller session/domain is independently authenticated by
+    # the Broker. Prepare and approved resume have different execution scopes;
+    # only the Host-preserved presentation owner is a durable session binding.
+    # Legacy plans are not upgraded: their full CAS must fail and be prepared
+    # and approved again with the current owner binding.
     binding = {
         "profile_id": str(context.profile_id),
         "activation_id": str(context.activation_id),
@@ -752,8 +771,8 @@ def _authority_binding(context: Any) -> dict[str, Any]:
         "host_plan_digest": str(context.plan_digest),
         "security_epoch": int(context.security_epoch),
         "caller_principal_id": str(context.caller_principal.value),
-        "caller_session_id": str(context.caller_session_id),
-        "caller_domain_id": str(context.caller_domain_id),
+        "presentation_owner_principal_id": owner_principal_id,
+        "presentation_owner_session_id": owner_session_id,
     }
     if any(value in {"", 0} for value in binding.values()):
         raise PermissionError("Git Host authority binding is incomplete")
@@ -769,12 +788,13 @@ def _build_plan(
     remote: str,
     branch: str,
     allow_non_fast_forward: bool,
-    context: Any,
+    invocation: HostProviderInvocationContextV4,
     state_root_identity: str,
     toolchain: Mapping[str, Any],
     push_url: str,
     credential_identity: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    authority_binding = _authority_binding(invocation)
     _assert_safe_local_git_config(repository)
     source_oid = _git(
         repository,
@@ -796,7 +816,7 @@ def _build_plan(
     destination_ref = f"refs/heads/{branch}"
     return {
         "schema": "tobkiri.git-push-plan.v1",
-        "authority_binding": _authority_binding(context),
+        "authority_binding": authority_binding,
         "host_state_root_identity": state_root_identity,
         "host_toolchain": dict(toolchain),
         "workspace_id": workspace_id,

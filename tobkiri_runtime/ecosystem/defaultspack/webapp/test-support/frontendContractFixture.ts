@@ -20,6 +20,14 @@ export type FixtureContractBinding = {
 };
 
 const identities = {
+  modelAccessRead: { contributionId: "defaults.provider-model-access.read", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.model-access-read", method: "POST" },
+  modelAccessCatalog: { contributionId: "defaults.provider-model-access.catalog", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.model-access-catalog", method: "POST" },
+  providerConnections: { contributionId: "defaults.connections.status.read", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.provider-registry-resource", method: "GET" },
+  providerConfigure: { contributionId: "defaults.providers.configure", contractId: "tobkiri.service.interactive-effect.v1", operationId: "interactive_effect.manage", method: "POST" },
+  interactiveApprovalGet: { contributionId: "defaults.interactive-approval.get", contractId: "tobkiri.service.interactive-approval.v1", operationId: "interactive_approval.get", method: "POST" },
+  modelProfilesList: { contributionId: "defaults.models.profiles.list", contractId: "tobkiri.resource.ai.model.profile.v1", operationId: "rumi_model_registry_pack.model-profile-resource", method: "GET" },
+  modelProfilesSave: { contributionId: "defaults.models.profiles.save", contractId: "tobkiri.action.ai.model.profile.manage.v1", operationId: "rumi_model_registry_pack.model-profile-manage", method: "POST" },
+  modelSearch: { contributionId: "defaults.ui.model-search.read", contractId: "tobkiri.resource.ui.model-search.v1", operationId: "tobkiri_ui_settings_pack.model-search", method: "POST" },
   kanbanList: { contributionId: "defaults.kanban.list", contractId: "tobkiri.resource.kanban.v1", operationId: "rumi_kanban_state_store_pack.kanban-state-resource", method: "GET" },
   kanbanCreate: { contributionId: "defaults.kanban.create", contractId: "tobkiri.action.kanban.v1", operationId: "rumi_kanban_state_store_pack.kanban-state-action", method: "POST" },
   desktopsList: { contributionId: "defaults.managed-desktops.desktops-list", contractId: "tobkiri.resource.managed-desktops.v1", operationId: "rumi_sandbox_runtime_pack.desktops-list", method: "GET" },

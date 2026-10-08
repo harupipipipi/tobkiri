@@ -31,7 +31,7 @@
   "artifacts": [
     {
       "path": "defaultspack/frontend_contract_map.v4.json",
-      "digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+      "digest": "sha256:7135855de1d88737e8643ababde945a05904bf6f05aaea1c354c66f5ea58b1b3",
       "kind": "asset",
       "platform": "all"
     }
@@ -40,15 +40,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-    "source_digest": "sha256:f9ec71e57f8067735a30df20f95ff530dfb3c0ab86d72c0760534d960af0fae1",
+    "source_digest": "sha256:59544e7b030093e77e7f30f6cd33688fc67bcededa91541930094ac9ccb517b7",
     "repository_commit": "working-tree",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1564d9980043598afe334bfdfc8617250b047c7bab5c63a5c22333db68ba9da5",
+    "content_root_digest": "sha256:1447d1b576e387e9300d85e4bc4e407ff4f2c183a1296ccd8a813dd37a37f4f4",
     "generator": "defaultspack-v4-core",
     "generator_version": "2.0.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
-    "input_inventory_digest": "sha256:35ec3d61e3adae244c3980abb34bbc4bfb6b30c8b189face1d372a00a61db126",
+    "input_inventory_digest": "sha256:c3c66858269f47e1b778959c9233464ce01f2e2361dd63d3ecb1581c3595cd8b",
     "normative": true,
     "evidence": [
       {
@@ -59,7 +59,7 @@
       {
         "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:f9ec71e57f8067735a30df20f95ff530dfb3c0ab86d72c0760534d960af0fae1"
+        "digest": "sha256:59544e7b030093e77e7f30f6cd33688fc67bcededa91541930094ac9ccb517b7"
       }
     ]
   },
@@ -103,8 +103,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:9a9fe0cdb94759666fda05d1bb9d8f2666efdb172cb709364e23e772657d8cce",
-    "artifact_set_digest": "sha256:ad275a9d01c73a131de0757adc6c7668a6f3621ffaa52e3e058764723c15ac50",
+    "source_identity": "sha256:1d0dcf6f19ce980b1efe516ddb53afc8ca1ece54dcb1dcd5dd01e74b85cd522d",
+    "artifact_set_digest": "sha256:81b8c7e0593b7b494349e2ab7f0277ee01a5ad8cf9eea339a5230d8deedd5e2a",
     "contract_catalog_digest": "sha256:0df46117366f419dbad8685b74340a655d45e46e71fc5a0c1eb30c9fce00f614"
   }
 }

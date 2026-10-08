@@ -1,83 +1,83 @@
 {
-  "_ActiveProfileConnections-DEJlnMDy.js": {
-    "file": "assets/ActiveProfileConnections-DEJlnMDy.js",
+  "_ActiveProfileConnections-hpxHpWgA.js": {
+    "file": "assets/ActiveProfileConnections-hpxHpWgA.js",
     "imports": [
       "index.html",
-      "_cable-xeDAbYFb.js",
-      "_InspectedProfileNotice-Ct88sdfg.js",
-      "_Input-BHPyDvXP.js"
+      "_cable-BdnuUIhw.js",
+      "_InspectedProfileNotice-D9CHlvqB.js",
+      "_Input-DBSjqfzM.js"
     ],
     "name": "ActiveProfileConnections"
   },
-  "_AdvancedSurfaceFrame-BXRDN-lO.js": {
-    "file": "assets/AdvancedSurfaceFrame-BXRDN-lO.js",
+  "_AdvancedSurfaceFrame-DoFmBdAn.js": {
+    "file": "assets/AdvancedSurfaceFrame-DoFmBdAn.js",
     "imports": [
       "index.html",
-      "_InspectedProfileNotice-Ct88sdfg.js"
+      "_InspectedProfileNotice-D9CHlvqB.js"
     ],
     "name": "AdvancedSurfaceFrame"
   },
-  "_InlineLoadError-DlFJfLF0.js": {
-    "file": "assets/InlineLoadError-DlFJfLF0.js",
+  "_InlineLoadError-BgaYKRqA.js": {
+    "file": "assets/InlineLoadError-BgaYKRqA.js",
     "imports": [
       "index.html"
     ],
     "name": "InlineLoadError"
   },
-  "_Input-BHPyDvXP.js": {
-    "file": "assets/Input-BHPyDvXP.js",
+  "_Input-DBSjqfzM.js": {
+    "file": "assets/Input-DBSjqfzM.js",
     "imports": [
       "index.html"
     ],
     "name": "Input"
   },
-  "_InspectedProfileNotice-Ct88sdfg.js": {
-    "file": "assets/InspectedProfileNotice-Ct88sdfg.js",
+  "_InspectedProfileNotice-D9CHlvqB.js": {
+    "file": "assets/InspectedProfileNotice-D9CHlvqB.js",
     "imports": [
       "index.html"
     ],
     "name": "InspectedProfileNotice"
   },
-  "_PackScopeSummary-DpjXzBlx.js": {
-    "file": "assets/PackScopeSummary-DpjXzBlx.js",
+  "_PackScopeSummary-a7UT0GNl.js": {
+    "file": "assets/PackScopeSummary-a7UT0GNl.js",
     "imports": [
       "index.html"
     ],
     "name": "PackScopeSummary"
   },
-  "_RuntimeEvidenceCard-oGn_k6LV.js": {
-    "file": "assets/RuntimeEvidenceCard-oGn_k6LV.js",
+  "_RuntimeEvidenceCard-CCBy9a1x.js": {
+    "file": "assets/RuntimeEvidenceCard-CCBy9a1x.js",
     "imports": [
       "index.html"
     ],
     "name": "RuntimeEvidenceCard"
   },
-  "_cable-xeDAbYFb.js": {
-    "file": "assets/cable-xeDAbYFb.js",
+  "_cable-BdnuUIhw.js": {
+    "file": "assets/cable-BdnuUIhw.js",
     "imports": [
       "index.html"
     ],
     "name": "cable"
   },
-  "_check-Cu71nMy4.js": {
-    "file": "assets/check-Cu71nMy4.js",
+  "_check-BqqZsWUe.js": {
+    "file": "assets/check-BqqZsWUe.js",
     "imports": [
       "index.html"
     ],
     "name": "check"
   },
-  "_circle-question-mark-BnBxgORd.js": {
-    "file": "assets/circle-question-mark-BnBxgORd.js",
+  "_circle-question-mark-X7bC_vW6.js": {
+    "file": "assets/circle-question-mark-X7bC_vW6.js",
     "imports": [
       "index.html"
     ],
     "name": "circle-question-mark"
   },
-  "_useRuntimeOperationInvocation-BVlVJnT3.js": {
-    "file": "assets/useRuntimeOperationInvocation-BVlVJnT3.js",
+  "_useRuntimeOperationInvocation-Clg2_50O.js": {
+    "file": "assets/useRuntimeOperationInvocation-Clg2_50O.js",
     "imports": [
       "index.html",
-      "_Input-BHPyDvXP.js"
+      "_Input-DBSjqfzM.js"
     ],
     "name": "useRuntimeOperationInvocation"
   },
@@ -100,7 +100,7 @@
       "src/pages/ApiMap.tsx",
       "src/pages/NodeManager.tsx"
     ],
-    "file": "assets/index-DHakgH_l.js",
+    "file": "assets/index-CFny_dIN.js",
     "isEntry": true,
     "name": "index",
     "src": "index.html"
@@ -112,153 +112,153 @@
     "src": "node_modules/@tauri-apps/api/core.js"
   },
   "src/pages/Account.tsx": {
-    "file": "assets/Account-DpqKn0wc.js",
+    "file": "assets/Account-eVFaUJPY.js",
     "imports": [
       "index.html",
-      "_check-Cu71nMy4.js",
-      "_Input-BHPyDvXP.js"
+      "_check-BqqZsWUe.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "Account",
     "src": "src/pages/Account.tsx"
   },
   "src/pages/AiInput.tsx": {
-    "file": "assets/AiInput-DggBVvTv.js",
+    "file": "assets/AiInput-3N4qwfPh.js",
     "imports": [
       "index.html",
-      "_circle-question-mark-BnBxgORd.js",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_useRuntimeOperationInvocation-BVlVJnT3.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js"
+      "_circle-question-mark-X7bC_vW6.js",
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_useRuntimeOperationInvocation-Clg2_50O.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js"
     ],
     "isDynamicEntry": true,
     "name": "AiInput",
     "src": "src/pages/AiInput.tsx"
   },
   "src/pages/ApiMap.tsx": {
-    "file": "assets/ApiMap-BcMgJEJs.js",
+    "file": "assets/ApiMap-HIBKuo8r.js",
     "imports": [
       "index.html",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_Input-BHPyDvXP.js"
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "ApiMap",
     "src": "src/pages/ApiMap.tsx"
   },
   "src/pages/Flow.tsx": {
-    "file": "assets/Flow-DXIyddFP.js",
+    "file": "assets/Flow-DxYSrjZS.js",
     "imports": [
       "index.html",
-      "_cable-xeDAbYFb.js",
-      "_ActiveProfileConnections-DEJlnMDy.js",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_useRuntimeOperationInvocation-BVlVJnT3.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_Input-BHPyDvXP.js"
+      "_cable-BdnuUIhw.js",
+      "_ActiveProfileConnections-hpxHpWgA.js",
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_useRuntimeOperationInvocation-Clg2_50O.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "Flow",
     "src": "src/pages/Flow.tsx"
   },
   "src/pages/Graph.tsx": {
-    "file": "assets/Graph-DWL06drT.js",
+    "file": "assets/Graph-DeJ6ZY3h.js",
     "imports": [
       "index.html",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_Input-BHPyDvXP.js"
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "Graph",
     "src": "src/pages/Graph.tsx"
   },
   "src/pages/NodeManager.tsx": {
-    "file": "assets/NodeManager-4T-FrNbF.js",
+    "file": "assets/NodeManager-CKjGq-ee.js",
     "imports": [
       "index.html",
-      "_circle-question-mark-BnBxgORd.js",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js"
+      "_circle-question-mark-X7bC_vW6.js",
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js"
     ],
     "isDynamicEntry": true,
     "name": "NodeManager",
     "src": "src/pages/NodeManager.tsx"
   },
   "src/pages/PackDetail.tsx": {
-    "file": "assets/PackDetail-IuShBPeo.js",
+    "file": "assets/PackDetail-D0QGWn_0.js",
     "imports": [
       "index.html",
-      "_circle-question-mark-BnBxgORd.js",
-      "_InspectedProfileNotice-Ct88sdfg.js",
-      "_PackScopeSummary-DpjXzBlx.js",
-      "_InlineLoadError-DlFJfLF0.js",
-      "_Input-BHPyDvXP.js"
+      "_circle-question-mark-X7bC_vW6.js",
+      "_InspectedProfileNotice-D9CHlvqB.js",
+      "_PackScopeSummary-a7UT0GNl.js",
+      "_InlineLoadError-BgaYKRqA.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "PackDetail",
     "src": "src/pages/PackDetail.tsx"
   },
   "src/pages/Packs.tsx": {
-    "file": "assets/Packs-DW_H-RPU.js",
+    "file": "assets/Packs-BY6gVmGC.js",
     "imports": [
       "index.html",
-      "_circle-question-mark-BnBxgORd.js",
-      "_InspectedProfileNotice-Ct88sdfg.js",
-      "_PackScopeSummary-DpjXzBlx.js",
-      "_InlineLoadError-DlFJfLF0.js",
-      "_Input-BHPyDvXP.js"
+      "_circle-question-mark-X7bC_vW6.js",
+      "_InspectedProfileNotice-D9CHlvqB.js",
+      "_PackScopeSummary-a7UT0GNl.js",
+      "_InlineLoadError-BgaYKRqA.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "Packs",
     "src": "src/pages/Packs.tsx"
   },
   "src/pages/Profile.tsx": {
-    "file": "assets/Profile-DSGndAO7.js",
+    "file": "assets/Profile-BvlOjLPd.js",
     "imports": [
       "index.html",
-      "_circle-question-mark-BnBxgORd.js",
-      "_Input-BHPyDvXP.js"
+      "_circle-question-mark-X7bC_vW6.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "Profile",
     "src": "src/pages/Profile.tsx"
   },
   "src/pages/ProfileFiles.tsx": {
-    "file": "assets/ProfileFiles-wJC_Ua6P.js",
+    "file": "assets/ProfileFiles-BR2xIrYk.js",
     "imports": [
       "index.html",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_Input-BHPyDvXP.js"
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "ProfileFiles",
     "src": "src/pages/ProfileFiles.tsx"
   },
   "src/pages/ProfileWiring.tsx": {
-    "file": "assets/ProfileWiring-mQMWZUC5.js",
+    "file": "assets/ProfileWiring-C33_Skdz.js",
     "imports": [
       "index.html",
-      "_cable-xeDAbYFb.js",
-      "_AdvancedSurfaceFrame-BXRDN-lO.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_Input-BHPyDvXP.js"
+      "_cable-BdnuUIhw.js",
+      "_AdvancedSurfaceFrame-DoFmBdAn.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_Input-DBSjqfzM.js"
     ],
     "isDynamicEntry": true,
     "name": "ProfileWiring",
     "src": "src/pages/ProfileWiring.tsx"
   },
   "src/pages/Settings.tsx": {
-    "file": "assets/Settings-DCKNj6iU.js",
+    "file": "assets/Settings-DNN2ka18.js",
     "imports": [
       "index.html",
-      "_check-Cu71nMy4.js",
-      "_ActiveProfileConnections-DEJlnMDy.js",
-      "_InspectedProfileNotice-Ct88sdfg.js",
-      "_RuntimeEvidenceCard-oGn_k6LV.js",
-      "_InlineLoadError-DlFJfLF0.js"
+      "_check-BqqZsWUe.js",
+      "_ActiveProfileConnections-hpxHpWgA.js",
+      "_InspectedProfileNotice-D9CHlvqB.js",
+      "_RuntimeEvidenceCard-CCBy9a1x.js",
+      "_InlineLoadError-BgaYKRqA.js"
     ],
     "isDynamicEntry": true,
     "name": "Settings",

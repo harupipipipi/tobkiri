@@ -11,7 +11,7 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092");
+  assert.equal(result.rawDigest, "sha256:7135855de1d88737e8643ababde945a05904bf6f05aaea1c354c66f5ea58b1b3");
   assert.equal(result.runtimeMap.routes.length, 94);
   for (const [path, operation] of [
     ["/api/ui/select-directory", "workspace.directory.acquire"],
@@ -22,6 +22,11 @@ test("the checked-in generated map is deterministic and current", async () => {
     );
     assert.equal(route?.targets[0]?.operation_id, operation);
   }
+  const modelSearch = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/ai/models/search",
+  );
+  assert.ok(modelSearch?.targets[0]?.allowed_payload_keys.includes("connection_id"));
+  assert.ok(!modelSearch?.targets[0]?.allowed_payload_keys.includes("profile_id"));
   const progress = result.runtimeMap.routes.find(
     (route) => route.method === "GET" && route.path === "/api/chat/turn/progress",
   );

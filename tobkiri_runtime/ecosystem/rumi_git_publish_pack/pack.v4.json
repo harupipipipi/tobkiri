@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:19a54c8a6241634a85b2bf45a97e125752189b1f3aef0f9bccb2026137efd7d7",
+      "digest": "sha256:b05487ab3240f22d8e1d7413c9e498f49d0580ec4656383bb64ee74b7f4116fc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "kind": "executable",
       "path": "runtime/publish.py"
     }
@@ -25,7 +25,7 @@
     {
       "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
       "id": "rumi_git_publish_pack.git-publish.service",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_git_publish_pack.git-push"
@@ -35,7 +35,7 @@
     {
       "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
       "id": "rumi_git_publish_pack.git-push-prepare.service",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_git_publish_pack.git-push-prepare"
@@ -44,9 +44,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:291975399ddcf291ad6dc9985a21636313c0787dad54e5dd1bbe2691cee661fb",
-    "contract_catalog_digest": "sha256:b026b54d4ebd440d1e7b47ebeccfeff2b2d8767ecc53f4926ab78a396ec19828",
-    "source_identity": "sha256:f220407c03fc5da9cdf27a44f1ee1e8a9a338949847893d669390c74362cc5d5"
+    "artifact_set_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
+    "contract_catalog_digest": "sha256:143b0d2115a3a47861d88d0fa0d6846ce41fa130d465c0f4a1941f1cb25fe5c4",
+    "source_identity": "sha256:390fd32b21f747a14b1029d6c9b9d328a7ad12fe5a2ea6e358489c3ea7fc083d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -86,7 +86,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:291975399ddcf291ad6dc9985a21636313c0787dad54e5dd1bbe2691cee661fb",
+    "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
     "display_name": "Rumi Git Publish",
     "id": "rumi_git_publish_pack",
     "kind": "host_extension",
@@ -96,7 +96,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:f220407c03fc5da9cdf27a44f1ee1e8a9a338949847893d669390c74362cc5d5",
+        "digest": "sha256:390fd32b21f747a14b1029d6c9b9d328a7ad12fe5a2ea6e358489c3ea7fc083d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -107,7 +107,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:f220407c03fc5da9cdf27a44f1ee1e8a9a338949847893d669390c74362cc5d5",
+    "source_digest": "sha256:390fd32b21f747a14b1029d6c9b9d328a7ad12fe5a2ea6e358489c3ea7fc083d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_git_publish_pack"
   },

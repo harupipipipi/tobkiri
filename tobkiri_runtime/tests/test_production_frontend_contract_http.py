@@ -3590,6 +3590,7 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
                 "function_id": "tobkiri.ui.model-search.read",
                 "allowed_payload_keys": [
                     "query",
+                    "connection_id",
                     "type",
                     "model_type",
                     "requires",
@@ -3818,6 +3819,85 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
         f"openrouter/fixture/model-{index:03d}" for index in range(125)
     }
 
+    # The connection selector is data, not client-supplied Profile authority.
+    # Resolve its namespace through the real, captured Provider owner.
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+
+    providers = ProviderRegistry("defaults", user_data_root=tmp_path / "user-data")
+    connection = {
+        "provider_instance_id": "connection/work",
+        "adapter_id": "openai-compatible",
+        "display_name": "Synthetic connection",
+        "endpoint": "https://openrouter.ai/api/v1",
+        "credential_handle": "opaque:connection-test-only",
+        "metadata": {"catalog_provider_id": "openrouter"},
+    }
+    providers.save(connection, expected_revision=0)
+    providers.save({
+        **connection, "provider_instance_id": "connection/disabled", "enabled": False,
+    }, expected_revision=1)
+    ProviderRegistry("other", user_data_root=tmp_path / "user-data").save({
+        **connection, "provider_instance_id": "connection/foreign",
+    }, expected_revision=0)
+
+    observed.clear()
+    status, payload, _ = post({
+        "connection_id": "connection/work", "query": "fixture/model-000",
+    })
+    assert status == 200, payload
+    assert payload["data"]["filters_applied"]["connection_id"] == "connection/work"
+    assert payload["data"]["filters_applied"]["provider_id"] == "openrouter"
+    assert len(payload["data"]["models"]) == 1
+    assert payload["data"]["models"][0]["model_id"] == "fixture/model-000"
+    assert payload["data"]["models"][0]["connection_id"] == "connection/work"
+    assert payload["data"]["models"][0]["provider_id"] == "openrouter"
+    assert payload["data"]["models"][0]["provenance"] == "provider_public_catalog"
+    assert payload["data"]["models"][0]["reachability"] == "unverified"
+    expected_operations = [
+        (
+            "tobkiri.resource.ui.model-search.v1",
+            "tobkiri_ui_settings_pack.model-search",
+        ),
+        (
+            "tobkiri.resource.ai.provider.registry.v1",
+            "rumi_provider_registry_pack.provider-registry-resource",
+        ),
+        (
+            "tobkiri.resource.ai.model.profile.v1",
+            "rumi_model_registry_pack.model-profile-resource",
+        ),
+        (
+            "tobkiri.resource.ai.model.catalog.v1",
+            "rumi_model_catalog_pack.bundled-model-catalog",
+        ),
+    ]
+    assert [
+        (envelope.contract_id, envelope.operation_id) for envelope in observed
+    ] == expected_operations
+    assert all(envelope.context.profile_id == "defaults" for envelope in observed)
+    assert not any("credential" in envelope.contract_id for envelope in observed)
+    assert "opaque:" not in json.dumps(payload)
+
+    for filters in (
+        {"connection_id": "connection/disabled"},
+        {"connection_id": "connection/foreign"},
+        {"connection_id": "connection/missing"},
+        {"connection_id": "connection/work", "provider_id": "anthropic"},
+    ):
+        observed.clear()
+        status, payload, _ = post(filters)
+        assert status != 200 and payload["success"] is False, (filters, payload)
+        assert [
+            (envelope.contract_id, envelope.operation_id) for envelope in observed
+        ] == expected_operations[:2], (filters, payload)
+        assert all(
+            envelope.context.profile_id == "defaults" for envelope in observed
+        ), filters
+        assert not any(
+            envelope.operation_id == "rumi_model_catalog_pack.bundled-model-catalog"
+            for envelope in observed
+        )
+
 
 def test_model_search_projects_float_metadata_into_canonical_json(
     production_server,
@@ -3948,6 +4028,7 @@ def test_model_search_rejects_unauthorized_and_malformed_payloads(
     # by Broker-side validation before any Provider dispatch.
     for body in (
         {"query": 42},
+        {"connection_id": 42},
         {"type": {"kind": "chat"}},
         {"requires": ["vision"]},
         {"requires": {"vision": "yes"}},

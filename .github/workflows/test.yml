@@ -184,7 +184,7 @@ jobs:
       - name: Run Task D smoke tests
         working-directory: tobkiri_runtime
         run: |
-          pytest tests/test_canonical_artifact_checkout.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_runtime_v4_durability.py tests/test_authority_v4_lifecycle.py::test_authority_store_close_is_idempotent_and_restartable tests/test_authority_v4_lifecycle.py::test_authority_store_releases_database_for_deletion tests/test_tobkiri_host_authority_v4_adapter.py::test_broker_close_is_idempotent_and_context_managed tests/test_packaged_runtime_bootstrap.py::test_clean_bootstrap_captures_and_restarts_without_legacy_profile -v
+          pytest tests/test_workflow_attempt_key_privacy.py tests/test_windows_private_file.py tests/test_canonical_artifact_checkout.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_runtime_v4_durability.py tests/test_authority_v4_lifecycle.py::test_authority_store_close_is_idempotent_and_restartable tests/test_authority_v4_lifecycle.py::test_authority_store_releases_database_for_deletion tests/test_tobkiri_host_authority_v4_adapter.py::test_broker_close_is_idempotent_and_context_managed tests/test_packaged_runtime_bootstrap.py::test_clean_bootstrap_captures_and_restarts_without_legacy_profile -v
 
   tobkiri-security-audit:
     runs-on: ubuntu-latest
@@ -297,6 +297,8 @@ jobs:
             tests/test_tool_catalog_presentation.py \
             tests/test_tool_catalog_http.py \
             tests/test_secure_persistence.py \
+            tests/test_workflow_attempt_key_privacy.py \
+            tests/test_windows_private_file.py \
             tests/test_artifact_materialization.py \
             tests/test_declared_pack_data.py \
             tests/test_runtime_locks.py \
@@ -747,16 +749,16 @@ jobs:
           case "${{ matrix.shard }}" in
             capture-control)
               tests=(
-                tests/test_external_profile_catalog.py
-                tests/test_external_dispatch_cold_capture.py
-                tests/test_host_policy_lock.py
-                tests/test_native_pack_onboarding.py
-                tests/test_runtime_version_resolution.py
                 tests/test_pack_control_v4.py
               )
               ;;
             migration-providers)
               tests=(
+                tests/test_external_profile_catalog.py
+                tests/test_external_dispatch_cold_capture.py
+                tests/test_host_policy_lock.py
+                tests/test_native_pack_onboarding.py
+                tests/test_runtime_version_resolution.py
                 tests/test_complete_v4_migration_gate.py
                 tests/test_defaultspack_extension_registry.py
                 tests/test_defaultspack_provider_foundation.py

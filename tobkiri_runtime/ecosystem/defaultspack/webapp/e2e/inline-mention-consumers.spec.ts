@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { MODEL_CATALOG_DEBOUNCE_MS } from '../src/features/search/modelCatalogSearch';
 
 const verifyInline = async (input: Locator) => {
   await expect(input).toHaveValue('');
@@ -32,12 +33,32 @@ test('Settings model picker keeps hidden preset invisible and colors typed menti
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
 });
 
-test('Composer model picker keeps hidden preset invisible and colors typed mentions inline', async ({page}) => {
+test('Composer registered-model search filters providers in a native input without mention tokens', async ({page}) => {
+  await page.clock.install();
   await page.goto('/e2e/model-unification-fixture/index.html');
+  // No API connection is selected, so the separate route setup stays inactive.
+  await expect(page.getByLabel('使用するAPI')).toHaveValue('');
   await page.getByRole('button', {name:'Open composer dropdown'}).click();
-  await verifyInline(page.getByRole('combobox', {name:'モデルを検索'}));
+  const input = page.getByRole('combobox', {name:'モデルを検索'});
+  const root = input.locator('..');
+  const results = page.getByRole('listbox', {name:'登録済みモデル'});
+  await expect(input).toHaveValue('');
+  await expect(input).toHaveJSProperty('tagName', 'INPUT');
+  await input.fill('@openai Fixture');
+  await expect(results.getByRole('option', {name:/Saved Fixture Route/})).toBeVisible();
+  await input.fill('@anthropic Fixture');
+  await expect(results.getByRole('option')).toHaveCount(0);
+  await input.fill('@openai Fixture');
+  await input.evaluate(el => (el as HTMLInputElement).setSelectionRange(0, 8));
+  await input.press('Backspace');
+  await expect(input).toHaveValue('Fixture');
+  await expect(results.getByRole('option', {name:/Saved Fixture Route/})).toBeVisible();
+  await expect(root.locator('[data-search-input-overlay], [data-search-token]')).toHaveCount(0);
   await expect(page.getByRole('button', {name:/を解除/})).toHaveCount(0);
-  await page.getByRole('combobox', {name:'モデルを検索'}).locator('..').screenshot({path:'e2e/inline-composer-model-search.png'});
+  // Observe beyond the catalog debounce without a wall-clock sleep.
+  await page.clock.runFor(MODEL_CATALOG_DEBOUNCE_MS + 1);
+  expect(await page.evaluate(() => (window as any).fixture.searches)).toEqual([]);
   expect(await page.evaluate(() => (window as any).fixture.saves)).toEqual([]);
   expect(await page.evaluate(() => (window as any).fixture.selections)).toEqual([]);
+  await root.screenshot({path:'e2e/inline-composer-model-search.png'});
 });

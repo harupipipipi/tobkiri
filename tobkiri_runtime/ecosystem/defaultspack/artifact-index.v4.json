@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:ffee7236a93e7b97714aa371eae75cb05599442605dbb4f0569107c0be2ba453",
+  "artifact_set_digest": "sha256:85db78a5fc3b8a33fb1a284de9be8a2ca2cb4b8ef5c32e179be0aa3cb489a364",
   "artifacts": [
     {
-      "digest": "sha256:302fd70024469f6d03ad2a5a9154a71e5401898351917b740c1dcb8bdfc3e0e2",
+      "digest": "sha256:5905a0750e88d6da0152ed13b157eff23b8f1985b5a80bc9a4c715cdb5e2c7fd",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+      "digest": "sha256:7135855de1d88737e8643ababde945a05904bf6f05aaea1c354c66f5ea58b1b3",
       "path": "defaultspack/frontend_contract_map.v4.json",
       "role": "asset"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:709947a2cf41d0f834fc7a70ecae3b905dd7ccbdebb885990aa4b644fe0340a7",
+      "digest": "sha256:354dd92e63b40644df9eed72ea2a79291f445353e3da569ec96fa1e51cfb0177",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:fc32d4cb06a6b3f9610b9876c06a5aeb54d3758c515a4b7fedce8a8e89dcb122",
+      "digest": "sha256:2b9992650fd331c1c6ddcccb413d4d9253d0d576d9c1b2a935fe28f5f98cff86",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -675,8 +675,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:07c36c1308956fe5fa78850c9a440a81e64ddc183b25095abd0bd0d0202e9c92"
+    "signed_digest": "sha256:ac8c923dd5600a17c5fb750fdc6bb57e7c09e1f85244a60c7b9d5984a6011b60"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:c4066569863dcba8a5ce798b995c79d693d347953bcb47635ae4a29b051c84f7"
+  "source_identity": "sha256:56bdd47333c44a70d44bfb1ffe1beb6573b206f74e3aabcfbdea2689b95a1aa3"
 }

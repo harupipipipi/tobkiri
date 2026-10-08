@@ -1163,7 +1163,7 @@
           "path": "defaultspack/managed_desktop_presentation.py"
         },
         {
-          "digest": "sha256:f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+          "digest": "sha256:7135855de1d88737e8643ababde945a05904bf6f05aaea1c354c66f5ea58b1b3",
           "index_role": "asset",
           "kind": "asset",
           "path": "defaultspack/frontend_contract_map.v4.json"
@@ -11674,7 +11674,7 @@
         {
           "contract_id": "tobkiri.service.git.publish.v1",
           "function_id": "rumi_git_publish_pack.git-push-prepare.service",
-          "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+          "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
           "operation_ids": [
             "rumi_git_publish_pack.git-push-prepare"
           ]
@@ -11682,7 +11682,7 @@
         {
           "contract_id": "tobkiri.service.git.publish.v1",
           "function_id": "rumi_git_publish_pack.git-publish.service",
-          "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+          "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
           "operation_ids": [
             "rumi_git_publish_pack.git-push"
           ]
@@ -11723,7 +11723,7 @@
               ],
               "entrypoint_id": "git-push-prepare",
               "id": "rumi_git_publish_pack.git-push-prepare",
-              "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147"
+              "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89"
             },
             {
               "effect_ceiling": [
@@ -11734,7 +11734,7 @@
               ],
               "entrypoint_id": "git-push",
               "id": "rumi_git_publish_pack.git-push",
-              "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147"
+              "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89"
             }
           ],
           "owner": "rumi_git_publish_pack",
@@ -11796,7 +11796,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+          "digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
           "kind": "executable",
           "path": "runtime/publish.py"
         }
@@ -33608,7 +33608,7 @@
           "path": "frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:5c326f09e16cf192bce397f957777dc21a24d6747e6b866da89185d1ae063350",
+          "digest": "sha256:c0a411f6ffb919f6ad7a120ac9531da4fb714c463c0cf07993bc4f94fe47ae47",
           "index_role": "asset",
           "kind": "asset",
           "path": "backend-integrity.v4.json"
@@ -33652,7 +33652,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:44218440f3589a1b7eb64a608ceb9adbb3a8588a00593902a6b744c6dc844f9b",
+          "digest": "sha256:45847234b3805184ec8b59d8031b2d3cfb0816a33f7d75671c9002d4f554eb66",
           "path": "core_runtime/workflow_v4/attempt_store.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -33762,7 +33762,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:5c326f09e16cf192bce397f957777dc21a24d6747e6b866da89185d1ae063350",
+          "digest": "sha256:c0a411f6ffb919f6ad7a120ac9531da4fb714c463c0cf07993bc4f94fe47ae47",
           "path": "ecosystem/tobkiri_workflow_pack/backend-integrity.v4.json",
           "rule_id": "workflow-v4-canonical-source"
         }

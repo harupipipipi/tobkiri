@@ -518,6 +518,8 @@
           "pack_specific_operation_mapping_missing",
           "pack_specific_migration_receipt_missing",
           "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
           "runtime_receipt_operation_execution_missing",
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing"
@@ -1842,6 +1844,8 @@
             "pack_specific_operation_mapping_missing",
             "pack_specific_migration_receipt_missing",
             "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
             "runtime_receipt_operation_execution_missing",
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing"
@@ -4781,8 +4785,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "be2ad0927a715483571bcb94d5ceeef6d7fd5741",
-    "semantic_digest": "sha256:cadc5248aba6114b426ee5183f17249f4c95f4a3dc4d7bcb29f2ee9dbbbbcbcf",
+    "observed_head_sha": "7b7b9e506b9390a5e39b9b27816ba1a8618b2ed6",
+    "semantic_digest": "sha256:f1ab5ef85f1225608521db4cd6f89a7c279334dab5be9fccd9266c749a79f835",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

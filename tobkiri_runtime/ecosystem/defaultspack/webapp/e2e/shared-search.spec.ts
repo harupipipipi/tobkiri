@@ -248,7 +248,8 @@ test('hidden mandatory preset scopes reference candidates without rendering pres
 
 test('repeated shortcut stays inside open Spotlight and consumes held chords without reopening', async ({page}) => {
   await open(page);
-  await search(page).fill('@model alpha');
+  await fillConfirmed(search(page), '@model alpha');
+  await expect(page.getByRole('dialog').locator('[data-search-token]')).toHaveText(['@model']);
   await search(page).press('Control+k');
   await expect(search(page)).toBeFocused();
   await expect(search(page)).toHaveValue('@model alpha');

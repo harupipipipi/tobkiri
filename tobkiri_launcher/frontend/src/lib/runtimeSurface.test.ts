@@ -306,6 +306,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     function_id: 'tobkiri.ui.model-search.read',
     allowed_payload_keys: [
       'query',
+      'connection_id',
       'type',
       'model_type',
       'requires',

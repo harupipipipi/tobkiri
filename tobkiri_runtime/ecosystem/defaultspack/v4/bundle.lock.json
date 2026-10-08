@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:f59aa8ed18e50ff3d7fd0d9470a799d3afb676333d851ac60f5844c0aeea9a6d"
+      "digest": "sha256:73e9fbbb33a0a6c3d6420eb074dff0efc1b295ae2af39ed8992ae4c13a0438dd"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:f4137b0b8176427bfc6df1826a86cc6c43e4cefe5379ddfe9d4f194a1bde1ea5"
+      "digest": "sha256:976d0d371b0fb7d5fcea626c63f6de89d854b616ede3e79c8c323ef9473d9363"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -644,12 +644,12 @@
     {
       "path": "packs/rumi_git_publish_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:1f6bafadce9c2e65c7dc5128faefc1512ded1dd4cdb0679662614079b9e3da02"
+      "digest": "sha256:208afa0a24bbdfbbc1e9bc648f3fdc91b4082d3fc8e39796bb90af6170b520ac"
     },
     {
       "path": "packs/rumi_git_publish_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:d9216a94d6f1a61cde3268f39c18c48b51bcea538834ab53f89d4bbd0191b323"
+      "digest": "sha256:651701efba00abe3183c2e16e9c381c62317121f339ec27930fcd54b37e871ce"
     },
     {
       "path": "packs/rumi_git_read_pack.executables.v4.json",
@@ -1394,7 +1394,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:e0bcb4318bd71ee68cfd1ce45d1ba26329c94e9a5d1fa1442f93e5800235c6c5"
+      "digest": "sha256:69d2ec11130982aa92c9d9b74e975a06859ed1ffc6b108b4ee4722b5ac49f864"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1499,12 +1499,12 @@
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:f17bae49ceb8d172446cfbb3855bafaa28f221f56a524decb56f1a2992d06e85"
+      "digest": "sha256:ba1e9e1a54a5610cf65d6e18303e00bb68a5399f8ea2ff871a95b2aeeb0df0ac"
     },
     {
       "path": "packs/tobkiri_workflow_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:fb0daea071391bc31aecce1e007b9015bfb96db63f3f06ab4603406f2c0e48be"
+      "digest": "sha256:087c68e44539d9b7010239868dee32e705529f09062bb6b8b291c2d80a3214cf"
     },
     {
       "path": "defaults-basepack.base.v1.json",

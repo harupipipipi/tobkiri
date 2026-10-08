@@ -12,6 +12,8 @@ from typing import Any, Iterator, Mapping
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from core_runtime.hmac_key_manager import SigningKeyError
+from core_runtime.private_file import prepare_private_file, verify_private_file
 from core_runtime.workflow_v4.attempt_capacity import completion_headroom
 from core_runtime.workflow_v4.models import WorkflowDenied, digest
 from tobkiri_protocol.secure_persistence import SecureDirectory
@@ -38,16 +40,22 @@ class WorkflowAttemptStoreV4:
         self._key_name = f"{path.name}.key"
         self._thread_lock = threading.RLock()
         with self._locked():
-            if not self._directory.exists(self._key_name):
-                self._directory.write_bytes_atomic(self._key_name, Fernet.generate_key())
-            key = self._directory.read_bytes_bounded(self._key_name, max_bytes=44)
-            descriptor = self._directory.open_lock(self._key_name)
             try:
-                if os.fstat(descriptor).st_mode & 0o077:
-                    raise WorkflowDenied("Workflow attempt key is not private")
-            finally:
-                os.close(descriptor)
-            self._cipher = Fernet(key)
+                if not self._directory.exists(self._key_name):
+                    if self._directory.exists(self._name):
+                        raise WorkflowDenied("Workflow attempt key is missing for existing state")
+                    self._directory.write_bytes_atomic(
+                        self._key_name,
+                        Fernet.generate_key(),
+                        prepare_new_file=prepare_private_file,
+                        create_only=True,
+                    )
+                key = self._directory.read_bytes_bounded(
+                    self._key_name, max_bytes=44, verify_open_file=verify_private_file
+                )
+                self._cipher = Fernet(key)
+            except (OSError, SigningKeyError, ValueError) as error:
+                raise WorkflowDenied("Workflow attempt key is not private or valid") from error
             if not self._directory.exists(self._name):
                 self._write({"attempts": {}, "pending": {}})
             self._read()

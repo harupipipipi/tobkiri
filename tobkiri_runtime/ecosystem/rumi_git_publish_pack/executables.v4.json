@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:60491b53db177378c90003f8b03eab5f36bfa67ff88ce268ae9362d4343c1fd2",
+  "catalog_digest": "sha256:61c8c07a5de15b8ba22641b9c7ddf3c999c36c43474d028bd91cc45c84204e56",
   "pack_id": "rumi_git_publish_pack",
-  "source_identity": "sha256:f220407c03fc5da9cdf27a44f1ee1e8a9a338949847893d669390c74362cc5d5",
+  "source_identity": "sha256:390fd32b21f747a14b1029d6c9b9d328a7ad12fe5a2ea6e358489c3ea7fc083d",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_git_publish_pack.git-publish.service",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "implementation_path": "runtime/publish.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -65,7 +65,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_git_publish_pack.git-push-prepare.service",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "implementation_path": "runtime/publish.py",
       "materialization_mode": "on_demand",
       "operations": [

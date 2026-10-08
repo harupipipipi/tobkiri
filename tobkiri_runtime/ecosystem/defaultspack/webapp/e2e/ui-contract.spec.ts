@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route, type Request } from "@playwright/t
 import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../test-support/frontendContractFixture";
 import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
 import { canonicalRequestQuery } from "./contractRequestMatcher";
+import { frontendHostFixtureCatalog as dynamicHostCatalog, frontendHostFixtureScreenPath } from "../test-support/frontendHostFixture";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -484,7 +485,7 @@ test("bootstrap loading state uses the Tobkiri Launcher animation and honors red
     await route.abort();
   });
 
-  await page.goto("/");
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
 
   const loader = page.locator("[data-tobkiri-loading-screen]").first();
   await expect(loader).toBeVisible();
@@ -516,10 +517,11 @@ test("keeps the startup boundary until slash commands and mention sources are re
     releaseCommands = resolve;
   });
   await installDefaultspackApiMocks(page, {
+    applicationChat: true,
     beforeCommandCatalogResponse: () => commandGate,
   });
 
-  await page.goto("/static/chat");
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
 
   const loader = page.locator("[data-tobkiri-loading-screen]").first();
   await expect(loader).toBeVisible();
@@ -529,7 +531,7 @@ test("keeps the startup boundary until slash commands and mention sources are re
   releaseCommands?.();
 
   await expect(loader).toBeHidden();
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await expect(composer).toBeVisible();
 
   await composer.fill("/");
@@ -542,7 +544,7 @@ test("keeps the startup boundary until slash commands and mention sources are re
 test("verified Pack v4 conversation boots from the dynamic-host catalog", async ({ page }) => {
   await installDefaultspackApiMocks(page);
 
-  await page.goto("/chat");
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
 
   await expect(page.locator('[data-rumi-frontend-host][data-plan-hash^="sha256:"]')).toBeVisible();
   await expect(page.locator('[data-conversation-surface="v4"]')).toBeVisible();
@@ -566,7 +568,6 @@ type ApiMockOptions = {
   onSettingsWrite?: (payload: Record<string, unknown>) => void;
   beforeSavedTurnResponse?: () => Promise<void> | void;
   modelProfiles?: ModelProfile[];
-  applicationBuiltinChat?: boolean;
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
@@ -686,52 +687,6 @@ function smokeConversation() {
   };
 }
 
-/**
- * The smallest catalog accepted by the Pack v4 dynamic host for /chat.
- *
- * Compatibility-surface tests deliberately use /static/chat below. This
- * fixture keeps the production /chat route on the same verified-contribution
- * contract as the Host instead of silently falling back to legacy UI.
- */
-function dynamicHostCatalog(applicationChat = false) {
-  const profileId = "defaults";
-  const profileRevision = "e2e-profile-revision";
-  const activationId = "e2e-activation";
-  const planHash = `sha256:${"b".repeat(64)}`;
-  return {
-    version: "rumi.ui.contribution.v1" as const,
-    profile_id: profileId,
-    profile_revision: profileRevision,
-    activation_id: activationId,
-    plan_hash: planHash,
-    selected_entry_route: "/chat",
-    contributions: (applicationChat ? ["/chat", "/kanban", "/desktops"] : ["/chat"]).map((route) => ({
-      contribution_id: route === "/chat" ? "defaults.conversation.complete" : `defaults.frontend.${route.slice(1)}`,
-      kind: "route" as const,
-      mode: applicationChat ? "application_builtin" as const : "declarative" as const,
-      ...(applicationChat ? { implementation: "defaultspack.chat" } : {}),
-      label: "Tobkiri Conversation",
-      description: "Start a conversation with Tobkiri.",
-      priority: 0,
-      owner_pack_id: "defaultspack",
-      owner_pack_hash: `sha256:${"c".repeat(64)}`,
-      build_identity: "defaultspack.conversation",
-      resolved_profile_id: profileId,
-      resolved_profile_revision: profileRevision,
-      resolved_activation_id: activationId,
-      resolved_plan_hash: planHash,
-      descriptor_hash: `sha256:${"d".repeat(64)}`,
-      route,
-      action_contract: "conversation.turn.v1",
-      view: { type: "conversation_v4" },
-      localization: {},
-      accessibility: { name: "Tobkiri Conversation", keyboard: true },
-    })),
-    diagnostics: [],
-    quarantined_pack_ids: [],
-    catalog_hash: `sha256:${"e".repeat(64)}`,
-  };
-}
 
 const smokeProfile = {
   profile_id: "stub/default",
@@ -1913,11 +1868,9 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 }
 
 async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOptions = {}) {
-  await installDefaultspackApiMocks(page, options);
-  // Existing dense-shell interactions remain compatibility tests. The real
-  // /chat route is asserted separately through the verified Pack v4 catalog.
-  const compatibilityPath = path === "/chat" ? "/static/chat" : path;
-  await page.goto(compatibilityPath);
+  await installDefaultspackApiMocks(page, { ...options, applicationChat: true });
+  // Exercise ChatApp only through its captured Application binding and Profile URL.
+  await page.goto(frontendHostFixtureScreenPath(path));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
 
@@ -2216,7 +2169,7 @@ test("projects replace New Group and are searchable from the composer", async ({
   expect(persistedProject).toMatchObject({ title: "E2E Project" });
   expect(String(persistedProject?.id ?? "")).toMatch(/^group-\d+$/);
 
-  await page.getByRole("combobox", { name: "Rumiにメッセージを送信" }).fill("Project scoped message");
+  await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).fill("Project scoped message");
   await page.locator(".rumi-send-button").click();
   await expect.poll(() => conversationCreates.length).toBe(1);
   expect(conversationCreates[0].group_id).toBe(persistedProject?.id);
@@ -2225,7 +2178,7 @@ test("projects replace New Group and are searchable from the composer", async ({
 
 test("document scroll fallback survives small and keyboard-like viewports", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 520 });
-  await openDefaultspack(page, "/static/chat");
+  await openDefaultspack(page, "/chat");
 
   await expect(page.locator(".rumi-app-shell")).toBeVisible();
   await expect(page.locator(".rumi-workspace-main")).toHaveCSS("min-height", "0px");
@@ -2325,7 +2278,7 @@ test("composer per-turn no-tools mode reaches the request and locks during gener
   const savedTurnGate = new Promise<void>((resolve) => { releaseSavedTurn = resolve; });
   await installDefaultspackApiMocks(page, {
     modelProfiles: [smokeProfile],
-    applicationBuiltinChat: true,
+    applicationChat: true,
     conversationMutator: (conversation) => {
       conversation.conversation_kind = "chat";
       conversation.tags = [];
@@ -2373,8 +2326,8 @@ test("composer per-turn no-tools mode reaches the request and locks during gener
 });
 
 test("new chat resets the draft tool mode and keeps persistent selected tools", async ({ page }) => {
-  await installDefaultspackApiMocks(page, { initialSelectedToolIds: ["web_search"] });
-  await page.goto("/static/chat");
+  await installDefaultspackApiMocks(page, { applicationChat: true, initialSelectedToolIds: ["web_search"] });
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 
   const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
@@ -2389,8 +2342,8 @@ test("new chat resets the draft tool mode and keeps persistent selected tools", 
 });
 
 test("tool selection controller resets transient draft state while preserving persistent preferences", async ({ page }) => {
-  await installDefaultspackApiMocks(page);
-  await page.goto("/static/chat");
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
   const snapshots = await page.evaluate(async () => {
     const fixturePath = "/e2e/tool-selection-controller.fixture.tsx";
     const fixture = await import(/* @vite-ignore */ fixturePath);
@@ -2433,7 +2386,7 @@ test("tool selection controller resets transient draft state while preserving pe
 test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {
   await openDefaultspack(page, "/chat");
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   const approval = page.getByRole("button", { name: "アクションの承認方法" });
   await expect(approval).toContainText("承認");
 
@@ -2473,7 +2426,7 @@ test("new chat structured options open above the compact composer and apply valu
 test("browser approval uses the shared user-first decision surface at narrow width", async ({ page }) => {
   let denialPayload: Record<string, unknown> | null = null;
   await page.setViewportSize({ width: 390, height: 844 });
-  await openDefaultspack(page, "/static/chat", {
+  await openDefaultspack(page, "/chat", {
     conversationMutator: (conversation) => {
       conversation.messages[1].events.push({
         type: "approval_requested",
@@ -2516,8 +2469,8 @@ test("browser approval uses the shared user-first decision surface at narrow wid
 });
 
 test("settings modal contains focus, dismisses nested layers in order, and restores its opener", async ({ page }) => {
-  await installDefaultspackApiMocks(page);
-  await page.goto("/static/");
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  await page.goto(frontendHostFixtureScreenPath("/"));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 
   const opener = page.getByTitle("Settings").last();
@@ -2588,9 +2541,8 @@ test("tool hub service selections can be scoped to the conversation and survive 
   await githubCard.getByTitle("サービスを使う").click();
   await expect(githubCard).toContainText("会話固定");
 
-  // Explicitly revisit the compatibility route. Interactions may normalize
-  // history to /chat, which is intentionally owned by the Pack v4 host.
-  await page.goto("/static/chat");
+  // Revisit the same captured Profile through its supported Application route.
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
   await page.locator('button[title="機能"]').click();
   await page.getByRole("button", { name: "この会話" }).click();
@@ -2730,7 +2682,7 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => escapedRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("Use @web");
   await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
@@ -2758,7 +2710,7 @@ test("composer renders semantic tool mentions inline and clears state after an e
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => chipRequests.push(payload),
   });
-  const chipComposer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const chipComposer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await chipComposer.fill("Use @web");
   await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
   await chipComposer.press("Enter");
@@ -2785,7 +2737,7 @@ test("composer reconciles an escaped service mention before submit", async ({ pa
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => serviceRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("Use @gith");
   const githubOption = page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" });
@@ -2812,7 +2764,7 @@ test("composer reconciles an escaped service mention before submit", async ({ pa
 test("slash and mention candidates share one full-width JSON palette", async ({ page }) => {
   await openDefaultspack(page, "/chat");
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("@");
   const mentions = page.getByTestId("composer-at-mention-candidates");
   await expect(mentions).toBeVisible();
@@ -2839,7 +2791,7 @@ test("composer removes file mention metadata when its attachment is removed", as
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => fileRequests.push(payload),
   });
-  const fileComposer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const fileComposer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await fileComposer.fill("/coding");
   await fileComposer.press("Enter");
   await fileComposer.fill("Review @REA");
@@ -2861,7 +2813,7 @@ test("composer supplementary-plane mention keeps textarea and parser indices ali
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("先𐐀 @𐐀");
   await expect(page.getByRole("option", { name: /@𐐀tool/i })).toBeVisible();
@@ -2882,7 +2834,7 @@ test("composer removes a no-space mention atomically without leaving tool state"
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
@@ -2911,7 +2863,7 @@ test("editing and reselecting an atomically deleted no-space mention restores it
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
@@ -2940,7 +2892,7 @@ test("workspace mention waits for its attachment before submit", async ({ page }
     beforeWorkspaceFileReadResponse: () => readGate,
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await composer.fill("Review @REA");
@@ -2974,7 +2926,7 @@ test("cancelling a pending workspace mention discards its late result", async ({
     beforeWorkspaceFileReadResponse: () => readGate,
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await composer.fill("Review @REA");
@@ -3005,7 +2957,7 @@ test("cancelling one pending workspace mention preserves another transaction", a
     ),
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await composer.fill("Review @REA");
@@ -3038,7 +2990,7 @@ test("starting a new draft discards a pending workspace mention result", async (
   await openDefaultspack(page, "/chat", {
     beforeWorkspaceFileReadResponse: () => readGate,
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await composer.fill("Review @REA");
@@ -3063,7 +3015,7 @@ test("migrated keyboard navigation marker keeps composer controls reachable", as
     },
   });
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.focus();
   await composer.press("Tab");
   await expect(composer).not.toBeFocused();
@@ -3075,7 +3027,7 @@ test("composer mention keyboard and ARIA contracts stay predictable at Unicode a
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   const mentions = page.getByTestId("composer-at-mention-candidates");
 
   await composer.fill("@");
@@ -3150,7 +3102,7 @@ test("coding file mentions keep stable semantic metadata through submit", async 
     onStreamRequest: (payload) => streamRequests.push(payload),
   });
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await expect(page).toHaveURL(/\/coding(?:\?|$)/);
@@ -3191,7 +3143,7 @@ test("coding file mentions keep stable semantic metadata through submit", async 
 test("composer controls are keyboard reachable, visibly named, and at least 44px", async ({ page }) => {
   await openDefaultspack(page, "/chat");
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.focus();
   await composer.press("Tab");
   await expect(composer).not.toBeFocused();
@@ -3216,7 +3168,7 @@ test("composer uses a leading plus menu and accepts clipboard and workspace file
   await page.getByTitle("New Chat").first().click();
   await expect(page.locator(".rumi-composer-new")).toHaveCSS("filter", "blur(0px)");
 
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   const attach = page.getByRole("button", { name: "ファイルを添付" });
   const composerBox = await composer.boundingBox();
   const attachBox = await attach.boundingBox();
@@ -3290,7 +3242,7 @@ test("composer uses a leading plus menu and accepts clipboard and workspace file
 
 test("composer mentions paste portably and delete as one semantic unit", async ({ page }) => {
   await openDefaultspack(page, "/chat");
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.evaluate((target) => {
     const dataTransfer = new DataTransfer();
@@ -3316,7 +3268,7 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   await openDefaultspack(page, "/chat", {
     beforeWorkspaceFileReadResponse: () => readGate,
   });
-  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await composer.fill("/coding");
   await composer.press("Enter");
   await composer.fill("Review @REA");
@@ -3347,7 +3299,7 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   expect(await inlineRemove.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
 
   await page.getByTitle("New Chat").first().click();
-  const newComposer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const newComposer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await newComposer.fill("Review @REA");
   await page.getByRole("option").filter({ hasText: "@README.md" }).click();
   const cardRemove = page.getByRole("button", { name: "README.md を削除" });
@@ -3371,7 +3323,7 @@ test("history reload restores localized semantic mention badges", async ({ page 
   await openDefaultspack(page, "/chat");
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 
-  await page.goto("/static/chat");
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 });
 

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from core_runtime.bootstrap.saved_bridge import project_saved_ai_result
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationConflict
 from tests.test_saved_host_exchange import _Exchange
 from tests.test_conversation_lifecycle_pack import _confirm

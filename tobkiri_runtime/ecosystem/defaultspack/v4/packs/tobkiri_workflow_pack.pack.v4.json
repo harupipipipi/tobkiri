@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:5c326f09e16cf192bce397f957777dc21a24d6747e6b866da89185d1ae063350",
+      "digest": "sha256:c0a411f6ffb919f6ad7a120ac9531da4fb714c463c0cf07993bc4f94fe47ae47",
       "kind": "asset",
       "path": "backend-integrity.v4.json"
     },
     {
-      "digest": "sha256:f17bae49ceb8d172446cfbb3855bafaa28f221f56a524decb56f1a2992d06e85",
+      "digest": "sha256:ba1e9e1a54a5610cf65d6e18303e00bb68a5399f8ea2ff871a95b2aeeb0df0ac",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -125,8 +125,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:b651e81a20ae5ce75c14f24f45088c599fc05848adb2d7f3038f6fdb5862ca17",
-    "artifact_set_digest": "sha256:7098912790139787ca5000daff5d19183717765be9830261c9b9f36cefa6b4bb",
+    "source_identity": "sha256:efcda99ad12a7371d7d14622c912242ec691ccf15daf28f151914055a962745c",
+    "artifact_set_digest": "sha256:fceec4f786fc3add76e6f4fd72517847502799731c77d5db6191745ab8c7bb7d",
     "contract_catalog_digest": "sha256:372d2046c23495b054ebeaecdb44917b48cb56aff93e0d47f4a9ebe7d0fe4d32"
   },
   "migration": {
@@ -314,7 +314,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6664966234ba67052b395290af8091e3cf0043318c2e551bde06ca4900cc1632",
+    "artifact_digest": "sha256:56065c5b9ecff68f64b27fad8b07a8388d815eb84a3008723435930b7ca1550c",
     "display_name": "Tobkiri Workflow Pack",
     "id": "tobkiri_workflow_pack",
     "kind": "host_extension",
@@ -325,15 +325,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
-    "source_digest": "sha256:b651e81a20ae5ce75c14f24f45088c599fc05848adb2d7f3038f6fdb5862ca17",
+    "source_digest": "sha256:efcda99ad12a7371d7d14622c912242ec691ccf15daf28f151914055a962745c",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:22ad2cbbfd4c0988f740856e394dfd45f478059a28660be730415f81412ac796",
+    "content_root_digest": "sha256:f1fae3be4973194b0249b2f3daa51660c3e5b75eab1f009898d9f4ca18eeec84",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
-    "input_inventory_digest": "sha256:21b21884cf3610c33b219298e92596bfdb510cd17cfd3e3e1babe2efcc9704fc",
+    "input_inventory_digest": "sha256:54d078938aacc98b64114b017593f4d97c1286bdf13fdcf2eb9535f4027c35f4",
     "normative": true,
     "evidence": [
       {
@@ -344,7 +344,7 @@
       {
         "path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:b651e81a20ae5ce75c14f24f45088c599fc05848adb2d7f3038f6fdb5862ca17"
+        "digest": "sha256:efcda99ad12a7371d7d14622c912242ec691ccf15daf28f151914055a962745c"
       }
     ]
   },

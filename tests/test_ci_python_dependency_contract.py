@@ -87,6 +87,17 @@ def test_package_shards_preserve_coverage_and_timeout_evidence() -> None:
     assert "name: package-pytest-${{ matrix.python-version }}-${{ matrix.shard }}-" in job
 
 
+def test_workflow_private_key_regressions_run_on_windows() -> None:
+    """Native ACL checks must not be validated solely by Linux skip results."""
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    job = _job_blocks(workflow)["task-d-cross-platform-smoke"]
+    assert "os: [ubuntu-latest, windows-latest]" in job
+    invocation = job.split("- name: Run Task D smoke tests", 1)[1]
+    for name in ("test_workflow_attempt_key_privacy.py", "test_windows_private_file.py"):
+        assert f"tests/{name}" in invocation
+        assert (ROOT / "tobkiri_runtime/tests" / name).is_file()
+
+
 def test_recovery_regressions_run_without_contract_marker_filtering() -> None:
     """Keep the Profile/Host recovery suite explicit and preserve failure logs."""
     workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
