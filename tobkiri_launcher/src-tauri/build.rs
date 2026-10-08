@@ -280,8 +280,6 @@ fn main() {
             "signed_pack_admission_status",
             "admit_signed_pack_from_folder",
             "onboard_signed_pack_from_folder",
-            "handover_previous_development_host",
-            "recover_development_host_handover",
             "get_presentation_catalog",
             "select_presentation",
             "launch_selected_presentation",

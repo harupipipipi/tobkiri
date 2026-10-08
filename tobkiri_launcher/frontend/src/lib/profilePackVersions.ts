@@ -32,7 +32,7 @@ export function parseProfilePackVersions(value: unknown): ProfilePackVersions {
   const seen = new Set<string>();
   for (const pack of value.packs) {
     if (!isRecord(pack) || !exactKeys(pack, ['pack_id', 'role', 'selected_digest', 'versions'])
-      || !isId(pack.pack_id) || seen.has(pack.pack_id) || !['application', 'provider', 'backend', 'contribution', 'optional'].includes(String(pack.role))
+      || !isId(pack.pack_id) || seen.has(pack.pack_id) || !['application', 'provider', 'backend', 'contribution'].includes(String(pack.role))
       || !isDigest(pack.selected_digest) || !Array.isArray(pack.versions) || !pack.versions.length) return deny();
     seen.add(pack.pack_id);
     const digests = new Set<string>();

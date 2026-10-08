@@ -12,7 +12,7 @@ import secrets
 import threading
 import time
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
@@ -225,7 +225,6 @@ class _Binding:
     profile_revision: str
     plan_digest: str
     catalog_revision: str
-    artifact_pins: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -855,7 +854,7 @@ class CapturedPackControlSession:
         pack_id = _installed_pack(arguments, self._binding)
         if pack_id in _required_profile_pack_ids(self._binding.profile_id):
             raise PackControlUnapproved("required Pack approval cannot be revoked")
-        record = load_pack_catalog(dict(self._binding.artifact_pins))[pack_id]
+        record = load_pack_catalog()[pack_id]
         approved, reason = _approval_status(pack_id, record, self._binding)
         if not approved:
             _raise_approval_failure(reason)
@@ -868,12 +867,12 @@ class CapturedPackControlSession:
         return _catalog_payload(self._binding, active_snapshot=active_snapshot)
 
     def _install(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        pack_id, record, root = _pack(arguments, self._binding)
+        pack_id, record, root = _pack(arguments)
         content_digest = _pack_snapshot(pack_id, root)
         state = _read_control_state(self._binding.profile_id)
         state[pack_id] = {
             "artifact_digest": _record_digest(record),
-            "pack_artifact_digest": _pack_manifest_artifact_digest(pack_id, self._binding),
+            "pack_artifact_digest": _pack_manifest_artifact_digest(pack_id),
             "content_digest": content_digest,
             "catalog_revision": self._binding.catalog_revision,
         }
@@ -890,7 +889,7 @@ class CapturedPackControlSession:
 
     def _approval_candidate(self, arguments: Mapping[str, Any], session_id: str) -> dict[str, Any]:
         pack_id = _installed_pack(arguments, self._binding)
-        snapshot_digest = _pack_snapshot(pack_id, _pack_root(pack_id, self._binding))
+        snapshot_digest = _pack_snapshot(pack_id, resolve_pack_root(pack_id))
         candidate_id = secrets.token_urlsafe(32)
         candidate = _ApprovalCandidate(
             candidate_id=candidate_id,
@@ -924,7 +923,7 @@ class CapturedPackControlSession:
             or candidate.catalog_revision != self._binding.catalog_revision
         ):
             raise PackControlStaleRevision("approval candidate binding is invalid or stale")
-        current_digest = _pack_snapshot(pack_id, _pack_root(pack_id, self._binding))
+        current_digest = _pack_snapshot(pack_id, resolve_pack_root(pack_id))
         if not hmac.compare_digest(current_digest, candidate.snapshot_digest):
             raise PackControlDigestMismatch("Pack contents changed after approval was requested")
         try:
@@ -950,7 +949,7 @@ class CapturedPackControlSession:
         pack_id = _installed_pack(arguments, self._binding)
         if pack_id in _required_profile_pack_ids(self._binding.profile_id):
             raise PackControlUnapproved("required Pack approval cannot be revoked")
-        record = load_pack_catalog(dict(self._binding.artifact_pins))[pack_id]
+        record = load_pack_catalog()[pack_id]
         approval = _load_valid_approval(pack_id, record, self._binding)
         approval_revision = str(approval["approval_revision"])
         state, profile = _active_profile()
@@ -959,10 +958,9 @@ class CapturedPackControlSession:
             raise PackControlUnapproved("the active Base Pack approval cannot be revoked")
         remaining_pack_ids = (
             _remaining_pack_roots(pack_id, active_pack_ids, self._binding)
-            if pack_id in active_pack_ids
-            else active_pack_ids
+            if pack_id in active_pack_ids else active_pack_ids
         )
-        artifact_digest = _pack_manifest_artifact_digest(pack_id, self._binding)
+        artifact_digest = _pack_manifest_artifact_digest(pack_id)
         from .authority.v4 import AuthorityStore
 
         authority_path = _user_data_root() / "authority" / "v4.sqlite3"
@@ -1007,7 +1005,7 @@ class CapturedPackControlSession:
         pack_id = _installed_pack(arguments, self._binding)
         if not enabled and pack_id in _required_profile_pack_ids(self._binding.profile_id):
             raise PackControlUnapproved("required Pack cannot be disabled")
-        record = load_pack_catalog(dict(self._binding.artifact_pins))[pack_id]
+        record = load_pack_catalog()[pack_id]
         approved, reason = _approval_status(pack_id, record, self._binding)
         if enabled and not approved:
             _raise_approval_failure(reason)
@@ -1054,7 +1052,7 @@ class CapturedPackControlSession:
     ) -> dict[str, Any]:
         """Return the finite Home projection from the captured Pack state."""
 
-        records = load_pack_catalog(dict(self._binding.artifact_pins))
+        records = load_pack_catalog()
         installed = _read_control_state(self._binding.profile_id)
         _state, active_profile = _active_profile(active_snapshot)
         active = set(active_profile.get("packs") or [])
@@ -1066,11 +1064,10 @@ class CapturedPackControlSession:
         # Packs, without building operation and Authority grant projections that
         # the Home counts never return.
         for pack_id, entry in installed.items():
-            if _superseded_optional_install(pack_id, entry, self._binding, active):
-                continue
             _require_install_binding(pack_id, records[pack_id], entry, self._binding)
         enabled = sum(
-            pack_id in required or _approval_status(pack_id, records[pack_id], self._binding)[0]
+            pack_id in required
+            or _approval_status(pack_id, records[pack_id], self._binding)[0]
             for pack_id in active & records.keys()
         )
         total = len(records)
@@ -1158,7 +1155,7 @@ def capture_valid_pack_approval(pack_id: str) -> Mapping[str, Any]:
     """Load one exact current signed optional-Pack approval for Authority capture."""
 
     binding = _capture_binding()
-    record = load_pack_catalog(dict(binding.artifact_pins)).get(pack_id)
+    record = load_pack_catalog().get(pack_id)
     if record is None:
         raise PackControlInvalidRequest("Pack is absent from the canonical v4 catalog")
     return _load_valid_approval(pack_id, record, binding)
@@ -1197,28 +1194,17 @@ def _catalog_payload(
         if isinstance(item, Mapping)
     }
     packs = []
-    for pack_id, record in sorted(load_pack_catalog(dict(binding.artifact_pins)).items()):
+    for pack_id, record in sorted(load_pack_catalog().items()):
         is_installed = pack_id in installed or pack_id in active
-        superseded = pack_id in installed and _superseded_optional_install(
-            pack_id,
-            installed[pack_id],
-            binding,
-            active,
-        )
         if pack_id in installed:
-            if superseded:
-                is_installed = False
-            else:
-                _require_install_binding(pack_id, record, installed[pack_id], binding)
+            _require_install_binding(pack_id, record, installed[pack_id], binding)
         # Packs committed to the immutable active Profile are baseline
         # capabilities, not optional installs.  Their trust is established by
         # the captured Profile and bundle validation; requiring a mutable
         # optional-pack approval would make the baseline unavailable after a
         # fresh installation.  Optional packs keep the normal approval path.
         is_committed_baseline = pack_id in required_pack_ids and pack_id in active
-        if superseded:
-            approved, reason = False, "install_revision_stale"
-        elif is_committed_baseline:
+        if is_committed_baseline:
             approved, reason = True, None
         else:
             approved, reason = _approval_status(
@@ -1301,25 +1287,7 @@ def _required_profile_pack_ids(
 
     if catalog is None:
         catalog = host_profile_catalog()
-        if active_snapshot is None:
-            from .bootstrap.profile_capture import capture_active_profile
-
-            active_snapshot = capture_active_profile()
-        from .profile_pack_intents import verified_definition_source
-
-        try:
-            source = verified_definition_source(
-                profile_id,
-                str(active_snapshot.resolved.plan["profile_definition_digest"]),
-                catalog=catalog,
-                user_data=_user_data_root(),
-            )
-        except ValueError as error:
-            raise PackControlDigestMismatch(
-                "active Profile definition history is unavailable"
-            ) from error
-    else:
-        source = catalog.profiles.get(profile_id)
+    source = catalog.profiles.get(profile_id)
     if source is None:
         raise PackControlDigestMismatch("selected Profile is unavailable")
     selected = [str(item["pack_id"]) for item in source["packs"]]
@@ -1328,8 +1296,7 @@ def _required_profile_pack_ids(
         selected,
         artifact_pins={
             str(row["pack_id"]): str(row["artifact_digest"])
-            for row in source["packs"]
-            if row.get("artifact_digest") is not None
+            for row in source["packs"] if row.get("artifact_digest") is not None
         },
     )
     pending = list(selected)
@@ -1475,22 +1442,20 @@ def _capture_binding(active: Any | None = None) -> _Binding:
     resolved_profile = state["resolved_profile"]
     catalog_revision = control_catalog_revision()
     profile_revision = "sha256:" + _digest(resolved_profile)
-    pins = _resolved_artifact_pins(resolved_profile, state["resolved_plan"])
-    catalog = load_pack_catalog(pins)
+    catalog = load_pack_catalog()
     selected = tuple(str(item or "").strip() for item in profile.get("packs") or [])
     if not selected or len(selected) != len(set(selected)):
         raise PackControlDigestMismatch("active v4 Profile effective set is empty or duplicated")
     if any(pack_id not in catalog for pack_id in selected):
         raise PackControlDigestMismatch("active v4 Profile contains an unknown Pack")
     for pack_id in selected:
-        resolve_pack_root(pack_id, artifact_digest=pins.get(pack_id))
+        resolve_pack_root(pack_id)
     return _Binding(
         profile_id=str(profile["profile_id"]),
         workspace_id=str(profile.get("workspace_id") or profile["profile_id"]),
         profile_revision=profile_revision,
         plan_digest=str(state["resolved_plan"]["plan_digest"]),
         catalog_revision=catalog_revision,
-        artifact_pins=tuple(sorted(pins.items())),
     )
 
 
@@ -1507,37 +1472,6 @@ def _binding_for_resolved(resolved: Any) -> _Binding:
         profile_revision=str(plan["profile_revision"]),
         plan_digest=str(plan["plan_digest"]),
         catalog_revision=control_catalog_revision(),
-        artifact_pins=tuple(sorted(_resolved_artifact_pins(profile, plan).items())),
-    )
-
-
-def _resolved_artifact_pins(
-    profile: Mapping[str, Any],
-    plan: Mapping[str, Any],
-) -> dict[str, str]:
-    """Freeze disabled intent and exact active bytes to one verified plan."""
-    pins = {
-        str(row["pack_id"]): str(row["artifact_digest"])
-        for row in profile.get("optional_pack_revisions", [])
-    }
-    pack_ids = {str(row["pack_id"]) for row in profile["packs"]}
-    pins.update(
-        {
-            str(row["identity"]): str(row["artifact_digest"])
-            for row in plan["effective_set"]
-            if str(row["identity"]) in pack_ids
-        }
-    )
-    return pins
-
-
-def _pack_root(pack_id: str, binding: _Binding) -> Path:
-    """Resolve the revision captured by this lifecycle session."""
-    digest = dict(binding.artifact_pins).get(pack_id)
-    return (
-        resolve_pack_root(pack_id, artifact_digest=digest)
-        if digest is not None
-        else resolve_pack_root(pack_id)
     )
 
 
@@ -1549,7 +1483,9 @@ def verify_reconfirmed_pack_approvals(resolved: Any, catalog: Any) -> None:
     catalog below rather than holding a receipt the enable ceremony never
     required.
     """
-    required = _required_profile_pack_ids(str(resolved.profile["profile_id"]), catalog=catalog)
+    required = _required_profile_pack_ids(
+        str(resolved.profile["profile_id"]), catalog=catalog
+    )
     optional = {str(item["pack_id"]) for item in resolved.profile["packs"]} - required
     dependency_covered = {
         str(dependency_id)
@@ -1561,10 +1497,7 @@ def verify_reconfirmed_pack_approvals(resolved: Any, catalog: Any) -> None:
         optional - dependency_covered, _binding_for_resolved(resolved), read_only=True
     )
     for pack_id in optional:
-        if (
-            _pack_manifest_artifact_digest(pack_id, _binding_for_resolved(resolved))
-            != catalog.packs[pack_id]["pack"]["artifact_digest"]
-        ):
+        if _pack_manifest_artifact_digest(pack_id) != catalog.packs[pack_id]["pack"]["artifact_digest"]:
             raise PackControlDigestMismatch("reviewed Pack differs from its installed artifact")
 
 
@@ -1584,18 +1517,15 @@ def verified_reconfirmed_pack_ids(
     """
 
     _safe_identity(profile_id, "Profile ID")
-    from .profile_pack_intents import profile_artifact_pins
-
     binding = _Binding(
         profile_id=profile_id,
         workspace_id=profile_id,
         profile_revision="",
         plan_digest="",
         catalog_revision=control_catalog_revision(),
-        artifact_pins=tuple(sorted(profile_artifact_pins(catalog.profiles[profile_id]).items())),
     )
     installed = _read_control_state(profile_id, read_only=True)
-    records = load_pack_catalog(dict(binding.artifact_pins))
+    records = load_pack_catalog()
     verified: list[str] = []
     for pack_id in sorted(pack_ids):
         record = records.get(pack_id)
@@ -1603,22 +1533,26 @@ def verified_reconfirmed_pack_ids(
         catalog_pack = catalog.packs.get(pack_id)
         try:
             if record is None:
-                raise PackControlDigestMismatch("optional Pack is absent from the catalog")
+                raise PackControlDigestMismatch(
+                    "optional Pack is absent from the catalog"
+                )
             if entry is None:
-                raise PackControlConflict("Pack must be installed before activation")
-            if _superseded_optional_install(pack_id, entry, binding, set()):
-                # A newly selected optional revision requires its own install
-                # and approval after Profile activation. Keep it disabled.
-                continue
+                raise PackControlConflict(
+                    "Pack must be installed before activation"
+                )
             _require_install_binding(pack_id, record, entry, binding)
-            approved, reason = _approval_status(pack_id, record, binding, read_only=True)
+            approved, reason = _approval_status(
+                pack_id, record, binding, read_only=True
+            )
             if not approved:
                 _raise_approval_failure(reason)
             if catalog_pack is None or (
-                _pack_manifest_artifact_digest(pack_id, binding)
+                _pack_manifest_artifact_digest(pack_id)
                 != catalog_pack["pack"]["artifact_digest"]
             ):
-                raise PackControlDigestMismatch("reviewed Pack differs from its installed artifact")
+                raise PackControlDigestMismatch(
+                    "reviewed Pack differs from its installed artifact"
+                )
         except PackControlDigestMismatch as error:
             if str(error) != "approval_binding_invalid":
                 raise
@@ -1637,7 +1571,7 @@ def _verify_optional_pack_approvals(
     pack_ids: set[str], binding: _Binding, *, read_only: bool = False
 ) -> None:
     installed = _read_control_state(binding.profile_id, read_only=read_only)
-    records = load_pack_catalog(dict(binding.artifact_pins))
+    records = load_pack_catalog()
     for pack_id in sorted(pack_ids):
         record = records.get(pack_id)
         if record is None:
@@ -1760,12 +1694,10 @@ def resolve_profile_pack_set(
 
     user_data = Path(user_data_root).resolve() if user_data_root is not None else _user_data_root()
     trusted_active_resolution = profile_id is None
-    active = None
     if profile_id is None:
         from .bootstrap.profile_capture import capture_active_profile
 
-        active = capture_active_profile()
-        profile_id = str(active.resolved.profile["profile_id"])
+        profile_id = str(capture_active_profile().resolved.profile["profile_id"])
     catalog = (
         host_profile_catalog(bundle_root=bundle_root, user_data_root=user_data)
         if bundle_root is not None
@@ -1796,28 +1728,15 @@ def resolve_profile_pack_set(
     elif not trusted_active_resolution:
         raise PackControlUnapproved("selected Profile requires exact catalog bindings")
     runtime = require_profile_runtime()
-    from .profile_pack_intents import profile_artifact_pins, verified_definition_source
-
-    if active is not None:
-        active_source = verified_definition_source(
-            profile_id,
-            str(active.resolved.plan["profile_definition_digest"]),
-            catalog=catalog,
-            user_data=user_data,
-        )
-        catalog = runtime.catalog_with_profiles(
-            catalog,
-            {**catalog.profiles, profile_id: dict(active_source)},
-        )
     source = catalog.profiles.get(profile_id)
     if source is None:
         raise PackControlInvalidRequest("selected Profile is unavailable")
-    artifact_pins = profile_artifact_pins(source)
-    if active is not None:
-        artifact_pins.update(dict(_binding_for_resolved(active.resolved).artifact_pins))
+    artifact_pins = {
+        str(row["pack_id"]): str(row["artifact_digest"])
+        for row in source["packs"] if row.get("artifact_digest") is not None
+    }
     catalog, requested_closure = catalog_with_admitted_pack_closure(
-        catalog,
-        list(dict.fromkeys([*pack_ids, *(row["pack_id"] for row in source["packs"])])),
+        catalog, list(dict.fromkeys([*pack_ids, *artifact_pins])),
         artifact_pins=artifact_pins,
     )
     if all(value is not None for value in authoritative_bindings):
@@ -1889,7 +1808,9 @@ def resolve_profile_pack_set(
         # The resolver derives only the selected Pack/dependency closure and
         # binds every operation to its signed caller.
         try:
-            for edge in runtime.dynamic_profile_edges(catalog, profile_id, additional_pack_ids):
+            for edge in runtime.dynamic_profile_edges(
+                catalog, profile_id, additional_pack_ids
+            ):
                 bindings[_edge_key(edge)] = _authority_reference(edge, snapshot_digest)
             approved_digests = {
                 str(item["artifact_digest"]) for item in baseline.lock["effective_set"]
@@ -1916,9 +1837,9 @@ def resolve_profile_pack_set(
                 additional_pack_ids=additional_pack_ids,
             )
         except Exception as error:
-            if runtime.is_resolution_denied(error) and not runtime.is_reconfirmation_required(
+            if runtime.is_resolution_denied(
                 error
-            ):
+            ) and not runtime.is_reconfirmation_required(error):
                 raise PackControlInvalidRequest(
                     "selected Profile Pack set cannot resolve"
                 ) from error
@@ -2132,7 +2053,7 @@ def _remaining_pack_roots(
 
     required_ids = _required_profile_pack_ids(binding.profile_id)
     installed = _read_control_state(binding.profile_id)
-    records = load_pack_catalog(dict(binding.artifact_pins))
+    records = load_pack_catalog()
     retained: list[str] = []
     for candidate in active_pack_ids:
         if candidate == removed_pack_id:
@@ -2143,17 +2064,21 @@ def _remaining_pack_roots(
         record = records.get(candidate)
         if candidate not in installed or record is None:
             continue
-        approved, _reason = _approval_status(candidate, record, binding, read_only=True)
+        approved, _reason = _approval_status(
+            candidate, record, binding, read_only=True
+        )
         if approved:
             retained.append(candidate)
     _catalog, remaining_closure = catalog_with_admitted_pack_closure(
-        host_profile_catalog(), retained, artifact_pins=dict(binding.artifact_pins)
+        host_profile_catalog(), retained
     )
     if removed_pack_id in remaining_closure:
         # Check before authority revocation, which is durable even if the
         # subsequent Profile transaction fails. The surviving covering Pack
         # must be removed first rather than silently re-admitting this Pack.
-        raise PackControlConflict("Pack is required by an enabled Pack dependency graph")
+        raise PackControlConflict(
+            "Pack is required by an enabled Pack dependency graph"
+        )
     return retained
 
 
@@ -2316,17 +2241,17 @@ def _atomic_json(
         raise PackControlUnavailable("Pack control persistence is unavailable") from error
 
 
-def _pack(arguments: Mapping[str, Any], binding: _Binding) -> tuple[str, Mapping[str, Any], Path]:
+def _pack(arguments: Mapping[str, Any]) -> tuple[str, Mapping[str, Any], Path]:
     pack_id = _required(arguments.get("pack_id"), "Pack ID")
-    record = load_pack_catalog(dict(binding.artifact_pins)).get(pack_id)
+    record = load_pack_catalog().get(pack_id)
     if record is None:
         raise PackControlInvalidRequest("Pack is absent from the canonical v4 catalog")
-    root = _pack_root(pack_id, binding)
+    root = resolve_pack_root(pack_id)
     return pack_id, record, root
 
 
 def _installed_pack(arguments: Mapping[str, Any], binding: _Binding) -> str:
-    pack_id, record, _root = _pack(arguments, binding)
+    pack_id, record, _root = _pack(arguments)
     active = set(_active_profile()[1].get("packs") or [])
     installed = _read_control_state(binding.profile_id)
     if pack_id not in active and pack_id not in installed:
@@ -2343,10 +2268,11 @@ def _require_install_binding(
     entry: object,
     binding: _Binding,
 ) -> None:
+    del binding
     try:
-        root = _pack_root(pack_id, binding)
+        root = resolve_pack_root(pack_id)
         content_digest = _pack_snapshot(pack_id, root)
-        pack_artifact_digest = _pack_manifest_artifact_digest(pack_id, binding)
+        pack_artifact_digest = _pack_manifest_artifact_digest(pack_id)
     except PackControlDenied:
         raise
     except Exception as error:
@@ -2360,37 +2286,6 @@ def _require_install_binding(
         or entry.get("content_digest") != content_digest
     ):
         raise PackControlDigestMismatch(f"installed Pack binding is stale or tampered: {pack_id}")
-
-
-def _superseded_optional_install(
-    pack_id: str,
-    entry: object,
-    binding: _Binding,
-    active: set[str],
-) -> bool:
-    """Recognize an intact predecessor install without approving its successor."""
-    selected = dict(binding.artifact_pins).get(pack_id)
-    if pack_id in active or selected is None or not isinstance(entry, Mapping):
-        return False
-    previous = entry.get("pack_artifact_digest")
-    if previous == selected:
-        return False
-    if not isinstance(previous, str):
-        raise PackControlDigestMismatch("previous optional Pack install is invalid")
-    old_pins = {**dict(binding.artifact_pins), pack_id: previous}
-    try:
-        old_record = load_pack_catalog(old_pins)[pack_id]
-        _require_install_binding(
-            pack_id,
-            old_record,
-            entry,
-            replace(binding, artifact_pins=tuple(sorted(old_pins.items()))),
-        )
-    except Exception as error:
-        raise PackControlDigestMismatch(
-            "previous optional Pack install is stale or tampered"
-        ) from error
-    return True
 
 
 def _approval_path(profile_id: str, pack_id: str) -> Path:
@@ -2426,7 +2321,7 @@ def _persist_approval(
     *,
     approval_nonce: str,
 ) -> None:
-    record = load_pack_catalog(dict(binding.artifact_pins))[pack_id]
+    record = load_pack_catalog()[pack_id]
     payload = {
         "version": "io.tobkiri.pack-approval.v4",
         "pack_id": pack_id,
@@ -2521,8 +2416,7 @@ def _approval_status(
     try:
         key = (
             load_signing_key(_user_data_root() / "pack_control" / ".authority_key")
-            if read_only
-            else _authority_key()
+            if read_only else _authority_key()
         )
     except SigningKeyError:
         return False, "approval_authority_unavailable"
@@ -2556,7 +2450,7 @@ def _approval_status(
     except Exception:
         return False, "approval_authority_unavailable"
     try:
-        current = _pack_snapshot(pack_id, _pack_root(pack_id, binding))
+        current = _pack_snapshot(pack_id, resolve_pack_root(pack_id))
     except PackControlDenied:
         return False, "pack_integrity_invalid"
     if not hmac.compare_digest(str(payload.get("content_digest") or ""), current):
@@ -2625,9 +2519,8 @@ def _approval_revision(payload: Mapping[str, Any]) -> str:
     return "sha256:" + _digest({key: payload.get(key) for key in keys})
 
 
-def _pack_manifest_artifact_digest(pack_id: str, binding: _Binding | None = None) -> str:
-    root = _pack_root(pack_id, binding) if binding is not None else resolve_pack_root(pack_id)
-    manifest_path = root / "pack.v4.json"
+def _pack_manifest_artifact_digest(pack_id: str) -> str:
+    manifest_path = resolve_pack_root(pack_id) / "pack.v4.json"
     try:
         manifest = validate_document(manifest_path.read_bytes(), "pack")
     except Exception as error:
@@ -2638,23 +2531,11 @@ def _pack_manifest_artifact_digest(pack_id: str, binding: _Binding | None = None
 
 
 def _pack_snapshot(pack_id: str, root: Path) -> str:
+    external_digest = external_pack_content_digest(pack_id)
+    if external_digest is not None:
+        return external_digest
     if root.is_symlink() or not root.is_dir():
         raise PackControlDigestMismatch("cataloged Pack root is missing or symlinked")
-    manifest_path = root / "pack.v4.json"
-    if manifest_path.is_symlink() or not manifest_path.is_file():
-        raise PackControlDigestMismatch("Pack v4 manifest is unavailable")
-    manifest = validate_document(manifest_path.read_bytes(), "pack")
-    external_digest = external_pack_content_digest(
-        pack_id,
-        artifact_digest=str(manifest["pack"]["artifact_digest"]),
-    )
-    if external_digest is not None:
-        if (
-            resolve_pack_root(pack_id, artifact_digest=str(manifest["pack"]["artifact_digest"]))
-            != root
-        ):
-            raise PackControlDigestMismatch("selected Pack root is inconsistent")
-        return external_digest
     resolved_root = root.resolve(strict=True)
     files: dict[str, str] = {}
     pending = [root]

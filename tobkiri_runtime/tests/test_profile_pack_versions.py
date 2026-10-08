@@ -41,10 +41,7 @@ PROFILE_ID = "revision-profile"
 
 
 def _setup(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    optional: bool = False,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
@@ -55,13 +52,12 @@ def _setup(
     definition = deepcopy(catalog.profiles["defaults"])
     definition["profile_id"] = PROFILE_ID
     definition["display_name"] = "Pack revision fixture"
-    if not optional:
-        definition["packs"].append(
-            {"pack_id": PACK_ID, "artifact_digest": first["artifact_digest"], "role": "provider"}
-        )
-        definition["requested_edges"].extend(
-            require_profile_runtime().dynamic_profile_edges(catalog, "defaults", (PACK_ID,))
-        )
+    definition["packs"].append(
+        {"pack_id": PACK_ID, "artifact_digest": first["artifact_digest"], "role": "provider"}
+    )
+    definition["requested_edges"].extend(
+        require_profile_runtime().dynamic_profile_edges(catalog, "defaults", (PACK_ID,))
+    )
     ProfileDefinitionStore(user_data).create_profile(definition)
     capture_profile(PROFILE_ID, confirmation=prepare_profile_confirmation(PROFILE_ID))
     next_release = tmp_path / "next-release"
@@ -223,109 +219,3 @@ def test_same_revision_noop_checks_cas_without_appending_history(tmp_path, monke
     )
     assert result["activation_required"] is False
     assert ProfileDefinitionStore(user_data).snapshot() == before
-
-
-@pytest.mark.parametrize("initially_enabled", [False, True])
-def test_optional_intent_preserves_old_active_and_requires_fresh_install_approval(
-    tmp_path,
-    monkeypatch,
-    initially_enabled,
-):
-    from core_runtime.pack_control_v4 import PackControlDenied, _required_profile_pack_ids
-    from tests.test_pack_control_v4 import _capture_control_session, _invoke
-
-    user_data, first, second = _setup(tmp_path, monkeypatch, optional=True)
-    store = ProfileDefinitionStore(user_data)
-    original = deepcopy(dict(store.get_profile(PROFILE_ID).profile))
-
-    def approve(session):
-        _invoke(session, "pack.install", {"pack_id": PACK_ID})
-        candidate = _invoke(session, "approval.candidate", {"pack_id": PACK_ID})
-        _invoke(
-            session,
-            "approval.approve",
-            {"pack_id": PACK_ID, "candidate_id": candidate["candidate_id"]},
-        )
-
-    if initially_enabled:
-        session = _capture_control_session()
-        approve(session)
-        _invoke(session, "pack.enable", {"pack_id": PACK_ID})
-        session.close()
-    predecessor = capture_active_profile()
-    pointer_path = user_data / "profiles/active.json"
-    pointer_bytes = pointer_path.read_bytes()
-    for digest in (second["artifact_digest"], first["artifact_digest"], second["artifact_digest"]):
-        view = profile_pack_versions(PROFILE_ID)
-        assert next(row for row in view["packs"] if row["pack_id"] == PACK_ID)["role"] == "optional"
-        select_profile_pack_version(_payload(view, digest))
-        assert pointer_path.read_bytes() == pointer_bytes
-        assert capture_active_profile().resolved.plan == predecessor.resolved.plan
-    current = store.get_profile(PROFILE_ID)
-    assert current.profile["packs"] == original["packs"]
-    assert current.profile["requested_edges"] == original["requested_edges"]
-    assert current.profile["authority_references"] == original["authority_references"]
-    assert current.profile["optional_pack_revisions"] == [
-        {"pack_id": PACK_ID, "artifact_digest": second["artifact_digest"]}
-    ]
-    assert PACK_ID not in _required_profile_pack_ids(PROFILE_ID)
-    old_session = _capture_control_session()
-    old_row = next(
-        row for row in _invoke(old_session, "catalog.read")["packs"] if row["pack_id"] == PACK_ID
-    )
-    if initially_enabled:
-        assert old_row["enabled"]
-        assert old_row["pack_artifact_digest"] == first["artifact_digest"]
-    old_session.close()
-
-    _activate(user_data)
-    active = capture_active_profile()
-    assert PACK_ID not in {row["identity"] for row in active.resolved.lock["effective_set"]}
-    assert PACK_ID not in _required_profile_pack_ids(PROFILE_ID)
-    session = _capture_control_session()
-    row = next(
-        row for row in _invoke(session, "catalog.read")["packs"] if row["pack_id"] == PACK_ID
-    )
-    assert not row["enabled"] and not row["approved"]
-    with pytest.raises(PackControlDenied):
-        _invoke(session, "pack.enable", {"pack_id": PACK_ID})
-    approve(session)
-    _invoke(session, "pack.enable", {"pack_id": PACK_ID})
-    active = capture_active_profile()
-    assert (
-        next(row for row in active.resolved.lock["effective_set"] if row["identity"] == PACK_ID)[
-            "artifact_digest"
-        ]
-        == second["artifact_digest"]
-    )
-    _invoke(session, "pack.disable", {"pack_id": PACK_ID})
-    assert PACK_ID not in {
-        row["identity"] for row in capture_active_profile().resolved.lock["effective_set"]
-    }
-    assert (
-        store.get_profile(PROFILE_ID).profile["optional_pack_revisions"]
-        == current.profile["optional_pack_revisions"]
-    )
-    session.close()
-
-
-def test_optional_intent_schema_rejects_authority_duplicates_and_required_overlap(
-    tmp_path, monkeypatch
-):
-    from tobkiri_protocol.validation import validate_document
-
-    user_data, first, _ = _setup(tmp_path, monkeypatch, optional=True)
-    definition = deepcopy(dict(ProfileDefinitionStore(user_data).get_profile(PROFILE_ID).profile))
-    intent = {"pack_id": PACK_ID, "artifact_digest": first["artifact_digest"]}
-    for pins in (
-        [{**intent, "enabled": True}],
-        [intent, intent],
-        [
-            {
-                "pack_id": definition["packs"][0]["pack_id"],
-                "artifact_digest": first["artifact_digest"],
-            }
-        ],
-    ):
-        with pytest.raises(Exception):
-            validate_document({**definition, "optional_pack_revisions": pins}, "profile")
