@@ -3315,3 +3315,29 @@ def test_saved_store_health_identity_is_stable_and_never_creates_state(
     assert read(tmp_path / "second") != first
     assert first.startswith("sha256:") and len(first) == 71
     assert str(tmp_path) not in json.dumps(responses)
+
+
+def test_pack_revision_routes_require_panel_auth_csrf_and_finite_query(monkeypatch) -> None:
+    """A revision choice cannot write through an anonymous or cross-site request."""
+    from core_runtime import profile_pack_version_http as versions
+    calls = []
+    monkeypatch.setattr(PackAPIHandler, "_profile_registry_store", staticmethod(lambda: object()))
+    monkeypatch.setattr(versions, "profile_pack_versions", lambda profile_id: calls.append(("read", profile_id)) or {"profile_id": profile_id})
+    monkeypatch.setattr(versions, "select_profile_pack_version", lambda body: calls.append(("select", body)) or {"profile_id": "defaults"})
+    server = PackAPIServer(port=0, panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"), dispatch_session=_Dispatch())
+    server.start()
+    try:
+        assert _request(server, "GET", versions.READ_PATH + "?profile_id=defaults")[0] == 401
+        cookie, csrf, origin = _panel_session(server)
+        read_headers = {"Cookie": cookie, "Origin": origin}
+        assert _request(server, "POST", versions.SELECT_PATH, body={}, headers=read_headers)[0] == 401
+        assert calls == []
+        assert _request(server, "GET", versions.READ_PATH + "?profile_id=defaults", headers=read_headers)[0] == 200
+        assert calls == [("read", "defaults")]
+        for query in ("profile_id=defaults&profile_id=other", "profile_id=defaults&artifact_path=/tmp", ""):
+            assert _request(server, "GET", versions.READ_PATH + "?" + query, headers=read_headers)[0] == 400
+        assert calls == [("read", "defaults")]
+        assert _request(server, "POST", versions.SELECT_PATH, body={"profile_id": "defaults"}, headers={**read_headers, "X-Rumi-CSRF": csrf})[0] == 200
+        assert calls[-1] == ("select", {"profile_id": "defaults"})
+    finally:
+        server.stop()
