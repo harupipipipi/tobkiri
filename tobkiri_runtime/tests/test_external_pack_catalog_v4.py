@@ -177,13 +177,9 @@ def _signed_external_pack(
             "role": "sidecar",
         })
         _write_json(index_path, index)
-    if (
-        kind is not None
-        or runtime_suffix is not None
-        or materialization_catalog_digest is not None
-        or with_frontend
-    ):
-        _refresh_fixture_artifacts(source)
+    # The fixture's historical Contract catalog digest predates its current
+    # bytes. Build a complete valid authority chain for every signed artifact.
+    _refresh_fixture_artifacts(source)
     for path in (source, *source.rglob("*")):
         if path.is_dir():
             path.chmod(0o755)

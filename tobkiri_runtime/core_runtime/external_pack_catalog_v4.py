@@ -680,6 +680,14 @@ def _project_catalog_record(
     signed_manifest: Mapping[str, Any],
 ) -> dict[str, Any]:
     manifest = validate_file(root / "pack.v4.json", "pack")
+    contract_catalog = validate_file(root / "contracts.v4.json", "pack_contract_catalog")
+    if (
+        "sha256:" + hashlib.sha256((root / "contracts.v4.json").read_bytes()).hexdigest()
+        != manifest["integrity"]["contract_catalog_digest"]
+        or contract_catalog["pack_id"] != manifest["pack"]["id"]
+        or contract_catalog["source_identity"] != manifest["integrity"]["source_identity"]
+    ):
+        raise ExternalPackCatalogDenied("signed Pack Contract catalog identity is inconsistent")
     executable = validate_file(root / "executables.v4.json", "executable_catalog")
     _require_external_catalog_identity(executable)
     pack_id = str(manifest["pack"]["id"])
