@@ -66,10 +66,13 @@ class NativeGenerationBudgetTemplate:
 def owner_startup_generation_budget_template(
     requested: NativeGenerationBudgetTemplate | None = None,
 ) -> NativeGenerationBudgetTemplate | None:
-    """Select a Host startup restriction; the general runtime defaults to none."""
-    if requested is not None and type(requested) is not NativeGenerationBudgetTemplate:
-        raise PermissionError("Host generation budget policy is invalid")
-    return requested
+    """Select the owner-approved isolated test policy from signed Source."""
+    approved = NativeGenerationBudgetTemplate("defaults", "provider.main")
+    if requested is not None and (
+        type(requested) is not NativeGenerationBudgetTemplate or requested != approved
+    ):
+        raise PermissionError("isolated generation budget policy is fixed")
+    return approved
 
 
 class NativeGenerationBudgetOwner:
