@@ -522,6 +522,16 @@ def _resolve_profile_candidate(
     source_profile = catalog.profiles.get(profile_id)
     if source_profile is None:
         raise ProfileResolutionDenied("Profile is unavailable from the Host registry")
+    from ..pack_control_v4 import catalog_with_admitted_pack_closure
+
+    catalog, _ = catalog_with_admitted_pack_closure(
+        catalog,
+        [str(row["pack_id"]) for row in source_profile["packs"]],
+        artifact_pins={
+            str(row["pack_id"]): str(row["artifact_digest"])
+            for row in source_profile["packs"] if row.get("artifact_digest") is not None
+        },
+    )
     bundle_root = Path(catalog.root)
     bundle_lock_path = bundle_root / "bundle.lock.json"
     if bundle_lock_path.is_symlink() or not bundle_lock_path.is_file():
