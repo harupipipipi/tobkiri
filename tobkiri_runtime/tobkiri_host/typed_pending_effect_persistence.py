@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from .generation_budget_persistence import is_generation_budget_record
+
 _NAMESPACES = {
     "saved_tool_admission_v1": re.compile(r"saved-tool-admission-v1-[0-9a-f]{64}"),
     "action_approval_policy_v1": re.compile(r"action-approval-policy-v1-[0-9a-f]{64}"),
@@ -15,11 +17,12 @@ _NAMESPACES = {
 
 
 class TypedPendingEffectPersistence:
-    """Delegate encrypted effect CAS while excluding only recognized receipts.
+    """Delegate encrypted effect CAS while separating other Host-owned state.
 
     Unknown kinds, malformed namespace IDs and untagged genuine effects remain
     visible to the strict PendingEffect parser and therefore fail recovery if
-    corrupt. Receipt rows are still encrypted/authenticated by the same store.
+    corrupt. Budget rows must pass their exact owner namespace and shape checks.
+    All rows are still encrypted/authenticated by the same store before filtering.
     """
 
     def __init__(self, persistence: Any) -> None:
@@ -47,7 +50,7 @@ class TypedPendingEffectPersistence:
         )
 
     def list_host_pending_effects(self) -> list[Any]:
-        """List every effect except exact known typed Host receipt namespaces."""
+        """List effects after authenticated, strict Host ownership separation."""
         result = []
         for revision, payload in self._persistence.list_host_pending_effects():
             pattern = _NAMESPACES.get(payload.get("record_kind"))
@@ -57,6 +60,8 @@ class TypedPendingEffectPersistence:
                 and isinstance(identifier, str)
                 and pattern.fullmatch(identifier)
             ):
+                continue
+            if is_generation_budget_record(revision, payload):
                 continue
             result.append((revision, payload))
         return result

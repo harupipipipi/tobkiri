@@ -32,6 +32,7 @@
     "errors.py",
     "extension_sdk.py",
     "finite_chat_dispatch.py",
+    "generation_budget_persistence.py",
     "host_tool_policy_types.py",
     "interactive_effects.py",
     "linux_kvm_probe.py",
