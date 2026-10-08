@@ -9,6 +9,7 @@ import {
 } from './generatedFrontendContractMap';
 import {parsePacksResponse} from './packScope';
 import {createApiClient, type ApiRequestPolicy} from './apiTransport';
+import {isHostProfileControlRoute} from './hostProfileControlRoutes';
 
 export type FrontendContractMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -68,7 +69,11 @@ function parseFrontendContractPath(path: string): ParsedFrontendContractPath | n
 export const defaultspackApiFetch = createApiClient((path, method) => {
   const contract = parseFrontendContractPath(path);
   if (!contract || method !== contract.method) return null;
-  return {panelSession: true, runtimeDispatch: true, requestIdentity: true};
+  return {
+    panelSession: true,
+    runtimeDispatch: !isHostProfileControlRoute(contract.route),
+    requestIdentity: true,
+  };
 });
 
 function frontendContractPath(method: FrontendContractMethod, target: string): string {

@@ -1235,13 +1235,10 @@ test('additive preview and activation use the same selector without retrying a d
   });
 });
 
-test('dispatch gate releases only after the Host publishes runtime_ready', async () => {
+test('Application dispatch gate releases only after the Host publishes runtime_ready', async () => {
   setRuntimeDispatchStatus('profile_reconfirmation_required');
   await assert.rejects(
-    fetchFrontendContractOperation('POST', '/api/runtime-surface/profile-change/activate', {
-      approval_id: 'approval',
-      approval_digest: `sha256:${'a'.repeat(64)}`,
-    }),
+    fetchFrontendContractOperation('GET', '/api/home/dashboard'),
     /Profile reconfirmation is required/,
   );
   assert.equal(lastFetchUrl, '');
@@ -1252,6 +1249,53 @@ test('dispatch gate releases only after the Host publishes runtime_ready', async
     decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')),
     'GET /api/home/dashboard',
   );
+});
+
+test('exact Host Profile ceremony routes remain authenticated before activation', async () => {
+  installBrowser('http://127.0.0.1:8765/panel/?code=host-control-bootstrap');
+  await bootstrapPanelSession();
+  const routes = [
+    ['GET', '/api/runtime-surface/profiles'],
+    ['GET', '/api/runtime-surface/operation-status'],
+    ['POST', '/api/runtime-surface/profile-change/resolve'],
+    ['POST', '/api/runtime-surface/profile-change/review'],
+    ['POST', '/api/runtime-surface/profile-change/approve'],
+    ['POST', '/api/runtime-surface/profile-change/activate'],
+  ] as const;
+  for (const status of ['unknown', 'panel_ready', 'profile_reconfirmation_required'] as const) {
+    setRuntimeDispatchStatus(status);
+    for (const [method, path] of routes) {
+      await fetchFrontendContractOperation(method, path);
+      assert.equal(decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')), `${method} ${path}`);
+      assert.equal(lastFetchInit?.credentials, 'same-origin');
+      if (method === 'POST') {
+        assert.equal((lastFetchInit?.headers as Record<string, string>)['X-Rumi-CSRF'], 'csrf-from-server');
+        assert.match((lastFetchInit?.headers as Record<string, string>)['X-Tobkiri-Request-ID'], /^[a-f0-9-]{36}$/);
+      }
+    }
+    for (const path of ['/api/home/dashboard', '/api/runtime-surface/profile', '/api/runtime-surface/settings', '/api/runtime-surface/topology/packs']) {
+      await assert.rejects(fetchFrontendContractOperation('GET', path), /dispatch is unavailable|reconfirmation is required/);
+    }
+  }
+});
+
+test('pre-activation Profile approval still propagates Host denial without resubmitting', async () => {
+  installBrowser('http://127.0.0.1:8765/panel/?code=host-control-bootstrap');
+  await bootstrapPanelSession();
+  setRuntimeDispatchStatus('panel_ready');
+  let writes = 0;
+  fetchHandler = async () => {
+    writes += 1;
+    return new Response(JSON.stringify({success: false, error: 'Native approval denied'}), {status: 409});
+  };
+  await assert.rejects(fetchFrontendContractOperation('POST', '/api/runtime-surface/profile-change/approve', {
+    candidate_id: 'candidate', candidate_digest: `sha256:${'a'.repeat(64)}`,
+  }), /Native approval denied/);
+  assert.equal(writes, 1);
+  assert.throws(() => fetchFrontendContractOperation('POST', '/api/runtime-surface/profile-change/approve', {
+    approved: true,
+  }), /unknown key/);
+  assert.equal(writes, 1);
 });
 
 test('health parsing rejects an unknown or tampered runtime status', () => {
