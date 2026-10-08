@@ -169,7 +169,9 @@ def test_retained_owner_live_reused_or_unknown_blocks_prepare(
     transfer_fixture, retained_domain, monkeypatch, state
 ):
     monkeypatch.setattr(
-        storage, "process_start_identity", lambda _: ProcessIdentityEvidence(state, "reused-start")
+        storage,
+        "process_start_identity",
+        lambda _: ProcessIdentityEvidence(state, "reused-start" if state == "live" else ""),
     )
     with pytest.raises(ValueError, match="owner must be exited"):
         transfer_fixture.prepare()

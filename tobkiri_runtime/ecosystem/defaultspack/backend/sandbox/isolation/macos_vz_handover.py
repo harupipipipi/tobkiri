@@ -639,8 +639,10 @@ def _retained_file(path: Path) -> dict[str, Any]:
         ):
             raise ValueError("Host handover retained file was redirected")
         with os.fdopen(descriptor, "rb", closefd=False) as stream:
-            for chunk in iter(lambda: stream.read(16 * 1024), b""):
-                digest.update(chunk)
+            raw = stream.read(16 * 1024 + 1)
+            if len(raw) > 16 * 1024:
+                raise ValueError("Host handover retained allocation exceeded its byte limit")
+            digest.update(raw)
         if before != _retained_identity(path, directory=False):
             raise ValueError("Host handover retained file changed during inspection")
         return {**before, "digest": "sha256:" + digest.hexdigest()}
