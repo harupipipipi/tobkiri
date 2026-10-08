@@ -671,23 +671,24 @@ export function validateRuntimeSurfaceEnvelope<T>(
   if (!isRecord(value)) {
     throw new RuntimeSurfaceError('INVALID', runtimeSurfaceErrorMessage('INVALID'));
   }
+  const catalogEnvelopeKeys = [
+    'surface', 'state', 'host_catalog_digest', 'bundle_lock_digest', 'data', 'write_set',
+  ];
+  const isHostCatalogEnvelope = exactObject(value, [
+    'host_operation_api_version', ...catalogEnvelopeKeys,
+  ]) && value.host_operation_api_version === 'io.tobkiri.host.operation.v1';
+  const isRuntimeCatalogEnvelope = exactObject(value, [
+    'runtime_surface_api_version', ...catalogEnvelopeKeys,
+  ]) && value.runtime_surface_api_version === RUNTIME_SURFACE_API_VERSION;
   if (
     expectedSurface === 'profiles'
-    && exactObject(value, [
-      'runtime_surface_api_version',
-      'surface',
-      'state',
-      'host_catalog_digest',
-      'bundle_lock_digest',
-      'data',
-      'write_set',
-    ])
-    && value.runtime_surface_api_version === RUNTIME_SURFACE_API_VERSION
+    && (isHostCatalogEnvelope || isRuntimeCatalogEnvelope)
     && value.surface === 'profiles'
     && value.state === 'catalog_ready'
     && isSha256Digest(value.host_catalog_digest)
     && isSha256Digest(value.bundle_lock_digest)
     && Array.isArray(value.write_set)
+    && value.write_set.length === 0
   ) {
     const catalog = extractExactProfileCatalog(value.data);
     if (
@@ -698,6 +699,8 @@ export function validateRuntimeSurfaceEnvelope<T>(
     ) {
       throw new RuntimeSurfaceError('INVALID', runtimeSurfaceErrorMessage('INVALID'));
     }
+    // Keep the Host catalog intact: it carries no active Profile identity or
+    // execution records and must not be presented as an activated snapshot.
     return value as unknown as RuntimeSurfaceEnvelope<T>;
   }
   if (value.runtime_surface_api_version === RUNTIME_SURFACE_API_VERSION && value.state === 'error') {

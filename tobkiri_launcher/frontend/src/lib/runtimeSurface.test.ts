@@ -403,6 +403,68 @@ test('Profile catalog projection is exact, exposes the active marker, and derive
   assert.deepEqual(extractExactProfileCatalogSelectablePackIds({...projection.profiles[0], pack_closure: []}), []);
 });
 
+function hostProfileCatalogEnvelope() {
+  const catalog = profileCatalogData();
+  return {
+    host_operation_api_version: 'io.tobkiri.host.operation.v1',
+    surface: 'profiles',
+    state: 'catalog_ready',
+    host_catalog_digest: catalog.catalog_digest,
+    bundle_lock_digest: catalog.bundle_lock_digest,
+    data: {
+      ...catalog,
+      active_profile_id: null,
+      count: 1,
+      profiles: [catalog.profiles[1]],
+    },
+    write_set: [],
+  };
+}
+
+test('pre-activation Profile read accepts the actual Host operation envelope without inventing execution evidence', async () => {
+  const hostResponse = hostProfileCatalogEnvelope();
+  const client = createRuntimeSurfaceClient(undefined, {
+    read: async <T>(target, input) => {
+      assert.equal(target.logical_target, '/api/runtime-surface/profiles');
+      assert.deepEqual(input, {});
+      return hostResponse as T;
+    },
+  });
+  const accepted = await client.read('profiles');
+  assert.strictEqual(accepted, hostResponse);
+  assert.equal(extractExactProfileCatalog(accepted.data)?.active_profile_id, null);
+  for (const field of ['runtime_surface_api_version', 'profile_id', 'profile_revision', 'records', 'plan_digest']) {
+    assert.equal(Object.hasOwn(accepted, field), false);
+  }
+});
+
+test('Host Profile catalog rejects activation claims, writes, conflicting identity and unknown fields', () => {
+  const valid = hostProfileCatalogEnvelope();
+  const invalid = [
+    {...valid, host_operation_api_version: 'io.tobkiri.host.operation.v2'},
+    {...valid, runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION},
+    {...valid, surface: 'settings'},
+    {...valid, state: 'ready'},
+    {...valid, host_catalog_digest: digest('f')},
+    {...valid, bundle_lock_digest: digest('f')},
+    {...valid, write_set: ['untrusted-write']},
+    {...valid, data: profileCatalogData()},
+    {...valid, approved: true},
+    {...valid, records: {}},
+  ];
+  for (const candidate of invalid) {
+    assert.throws(() => validateRuntimeSurfaceEnvelope('profiles', candidate), RuntimeSurfaceError);
+  }
+  assert.throws(() => validateRuntimeSurfaceEnvelope('settings', valid), RuntimeSurfaceError);
+});
+
+test('existing no-active runtime catalog retains exact validation and an empty write set', () => {
+  const {host_operation_api_version: _version, ...catalog} = hostProfileCatalogEnvelope();
+  const valid = {...catalog, runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION};
+  assert.strictEqual(validateRuntimeSurfaceEnvelope('profiles', valid), valid);
+  assert.throws(() => validateRuntimeSurfaceEnvelope('profiles', {...valid, write_set: ['untrusted-write']}), RuntimeSurfaceError);
+});
+
 test('Profile catalog tamper, unknown active marker, and extra fields fail closed', () => {
   const fixture = profileCatalogData();
   const tamperedDigest = structuredClone(fixture);
