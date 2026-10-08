@@ -34,7 +34,7 @@ def read_handover_journal(root: Path) -> dict[str, Any] | None:
         return None
     storage = SecureDirectory(root, create=False)
     if not storage.exists(JOURNAL):
-        return None
+        raise ValueError("Development Host handover journal disappeared during verification")
     value = json.loads(storage.read_bytes_bounded(JOURNAL, max_bytes=128 * 1024))
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         raise ValueError("Development Host handover journal is invalid")

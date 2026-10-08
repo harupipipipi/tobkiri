@@ -543,10 +543,10 @@ class ConversationStore:
                                 if child_id != message_id
                             ]
                         if item.get("id") == requested_parent_id:
-                            child_ids = list(item.get("children_ids") or [])
-                            if message_id not in child_ids:
-                                child_ids.append(message_id)
-                            item["children_ids"] = child_ids
+                            updated_child_ids = list(item.get("children_ids") or [])
+                            if message_id not in updated_child_ids:
+                                updated_child_ids.append(message_id)
+                            item["children_ids"] = updated_child_ids
                     messages[index]["parent_id"] = requested_parent_id
                 for key in (
                     "content",

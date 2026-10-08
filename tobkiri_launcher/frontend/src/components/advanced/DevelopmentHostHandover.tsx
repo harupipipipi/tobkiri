@@ -20,7 +20,7 @@ export function DevelopmentHostHandover() {
       const result = recover ? await recoverDevelopmentHostHandover() : await handoverPreviousDevelopmentHost();
       if (result !== null && typeof result === 'object' && 'stage' in result) {
         setCompleted(result.stage === 'completed');
-        setRestored(result.stage === 'source-restored');
+        setRestored(result.stage === 'source-restored' || result.stage === 'intent-abandoned');
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

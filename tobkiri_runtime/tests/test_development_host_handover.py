@@ -480,14 +480,22 @@ def _consented(review, action="commit"):
     }
 
 
-@pytest.mark.parametrize("phase", ["staging", "published-before-journal", "definitions"])
+@pytest.mark.parametrize(
+    "phase", ["intent-before-staging", "staging", "published-before-journal", "definitions"]
+)
 def test_native_recovery_retains_staging_and_restores_finalized_vm(
     transfer_fixture, monkeypatch, phase
 ):
     transfer = transfer_fixture
     service, review = _service_review(transfer, monkeypatch)
     target_root = transfer.target.state_path.parent.parent
-    if phase == "staging":
+    if phase == "intent-before-staging":
+
+        def fail_stage(*args, **kwargs):
+            raise RuntimeError("isolated interruption")
+
+        monkeypatch.setattr(owner, "_ensure_private_parents", fail_stage)
+    elif phase == "staging":
         real_import = owner.import_host_data
 
         def fail_import(root, data):
@@ -524,7 +532,7 @@ def test_native_recovery_retains_staging_and_restores_finalized_vm(
     assert result["stage"] == "source-restored"
     journal = read_handover_journal(target_root)
     assert journal["stage"] == "rolled-back"
-    assert Path(journal["staging"]).exists()
+    assert Path(journal["staging"]).exists() == (phase != "intent-before-staging")
     for move in review["plan"]["vm_plan"]["moves"]:
         assert storage._identity(Path(move["source"])) == move["identity"]
         assert not Path(move["target"]).exists()
@@ -652,3 +660,45 @@ def test_vanished_staged_owner_cannot_complete(transfer_fixture, monkeypatch):
     assert read_handover_journal(target_root)["stage"] == "vm-transferred"
     with pytest.raises(ValueError, match="recovery before activation"):
         require_completed_handover(target_root)
+
+
+def test_key_before_intent_crash_requires_fresh_native_abandonment(transfer_fixture):
+    target_root = transfer_fixture.target.state_path.parent.parent
+    original_key = b"k" * 32
+    SecureDirectory(target_root, create=False).write_bytes_atomic(
+        "development-host-handover.key", original_key
+    )
+    service = owner.DevelopmentHostHandover(
+        transfer_fixture.target, bootstrap_profile_id="defaults"
+    )
+    review = service.prepare_recovery()
+    assert review["plan"]["stage"] == "orphaned-intent"
+    assert not review["plan"]["source_storage_moved"]
+    with pytest.raises(ValueError):
+        service.recover(_consented(review), native_secret="isolated-native-secret")
+    review = service.prepare_recovery()
+    result = service.recover(_consented(review, "recover"), native_secret="isolated-native-secret")
+    assert result["stage"] == "intent-abandoned" and result["destination_fenced"]
+    assert (target_root / "development-host-handover.key").read_bytes() == original_key
+    assert service.prepare_recovery()["result"]["stage"] == "intent-abandoned"
+    with pytest.raises(ValueError, match="recovery before activation"):
+        require_completed_handover(target_root)
+    assert transfer_fixture.source.state_path.exists()
+
+
+def test_journal_disappearing_after_first_check_cannot_release_fence(tmp_path, monkeypatch):
+    from core_runtime import development_host_handover_guard as guard
+
+    root = tmp_path / "user_data"
+    SecureDirectory(root, create=True)
+    write_handover_journal(root, {"stage": "data-staged"})
+    real_directory = guard.SecureDirectory
+
+    def disappeared(path, **kwargs):
+        directory = real_directory(path, **kwargs)
+        (path / guard.JOURNAL).unlink()
+        return directory
+
+    monkeypatch.setattr(guard, "SecureDirectory", disappeared)
+    with pytest.raises(ValueError, match="disappeared during verification"):
+        require_completed_handover(root)

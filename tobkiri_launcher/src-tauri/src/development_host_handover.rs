@@ -159,7 +159,14 @@ pub(crate) async fn recover_development_host_handover(
         let digest = plan.get("plan_digest").and_then(Value::as_str).ok_or("Host recovery plan identity is missing")?;
         let nonce = review.get("ceremony_nonce").and_then(Value::as_str).ok_or("Host recovery review identity is missing")?;
         let detail = serde_json::to_string_pretty(plan).map_err(|_| "Host recovery plan is invalid")?;
-        if !window.dialog().message(format!("Restore the exact displayed base VM storage to its previous Host? New imported data is retained in staging. The updated destination remains fenced. Both the previous Host and all guest domains must be stopped.\n\n{detail}")).title("Review Tobkiri Host recovery").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("Restore previous storage".into(), "Cancel".into())).blocking_show() { return Ok(None) }
+        let orphaned = plan.get("stage").and_then(Value::as_str) == Some("orphaned-intent");
+        let message = if orphaned {
+            format!("This review was interrupted before data staging or VM storage moved. Record this exact review as abandoned? All keys and data are retained. This development Host remains blocked.\n\n{detail}")
+        } else {
+            format!("Restore the exact displayed base VM storage to its previous Host? New imported data is retained in staging. The updated destination remains fenced. Both the previous Host and all guest domains must be stopped.\n\n{detail}")
+        };
+        let accept = if orphaned { "Record abandoned review" } else { "Restore previous storage" };
+        if !window.dialog().message(message).title("Review Tobkiri Host recovery").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom(accept.into(), "Cancel".into())).blocking_show() { return Ok(None) }
         validate_launcher_main_window(&window, "development Host recovery")?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| "Host recovery clock is unavailable")?.as_secs();
         let proof = sign_consent(&secret, "recover", digest, nonce, now)?;

@@ -53,6 +53,8 @@ def require_finalized_handover(state_root: Path, state: Mapping[str, Any]) -> No
         raise ValueError("PackVM Host handover requires exact recovery")
     initial_digest = journal.get("attestation_digest")
     if initial_digest != state.get("attestation_digest"):
+        if not isinstance(initial_digest, str):
+            raise ValueError("PackVM Host handover predecessor is missing")
         validate_artifact_digest(initial_digest, field="handover_attestation_digest")
         # Normal registration updates retain their authenticated predecessor.
         # The finalized handover remains valid across that existing ceremony.
@@ -330,10 +332,17 @@ class MacOSVZStorageHandover:
         # Host/data transaction still fences activation. The old Native
         # consent cannot authorize this recovery: the coordinator obtains a
         # fresh, exact Native rollback approval for the authenticated journal.
-        from core_runtime.development_host_handover_guard import read_handover_journal
+        from core_runtime.development_host_handover_guard import KEY, JOURNAL, read_handover_journal
 
         root = self.target.state_path.parent.parent
-        transaction = read_handover_journal(root)
+        # Standalone unfinished storage transfers may restore their own exact
+        # journal. A finalized one needs the authenticated owning transaction.
+        witnesses = (root / KEY, root / JOURNAL, root / "development-host-staging")
+        transaction = (
+            read_handover_journal(root)
+            if any(path.exists() or path.is_symlink() for path in witnesses)
+            else None
+        )
         if (
             transaction is not None
             and transaction.get("stage") not in {"completed", "rolled-back"}

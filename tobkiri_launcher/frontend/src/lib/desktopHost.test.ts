@@ -4,6 +4,7 @@ import {afterEach, test} from 'node:test';
 import {
   admitSignedPackFromFolder, checkLauncherUpdate, fetchSignedPackAdmissionStatus,
   onboardSignedPackFromFolder, openLauncherUpdateRelease,
+  handoverPreviousDevelopmentHost, recoverDevelopmentHostHandover,
 } from './desktopHost';
 
 const originalWindow = globalThis.window;
@@ -116,4 +117,25 @@ test('signed Pack trust status uses the native bridge without renderer paths', a
   });
   assert.deepEqual(await fetchSignedPackAdmissionStatus(), {ready: false, onboarding_supported: true});
   assert.deepEqual(invocations, ['signed_pack_admission_status']);
+});
+
+
+test('Host handover paths and consent stay in native dialogs', async () => {
+  const invocations: Array<{command: string; args?: Record<string, unknown>}> = [];
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {__TAURI__: {core: {invoke: async (command: string, args?: Record<string, unknown>) => {
+      invocations.push({command, args});
+      return null;
+    }}}},
+  });
+  assert.equal(await handoverPreviousDevelopmentHost(), null);
+  assert.equal(await recoverDevelopmentHostHandover(), null);
+  assert.deepEqual(invocations, [
+    {command: 'handover_previous_development_host', args: undefined},
+    {command: 'recover_development_host_handover', args: undefined},
+  ]);
+  Object.defineProperty(globalThis, 'window', {configurable: true, value: {}});
+  await assert.rejects(handoverPreviousDevelopmentHost(), /only available in Tobkiri Launcher/);
+  await assert.rejects(recoverDevelopmentHostHandover(), /only available in Tobkiri Launcher/);
 });

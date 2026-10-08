@@ -8027,7 +8027,7 @@
             {
               "entrypoint_id": "conversation-migrate",
               "id": "rumi_conversation_store_pack.conversation-migrate",
-              "implementation_digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040"
+              "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293"
             }
           ],
           "owner": "rumi_conversation_store_pack",
@@ -8132,7 +8132,7 @@
             {
               "entrypoint_id": "message-resource",
               "id": "rumi_conversation_store_pack.message-resource",
-              "implementation_digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040"
+              "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293"
             }
           ],
           "owner": "rumi_conversation_store_pack",
@@ -8449,7 +8449,7 @@
           "path": "runtime/saved_receipt.py"
         },
         {
-          "digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040",
+          "digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
           "kind": "executable",
           "path": "runtime/store.py"
         },

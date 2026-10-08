@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
 from core_runtime.profile_workspace import validate_profile_id
@@ -190,9 +190,13 @@ def import_host_data(target: Path, payload: Mapping[str, Any]) -> dict[str, Any]
     }
     for row in payload["profiles"]:
         profile_id = validate_profile_id(row["profile_id"])
-        providers = [_sanitize_provider(value) for value in row["providers"]]
-        models = [_sanitize_model(value) for value in row["models"]]
-        conversations = [_sanitize_conversation(value) for value in row["conversations"]]
+        providers: list[Mapping[str, Any]] = [
+            _sanitize_provider(value) for value in row["providers"]
+        ]
+        models: list[Mapping[str, Any]] = [_sanitize_model(value) for value in row["models"]]
+        conversations: list[Mapping[str, Any]] = [
+            _sanitize_conversation(value) for value in row["conversations"]
+        ]
         if (
             providers != row["providers"]
             or models != row["models"]
@@ -324,14 +328,14 @@ def _sanitize_conversation(value: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _unique(rows: list[dict[str, Any]], key: str) -> None:
+def _unique(rows: Sequence[Mapping[str, Any]], key: str) -> None:
     ids = [row[key] for row in rows]
     if len(ids) != len(set(ids)):
         raise ValueError("Host handover owner has duplicate identities")
 
 
 def _owner_memberships(root: Path) -> dict[str, Any]:
-    result = {}
+    result: dict[str, Any] = {}
     for pack in (
         "rumi_provider_registry_pack",
         "rumi_model_registry_pack",

@@ -15,6 +15,8 @@ import time
 from typing import Any, Mapping
 
 from core_runtime.development_host_handover_guard import (
+    KEY,
+    JOURNAL,
     read_handover_journal,
     write_handover_journal,
 )
@@ -41,7 +43,7 @@ class DevelopmentHostHandover:
         self._target = provisioner
         self._root = provisioner.state_path.parent.parent
         self._bootstrap_profile_id = bootstrap_profile_id
-        self._pending: dict[str, tuple[float, dict[str, Any], MacOSVZStorageHandover]] = {}
+        self._pending: dict[str, tuple[float, dict[str, Any], MacOSVZStorageHandover | None]] = {}
         self._lock = threading.Lock()
 
     def prepare(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -114,6 +116,8 @@ class DevelopmentHostHandover:
             if pending is None or pending[0] < time.monotonic():
                 raise ValueError("Host handover review expired or was consumed")
             _deadline, plan, transfer = pending
+            if transfer is None:
+                raise ValueError("Host handover review is not a storage migration")
             if payload["plan_digest"] != plan["plan_digest"]:
                 raise ValueError("Host handover plan changed")
             _verify_native_consent(
@@ -135,8 +139,7 @@ class DevelopmentHostHandover:
             if data["data_digest"] != plan["data_digest"] or transfer.prepare() != plan["vm_plan"]:
                 raise ValueError("Host handover source changed after review")
             staging = self._root / "development-host-staging" / secrets.token_hex(16) / "user_data"
-            _ensure_private_parents(staging, self._root)
-            journal = {
+            journal: dict[str, Any] = {
                 "stage": "staging",
                 "plan": plan,
                 "staging": str(staging),
@@ -145,6 +148,7 @@ class DevelopmentHostHandover:
                 "destination_definition_policy": "Immutable successors retained and fenced on recovery",
             }
             write_handover_journal(self._root, journal)
+            _ensure_private_parents(staging, self._root)
             imported = import_host_data(staging, data)
             staged_owners = {
                 relative: _identity(staging / relative) for relative in plan["publications"]
@@ -221,7 +225,25 @@ class DevelopmentHostHandover:
     def prepare_recovery(self) -> dict[str, Any]:
         """Describe exact interrupted work; recovery needs fresh Native consent."""
         with self._lock, NamedLock(self._root / "development-host-locks", "handover"):
-            journal = read_handover_journal(self._root)
+            try:
+                journal = read_handover_journal(self._root)
+            except ValueError:
+                orphan = _orphaned_intent(self._root)
+                if orphan is None:
+                    raise
+                facts = {
+                    "schema": "io.tobkiri.development-host-recovery.v1",
+                    "action": "recover",
+                    "stage": "orphaned-intent",
+                    "orphaned_intent": orphan,
+                    "source_storage_moved": False,
+                    "destination_remains_fenced": True,
+                }
+                review = {**facts, "plan_digest": canonical_digest(facts)}
+                nonce = secrets.token_urlsafe(32)
+                self._pending.clear()
+                self._pending[nonce] = (time.monotonic() + 300, review, None)
+                return {"plan": review, "ceremony_nonce": nonce}
             if journal is None:
                 raise ValueError("No unfinished Host handover is available")
             if journal.get("stage") in {"completed", "rolled-back"}:
@@ -230,6 +252,8 @@ class DevelopmentHostHandover:
                     "result": {
                         "stage": "completed"
                         if journal["stage"] == "completed"
+                        else "intent-abandoned"
+                        if journal.get("orphaned_intent")
                         else "source-restored",
                         "plan_digest": journal["plan"]["plan_digest"],
                         "activation_required": journal["stage"] == "completed",
@@ -285,6 +309,19 @@ class DevelopmentHostHandover:
                 action="recover",
             )
             _require_inactive(self._root)
+            if transfer is None:
+                if _orphaned_intent(self._root) != review.get("orphaned_intent"):
+                    raise ValueError("Host recovery interrupted intent changed")
+                write_handover_journal(
+                    self._root,
+                    {
+                        "stage": "rolled-back",
+                        "orphaned_intent": True,
+                        "plan": {"plan_digest": review["plan_digest"]},
+                        "recovery_review": review,
+                    },
+                )
+                return {"stage": "intent-abandoned", "destination_fenced": True}
             journal = read_handover_journal(self._root)
             if journal is None or canonical_digest(journal) != review["journal_digest"]:
                 raise ValueError("Host recovery journal changed after review")
@@ -293,7 +330,10 @@ class DevelopmentHostHandover:
             staging = Path(journal["staging"])
             if not staging.is_relative_to(self._root / "development-host-staging"):
                 raise ValueError("Host recovery staging path is invalid")
-            SecureDirectory(staging, create=False)
+            if staging.exists() or staging.is_symlink():
+                SecureDirectory(staging, create=False)
+            elif journal["stage"] != "staging":
+                raise ValueError("Host recovery staging directory is missing")
             if journal["stage"] == "staging":
                 # No owner path or VM was published before staging completed.
                 if any(
@@ -339,6 +379,31 @@ class DevelopmentHostHandover:
             or canonical_digest(snapshot) != plan["target_profile_snapshot_digest"]
         ):
             raise ValueError("Host handover destination Profile definitions changed")
+
+
+def _orphaned_intent(root: Path) -> dict[str, Any] | None:
+    """Describe only the key-before-intent crash, with no custody evidence.
+
+    Never reconstruct a lost plan after staging or VM publication. Abandoning
+    this initial review retains every byte and keeps the destination fenced.
+    """
+    _require_inactive(root)
+    forbidden = (root / JOURNAL, root / "development-host-staging", root / "packvm-vz" / JOURNAL)
+    if any(path.exists() or path.is_symlink() for path in forbidden):
+        return None
+    storage = SecureDirectory(root, create=False)
+    if not storage.exists(KEY):
+        return None
+    key = storage.read_bytes_bounded(KEY, max_bytes=32)
+    if len(key) != 32:
+        return None
+    return {
+        "root": str(root),
+        "root_identity": _identity(root),
+        "key_identity": _identity(root / KEY),
+        "key_digest": "sha256:" + hashlib.sha256(key).hexdigest(),
+        "profile_snapshot_digest": canonical_digest(ProfileDefinitionStore(root).snapshot()),
+    }
 
 
 def _require_source_root(plan: Mapping[str, Any]) -> None:

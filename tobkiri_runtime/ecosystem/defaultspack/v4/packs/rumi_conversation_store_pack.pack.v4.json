@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:111d02493654fc3aa0a7eb715b935e184ec2e4ae78fca6aecf018a1a76a080b6",
+      "digest": "sha256:256afdef124bdf2fea237cf5b427e50f6c4e2294cb9121c51cb205cc0b08b1ca",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -46,7 +46,7 @@
       "path": "runtime/saved_receipt.py"
     },
     {
-      "digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040",
+      "digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
       "kind": "executable",
       "path": "runtime/store.py"
     }
@@ -146,7 +146,7 @@
     {
       "contract_revision_digest": "sha256:8f779c596e495c4f6030dcd2fa1506e1bb25290ed30fe0413ffd58962b35d5c9",
       "id": "rumi_conversation_store_pack.conversation-store.message-resource",
-      "implementation_digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040",
+      "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_conversation_store_pack.message-resource"
@@ -156,7 +156,7 @@
     {
       "contract_revision_digest": "sha256:63e37193150031bc4b48fc60403da64da801a9c582373546093e5095ad88ea1f",
       "id": "rumi_conversation_store_pack.conversation-store.migrate",
-      "implementation_digest": "sha256:8054e300b2c2d482e479a584566d4c67bf84c5fdffe72eb328687b8b3a084040",
+      "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_conversation_store_pack.conversation-migrate"
@@ -175,8 +175,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:497e18251f0e46cf182c38ffdf32c0318e2bd0335b078981f0f01ae77175a5a8",
-    "artifact_set_digest": "sha256:3767ddf9c91575a176fb1cc7bc3579433fbd961d0ea03e4c9eefab5da3d01f6b",
+    "source_identity": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded",
+    "artifact_set_digest": "sha256:832a0d1e98421bdab459cfb85b1d5d211e38c6cb920c3e8d3bb719b3fbe21ba5",
     "contract_catalog_digest": "sha256:011069d031df979fca259bf4fa595eb8789e0accc479432c485e2019a5f72bd9"
   },
   "migration": {
@@ -252,7 +252,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:670d1b8ec7312a8daf6558e97b3d493dfafaa80c58a7d4080dfeb593b53bc687",
+    "artifact_digest": "sha256:46c69724254b53dc3d180dc82567f11846af0ba306339882482de8998a016bd2",
     "display_name": "Rumi Conversation Store",
     "id": "rumi_conversation_store_pack",
     "kind": "host_extension",
@@ -263,15 +263,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
-    "source_digest": "sha256:497e18251f0e46cf182c38ffdf32c0318e2bd0335b078981f0f01ae77175a5a8",
+    "source_digest": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:d7c9c6264a911896f34f764955d593f63bba8da2fe0757acf5b479459d856d45",
+    "content_root_digest": "sha256:b4ecda4c46f84b37c550566a48c3525dbca27ed11eb20a5587c2a4332212bd41",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
-    "input_inventory_digest": "sha256:cb6112e7ec25e937d2210b9f5097d1595454beae9592a91976757941d3cee269",
+    "input_inventory_digest": "sha256:8b9565047e0536b0829da0f9f2e7fdcbcc25c78703e66ec153db1e55bdbddad5",
     "normative": true,
     "evidence": [
       {
@@ -282,7 +282,7 @@
       {
         "path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:497e18251f0e46cf182c38ffdf32c0318e2bd0335b078981f0f01ae77175a5a8"
+        "digest": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded"
       }
     ]
   },
