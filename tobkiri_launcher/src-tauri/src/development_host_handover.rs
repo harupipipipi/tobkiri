@@ -8,7 +8,7 @@ use sha2::Sha256;
 use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::DialogExt;
 
 fn consent_message(
     action: &str,
@@ -125,8 +125,14 @@ pub(crate) async fn handover_previous_development_host(
         let plan = review.get("plan").ok_or("Host handover review is incomplete")?;
         let digest = plan.get("plan_digest").and_then(Value::as_str).ok_or("Host handover plan identity is missing")?;
         let nonce = review.get("ceremony_nonce").and_then(Value::as_str).ok_or("Host handover review identity is missing")?;
-        let detail = serde_json::to_string_pretty(plan).map_err(|_| "Host handover plan is invalid")?;
-        let confirmed = window.dialog().message(format!("Move the displayed verified base VM storage and import the displayed Profile, connection, model and text-history data into this updated development Host?\n\nThe previous Host and its children must have exited. Connections remain disabled until you register credentials again. Review and activate the new Profile separately. Old authority, keys and unimported data remain in the previous namespace. Interrupted migration requires exact recovery.\n\n{detail}")).title("Review Tobkiri development Host handover").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("Move storage and import data".into(), "Cancel".into())).blocking_show();
+        let confirmed = crate::native_plan_review::show(
+            &window,
+            "Review Tobkiri development Host handover",
+            "Move verified base VM storage and import Profile, connection, model and text-history data? Connections stay disabled until credentials are registered again. Review and activate the new Profile separately. Previous guest storage, keys and authority stay in the previous Host.",
+            "Move storage and import data",
+            plan,
+            nonce,
+        )?;
         if !confirmed { return Ok(None) }
         // The renderer cannot supply either filesystem paths or this proof.
         // A native dialog response is the only path to the private commit.
@@ -158,15 +164,14 @@ pub(crate) async fn recover_development_host_handover(
         let plan = review.get("plan").ok_or("Host recovery review is incomplete")?;
         let digest = plan.get("plan_digest").and_then(Value::as_str).ok_or("Host recovery plan identity is missing")?;
         let nonce = review.get("ceremony_nonce").and_then(Value::as_str).ok_or("Host recovery review identity is missing")?;
-        let detail = serde_json::to_string_pretty(plan).map_err(|_| "Host recovery plan is invalid")?;
         let orphaned = plan.get("stage").and_then(Value::as_str) == Some("orphaned-intent");
         let message = if orphaned {
-            format!("This review was interrupted before data staging or VM storage moved. Record this exact review as abandoned? All keys and data are retained. This development Host remains blocked.\n\n{detail}")
+            "Record this interrupted review as abandoned? No data staging or VM storage moved. All keys and data are retained. This development Host remains blocked."
         } else {
-            format!("Restore the exact displayed base VM storage to its previous Host? New imported data is retained in staging. The updated destination remains fenced. Both the previous Host and all guest domains must be stopped.\n\n{detail}")
+            "Restore the displayed base VM storage to its previous Host? Imported data stays in staging and the destination remains fenced. Both Hosts and all guest domains must be stopped."
         };
         let accept = if orphaned { "Record abandoned review" } else { "Restore previous storage" };
-        if !window.dialog().message(message).title("Review Tobkiri Host recovery").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom(accept.into(), "Cancel".into())).blocking_show() { return Ok(None) }
+        if !crate::native_plan_review::show(&window, "Review Tobkiri Host recovery", message, accept, plan, nonce)? { return Ok(None) }
         validate_launcher_main_window(&window, "development Host recovery")?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| "Host recovery clock is unavailable")?.as_secs();
         let proof = sign_consent(&secret, "recover", digest, nonce, now)?;

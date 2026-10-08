@@ -11,6 +11,7 @@ mod defaultspack_manager;
 mod desktop_system_info;
 mod development_packvm;
 mod development_host_handover;
+mod native_plan_review;
 mod frontend_entry;
 mod health_check;
 mod host_audit;
