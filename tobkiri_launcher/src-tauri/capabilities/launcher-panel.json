@@ -21,6 +21,8 @@
     "allow-open-launcher-update-release",
     "allow-open-external-url",
     "allow-onboard-signed-pack-from-folder",
+    "allow-handover-previous-development-host",
+    "allow-recover-development-host-handover",
     "allow-send-to-background",
     "allow-signed-pack-admission-status",
     "allow-show-app-window"
