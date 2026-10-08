@@ -119,8 +119,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/development_host_handover.py",
       "type": "regular-file",
-      "size": 27798,
-      "sha256": "9d06160e767b38ee813e266661cdd9b5b8f652ba0967f73f0319ac260e217954",
+      "size": 27847,
+      "sha256": "f12bd188c4bcd431595e1f8b418229b2bf3fb977f555c3580dc0344b8a8d4c9a",
       "executable": false
     },
     {

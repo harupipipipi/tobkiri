@@ -604,15 +604,15 @@ def _retained_source_domains(root: Path) -> dict[str, Any]:
     return result
 
 
-def _retained_identity(path: Path, *, directory: bool) -> dict[str, int]:
+def _retained_identity(path: Path, *, directory: bool) -> dict[str, int | str]:
     _private_path(path, directory=directory)
     value = path.lstat()
     return {
         "device": value.st_dev,
         "inode": value.st_ino,
         "size": 0 if directory else value.st_size,
-        "mtime_ns": value.st_mtime_ns,
-        "ctime_ns": value.st_ctime_ns,
+        "mtime_ns": str(value.st_mtime_ns),
+        "ctime_ns": str(value.st_ctime_ns),
     }
 
 
@@ -624,7 +624,13 @@ def _retained_file(path: Path) -> dict[str, Any]:
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         value = os.fstat(descriptor)
-        if (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns) != (
+        if (
+            value.st_dev,
+            value.st_ino,
+            value.st_size,
+            str(value.st_mtime_ns),
+            str(value.st_ctime_ns),
+        ) != (
             before["device"],
             before["inode"],
             before["size"],

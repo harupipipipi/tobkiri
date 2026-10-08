@@ -488,7 +488,7 @@ def _require_inactive(root: Path) -> None:
 
 def _require_journal_budget(root: Path, plan: Mapping[str, Any]) -> None:
     """Reject a plan before custody unless all later receipts fit recovery."""
-    maximum = (1 << 64) - 1
+    maximum = (1 << 53) - 1  # Largest integer admitted by canonical I-JSON.
     identity = {"device": maximum, "inode": maximum, "size": maximum}
     upper = {
         "schema": "io.tobkiri.development-host-handover-journal.v1",
