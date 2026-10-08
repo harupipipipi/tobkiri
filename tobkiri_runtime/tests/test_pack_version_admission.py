@@ -105,3 +105,55 @@ def test_unknown_selected_digest_never_falls_back_to_baseline(
     _initial(tmp_path, monkeypatch)
     with pytest.raises(ExternalPackCatalogDenied, match="not admitted"):
         resolve_admitted_pack_root(PACK_ID, artifact_digest="sha256:" + "d" * 64)
+
+
+def test_same_version_other_digest_cannot_branch_from_an_old_predecessor(tmp_path, monkeypatch):
+    first, parent = _initial(tmp_path, monkeypatch)
+    source, trust = _signed_external_pack(
+        parent, version="1.1.0", runtime_suffix="\n# first revision\n"
+    )
+    second = admit_signed_pack_version(
+        source,
+        trust_store_path=trust,
+        expected_predecessor_digest=first["artifact_digest"],
+        expected_catalog_revision=control_catalog_revision(),
+    )
+    third_dir = tmp_path / "conflicting-release"
+    third_dir.mkdir()
+    source, trust = _signed_external_pack(
+        third_dir, version="1.1.0", runtime_suffix="\n# conflicting revision\n"
+    )
+    before = load_external_pack_catalog()
+    with pytest.raises(ExternalPackCatalogDenied):
+        admit_signed_pack_version(
+            source,
+            trust_store_path=trust,
+            expected_predecessor_digest=first["artifact_digest"],
+            expected_catalog_revision=control_catalog_revision(),
+        )
+    assert load_external_pack_catalog() == before
+    assert resolve_admitted_pack_root(PACK_ID, artifact_digest=second["artifact_digest"]).is_dir()
+
+
+def test_post_commit_error_keeps_committed_artifact_for_reconciliation(tmp_path, monkeypatch):
+    first, parent = _initial(tmp_path, monkeypatch)
+    source, trust = _signed_external_pack(
+        parent, version="1.1.0", runtime_suffix="\n# committed revision\n"
+    )
+
+    def fail(phase):
+        if phase == "committed":
+            raise RuntimeError("lost commit reply")
+
+    with pytest.raises(RuntimeError, match="lost commit reply"):
+        admit_signed_pack_version(
+            source,
+            trust_store_path=trust,
+            expected_predecessor_digest=first["artifact_digest"],
+            expected_catalog_revision=control_catalog_revision(),
+            fault_injector=fail,
+        )
+    snapshot = load_external_pack_catalog()
+    assert len(snapshot.versions[PACK_ID]) == 2
+    for digest in snapshot.versions[PACK_ID]:
+        assert resolve_admitted_pack_root(PACK_ID, artifact_digest=digest).is_dir()
