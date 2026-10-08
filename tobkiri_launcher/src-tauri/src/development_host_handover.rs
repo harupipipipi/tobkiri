@@ -102,19 +102,20 @@ pub(crate) async fn handover_previous_development_host(
         .map_err(|_| "Previous Host picker returned an invalid path")?;
     let app = window.app_handle().clone();
     let source = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .set_title("Select the previous developer Host user_data folder")
-            .blocking_pick_folder()
+        crate::project_directory_picker::pick_named(
+            &app,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            "Select the previous developer Host user_data folder",
+            false,
+        )
     })
     .await
-    .map_err(|_| "Previous data picker failed")?;
-    let Some(source) = source else {
+    .map_err(|_| "Previous data picker failed")??;
+    let Some(mut source) = source else {
         return Ok(None);
     };
-    let source = source
-        .into_path()
-        .map_err(|_| "Previous data picker returned an invalid path")?;
+    if source.len() != 1 { return Err("Previous data picker needs exactly one folder".into()); }
+    let source = source.remove(0);
     let config = config.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let secret = load_or_create_panel_bootstrap_secret(&config).map_err(|_| "Host handover authentication is unavailable")?;

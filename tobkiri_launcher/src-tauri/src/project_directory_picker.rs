@@ -7,19 +7,42 @@ use std::time::{Duration, Instant};
 // Leave time for the attested reply before the Host's 300-second deadline.
 const PICKER_TIMEOUT: Duration = Duration::from_secs(240);
 
-#[cfg(target_os = "macos")]
 pub(crate) fn pick(
     app: &tauri::AppHandle,
     cancelled: Arc<AtomicBool>,
 ) -> Result<Option<Vec<PathBuf>>, String> {
+    pick_named(app, cancelled, "Choose Tobkiri project folders", true)
+}
+
+#[cfg(target_os = "macos")]
+fn configure_panel(panel: &objc2_app_kit::NSOpenPanel, title: &str, multiple: bool) {
+    use objc2_foundation::NSString;
+    panel.setTitle(Some(&NSString::from_str(title)));
+    panel.setMessage(Some(&NSString::from_str(title)));
+    // AppKit reuses NSOpenPanel. A previous .app filter must not disable folders.
+    #[allow(deprecated)]
+    panel.setAllowedFileTypes(None);
+    panel.setCanChooseFiles(false);
+    panel.setCanChooseDirectories(true);
+    panel.setAllowsMultipleSelection(multiple);
+    panel.setCanCreateDirectories(false);
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn pick_named(
+    app: &tauri::AppHandle,
+    cancelled: Arc<AtomicBool>,
+    title: &str,
+    multiple: bool,
+) -> Result<Option<Vec<PathBuf>>, String> {
     use dispatch2::{DispatchQueue, MainThreadBound};
     use objc2::MainThreadMarker;
     use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
-    use objc2_foundation::NSString;
 
     let (result_tx, result_rx) = std::sync::mpsc::channel();
     let deadline = Instant::now() + PICKER_TIMEOUT;
     let work_cancelled = cancelled.clone();
+    let title = title.to_owned();
     app.run_on_main_thread(move || {
         if work_cancelled.load(Ordering::Acquire) || Instant::now() >= deadline {
             let _ = result_tx.send(Ok(None));
@@ -30,11 +53,7 @@ pub(crate) fn pick(
             return;
         };
         let panel = NSOpenPanel::openPanel(mtm);
-        panel.setTitle(Some(&NSString::from_str("Choose Tobkiri project folders")));
-        panel.setCanChooseFiles(false);
-        panel.setCanChooseDirectories(true);
-        panel.setAllowsMultipleSelection(true);
-        panel.setCanCreateDirectories(false);
+        configure_panel(&panel, &title, multiple);
         let main_owner = Arc::new(MainThreadBound::new(panel.clone(), mtm));
         let owned = main_owner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
@@ -90,16 +109,19 @@ pub(crate) fn pick(
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn pick(
+pub(crate) fn pick_named(
     app: &tauri::AppHandle,
     cancelled: Arc<AtomicBool>,
+    title: &str,
+    multiple: bool,
 ) -> Result<Option<Vec<PathBuf>>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Choose Tobkiri project folders")
-        .blocking_pick_folders();
+    let dialog = app.dialog().file().set_title(title);
+    let selected = if multiple {
+        dialog.blocking_pick_folders()
+    } else {
+        dialog.blocking_pick_folder().map(|folder| vec![folder])
+    };
     if cancelled.load(Ordering::Acquire) {
         return Ok(None);
     }
@@ -115,4 +137,36 @@ pub(crate) fn pick(
                 .collect()
         })
         .transpose()
+}
+
+/// Verify that an earlier app filter cannot disable the next folder picker.
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) fn native_filter_reset_smoke() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSOpenPanel;
+    use objc2_foundation::{NSArray, NSString};
+    let mtm = MainThreadMarker::new().expect("Native picker check requires main thread");
+    let panel = NSOpenPanel::openPanel(mtm);
+    #[allow(deprecated)]
+    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&[NSString::from_str(
+        "app",
+    )])));
+    configure_panel(
+        &panel,
+        "Select the previous developer Host user_data folder",
+        false,
+    );
+    #[allow(deprecated)]
+    let types = panel.allowedFileTypes();
+    assert!(types.is_none_or(|types| types.is_empty()));
+    assert!(panel.canChooseDirectories());
+    assert!(!panel.canChooseFiles());
+    assert!(!panel.allowsMultipleSelection());
+    assert!(!panel.canCreateDirectories());
+    configure_panel(&panel, "Choose Tobkiri project folders", true);
+    #[allow(deprecated)]
+    let types = panel.allowedFileTypes();
+    assert!(types.is_none_or(|types| types.is_empty()));
+    assert!(panel.allowsMultipleSelection());
+    println!("AppKit app-filter→single-folder→project-folders reset PASS");
 }
