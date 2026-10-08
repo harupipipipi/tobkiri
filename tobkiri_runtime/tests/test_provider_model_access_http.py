@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 import uuid
 import time
 import sys
@@ -14,18 +14,33 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from core_runtime.authority.ui_operator import sign_ui_operator
+from core_runtime.authority.v4 import AuthorityStore
 from ecosystem.rumi_provider_registry_pack.runtime.model_access import VERSION
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 from tests.test_production_frontend_contract_http import (
     _authenticate,
+    _captured_production_server,
     _contract,
     _request,
-    production_server as production_server,
 )
 
 _SAVE = "/api/ai/provider-model-access/save"
 _READ = "/api/ai/provider-model-access/read"
 _MARKER = "credential:synthetic-model-access-private"
+
+
+@pytest.fixture
+def production_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Any, object, AuthorityStore]]:
+    """Use the real temporary Host store for the required operator budget."""
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    yield from _captured_production_server(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    )
 
 
 @pytest.fixture
