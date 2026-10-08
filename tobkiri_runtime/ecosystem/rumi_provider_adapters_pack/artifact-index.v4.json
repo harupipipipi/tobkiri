@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:ce70d414bd6f9c40236862f293d76f28dac32423ee1f1db19fc085cf3c67a44e",
+  "artifact_set_digest": "sha256:5532178df89473ef7eb79942ab1279fa38e3a35fdacc871586d09ae8ccffa47c",
   "artifacts": [
     {
-      "digest": "sha256:4bf7bd23f3c9184ff8645d4e59804758fc0db39fd8b909cb7876746ea6f317b9",
+      "digest": "sha256:008ab50bbb7585affab6c11a8b7fa09c35c880dd656d2f553e4a27a824428fd0",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:4fa660541f6d505c79ec6ffa9cd64c851a363da15dbab680ab0c5171fcfb9315",
+      "digest": "sha256:102d9d3fe4294655840e78f3833122b9a5df1eaaf81478e0fd8d4b358a204e68",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:e790e4d3561759605e88d93249ba4fd7b4e02fc820e3af0de3ff48857facc69b",
+      "digest": "sha256:91d31634e4e60059845dcf2d126bb5521de445f992216a0b0ac171b4c225e850",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,12 +22,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+      "digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf",
       "path": "runtime/adapter.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6",
+      "digest": "sha256:cf31b8d3fbb883333edcc03df3b3d5344e10d97d80b478ef2e0693e2d10478f4",
       "path": "runtime/streaming.py",
       "role": "runtime"
     }
@@ -35,8 +35,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:cbcf803d9045a273dfc23a04f81d116174fb956f651b89611dfcc8f3b4828807"
+    "signed_digest": "sha256:2ab8d00366236381f7fa5db3be27567527614206bd7a493e54aedca7fffd948a"
   },
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:4b0b89806c9456d4b3a9ed0a746ffc9bfa5772aad76ce42b8c56cda77e9c2c83"
+  "source_identity": "sha256:66e46c3b7612a38598cb1e2505b59af92a1e759a215bd64cf2c08e5c127da409"
 }

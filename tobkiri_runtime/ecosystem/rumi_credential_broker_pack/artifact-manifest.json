@@ -18,7 +18,7 @@
     {
       "path": "runtime/process.py",
       "role": "runtime",
-      "sha256": "sha256:f7db1819cd1f1d97d0596ccdffbefd49ef8693f24d2672ad92f44ed175011df2"
+      "sha256": "sha256:1905889fb38940edd704b508f802a68e236ee54a0b205c88c241153fb35d2251"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

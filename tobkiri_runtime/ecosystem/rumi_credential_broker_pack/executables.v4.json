@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:49239e81b638650863df1086f69cfbabdd2ea27761f0d5e0df55ea46fd017d07",
+  "catalog_digest": "sha256:1fdf4df314a3bce36e138a4a8f151afd8b264dfe78075d8717fa52b21aee5647",
   "pack_id": "rumi_credential_broker_pack",
-  "source_identity": "sha256:9ef43087e693cc42e683939261de7afd66387422b741fd36cbe1aa4b9bde80e2",
+  "source_identity": "sha256:061971093fb3cfab4169cf7a59ec329f3ba3f529cb38cc020714dc21a33d5d43",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_credential_broker_pack.credential-broker.manage",
-      "implementation_digest": "sha256:f7db1819cd1f1d97d0596ccdffbefd49ef8693f24d2672ad92f44ed175011df2",
+      "implementation_digest": "sha256:1905889fb38940edd704b508f802a68e236ee54a0b205c88c241153fb35d2251",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_credential_broker_pack.credential-broker.migrate",
-      "implementation_digest": "sha256:f7db1819cd1f1d97d0596ccdffbefd49ef8693f24d2672ad92f44ed175011df2",
+      "implementation_digest": "sha256:1905889fb38940edd704b508f802a68e236ee54a0b205c88c241153fb35d2251",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_credential_broker_pack.credential-broker.resolve",
-      "implementation_digest": "sha256:f7db1819cd1f1d97d0596ccdffbefd49ef8693f24d2672ad92f44ed175011df2",
+      "implementation_digest": "sha256:1905889fb38940edd704b508f802a68e236ee54a0b205c88c241153fb35d2251",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -112,7 +112,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_credential_broker_pack.credential-broker.status",
-      "implementation_digest": "sha256:f7db1819cd1f1d97d0596ccdffbefd49ef8693f24d2672ad92f44ed175011df2",
+      "implementation_digest": "sha256:1905889fb38940edd704b508f802a68e236ee54a0b205c88c241153fb35d2251",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [

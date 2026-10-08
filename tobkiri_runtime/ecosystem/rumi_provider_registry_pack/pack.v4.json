@@ -6,7 +6,7 @@
       "path": "domain/ai_client/provider_compiler/native_filters.py"
     },
     {
-      "digest": "sha256:7698711df884f431447cb427e838e0fa04acd02cca6136692cabc7c72e958002",
+      "digest": "sha256:6b38818a0303d79a89d88414f8eb5d98cc3f13ece5c8cf1b89253f8a580d895f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -26,7 +26,7 @@
       "path": "runtime/cloudflare_sdk.py"
     },
     {
-      "digest": "sha256:4ab28a0058a1dc01ed27352527f88fec0eca87f43a90c5244fe680276b03f5e3",
+      "digest": "sha256:f2d1d7c936be6bcfedf8fcac8564f140280e38c8b1a93fc09ca20aab7e28b50a",
       "kind": "executable",
       "path": "runtime/configuration.py"
     },
@@ -71,7 +71,7 @@
       "path": "runtime/model_access_resource.py"
     },
     {
-      "digest": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231",
+      "digest": "sha256:40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
       "kind": "executable",
       "path": "runtime/process.py"
     },
@@ -193,7 +193,7 @@
     {
       "contract_revision_digest": "sha256:f4d8e87f748eee562a010984e56839084ac012ad6bd7ceec5f55f2e30bf6adb9",
       "id": "rumi_provider_registry_pack.provider-configure.execute",
-      "implementation_digest": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231",
+      "implementation_digest": "sha256:40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-configure"
@@ -203,7 +203,7 @@
     {
       "contract_revision_digest": "sha256:f4d8e87f748eee562a010984e56839084ac012ad6bd7ceec5f55f2e30bf6adb9",
       "id": "rumi_provider_registry_pack.provider-configure.prepare",
-      "implementation_digest": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231",
+      "implementation_digest": "sha256:40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-configure-prepare"
@@ -225,7 +225,7 @@
     {
       "contract_revision_digest": "sha256:f4d8e87f748eee562a010984e56839084ac012ad6bd7ceec5f55f2e30bf6adb9",
       "id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231",
+      "implementation_digest": "sha256:40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-registry-manage"
@@ -235,7 +235,7 @@
     {
       "contract_revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
       "id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:d2bc5984b6c5a8056142a6ed0c0c66eac0e7730e5d325767a6d5fbdf0e642231",
+      "implementation_digest": "sha256:40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-registry-resource",
@@ -246,9 +246,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:635976f439bde39bc9ec810b1696994a3e3c181b2f96fde8c3ca5e2195124385",
-    "contract_catalog_digest": "sha256:39caa4acf83447e7a719579ff1108565288eb9121884eda7dc959507f1e39f93",
-    "source_identity": "sha256:de546c5221940715a926d62bba6ac79f4d398027b05b4fa7dd3da2be22c4565c"
+    "artifact_set_digest": "sha256:5584e8826193806e0d8d94365cc00281ae2990f6de83f1a71299a710c14847fd",
+    "contract_catalog_digest": "sha256:9d3aefb731634a04289cd09269891a426f7866296e3aa54e58fa5a6f7ba181f7",
+    "source_identity": "sha256:b77c6a593ab64fabae8f0626724a52a91543038b99011349e3ea80984faf9245"
   },
   "migration": {
     "compatibility": "read_only",
@@ -408,7 +408,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:635976f439bde39bc9ec810b1696994a3e3c181b2f96fde8c3ca5e2195124385",
+    "artifact_digest": "sha256:5584e8826193806e0d8d94365cc00281ae2990f6de83f1a71299a710c14847fd",
     "display_name": "Rumi Provider Registry",
     "id": "rumi_provider_registry_pack",
     "kind": "host_extension",
@@ -418,7 +418,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:de546c5221940715a926d62bba6ac79f4d398027b05b4fa7dd3da2be22c4565c",
+        "digest": "sha256:b77c6a593ab64fabae8f0626724a52a91543038b99011349e3ea80984faf9245",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -429,7 +429,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:de546c5221940715a926d62bba6ac79f4d398027b05b4fa7dd3da2be22c4565c",
+    "source_digest": "sha256:b77c6a593ab64fabae8f0626724a52a91543038b99011349e3ea80984faf9245",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_registry_pack"
   },
