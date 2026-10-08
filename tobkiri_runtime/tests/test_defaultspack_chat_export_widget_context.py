@@ -9,7 +9,11 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
-def test_json_export_returns_self_describing_api_payload(tmp_path, monkeypatch):
+def test_json_export_returns_self_describing_api_payload(
+    tmp_path,
+    monkeypatch,
+    defaultspack_conversation_owner,
+):
     from blocks.chat.export_conversation import run as export_conversation
     from domain.chat.store import ChatStore
 

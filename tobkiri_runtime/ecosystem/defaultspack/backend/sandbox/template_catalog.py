@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import importlib
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -65,14 +66,19 @@ def _sandbox_template_contributions(defaultspack_root: str | Path | None) -> lis
 
 def _template_catalog(defaultspack_root: str | Path | None) -> dict[str, Any]:
     try:
-        from ecosystem.defaultspack.domain.templates.catalog_runtime import get_template_catalog_snapshot
+        catalog_runtime = importlib.import_module(
+            "ecosystem.defaultspack.domain.templates.catalog_runtime"
+        )
     except Exception as exc:
         logger.warning("Unable to import sandbox template catalog runtime via ecosystem path.", exc_info=exc)
         try:
-            from domain.templates.catalog_runtime import get_template_catalog_snapshot
+            catalog_runtime = importlib.import_module("domain.templates.catalog_runtime")
         except Exception as fallback_exc:
             logger.warning("Unable to import sandbox template catalog runtime via local path.", exc_info=fallback_exc)
             return {}
+    get_template_catalog_snapshot = getattr(catalog_runtime, "get_template_catalog_snapshot", None)
+    if not callable(get_template_catalog_snapshot):
+        return {}
     try:
         snapshot = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
     except Exception as exc:

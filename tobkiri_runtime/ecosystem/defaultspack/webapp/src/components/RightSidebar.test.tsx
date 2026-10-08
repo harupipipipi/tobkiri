@@ -5,14 +5,32 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   getRailFloatingMenuPosition,
+  iconForItem,
   RightSidebar,
+  persistConversationToolPreferences,
   shouldShowToolManagerEmptyState,
   sidebarActionDisabledReason,
+  toolGroupRailIcon,
   toolManagerBaseItemsForNameSearch,
 } from "./RightSidebar";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
+import { toolResources } from "../features/tools/resources/toolResources";
+
 const noop = () => undefined;
+
+test("declarative notification icons render on items and single-item rails", () => {
+  const notificationItem = {
+    id: "notifications",
+    label: "Notifications",
+    category: "widget" as const,
+    ui: { item_icon: "notification" },
+  };
+
+  assert.match(renderToStaticMarkup(iconForItem(notificationItem)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 1)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 2)), /lucide-folder/);
+});
 
 test("share and export actions are disabled until a conversation is saved", () => {
   assert.equal(
@@ -93,10 +111,11 @@ test("risky tool detail keeps a prominent needs approval affordance", () => {
   assert.match(html, />risk:high</);
 });
 
-test("right sidebar initially focuses the rail on tools", () => {
+test("right sidebar initially focuses the rail on activities", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: [
+        { id: "browser", label: "Browser", category: "activity" },
         { id: "tool_a", label: "Tool A", category: "tool" },
         { id: "widget_a", label: "Widget A", category: "widget" },
       ],
@@ -111,12 +130,75 @@ test("right sidebar initially focuses the rail on tools", () => {
     }),
   );
 
-  assert.match(html, /title="Filter: 機能"/);
-  assert.match(html, /title="other \(1\)"/);
+  assert.match(html, /title="Filter: Activities"/);
+  assert.match(html, /title="Browser"/);
+  assert.doesNotMatch(html, /title="other \(1\)"/);
   assert.doesNotMatch(html, /title="Widget A"/);
 });
 
-test("right sidebar keeps starred tools accessible name when count is nonzero", () => {
+test("right sidebar renders allowlisted attention and rejects unknown values", () => {
+  const render = (tone: string, source: "presentation" | "ui" = "presentation") => renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [{
+        id: "browser",
+        label: "Browser",
+        category: "activity",
+        ...(source === "presentation"
+          ? { presentation: { icon_attention: { active: true, tone, effect: "pulse", accessible_label: "Browser attention" } } }
+          : { ui: { icon_attention: { active: true, tone, effect: "pulse", accessible_label: "Browser attention" } } }),
+      }],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  const infoHtml = render("info");
+  assert.match(infoHtml, /data-widget-icon-attention="active"/);
+  assert.match(infoHtml, /data-attention-tone="info"/);
+  assert.match(infoHtml, /aria-label="Browser attention"/);
+  assert.match(infoHtml, /data-widget-attention-cue="dot"/);
+  assert.match(infoHtml, /data-widget-icon-attention="active".*<svg[^>]*width="20"/);
+
+  const uiHtml = render("success", "ui");
+  assert.match(uiHtml, /data-attention-tone="success"/);
+
+  const unknownHtml = render("magenta");
+  assert.doesNotMatch(unknownHtml, /data-widget-icon-attention/);
+});
+
+test("right sidebar rail avoids transform and replayed entrance animations", () => {
+  const html = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [
+        { id: "browser", label: "Browser", category: "activity" },
+        { id: "browser_companion", label: "Browser Companion", category: "tool" },
+      ],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: ["browser_companion"],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  assert.match(html, /title="Browser"/);
+  assert.doesNotMatch(html, /title="Browser Companion"/);
+  assert.doesNotMatch(html, /hover:scale/);
+  assert.doesNotMatch(html, /active:scale/);
+  assert.doesNotMatch(html, /rumi-stagger-tight/);
+  assert.doesNotMatch(html, /transition-\[background-color,color,box-shadow\]/);
+});
+
+test("right sidebar removes starred tools but keeps customization recoverable", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: [
@@ -138,8 +220,8 @@ test("right sidebar keeps starred tools accessible name when count is nonzero", 
     }),
   );
 
-  assert.match(html, /aria-label="Starred tools \(1\)"/);
-  assert.match(html, />1</);
+  assert.doesNotMatch(html, /Starred tools/);
+  assert.match(html, /aria-label="カスタマイズ"/);
 });
 
 test("right sidebar does not auto-open employees on initial render", () => {
@@ -185,7 +267,7 @@ test("advanced usage commands can open context token details", () => {
   assert.match(html, />16%</);
 });
 
-test("right sidebar keeps initial tool groups compact", () => {
+test("right sidebar keeps raw tool groups off the initial activity rail", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: Array.from({ length: 12 }, (_value, index) => ({
@@ -205,7 +287,7 @@ test("right sidebar keeps initial tool groups compact", () => {
     }),
   );
 
-  assert.match(html, /title="その他の機能 \(4 groups\)"/);
+  assert.doesNotMatch(html, /title="その他の機能 \(4 groups\)"/);
   assert.doesNotMatch(html, /title="Group 11 \(1\)"/);
 });
 
@@ -356,14 +438,12 @@ test("prompt sidebar widget lists prompt name and token count before details", (
       },
       loadPromptActive: async () => ({ segments: [] }),
       togglePromptEdge: async () => ({ segments: [] }),
-      onOpenStudio: noop,
     }),
   );
 
   assert.match(html, /現在のプロンプト/);
   assert.match(html, /default_chat/);
   assert.match(html, /124/);
-  assert.match(html, /Prompt Studio/);
   assert.doesNotMatch(html, /Selected by the active profile/);
 });
 
@@ -380,7 +460,6 @@ test("prompt sidebar widget exposes chat prompt disclosure toggle", () => {
       togglePromptEdge: async () => ({ segments: [] }),
       showChatPromptUsage: false,
       onToggleChatPromptUsage: noop,
-      onOpenStudio: noop,
     }),
   );
 
@@ -406,4 +485,127 @@ test("right sidebar floating menus clamp to the viewport", () => {
     ),
     { top: 8, right: 88 },
   );
+});
+
+test("tool selection scopes describe draft versus saved defaults and expose focus state", () => {
+  const render = (activeConversationId?: string) => renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "web_search", label: "Web Search", category: "tool", ui: { group_id: "web" } }],
+    activeItemId: "__tool_manager__", activeConversationId,
+    settingsValues: {
+      sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+      tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+    },
+    settingsSections: [], selectedToolIds: [], onSettingChange: noop, onOpenSettings: noop,
+  }));
+  const html = render("chat-1");
+  assert.match(html, /機能の状態/);
+  assert.match(html, /件数には重複があります/);
+  assert.match(html, /aria-pressed="true"[^>]*>今回の入力<\/button>/);
+  assert.match(html, /aria-pressed="false"[^>]*>会話の既定<\/button>/);
+  assert.match(html, /focus-visible:outline/);
+  assert.match(render(), /disabled="" aria-pressed="false"[^>]*>会話の既定<\/button>/);
+});
+
+
+test("conversation scope notifies its draft owner only after persistence succeeds", async () => {
+  const original = toolResources.updateConversationToolPreferences;
+  const saved = { mode: "manual", include: [{ kind: "service", id: "web" }] };
+  let resolve!: (value: { conversation_id: string; preferences: Record<string, unknown> }) => void;
+  const pending = new Promise<{ conversation_id: string; preferences: Record<string, unknown> }>((done) => { resolve = done; });
+  const calls: unknown[][] = [];
+  try {
+    toolResources.updateConversationToolPreferences = () => pending;
+    const completion = persistConversationToolPreferences("chat-1", {}, ["web_search"], true, (...args) => { calls.push(args); });
+    assert.equal(calls.length, 0);
+    resolve({ conversation_id: "chat-1", preferences: saved });
+    await completion;
+    assert.deepEqual(calls, [["chat-1", saved, ["web_search"], true]]);
+    toolResources.updateConversationToolPreferences = async () => { throw new Error("save failed"); };
+    const rejectedCalls: unknown[][] = [];
+    await assert.rejects(persistConversationToolPreferences("chat-2", {}, ["other"], false, (...args) => { rejectedCalls.push(args); }), /save failed/);
+    assert.deepEqual(rejectedCalls, []);
+    assert.equal(calls.length, 1);
+  } finally {
+    toolResources.updateConversationToolPreferences = original;
+  }
+});
+
+
+test("legacy hidden tools do not reappear as pinned rail buttons", () => {
+  const html = renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "secret", label: "Hidden Tool", category: "tool" }],
+    settingsValues: {
+      sidebar: { pinned_item_ids: ["secret"], ui_placements: [] },
+      tools: { hidden_tool_ids: ["secret"] },
+    },
+    settingsSections: [], selectedToolIds: [], onSettingChange: noop, onOpenSettings: noop,
+  }));
+  assert.doesNotMatch(html, /title="Hidden Tool"/);
+  assert.match(html, /aria-label="カスタマイズ"/);
+});
+
+const widgetSidebar = (activeItemId?: string) => renderToStaticMarkup(createElement(RightSidebar, {
+  items: [], settingsValues: {}, settingsSections: [], onSettingChange: noop,
+  onOpenSettings: noop, activeItemId,
+  canvasPanel: createElement("div", { "data-testid": "canvas-content" }, "Canvas content"),
+  timelinePanel: createElement("div", { "data-testid": "timeline-content" }, "Timeline content"),
+}));
+
+test("Canvas remains mounted and hidden when another widget is selected", () => {
+  const html = widgetSidebar("__timeline_widget__:1");
+  assert.match(html, /data-testid="canvas-widget-panel" hidden="" inert="" aria-hidden="true"/);
+  assert.match(html, /data-testid="canvas-content"/);
+  assert.match(html, /data-testid="timeline-content"/);
+  assert.match(html, /aria-label="Timeline" aria-pressed="true"/);
+  assert.match(html, /lucide-list-ordered/);
+});
+
+test("requested Canvas widget opens independently of catalogue entries", () => {
+  const html = widgetSidebar("__canvas_widget__:1");
+  assert.match(html, /data-testid="canvas-widget-panel" aria-hidden="false"/);
+  assert.match(html, /aria-label="Canvas" aria-pressed="true"/);
+  assert.match(html, /lucide-panels-top-left/);
+  assert.doesNotMatch(html, /data-testid="timeline-content"/);
+  assert.doesNotMatch(html, /<h3[^>]*>Canvas<\/h3>/);
+});
+
+test("closed Canvas retains its mounted content without creating a Timeline panel", () => {
+  const html = widgetSidebar();
+  assert.match(html, /data-testid="canvas-widget-panel" hidden=""/);
+  assert.match(html, /data-testid="canvas-content"/);
+  assert.doesNotMatch(html, /data-testid="timeline-content"/);
+});
+
+
+test("catalogue entries for independent widgets do not duplicate their rail actions", () => {
+  const html = renderToStaticMarkup(createElement(RightSidebar, {
+    items: [{ id: "canvas", label: "Canvas", category: "widget" }, { id: "timeline", label: "Timeline", category: "widget" }],
+    settingsValues: { sidebar: { pinned_item_ids: ["canvas", "timeline"] } }, settingsSections: [],
+    onSettingChange: noop, onOpenSettings: noop, activeItemId: "__canvas_widget__:1",
+    canvasPanel: createElement("div", null, "Canvas content"),
+    timelinePanel: createElement("div", null, "Timeline content"),
+  }));
+  assert.equal((html.match(/aria-label="Canvas"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-rail-slot-id="item:canvas"/g) ?? []).length, 0);
+  assert.equal((html.match(/data-rail-slot-id="item:timeline"/g) ?? []).length, 0);
+});
+
+
+test("Canvas render callback receives current visibility without losing its wrapper", () => {
+  for (const activeItemId of [undefined, "__timeline_widget__:1", "__canvas_widget__:1"]) {
+    const visibility: boolean[] = [];
+    const html = renderToStaticMarkup(createElement(RightSidebar, {
+      items: [], settingsValues: {}, settingsSections: [], onSettingChange: noop,
+      onOpenSettings: noop, activeItemId,
+      canvasPanel: (visible: boolean) => {
+        visibility.push(visible);
+        return createElement("div", { "data-canvas-visible": visible });
+      },
+      timelinePanel: createElement("div", null, "Timeline content"),
+    }));
+    const expected = activeItemId === "__canvas_widget__:1";
+    assert.deepEqual(visibility, [expected]);
+    assert.match(html, /data-testid="canvas-widget-panel"/);
+    assert.match(html, new RegExp(`data-canvas-visible="${expected}"`));
+  }
 });

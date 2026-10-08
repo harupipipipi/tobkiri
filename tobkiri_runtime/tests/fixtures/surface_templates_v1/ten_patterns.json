@@ -1,0 +1,308 @@
+{
+  "version": "tobkiri.ui.surface-template.v1",
+  "template_id": "fixture.ten-patterns",
+  "renderer_contribution_id": "fixture.renderer",
+  "renderer_api_version": "1.0.0",
+  "nodes": [
+    {
+      "id": "content",
+      "pattern": "content",
+      "label": "Content",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply content",
+          "event": "activate",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "pattern": "problem",
+      "label": "Problem",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply problem",
+          "event": "retry",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ]
+    },
+    {
+      "id": "notice",
+      "pattern": "notice",
+      "label": "Notice",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply notice",
+          "event": "dismiss",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ]
+    },
+    {
+      "id": "progress",
+      "pattern": "progress",
+      "label": "Progress",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply progress",
+          "event": "cancel",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ],
+      "value_path": "progress.value",
+      "total_path": "progress.total"
+    },
+    {
+      "id": "resource_input",
+      "pattern": "resource_input",
+      "label": "Resource Input",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply resource_input",
+          "event": "submit",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ],
+      "resource": {
+        "kind": "file",
+        "acquire": {
+          "operation": {
+            "contribution_id": "fixture.acquire",
+            "contract_id": "tobkiri.action.surface.resource.v1",
+            "operation_id": "fixture.acquire"
+          },
+          "input": {
+            "operation": "acquire",
+            "kind": "file"
+          }
+        },
+        "exchange": {
+          "operation": {
+            "contribution_id": "fixture.exchange",
+            "contract_id": "tobkiri.action.surface.resource.v1",
+            "operation_id": "fixture.exchange"
+          },
+          "input": {
+            "operation": "exchange",
+            "kind": "file"
+          }
+        }
+      }
+    },
+    {
+      "id": "choice",
+      "pattern": "choice",
+      "label": "Choice",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply choice",
+          "event": "select",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ],
+      "choices": [
+        {
+          "id": "one",
+          "label": "First"
+        },
+        {
+          "id": "two",
+          "label": "Second"
+        }
+      ]
+    },
+    {
+      "id": "form",
+      "pattern": "form",
+      "label": "Form",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply form",
+          "event": "submit",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ],
+      "fields": [
+        {
+          "id": "title",
+          "label": "Title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "count",
+          "label": "Count",
+          "type": "integer",
+          "min": 0,
+          "max": 10
+        },
+        {
+          "id": "enabled",
+          "label": "Enabled",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "confirmation",
+      "pattern": "confirmation",
+      "label": "Confirmation",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply confirmation",
+          "event": "confirm",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ]
+    },
+    {
+      "id": "collection",
+      "pattern": "collection",
+      "label": "Collection",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply collection",
+          "event": "select",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ],
+      "items_path": "records",
+      "id_path": "id",
+      "label_path": "label"
+    },
+    {
+      "id": "detail",
+      "pattern": "detail",
+      "label": "Detail",
+      "body": "Inert surface text",
+      "intents": [
+        {
+          "id": "apply",
+          "label": "Apply detail",
+          "event": "close",
+          "request": {
+            "operation": {
+              "contribution_id": "fixture.logic",
+              "contract_id": "tobkiri.action.surface-example.v1",
+              "operation_id": "fixture.logic"
+            },
+            "input": {
+              "operation": "apply"
+            }
+          },
+          "intent_key": "surface_intent"
+        }
+      ]
+    }
+  ]
+}

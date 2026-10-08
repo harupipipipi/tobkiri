@@ -7,9 +7,10 @@ from typing import Any
 from domain.ai_client.provider_trace import redact_sensitive_value
 from domain.human_operator.constants import HUMAN_OPERATOR_MODEL, HUMAN_OPERATOR_TOOL_NAME
 from domain.human_operator.session_store import absolute_session_url, save_session
-from domain.prompt.prompt_compactor import compact_prompt
+from domain.prompt.studio_client import compact_prompt_via_owner
 
 from ._agent_os_common import err, ok
+from .schema_adapter import list_or_empty, mapping_or_empty
 
 
 def human_operator_canvas_open(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -22,15 +23,15 @@ def human_operator_canvas_open(arguments: dict[str, Any], context: dict[str, Any
     if not session_id:
         return err("session_id is required", "INVALID_INPUT")
 
-    messages = arguments.get("messages") if isinstance(arguments.get("messages"), list) else []
-    params = arguments.get("params") if isinstance(arguments.get("params"), dict) else {}
+    messages = list_or_empty(arguments.get("messages"))
+    params = mapping_or_empty(arguments.get("params"))
     tool_names = [
         str(item).strip()
-        for item in (arguments.get("tool_names") if isinstance(arguments.get("tool_names"), list) else [])
+        for item in list_or_empty(arguments.get("tool_names"))
         if str(item or "").strip()
     ]
     system_prompt = _system_prompt_from_messages(messages)
-    compacted_prompt = compact_prompt(system_prompt) if system_prompt else {}
+    compacted_prompt = compact_prompt_via_owner(system_prompt) if system_prompt else {}
     payload = {
         "session_id": session_id,
         "conversation_id": conversation_id,

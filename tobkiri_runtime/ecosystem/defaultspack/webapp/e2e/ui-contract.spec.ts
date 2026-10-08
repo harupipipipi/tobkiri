@@ -1,30 +1,587 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../test-support/frontendContractFixture";
+import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
 
 test.use({ viewport: { width: 1440, height: 900 } });
+
+test("actual ChatApp tab loads keep selected identity and Stop scoped through delayed B and A return", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const base = smokeConversation();
+  const settled = {
+    ...base, title: "Settled B", conversation_revision: 1,
+    conversation_kind: null, tags: [], metadata: {},
+    messages: base.messages.map((message, index) => ({
+      ...message, content: [{ type: "text", text: index ? "Settled B reply" : "hello B" }],
+      raw_text: index ? "Settled B reply" : "hello B", metadata: {},
+    })),
+  };
+  const active = {
+    ...settled, id: "c-pending-a", title: "Pending A", messages: [],
+  };
+  let releaseB!: () => void;
+  const delayedB = new Promise<void>((resolve) => { releaseB = resolve; });
+  let releaseStart!: () => void;
+  const inflightStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+  let delayB = false;
+  let delayedBReads = 0;
+  let operationId: string | null = null;
+  const stopped: string[] = [];
+  const turn = () => ({
+    id: operationId, conversation_id: active.id, status: "running", revision: 2,
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const target = requestTarget(url);
+    const method = request.method();
+    if (target === "/api/chat/conversations" && method === "GET") {
+      return route.fulfill({ json: ok({ conversations: [{ ...settled, messages: [] }], total: 1, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversations" && method === "POST") {
+      return route.fulfill({ json: ok(active) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === settled.id && method === "GET") {
+      if (delayB) { delayedBReads += 1; await delayedB; }
+      return route.fulfill({ json: ok(settled) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === active.id && method === "GET") {
+      return route.fulfill({ json: ok(active) });
+    }
+    if (target === "/api/chat/turn" && method === "POST") {
+      operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+      await inflightStart;
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/events") {
+      if (!operationId) return route.fulfill({ status: 404, json: { status: "error", error: { message: "not yet registered" } } });
+      return route.fulfill({ json: ok({
+        turn_id: operationId, operation_id: operationId, conversation_id: active.id,
+        request_id: "saved-turn.ui-regression", turn_revision: 2, status: "running",
+        turn: turn(), events: [], terminal: null,
+      }) });
+    }
+    if (target === "/api/chat/turns") {
+      return route.fulfill({ json: ok({ turns: operationId ? [turn()] : [] }) });
+    }
+    if (target === "/api/chat/turn/reconcile") {
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/stop") {
+      const id = (request.postDataJSON() as { turn_id: string }).turn_id;
+      stopped.push(id);
+      return route.fulfill({ json: ok({ turn_id: id, status: "cancellation_requested", stopped: false }) });
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat");
+    await expect(page.getByText("Settled B reply", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).fill("Keep pending A separate");
+    await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).press("Enter");
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toBeEnabled();
+    await expect(page.getByRole("tab", { name: "Pending A", exact: true })).toBeVisible();
+    delayB = true;
+    await page.getByRole("tab", { name: "Settled B", exact: true }).click();
+    await expect.poll(() => delayedBReads).toBeGreaterThan(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${settled.id}`));
+    await expect(page.getByText("Settled B reply", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" })).toBeEnabled();
+    await page.getByRole("tab", { name: "Pending A", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`chat=${active.id}`));
+    await expect(page.getByText("Keep pending A separate", { exact: true })).toBeVisible();
+    const lateResponse = page.waitForResponse((response) => requestConversationId(new URL(response.url())) === settled.id);
+    releaseB();
+    await lateResponse;
+    await expect(page.getByRole("tab", { name: "Pending A", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Settled B", exact: true })).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByText("Settled B reply", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Keep pending A separate", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`chat=${active.id}`));
+    await page.getByRole("button", { name: "生成を停止", exact: true }).click();
+    await expect.poll(() => stopped).toEqual([operationId]);
+  } finally {
+    releaseB();
+    releaseStart();
+  }
+});
+
+test("actual ChatApp waits for canonical registration and recovers a lost start reply without resending", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const conversation = {
+    ...smokeConversation(), id: "c-delayed-registration", title: "Delayed registration",
+    conversation_revision: 1, conversation_kind: null, tags: [], metadata: {}, messages: [],
+  };
+  let releaseStart!: () => void;
+  const pendingStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+  let releaseRegistrationRead!: () => void;
+  const registrationRead = new Promise<void>((resolve) => { releaseRegistrationRead = resolve; });
+  let registered = false;
+  let delayRegistrationRead = true;
+  let operationId: string | null = null;
+  let starts = 0;
+  let emptyListReads = 0;
+  let registeredListReads = 0;
+  let eventReads = 0;
+  const controls: string[] = [];
+  const turn = () => ({
+    id: operationId, conversation_id: conversation.id, status: "running", revision: 2,
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/conversations" && request.method() === "GET") {
+      return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversations" && request.method() === "POST") {
+      return route.fulfill({ json: ok(conversation) });
+    }
+    if (target === "/api/chat/conversation") {
+      return route.fulfill({ json: ok(conversation) });
+    }
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+      await pendingStart;
+      return route.abort("failed");
+    }
+    if (target === "/api/chat/turns") {
+      if (!registered) emptyListReads += 1;
+      if (registered) {
+        registeredListReads += 1;
+        if (delayRegistrationRead) await registrationRead;
+      }
+      return route.fulfill({ json: ok({ turns: registered ? [turn()] : [] }) });
+    }
+    if (target === "/api/chat/turn/events") {
+      eventReads += 1;
+      return route.fulfill({ json: ok({
+        turn_id: operationId, operation_id: operationId, conversation_id: conversation.id,
+        request_id: "saved-turn.registration-regression", turn_revision: 2, status: "running",
+        turn: turn(), events: [], terminal: null,
+      }) });
+    }
+    if (target === "/api/chat/turn/reconcile") {
+      return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
+    }
+    if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+      controls.push(target);
+      return route.fulfill({ json: ok({ turn_id: operationId, status: "cancellation_requested", stopped: false }) });
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat");
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Wait for the owner to register this exact root");
+    await composer.press("Enter");
+    await expect.poll(() => emptyListReads).toBeGreaterThanOrEqual(2);
+    expect(starts).toBe(1);
+    expect(eventReads).toBe(0);
+    expect(controls).toEqual([]);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
+    releaseStart();
+    await expect(page.getByText("Failed to fetch", { exact: true })).toBeVisible();
+    registered = true;
+    await expect.poll(() => registeredListReads).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    const lateRegistration = page.waitForResponse((response) => requestTarget(new URL(response.url())) === "/api/chat/turns");
+    delayRegistrationRead = false;
+    releaseRegistrationRead();
+    await lateRegistration;
+    await expect(composer).toBeEnabled();
+    expect(eventReads).toBe(0);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Delayed registration", exact: true }).click();
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toBeEnabled();
+    expect(eventReads).toBeGreaterThan(0);
+    expect(starts).toBe(1);
+    await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "生成を停止", exact: true }).click();
+    await expect.poll(() => controls).toEqual(["/api/chat/turn/stop"]);
+  } finally {
+    releaseStart();
+    releaseRegistrationRead();
+  }
+});
+
+for (const failure of ["transport", "auth", "foreign conversation", "duplicate root", "guidance descendant"] as const) {
+  test(`actual ChatApp preserves registration failures for ${failure} without authorizing controls`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    const conversation = {
+      ...smokeConversation(), id: "c-rejected-registration", title: "Rejected registration",
+      conversation_revision: 1, conversation_kind: null, tags: [], metadata: {}, messages: [],
+    };
+    let releaseStart!: () => void;
+    const pendingStart = new Promise<void>((resolve) => { releaseStart = resolve; });
+    let operationId: string | null = null;
+    let starts = 0;
+    let eventReads = 0;
+    const controls: string[] = [];
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const request = route.request();
+      const target = requestTarget(new URL(request.url()));
+      if (target === "/api/chat/conversations" && request.method() === "GET") {
+        return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
+      }
+      if (target === "/api/chat/conversations" && request.method() === "POST") {
+        return route.fulfill({ json: ok(conversation) });
+      }
+      if (target === "/api/chat/turn" && request.method() === "POST") {
+        starts += 1;
+        operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
+        await pendingStart;
+        return route.abort("failed");
+      }
+      if (target === "/api/chat/turns") {
+        if (failure === "transport") return route.abort("failed");
+        if (failure === "auth") return route.fulfill({ status: 403, json: { success: false, error: "Unauthorized" } });
+        const root = {
+          id: operationId, conversation_id: conversation.id, status: "running", revision: 2,
+        };
+        const turns = failure === "foreign conversation"
+          ? [{ ...root, conversation_id: "foreign-conversation" }]
+          : failure === "duplicate root"
+            ? [root, root]
+            : [{ ...root, guidance_parent_turn_id: "different-root", guidance_source_turn_id: "different-root", guidance_id: "guidance-1" }];
+        return route.fulfill({ json: ok({ turns }) });
+      }
+      if (target === "/api/chat/turn/events") {
+        eventReads += 1;
+        return route.abort("failed");
+      }
+      if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+        controls.push(target);
+        return route.abort("failed");
+      }
+      return route.fallback();
+    });
+    try {
+      await page.goto("/p/defaults/chat");
+      await page.getByRole("button", { name: "New Chat", exact: true }).click();
+      const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+      await composer.fill("Keep this root pending until the exact owner is verified");
+      await composer.press("Enter");
+      await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toBeVisible();
+      expect(starts).toBe(1);
+      expect(eventReads).toBe(0);
+      expect(controls).toEqual([]);
+      await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+      await expect(page.getByText("Keep this root pending until the exact owner is verified", { exact: true })).toBeVisible();
+    } finally {
+      releaseStart();
+    }
+  });
+}
+
+test("actual ChatApp preserves an uncached selected root and draft while its record loads", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const a = { ...smokeConversation(), title: "Loaded A", conversation_kind: null, tags: [], metadata: {}, conversation_revision: 1 };
+  const b = { ...a, id: "c-uncached-b", title: "Uncached B", messages: [] };
+  let releaseB!: () => void;
+  const delayedB = new Promise<void>((resolve) => { releaseB = resolve; });
+  let bReads = 0;
+  const writes: string[] = [];
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const target = requestTarget(url);
+    if (target === "/api/chat/conversations" && request.method() === "GET") {
+      return route.fulfill({ json: ok({ conversations: [a, b].map((item) => ({ ...item, messages: [] })), total: 2, store_revision: 1 }) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === a.id && request.method() === "GET") {
+      return route.fulfill({ json: ok(a) });
+    }
+    if (target === "/api/chat/conversation" && requestConversationId(url) === b.id && request.method() === "GET") {
+      bReads += 1;
+      await delayedB;
+      return route.fulfill({ json: ok(b) });
+    }
+    if (["/api/chat/conversations", "/api/chat/turn"].includes(target) && request.method() === "POST") {
+      writes.push(target);
+      return route.abort();
+    }
+    return route.fallback();
+  });
+  try {
+    await page.goto(`/p/defaults/chat?chat=${a.id}`);
+    await expect(page.getByTestId(`history-chat-card-${b.id}`)).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Loaded A", exact: true })).toBeVisible();
+    await page.getByTestId(`history-chat-card-${b.id}`).click();
+    await expect.poll(() => bReads).toBeGreaterThan(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+    await expect(page.getByRole("tab", { name: "Uncached B", exact: true })).toHaveAttribute("aria-selected", "true");
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await expect(composer).toBeEnabled();
+    await composer.fill("Keep this draft for B");
+    await composer.press("Enter");
+    await expect(page.getByText("会話を読み込んでいます。完了してから送信してください。", { exact: true })).toBeVisible();
+    await expect(composer).toHaveValue("Keep this draft for B");
+    expect(writes).toEqual([]);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+    const response = page.waitForResponse((result) => requestConversationId(new URL(result.url())) === b.id);
+    releaseB();
+    await response;
+    await expect(page.getByRole("tab", { name: "Uncached B", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(composer).toHaveValue("Keep this draft for B");
+    await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+  } finally {
+    releaseB();
+  }
+});
 
 // These specs exercise mocked UI contracts only. Live MCP proof is covered by
 // the Python integration tests that assert tool_logs and tool_call events.
 const now = 1_785_000_000_000;
+const approvalDigest = "a".repeat(64);
 const historyChatDropMime = "application/rumi-history-chat";
 
+for (const switchToB of [false, true]) {
+  test(`actual ChatApp delayed model completion ${switchToB ? "preserves B tab body URL and draft" : "refreshes its owning A normally"}`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    const conversation = (id: string, title: string, text: string) => ({
+      ...smokeConversation(), id, title, conversation_revision: 1,
+      conversation_kind: null, tags: [], metadata: {},
+      messages: smokeConversation().messages.map((message, index) => ({
+        ...message, conversation_id: id, metadata: {}, events: [], tool_logs: [],
+        content: [{ type: "text", text: index ? text : `hello ${title}` }],
+        raw_text: index ? text : `hello ${title}`,
+      })),
+    });
+    let a = conversation("c-model-a", "Model A", "Original A reply");
+    const b = conversation("c-model-b", "Model B", "B stays visible");
+    let releaseCommand!: () => void;
+    const commandGate = new Promise<void>((resolve) => { releaseCommand = resolve; });
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>((resolve) => { releaseMutation = resolve; });
+    let commandSeen = false;
+    const mutations: Array<Record<string, unknown>> = [];
+    let completedMutation = false;
+    let listsAfterMutation = 0;
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const target = requestTarget(url);
+      if (target === "/api/chat/conversations" && request.method() === "GET") {
+        if (completedMutation) listsAfterMutation += 1;
+        return route.fulfill({ json: ok({ conversations: [a, b], total: 2, store_revision: 1 }) });
+      }
+      if (target === "/api/chat/conversation" && request.method() === "GET") {
+        return route.fulfill({ json: ok(requestConversationId(url) === a.id ? a : b) });
+      }
+      if (target === "/api/command-protocol/v1/invoke") {
+        expect((request.postDataJSON() as Record<string, unknown>).conversation_id).toBe(a.id);
+        commandSeen = true;
+        await commandGate;
+        return route.fulfill({ json: ok({
+          status: "succeeded", operation_id: "command-model-a",
+          legacy_result: { executed: true, requires_approval: false, selected_model: googleProfile.profile_id },
+        }) });
+      }
+      if (/\/api\/command-protocol\/v1\/invocations\/[^/]+\/events$/.test(target)) {
+        return fulfillStreamEvents(route, [{ type: "completed", sequence: 1 }]);
+      }
+      if (target === "/api/chat/conversation" && request.method() === "PUT") {
+        const mutation = request.postDataJSON() as Record<string, unknown>;
+        mutations.push(mutation);
+        await mutationGate;
+        a = { ...conversation(a.id, "Model A updated", "Updated A reply"), model: googleProfile.profile_id, conversation_revision: 2 };
+        completedMutation = true;
+        return route.fulfill({ json: ok(a) });
+      }
+      return route.fallback();
+    });
+    try {
+      await page.goto(`/p/defaults/chat?chat=${a.id}`);
+      await expect(page.getByText("Original A reply", { exact: true })).toBeVisible();
+      const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+      await composer.fill(`/model ${googleProfile.profile_id}`);
+      await composer.press("Enter");
+      await expect.poll(() => commandSeen).toBe(true);
+      if (switchToB) {
+        await page.getByRole("button", { name: "New Chat", exact: true }).click();
+        await page.getByTestId(`history-chat-card-${b.id}`).click();
+        await expect(page.getByText("B stays visible", { exact: true })).toBeVisible();
+        await composer.fill("B draft survives A completion");
+      }
+      releaseCommand();
+      await expect.poll(() => mutations.length).toBe(1);
+      expect(mutations[0]).toMatchObject({ conversation_id: a.id, expected_conversation_revision: 1, updates: { model: googleProfile.profile_id } });
+      if (switchToB) await expect(composer).toHaveValue("B draft survives A completion");
+      releaseMutation();
+      await expect.poll(() => listsAfterMutation).toBeGreaterThan(0);
+      if (switchToB) {
+        await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
+        await expect(page.getByRole("tab", { name: "Model B", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("B stays visible", { exact: true })).toBeVisible();
+        await expect(page.getByText("Updated A reply", { exact: true })).toHaveCount(0);
+        await expect(composer).toHaveValue("B draft survives A completion");
+        await expect(composer).toBeEnabled();
+        await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+      } else {
+        await expect(page).toHaveURL(new RegExp(`chat=${a.id}`));
+        await expect(page.getByRole("tab", { name: "Model A updated", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("Updated A reply", { exact: true })).toBeVisible();
+        await expect(composer).toHaveValue("");
+      }
+    } finally {
+      releaseCommand();
+      releaseMutation();
+    }
+  });
+}
+
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(url: URL): string {
+  const marker = "/api/contracts/defaultspack/";
+  if (!url.pathname.startsWith(marker)) return url.pathname;
+  const operation = decodeURIComponent(url.pathname.slice(marker.length));
+  const separator = operation.indexOf(" ");
+  const target = separator < 0 ? operation : operation.slice(separator + 1);
+  const queryIndex = target.indexOf("?");
+  return queryIndex < 0 ? target : target.slice(0, queryIndex);
+}
+
+function requestConversationId(url: URL): string | null {
+  const operation = decodeURIComponent(url.pathname.split("/api/contracts/defaultspack/")[1] ?? url.pathname);
+  const separator = operation.indexOf(" ");
+  const target = separator < 0 ? operation : operation.slice(separator + 1);
+  return new URL(target, url.origin).searchParams.get("conversation_id");
+}
+
+test("bootstrap loading state uses the Tobkiri Launcher animation and honors reduced motion", async ({ page }) => {
+  let releaseCatalogRequest: (() => void) | undefined;
+  const catalogGate = new Promise<void>((resolve) => {
+    releaseCatalogRequest = resolve;
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    await catalogGate;
+    await route.abort();
+  });
+
+  await page.goto("/");
+
+  const loader = page.locator("[data-tobkiri-loading-screen]").first();
+  await expect(loader).toBeVisible();
+  await expect(loader).toHaveAttribute("role", "status");
+  await expect(loader).toHaveAttribute("aria-live", "polite");
+  await expect(loader).toHaveAttribute("aria-label", "インターフェース本体を読み込んでいます…");
+  await expect(loader).toHaveCSS("background-color", "rgb(9, 9, 11)");
+
+  const animation = loader.locator('img[data-loading-scene="launcher"]');
+  await expect(animation).toBeVisible();
+  await expect(animation).toHaveAttribute(
+    "src",
+    /\/assets\/tobkiri-startup-blade-cut\.svg$/,
+  );
+  await expect.poll(
+    () => animation.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+  ).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(animation).toBeHidden();
+  await expect(loader.locator("[data-reduced-motion-wordmark]")).toBeVisible();
+
+  releaseCatalogRequest?.();
+});
+
+test("keeps the startup boundary until slash commands and mention sources are ready", async ({ page }) => {
+  let releaseCommands: (() => void) | undefined;
+  const commandGate = new Promise<void>((resolve) => {
+    releaseCommands = resolve;
+  });
+  await installDefaultspackApiMocks(page, {
+    beforeCommandCatalogResponse: () => commandGate,
+  });
+
+  await page.goto("/static/chat");
+
+  const loader = page.locator("[data-tobkiri-loading-screen]").first();
+  await expect(loader).toBeVisible();
+  await expect(loader.locator('[data-startup-step="commands"]')).toHaveAttribute("data-status", "loading");
+  await expect(page.locator("textarea.rumi-composer-textarea")).toHaveCount(0);
+
+  releaseCommands?.();
+
+  await expect(loader).toBeHidden();
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  await expect(composer).toBeVisible();
+
+  await composer.fill("/");
+  await expect(page.getByTestId("composer-slash-command-candidates")).toContainText("/coding");
+
+  await composer.fill("@web");
+  await expect(page.getByTestId("composer-at-mention-candidates")).toContainText("@Web Search");
+});
+
+test("verified Pack v4 conversation boots from the dynamic-host catalog", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+
+  await page.goto("/chat");
+
+  await expect(page.locator('[data-rumi-frontend-host][data-plan-hash^="sha256:"]')).toBeVisible();
+  await expect(page.locator('[data-conversation-surface="v4"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tobkiri Conversation" })).toBeVisible();
+  const composer = page.getByRole("textbox", { name: "Message Tobkiri" });
+  await composer.fill("Verify the current Pack v4 binding.");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Pack v4 fixture response.", { exact: true })).toBeVisible();
+});
+
 type ApiMockOptions = {
+  applicationChat?: boolean;
+  beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
+  initialSelectedToolIds?: string[];
+  initialPendingStorage?: Record<string, unknown>;
+  onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
+  onSavedTurnRequest?: (payload: { request: SavedTurnRequest }) => void;
+  onSettingsWrite?: (payload: Record<string, unknown>) => void;
+  beforeSavedTurnResponse?: () => Promise<void> | void;
+  modelProfiles?: ModelProfile[];
+  applicationBuiltinChat?: boolean;
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
+  structuredComposer?: boolean;
+  interactiveApproval?: InteractiveApprovalFixture;
+  onInteractiveApprovalRead?: (readCount: number) => Partial<InteractiveApprovalFixture> | void;
+  onInteractiveApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+};
+
+type InteractiveApprovalFixture = {
+  request_id: string;
+  request_snapshot_digest: string;
+  state: string;
+  expires_at: number;
+  typed_confirmation_required: boolean;
+  typed_confirmation_digest: string | null;
+  redacted_metadata: Record<string, string>;
 };
 
 function ok(data: unknown) {
-  return { status: "ok", data };
+  // The HostBootstrap reads the canonical PackAPI `success` envelope
+  // directly, while legacy resource clients validate the `status` envelope.
+  // The runtime emits both projections during the migration, so the fixture
+  // must do the same rather than accidentally testing a fallback path.
+  return { status: "ok", success: true, data, error: null };
 }
 
 function smokeConversation() {
   return {
     id: "c-smoke",
+    conversation_revision: 1,
     title: "Preview Calendar Chat",
     created_at: now - 60_000,
     updated_at: now,
@@ -111,6 +668,53 @@ function smokeConversation() {
   };
 }
 
+/**
+ * The smallest catalog accepted by the Pack v4 dynamic host for /chat.
+ *
+ * Compatibility-surface tests deliberately use /static/chat below. This
+ * fixture keeps the production /chat route on the same verified-contribution
+ * contract as the Host instead of silently falling back to legacy UI.
+ */
+function dynamicHostCatalog(applicationChat = false) {
+  const profileId = "defaults";
+  const profileRevision = "e2e-profile-revision";
+  const activationId = "e2e-activation";
+  const planHash = `sha256:${"b".repeat(64)}`;
+  return {
+    version: "rumi.ui.contribution.v1" as const,
+    profile_id: profileId,
+    profile_revision: profileRevision,
+    activation_id: activationId,
+    plan_hash: planHash,
+    selected_entry_route: "/chat",
+    contributions: (applicationChat ? ["/chat", "/kanban", "/desktops"] : ["/chat"]).map((route) => ({
+      contribution_id: route === "/chat" ? "defaults.conversation.complete" : `defaults.frontend.${route.slice(1)}`,
+      kind: "route" as const,
+      mode: applicationChat ? "application_builtin" as const : "declarative" as const,
+      ...(applicationChat ? { implementation: "defaultspack.chat" } : {}),
+      label: "Tobkiri Conversation",
+      description: "Start a conversation with Tobkiri.",
+      priority: 0,
+      owner_pack_id: "defaultspack",
+      owner_pack_hash: `sha256:${"c".repeat(64)}`,
+      build_identity: "defaultspack.conversation",
+      resolved_profile_id: profileId,
+      resolved_profile_revision: profileRevision,
+      resolved_activation_id: activationId,
+      resolved_plan_hash: planHash,
+      descriptor_hash: `sha256:${"d".repeat(64)}`,
+      route,
+      action_contract: "conversation.turn.v1",
+      view: { type: "conversation_v4" },
+      localization: {},
+      accessibility: { name: "Tobkiri Conversation", keyboard: true },
+    })),
+    diagnostics: [],
+    quarantined_pack_ids: [],
+    catalog_hash: `sha256:${"e".repeat(64)}`,
+  };
+}
+
 const smokeProfile = {
   profile_id: "stub/default",
   qualified_model_id: "stub/default",
@@ -124,6 +728,7 @@ const smokeProfile = {
   supports_tool_calling: true,
   supports_vision: false,
   local: true,
+  route_configured: true,
   availability: { local: true, configured: true },
 };
 
@@ -357,6 +962,19 @@ const settingsValues = {
 
 const settingsSections = [
   {
+    id: "general",
+    label: "General",
+    description: "App behavior.",
+    fields: [{
+      id: "manual_runtime_mode_selection",
+      label: "Manual Runtime Mode Selection",
+      type: "toggle",
+      default: false,
+      advanced: true,
+      control_center_section: "advanced",
+    }],
+  },
+  {
     id: "tools",
     label: "機能と接続",
     description: "機能の選定、接続、実行時権限を管理します。",
@@ -471,9 +1089,86 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 }
 
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
-  await page.addInitScript(() => {
+  if (options.applicationChat) {
+    await page.route("**/health", (route) => fulfill(route, { status: "ok", saved_turn_store_id: `sha256:${"a".repeat(64)}` }));
+  }
+  await page.addInitScript(({ selectedToolIds, pendingStorage }: { selectedToolIds: string[]; pendingStorage?: Record<string, unknown> }) => {
     localStorage.clear();
     sessionStorage.clear();
+    // The floating pet is covered by component tests. Keep contract-test
+    // pointer targets deterministic while exercising chat controls.
+    localStorage.setItem("tobkiri.task-pet.enabled.v2:defaults", "false");
+    if (pendingStorage) localStorage.setItem("rumi-pending-chat-v2:defaults", JSON.stringify(pendingStorage));
+    if (selectedToolIds.length) {
+      localStorage.setItem("rumi-selected-tool-ids", JSON.stringify(selectedToolIds));
+    }
+  }, { selectedToolIds: options.initialSelectedToolIds ?? [], pendingStorage: options.initialPendingStorage });
+  await page.addInitScript(() => {
+    const fixtureWindow = window as Window & {
+      __approvalRendererFixture?: {
+        tauriBridgeCalls: Array<{ command: string; args?: Record<string, unknown> }>;
+      };
+    };
+    fixtureWindow.__approvalRendererFixture = { tauriBridgeCalls: [] };
+    Object.defineProperty(window, "__TAURI__", {
+      configurable: true,
+      value: {
+        core: {
+          invoke: async (command: string, args?: Record<string, unknown>) => {
+            fixtureWindow.__approvalRendererFixture?.tauriBridgeCalls.push({ command, args });
+            if (command === "get_desktop_system_info") {
+              return {
+                source: "viewer_tauri",
+                reliable: true,
+                app_name: "Tobkiri",
+                display_version: "ui-contract",
+                viewer_version: "ui-contract",
+                build_channel: "test",
+                platform: "linux",
+                platform_release: "ui-contract",
+                permission_subject: "Tobkiri Launcher",
+                permissions: [],
+              };
+            }
+            if (command === "authority_approval_context") {
+              const requestId = String(args?.requestId ?? "");
+              const interactive = args?.decision === "approve" || args?.decision === "deny";
+              return {
+                request_id: requestId,
+                ui_operator: {
+                  version: interactive ? 3 : 1,
+                  kind: "ui_operator",
+                  origin: "tauri://tobkiri-launcher",
+                  window_label: "authority-approval",
+                  request_id: requestId,
+                  ...(interactive ? {
+                    decision: args?.decision,
+                    request_snapshot_digest: args?.requestSnapshotDigest,
+                    typed_confirmation_digest: args?.typedConfirmationDigest,
+                  } : {}),
+                  issued_at: Math.floor(Date.now() / 1000),
+                  expires_at: Math.floor(Date.now() / 1000) + 30,
+                  nonce: "e2e-ui-operator-nonce",
+                  signature: "e2e-ui-operator-signature",
+                },
+              };
+            }
+            if (command === "close_current_window") {
+              return undefined;
+            }
+            if (command === "coding_approval_operator") {
+              return {
+                request_id: args?.requestId,
+                expected_digest: args?.expectedDigest,
+                decision: args?.decision,
+                operator: "ui-contract-fixture",
+              };
+            }
+            throw new Error(`Unexpected Tauri bridge command: ${command}`);
+          },
+        },
+      },
+    });
   });
 
   let currentSettingsValues: Record<string, Record<string, unknown>> = JSON.parse(JSON.stringify({
@@ -485,7 +1180,16 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     },
   }));
   let conversationToolPreferences: Record<string, unknown> = {};
+  let completedSavedTurn: SavedTurnRequest | null = null;
   let codingApprovalRequest: Record<string, unknown> | null = null;
+  let interactiveApprovalRequest: InteractiveApprovalFixture | null = options.interactiveApproval
+    ? {
+      ...options.interactiveApproval,
+      redacted_metadata: { ...options.interactiveApproval.redacted_metadata },
+    }
+    : null;
+  let interactiveApprovalReadCount = 0;
+  const settledApprovalRequestIds = new Set<string>();
   const codingCheckpoints: Record<string, unknown>[] = options.codingApprovalAfterRestore
     ? [{ snapshot_id: "checkpoint-1", path: "/repo/.rumi/checkpoints/checkpoint-1" }]
     : [];
@@ -493,20 +1197,72 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     { server_id: "filesystem", name: "Filesystem MCP", transport: "stdio", connected: true, permissions: { approved: true }, tools: ["mcp_fs_read_file"] },
   ];
 
-  await page.route("**/api/**", async (route) => {
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const path = url.pathname;
+    const path = requestTarget(url);
     const method = request.method();
     const conversation = smokeConversation();
     options.conversationMutator?.(conversation);
+    if (completedSavedTurn) {
+      conversation.conversation_revision = completedSavedTurn.conversation_revision + 1;
+      const request = completedSavedTurn;
+      const userText = typeof request.content === "string" ? request.content : request.content[0].text;
+      const savedMessages: ChatMessage[] = [
+        {
+          id: "m-saved-user",
+          role: "user",
+          content: [{ type: "text", text: userText }],
+          raw_text: userText,
+          created_at: now + 1_000,
+          conversation_id: request.conversation_id,
+          sequence_number: 3,
+          metadata: { turn_id: request.turn_id },
+        },
+        {
+          id: "m-saved-assistant",
+          role: "assistant",
+          content: [{ type: "text", text: "Saved response accepted." }],
+          raw_text: "Saved response accepted.",
+          created_at: now + 2_000,
+          conversation_id: request.conversation_id,
+          sequence_number: 4,
+          finish_reason: "stop",
+          metadata: { turn_id: request.turn_id },
+        },
+      ];
+      (conversation.messages as ChatMessage[]).push(...savedMessages);
+    }
+    const conversationMessages = conversation.messages as Array<{ events?: Record<string, unknown>[] }>;
+    for (const message of conversationMessages) {
+      if (!message.events) continue;
+      message.events = message.events.filter((event) => (
+        !settledApprovalRequestIds.has(String(event.approval_request_id ?? "").trim())
+      ));
+    }
+    const approvalEvent = conversationMessages
+      .flatMap((message) => message.events ?? [])
+      .find((event) => String(event.approval_request_id ?? "").trim());
+    const approvalEventId = String(approvalEvent?.approval_request_id ?? "").trim();
+    if (!codingApprovalRequest && approvalEventId) {
+      codingApprovalRequest = {
+        request_id: approvalEventId,
+        operation: String(approvalEvent?.action ?? "browser.open_url"),
+        risk_level: String(approvalEvent?.risk_level ?? "medium"),
+        status: "pending",
+        display_summary: String(approvalEvent?.display_summary ?? "Browser action requires approval."),
+        created_at: now,
+        args_hash: approvalDigest,
+      };
+    }
 
-    if (path === "/api/health") {
+    if (path === routeKey("api/health")) {
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === "/api/ui/catalog") {
+    if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
+        dynamic_host: dynamicHostCatalog(options.applicationChat),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
@@ -519,24 +1275,124 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         },
         settings: { sections: settingsSections, values: currentSettingsValues },
         chat_rendering: { renderers: [] },
+        composer_inputs: options.structuredComposer ? [{
+          id: "contract_composer",
+          label: "入力オプション",
+          description: "送信時の補助情報を設定します。",
+          modes: ["chat", "coding", "agent"],
+          enabled: true,
+          fields: [
+            { id: "intent", type: "select", label: "目的", default: "review", options: [{ value: "review", label: "レビュー" }] },
+            { id: "detail", type: "select", label: "詳細度", default: "rich", options: [{ value: "rich", label: "リッチ" }] },
+            { id: "tone", type: "select", label: "文体", default: "natural", options: [{ value: "natural", label: "自然" }] },
+            { id: "note", type: "text", label: "補足", placeholder: "任意の補足" },
+          ],
+        }] : [],
         skills: catalogSkills,
         extension_points: [],
       });
     }
 
-    if (path === "/api/ui/settings" && method === "PUT") {
+    if (path === routeKey("api/ui/capability/invoke") && method === "POST") {
+      return fulfill(route, {
+        content: [{ type: "text", text: "Pack v4 fixture response." }],
+      });
+    }
+
+    if (path === routeKey("api/ui/settings") && method === "PUT") {
       const payload = request.postDataJSON() as {
         values?: Record<string, Record<string, unknown>>;
+        patches?: Array<{ section: string; field: string; value: unknown }>;
       };
-      currentSettingsValues = JSON.parse(JSON.stringify(payload.values ?? currentSettingsValues));
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      options.onSettingsWrite?.(payload);
+      if (payload.values) {
+        currentSettingsValues = JSON.parse(JSON.stringify(payload.values));
+      } else {
+        for (const patch of payload.patches ?? []) {
+          currentSettingsValues[patch.section] = {
+            ...(currentSettingsValues[patch.section] ?? {}),
+            [patch.field]: patch.value,
+          };
+        }
+      }
+      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
-    if (path === "/api/ui/settings") {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+    if (path === routeKey("api/ui/settings")) {
+      return fulfill(route, {
+        sections: settingsSections, values: currentSettingsValues,
+        ...(options.applicationChat ? { document_revision: 1 } : {}),
+      });
     }
 
-    if (path === "/api/ui/commands") {
+    if (options.applicationChat && path === routeKey("api/ai/strategies")) {
+      return fulfill(route, {
+        api_version: "strategy.catalog.v1", strategies: [], count: 0,
+        catalog_revision: "fixture-r1", diagnostics: [], quarantined_pack_ids: [],
+      });
+    }
+
+    if (options.applicationChat && path === routeKey("api/projects")) {
+      return fulfill(route, { namespace: "defaultspack.projects.v1", revision: 0, projects: [] });
+    }
+
+    if (options.applicationChat && /^\/api\/ui\/conversations\/[^/]+\/preview$/.test(path)) {
+      return fulfill(route, { conversation_id: path.split("/")[4], previews: [], summary: {} });
+    }
+
+    if (path === routeKey("api/command-protocol/v1/catalog")) {
+      await options.beforeCommandCatalogResponse?.();
+      const protocolCommand = (
+        id: string,
+        label: string,
+        risk: "low" | "medium",
+        operationRef: string,
+      ) => ({
+        canonical_id: `defaultspack:${id}`,
+        pack_id: "defaultspack",
+        pack_generation: 1,
+        command_version: "1.0.0",
+        identity: { id, name: id, aliases: [] },
+        presentation: {
+          label: { fallback: label },
+          description: { fallback: `Toggle ${label}.` },
+          category: "mode",
+          visibility: "default",
+          input: { kind: "action" },
+          mounts: [],
+        },
+        execution: { kind: "host_operation", operation_ref: `host:${operationRef}` },
+        authorization: {
+          risk,
+          permissions: [],
+          approval_required: false,
+          approval_policy: "never",
+          executor_policy_ref: "defaultspack.e2e",
+        },
+        constraints: { modes: ["chat", "coding", "agent"] },
+        availability: { status: "available" },
+      });
+      return fulfill(route, {
+        api_version: "tobkiri.commands/v1",
+        kind: "ResolvedCommandCatalog",
+        catalog_revision: "e2e-revision-1",
+        commands: [
+          protocolCommand("coding", "Coding Mode", "low", "set_mode_coding"),
+          protocolCommand("yolo", "Full Access (YOLO)", "medium", "toggle_ultra_yolo"),
+          ...(options.applicationChat ? [{
+            ...protocolCommand("model", "Model", "low", "open_model_picker"),
+            presentation: {
+              ...protocolCommand("model", "Model", "low", "open_model_picker").presentation,
+              input: { kind: "search_select", datasource_ref: "tobkiri:model_catalog", argument: "query" },
+            },
+          }] : []),
+        ],
+        state_snapshots: [],
+        diagnostics: [],
+      });
+    }
+
+    if (path === routeKey("api/ui/commands")) {
       return fulfill(route, {
         commands: [
           {
@@ -550,23 +1406,50 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             modes: ["chat", "coding", "agent"],
             execution: { type: "frontend", action: "set_mode_coding" },
           },
+          {
+            id: "yolo",
+            name: "yolo",
+            label: "Full Access (YOLO)",
+            description: "Toggle Full Access and Ask approval.",
+            category: "mode",
+            visibility: "default",
+            risk: "medium",
+            modes: ["chat", "coding", "agent"],
+            execution: { type: "frontend", action: "toggle_ultra_yolo" },
+          },
         ],
       });
     }
 
-    if (path === "/api/ui/commands/execute" && method === "POST") {
+    if (path === routeKey("api/ui/commands/execute") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       return fulfill(route, {
         executed: true,
-        action: payload.command === "coding" ? "set_mode_coding" : "",
+        action: payload.command === "coding"
+          ? "set_mode_coding"
+          : payload.command === "yolo"
+            ? "toggle_ultra_yolo"
+            : "",
       });
     }
 
-    if (path === "/api/ai/profiles") {
-      return fulfill(route, { profiles: [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile], count: 4 });
+    if (path === routeKey("api/ai/profiles")) {
+      const profiles = options.modelProfiles ?? [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile];
+      return fulfill(route, { profiles, count: profiles.length, registry_revision: 1 });
     }
 
-    if (path === "/api/ai/models/search" && method === "POST") {
+    if (path === routeKey("api/ai/strategies")) {
+      return fulfill(route, {
+        api_version: "tobkiri.strategies/v1",
+        strategies: [],
+        count: 0,
+        catalog_revision: "e2e-strategy-revision-1",
+        diagnostics: [],
+        quarantined_pack_ids: [],
+      });
+    }
+
+    if (path === routeKey("api/ai/models/search") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const types = Array.isArray(payload.type)
         ? payload.type.map((item) => String(item).trim())
@@ -577,7 +1460,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { models, count: models.length });
     }
 
-    if (path === "/api/tools/catalog") {
+    if (path === routeKey("api/tools/catalog")) {
       return fulfill(route, {
         services: toolCatalogServices,
         tools: toolCatalogTools,
@@ -585,7 +1468,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/tools/selection/preview" && method === "POST") {
+    if (path === routeKey("api/tools/selection/preview") && method === "POST") {
       return fulfill(route, {
         preview_id: "preview-tool-selection",
         expires_at: "2026-05-20T00:05:00Z",
@@ -602,15 +1485,101 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/chat/conversations" && method === "GET") {
-      return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1 });
+    if (path === routeKey("api/chat/conversations") && method === "GET") {
+      return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1, store_revision: 1 });
     }
 
-    if (path === "/api/chat/conversations" && method === "POST") {
+    if (path === routeKey("api/chat/conversations") && method === "POST") {
+      options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
     }
 
-    if (path === "/api/chat/conversations/c-smoke/stream" && method === "POST") {
+    if (path === routeKey("api/chat/conversation") && method === "GET") {
+      return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/turn") && method === "POST") {
+      const payload = request.postDataJSON() as { request: SavedTurnRequest };
+      options.onSavedTurnRequest?.(payload);
+      await options.beforeSavedTurnResponse?.();
+      completedSavedTurn = payload.request;
+      const result: SavedTurnResult = {
+        status: "completed",
+        turn: {
+          id: payload.request.turn_id,
+          conversation_id: payload.request.conversation_id,
+          status: "completed",
+          revision: 3,
+          result_reference: {
+            conversation_id: payload.request.conversation_id,
+            conversation_revision: payload.request.conversation_revision + 1,
+            user_message_id: "m-saved-user",
+            assistant_message_id: "m-saved-assistant",
+            outcome_digest: `sha256:${"f".repeat(64)}`,
+          },
+        },
+      };
+      return fulfill(route, result);
+    }
+
+    if (path === routeKey("api/command-protocol/v1/invocations/events/query") && method === "POST") {
+      return fulfill(route, {
+        api_version: "command-protocol/v1",
+        pending_approvals: [],
+      });
+    }
+
+    // The application restores any pending high-risk command during bootstrap.
+    // Keep this fixture aligned with the V4 interactive-approval adapter: an
+    // empty invocation list is an explicit successful response, not an absent
+    // legacy `pending_approvals` field.
+    if (path === routeKey("api/command-protocol/v1/high-risk") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      if (payload.phase === "list_pending") {
+        return fulfill(route, { invocations: [] });
+      }
+      return fulfill(route, {});
+    }
+
+    if (path === routeKey("api/interactive-approval/v1/list")) {
+      return fulfill(route, {
+        approvals: interactiveApprovalRequest ? [interactiveApprovalRequest] : [],
+      });
+    }
+
+    if (path === routeKey("api/interactive-approval/v1/get") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      if (!interactiveApprovalRequest) return fulfill(route, {});
+      interactiveApprovalReadCount += 1;
+      interactiveApprovalRequest = {
+        ...interactiveApprovalRequest,
+        ...(options.onInteractiveApprovalRead?.(interactiveApprovalReadCount) ?? {}),
+      };
+      if (payload.request_id !== interactiveApprovalRequest.request_id) {
+        return fulfill(route, { ...interactiveApprovalRequest, request_id: String(payload.request_id ?? "") });
+      }
+      return fulfill(route, interactiveApprovalRequest);
+    }
+
+    if (path === routeKey("api/interactive-approval/v1/approve") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      options.onInteractiveApprovalDecision?.("approve", payload);
+      if (interactiveApprovalRequest && payload.request_id === interactiveApprovalRequest.request_id) {
+        interactiveApprovalRequest = { ...interactiveApprovalRequest, state: "approved" };
+      }
+      return fulfill(route, interactiveApprovalRequest ?? {});
+    }
+
+    if (path === routeKey("api/interactive-approval/v1/deny") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      options.onInteractiveApprovalDecision?.("deny", payload);
+      if (interactiveApprovalRequest && payload.request_id === interactiveApprovalRequest.request_id) {
+        interactiveApprovalRequest = { ...interactiveApprovalRequest, state: "denied" };
+      }
+      return fulfill(route, interactiveApprovalRequest ?? {});
+    }
+
+    if (path === routeKey("api/chat/conversations/c-smoke/stream") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onStreamRequest?.(payload);
       const message = {
@@ -637,11 +1606,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfillStream(route, message);
     }
 
-    if (path === "/api/chat/conversations/c-smoke") {
+    if (path === routeKey("api/chat/conversations/c-smoke")) {
       return fulfill(route, conversation);
     }
 
-    if ((path === "/api/conversations/c-smoke/tool-preferences" || path === "/api/chat/conversations/c-smoke/tool-preferences") && method === "PUT") {
+    if ((path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) && method === "PUT") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       conversationToolPreferences = (payload.preferences && typeof payload.preferences === "object" && !Array.isArray(payload.preferences))
         ? payload.preferences as Record<string, unknown>
@@ -649,11 +1618,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
     }
 
-    if (path === "/api/conversations/c-smoke/tool-preferences" || path === "/api/chat/conversations/c-smoke/tool-preferences") {
+    if (path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) {
       return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
     }
 
-    if (path === "/api/ui/conversations/c-smoke/preview") {
+    if (path === routeKey("api/ui/conversations/c-smoke/preview")) {
       return fulfill(route, {
         conversation_id: "c-smoke",
         previews: [
@@ -673,11 +1642,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/chat/steer") {
+    if (path === routeKey("api/chat/steer")) {
       return fulfill(route, { items: [] });
     }
 
-    if (path === "/api/agent/schedules") {
+    if (path === routeKey("api/agent/schedules")) {
       return fulfill(route, {
         schedules: [
           { id: "nightly-review", name: "nightly-review", schedule: "every 1h", next_run_at: "2026-05-20T12:00:00Z" },
@@ -685,14 +1654,14 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/workspaces") {
+    if (path === routeKey("api/coding/workspaces")) {
       return fulfill(route, {
         workspaces: [{ workspace_id: "ws-main", label: "Main Repo", root_path: "/repo", trusted: true }],
         selected_workspace_id: "ws-main",
       });
     }
 
-    if (path === "/api/coding/context") {
+    if (path === routeKey("api/coding/context")) {
       return fulfill(route, {
         branch: "main",
         root_folder: "/repo",
@@ -708,7 +1677,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/files/read" && method === "POST") {
+    if (path === routeKey("api/coding/files/read") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       await options.beforeWorkspaceFileReadResponse?.(payload);
       return fulfill(route, {
@@ -721,21 +1690,23 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/git/branch") {
+    if (path === routeKey("api/coding/git/branch")) {
       return fulfill(route, { branch: "main", branches: ["main", "codex/pr97"], workspace_id: "ws-main" });
     }
 
-    if (path === "/api/coding/git/status") {
+    if (path === routeKey("api/coding/git/status")) {
       return fulfill(route, { branch: "main", clean: false, modified: ["src/App.tsx"], untracked: [], staged: [] });
     }
 
-    if (path === "/api/coding/git/diff") {
+    if (path === routeKey("api/coding/git/diff")) {
       return fulfill(route, { diff: "-old\n+new", files_changed: 1, files: ["src/App.tsx"], workspace_id: "ws-main" });
     }
 
-    if (path === "/api/coding/approvals/approve" && method === "POST") {
+    if (path === routeKey("api/coding/approvals/approve") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onApprovalDecision?.("approve", payload);
+      const requestId = String(payload.approval_request_id ?? "").trim();
+      if (requestId) settledApprovalRequestIds.add(requestId);
       if (codingApprovalRequest?.request_id === payload.approval_request_id) {
         codingApprovalRequest = { ...codingApprovalRequest, status: "approved" };
       }
@@ -746,13 +1717,18 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/approvals/deny" && method === "POST") {
+    if (path === routeKey("api/coding/approvals/deny") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onApprovalDecision?.("deny", payload);
+      const requestId = String(payload.approval_request_id ?? "").trim();
+      if (requestId) settledApprovalRequestIds.add(requestId);
+      if (codingApprovalRequest?.request_id === requestId) {
+        codingApprovalRequest = { ...codingApprovalRequest, status: "denied" };
+      }
       return fulfill(route, { request_id: payload.approval_request_id, approved: false, status: "denied" });
     }
 
-    if (path === "/api/coding/terminal/exec" && method === "POST" && options.codingApprovalAfterTerminal) {
+    if (path === routeKey("api/coding/terminal/exec") && method === "POST" && options.codingApprovalAfterTerminal) {
       const payload = request.postDataJSON() as Record<string, unknown>;
       codingApprovalRequest = {
         request_id: "apr-terminal-write",
@@ -761,6 +1737,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         status: "pending",
         display_summary: "terminal.exec: write qa-file.txt",
         created_at: now,
+        args_hash: approvalDigest,
       };
       return fulfill(route, {
         command: String(payload.command ?? ""),
@@ -774,7 +1751,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/files/restore" && method === "POST" && options.codingApprovalAfterRestore) {
+    if (path === routeKey("api/coding/files/restore") && method === "POST" && options.codingApprovalAfterRestore) {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const snapshotId = String(payload.snapshot_id ?? "checkpoint-1");
       if (payload.approval_token) {
@@ -787,6 +1764,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         status: "pending",
         display_summary: `file.restore: ${snapshotId}`,
         created_at: now,
+        args_hash: approvalDigest,
       };
       return fulfill(route, {
         approval_required: true,
@@ -794,12 +1772,12 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/approvals") {
+    if (path === routeKey("api/coding/approvals")) {
       const requests = codingApprovalRequest ? [codingApprovalRequest] : [];
       return fulfill(route, { requests, pending: requests, count: requests.length });
     }
 
-    if (path === "/api/coding/checkpoints") {
+    if (path === routeKey("api/coding/checkpoints")) {
       if (method === "POST") {
         const checkpoint = {
           snapshot_id: "checkpoint-2",
@@ -815,7 +1793,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/rumi-log") {
+    if (path === routeKey("api/coding/rumi-log")) {
       return fulfill(route, {
         rumi_dir: "/repo/.rumi",
         events_path: "/repo/.rumi/events.jsonl",
@@ -840,14 +1818,14 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/browser/artifacts") {
+    if (path === routeKey("api/browser/artifacts")) {
       return fulfill(route, {
         artifacts: [{ artifact_id: "browser-1", session_id: "s1", action: "browser.session", created_at: "2026-05-20T00:00:00Z", url: "https://example.com" }],
         count: 1,
       });
     }
 
-    if (path === "/api/tools/mcp" && method === "POST") {
+    if (path === routeKey("api/tools/mcp") && method === "POST") {
       const payload = request.postDataJSON() as { server?: Record<string, unknown> };
       const server = {
         server_id: String(payload.server?.server_id ?? "contract_digest"),
@@ -861,10 +1839,29 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { server });
     }
 
-    if (path === "/api/tools/mcp/connect" && method === "POST") {
+    if (path === routeKey("api/tools/mcp/connect") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const serverId = String(payload.server_id ?? payload.server_name ?? "contract_digest");
       if (!payload.approval_token) {
+        codingApprovalRequest = {
+          request_id: "apr-mcp-contract",
+          operation: "tool.mcp_connect",
+          risk_level: "high",
+          status: "pending",
+          display_summary: `Connect MCP server ${serverId}`,
+          created_at: now,
+          args_hash: approvalDigest,
+          details: {
+            mcp_review: {
+              executable: String(payload.command ?? "python"),
+              transport: "stdio",
+              args: Array.isArray(payload.args) ? payload.args : [],
+              cwd: "/repo",
+              redacted_env: [],
+              server_source: "Pack v4 UI contract fixture",
+            },
+          },
+        };
         return fulfill(route, {
           approval_required: true,
           approval_request_id: "apr-mcp-contract",
@@ -886,7 +1883,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/tools/mcp") {
+    if (path === routeKey("api/tools/mcp")) {
       return fulfill(route, {
         servers: mcpServers,
         count: mcpServers.length,
@@ -899,7 +1896,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
 async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOptions = {}) {
   await installDefaultspackApiMocks(page, options);
-  await page.goto(path);
+  // Existing dense-shell interactions remain compatibility tests. The real
+  // /chat route is asserted separately through the verified Pack v4 catalog.
+  const compatibilityPath = path === "/chat" ? "/static/chat" : path;
+  await page.goto(compatibilityPath);
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
 
@@ -914,6 +1914,296 @@ async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
   await expect(page.locator(".coding-cockpit")).toBeVisible();
   await page.getByRole("button", { name: "Workspace", exact: true }).click();
 }
+
+// These browser tests cover the approval-window renderer through a mocked
+// Tauri bridge. WebviewWindowBuilder creation, focus, and always-on-top need
+// dedicated desktop E2E coverage; they are not established by this fixture.
+test("approval window renderer contract binds typed approval to the current request and closes after settlement", async ({ page }) => {
+  const decisions: Array<{ decision: "approve" | "deny"; payload: Record<string, unknown> }> = [];
+  const requestId = "apr-renderer-typed-contract";
+  const confirmationPhrase = "APPROVE RELEASE";
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "1".repeat(64),
+      state: "pending",
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
+      typed_confirmation_required: true,
+      typed_confirmation_digest: "2".repeat(64),
+      redacted_metadata: {
+        action: "Release the prepared update",
+        confirmation_phrase: confirmationPhrase,
+      },
+    },
+    onInteractiveApprovalDecision: (decision, payload) => decisions.push({ decision, payload }),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+
+  await expect(page.getByRole("heading", { name: "この操作を許可しますか？" })).toBeVisible();
+  await expect(page.getByText("Release the prepared update")).toBeVisible();
+  const confirmation = page.getByPlaceholder("確認文を入力");
+  const approve = page.getByRole("button", { name: "承認", exact: true });
+  await expect(confirmation).toBeVisible();
+  await expect(approve).toBeDisabled();
+
+  await confirmation.fill("APPROVE RELEASE later");
+  await expect(approve).toBeDisabled();
+  expect(decisions).toEqual([]);
+
+  await confirmation.fill(confirmationPhrase);
+  await expect(approve).toBeEnabled();
+  await approve.click();
+
+  const approvedStatus = page.getByText("承認済み", { exact: true });
+  await expect(approvedStatus).toHaveCount(2);
+  await expect(approvedStatus.nth(1)).toBeVisible();
+  expect(decisions).toHaveLength(1);
+  expect(decisions[0]).toMatchObject({
+    decision: "approve",
+    payload: {
+      request_id: requestId,
+      confirmation_text: confirmationPhrase,
+      ui_operator: {
+        version: 3,
+        kind: "ui_operator",
+        request_id: requestId,
+        window_label: "authority-approval",
+        decision: "approve",
+        request_snapshot_digest: "1".repeat(64),
+        typed_confirmation_digest: "2".repeat(64),
+      },
+    },
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const fixtureWindow = window as Window & {
+      __approvalRendererFixture?: {
+        tauriBridgeCalls: Array<{ command: string }>;
+      };
+    };
+    return fixtureWindow.__approvalRendererFixture?.tauriBridgeCalls
+      .filter((call) => call.command === "close_current_window")
+      .length ?? 0;
+  })).toBe(1);
+});
+
+test("approval window renderer contract denies once and renders its settled state", async ({ page }) => {
+  const decisions: Array<{ decision: "approve" | "deny"; payload: Record<string, unknown> }> = [];
+  const requestId = "apr-renderer-deny-contract";
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "3".repeat(64),
+      state: "pending",
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Discard the prepared update" },
+    },
+    onInteractiveApprovalDecision: (decision, payload) => decisions.push({ decision, payload }),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await page.getByRole("button", { name: "拒否", exact: true }).click();
+
+  const deniedStatus = page.getByText("拒否済み", { exact: true });
+  await expect(deniedStatus).toHaveCount(2);
+  await expect(deniedStatus.nth(1)).toBeVisible();
+  expect(decisions).toHaveLength(1);
+  expect(decisions[0]).toMatchObject({
+    decision: "deny",
+    payload: {
+      request_id: requestId,
+      ui_operator: {
+        version: 3,
+        kind: "ui_operator",
+        request_id: requestId,
+        decision: "deny",
+        request_snapshot_digest: "3".repeat(64),
+        typed_confirmation_digest: null,
+      },
+    },
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const fixtureWindow = window as Window & {
+      __approvalRendererFixture?: {
+        tauriBridgeCalls: Array<{ command: string }>;
+      };
+    };
+    return fixtureWindow.__approvalRendererFixture?.tauriBridgeCalls
+      .filter((call) => call.command === "close_current_window")
+      .length ?? 0;
+  })).toBe(1);
+});
+
+test("approval window renderer contract fails closed when typed confirmation metadata is absent", async ({ page }) => {
+  const decisions: Array<{ decision: "approve" | "deny"; payload: Record<string, unknown> }> = [];
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: "apr-renderer-missing-confirmation",
+      request_snapshot_digest: "4".repeat(64),
+      state: "pending",
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
+      typed_confirmation_required: true,
+      typed_confirmation_digest: "5".repeat(64),
+      redacted_metadata: { action: "Apply the protected change" },
+    },
+    onInteractiveApprovalDecision: (decision, payload) => decisions.push({ decision, payload }),
+  });
+
+  await page.goto("/approval?request_id=apr-renderer-missing-confirmation");
+
+  await expect(page.getByText("この承認に必要な確認情報を取得できませんでした。安全のため操作できません。")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("この承認に必要な確認情報を取得できませんでした。安全のため操作できません。");
+  await expect(page.getByRole("button", { name: "エラーをコピー" })).toBeVisible();
+  await expect(page.getByPlaceholder("確認文を入力")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
+test("approval window disables actions when the displayed request expires", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-near-expiry";
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "6".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 2,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Time-sensitive operation" },
+    },
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  await expect(page.getByText("期限切れ", { exact: true })).toHaveCount(2, { timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
+test("approval window reports an authoritative stale request without an ID mismatch", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-stale";
+  let isStale = false;
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "7".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 300,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Changed operation" },
+    },
+    onInteractiveApprovalRead: () => isStale ? { state: "stale" } : {},
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  isStale = true;
+  await page.getByRole("button", { name: "承認", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("このリクエストは古くなりました");
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("alert")).not.toContainText("一致しません");
+  expect(decisions).toEqual([]);
+});
+
+test("approval window reports expiry discovered by its decision preflight", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-expired-during-decision";
+  let expired = false;
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "8".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 300,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Expiring operation" },
+    },
+    onInteractiveApprovalRead: () => expired ? { state: "expired" } : {},
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  expired = true;
+  await page.getByRole("button", { name: "承認", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("このリクエストは期限切れです");
+  await expect(page.getByRole("alert")).not.toContainText("一致しません");
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
+test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  await expect(page.getByRole("status", { name: "現在の実行オプション" })).toHaveCount(0);
+
+  await page.getByTitle("Settings").last().click();
+  await page.getByRole("button", { name: "Advanced Settings" }).click();
+  await page.getByRole("button", { name: "Change settings display mode" }).click();
+  await page.locator("main#settings-content details summary").click();
+  await page.getByRole("button", { name: "Manual Runtime Mode Selection" }).click();
+  await page.getByRole("button", { name: "Close settings" }).click();
+
+  await expect(page.getByRole("status", { name: "現在の実行オプション" })).toBeVisible();
+});
+
+test("manual runtime mode control opens the mode selector when enabled", async ({ page }) => {
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: {
+      general: { manual_runtime_mode_selection: true },
+    },
+  });
+
+  const runtimeOptions = page.getByRole("status", { name: "現在の実行オプション" });
+  await expect(runtimeOptions).toBeVisible();
+  await runtimeOptions.getByRole("button", { name: "実行モード: 自律エージェント" }).click();
+  await expect(page.getByText("モード選択")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Coding/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Chat/ }).click();
+  await expect(runtimeOptions.getByRole("button", { name: "実行モード: 通常チャット" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-app-mode"))).toBe('"chat"');
+});
+
+test("projects replace New Group and are searchable from the composer", async ({ page }) => {
+  const conversationCreates: Record<string, unknown>[] = [];
+  await openDefaultspack(page, "/chat", {
+    onConversationCreate: (payload) => conversationCreates.push(payload),
+  });
+
+  await expect(page.getByText("Projects", { exact: true })).toBeVisible();
+  await expect(page.getByText("New Group", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+  const projectButton = page.getByRole("button", { name: "Project: None" });
+  await expect(projectButton).toHaveCSS("min-height", "44px");
+  await projectButton.click();
+  await expect(page.getByRole("textbox", { name: "Search projects" })).toBeVisible();
+  await page.getByRole("button", { name: "New Project" }).last().click();
+  await page.getByPlaceholder("Project name").fill("E2E Project");
+  await page.getByRole("button", { name: "Create Project", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Project: E2E Project" })).toBeVisible();
+  const persistedProject = await page.evaluate(() => {
+    const projects = JSON.parse(localStorage.getItem("rumi-history-custom-groups") || "[]") as Array<Record<string, unknown>>;
+    return projects.find((project) => project.title === "E2E Project") ?? null;
+  });
+  expect(persistedProject).toMatchObject({ title: "E2E Project" });
+  expect(String(persistedProject?.id ?? "")).toMatch(/^group-\d+$/);
+
+  await page.getByRole("combobox", { name: "Rumiにメッセージを送信" }).fill("Project scoped message");
+  await page.locator(".rumi-send-button").click();
+  await expect.poll(() => conversationCreates.length).toBe(1);
+  expect(conversationCreates[0].group_id).toBe(persistedProject?.id);
+  expect((conversationCreates[0].metadata as Record<string, unknown>).group_id).toBe(persistedProject?.id);
+});
 
 test("document scroll fallback survives small and keyboard-like viewports", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 520 });
@@ -961,27 +2251,205 @@ test("tool hub search suggestions close on outside click while keeping filtered 
   await expect(page.locator(".rumi-composer-frame")).toContainText("Web Search");
 });
 
-test("composer approval menu opens action permissions while selection modes live in settings", async ({ page }) => {
+test("composer approval menu opens action permissions independently of tool selection modes", async ({ page }) => {
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: "アクションの承認方法" }).click();
   const approvalMenu = page.getByRole("menu", { name: "アクションの承認方法" });
-  await expect(approvalMenu).toContainText("Codex アクションの承認方法");
+  await expect(approvalMenu).toHaveAccessibleName("アクションの承認方法");
   await expect(approvalMenu).toContainText("承認を求める");
   await expect(approvalMenu).toContainText("代理で承認");
   await expect(approvalMenu).toContainText("フルアクセス");
-  await expect(approvalMenu).toContainText("カスタム（設定）");
+  await expect(approvalMenu).not.toContainText("カスタム（設定）");
   await expect(approvalMenu).not.toContainText("自動で選ぶ");
 
   await approvalMenu.getByRole("button", { name: "詳細はこちら" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Tools & MCP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tools & MCP" }).first()).toBeVisible();
-  await expect(page.getByText("Installed tools, MCP servers, discovered tools, visibility, and approval policy.")).toBeVisible();
-  await expect(page.getByText("Tools are not logins")).toBeVisible();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  await expect(page.getByText("ツールとログインは別に管理されます")).toBeVisible();
+  await expect(page.getByText("MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.")).toBeVisible();
   await expect(page.getByText("Safety rules")).toBeVisible();
   await expect(page.getByText("Tool source → Tools & MCP")).toBeVisible();
-  await expect(page.getByText("MCP servers can require a connection")).toBeVisible();
+});
+
+test("composer tool mode menu offers supported modes and opens manual tool settings", async ({ page }) => {
+  await openDefaultspack(page);
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await expect(mode).toBeVisible();
+  await expect(mode).toContainText("機能 自動");
+  await mode.click();
+  const menu = page.getByRole("menu", { name: "機能の使い方" });
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+  await expect(menu.getByRole("menuitemradio", { name: /自動で選ぶ/ })).toHaveAttribute("aria-checked", "true");
+  await expect(menu.getByRole("menuitemradio", { name: /自分で選ぶ/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemradio", { name: /機能を使わない/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemradio", { name: /使う前に確認/ })).toHaveCount(0);
+
+  await menu.getByRole("menuitemradio", { name: /自分で選ぶ/ }).click();
+  await expect(mode).toContainText("機能 手動");
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close settings" }).click();
+
+  await mode.click();
+  await menu.getByRole("menuitemradio", { name: /自動で選ぶ/ }).click();
+  await expect(mode).toContainText("機能 自動");
+  await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+});
+
+test("composer per-turn no-tools mode reaches the request and locks during generation without settings writes", async ({ page }) => {
+  const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
+  const settingsWrites: Array<Record<string, unknown>> = [];
+  let releaseSavedTurn: (() => void) | undefined;
+  const savedTurnGate = new Promise<void>((resolve) => { releaseSavedTurn = resolve; });
+  await installDefaultspackApiMocks(page, {
+    modelProfiles: [smokeProfile],
+    applicationBuiltinChat: true,
+    conversationMutator: (conversation) => {
+      conversation.conversation_kind = "chat";
+      conversation.tags = [];
+    },
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
+    onSettingsWrite: (payload) => settingsWrites.push(payload),
+    beforeSavedTurnResponse: () => savedTurnGate,
+  });
+  // Select the production ChatApp through its Host-admitted builtin binding.
+  // The separate declarative conversation_v4 view has different controls.
+  await page.goto("/p/defaults/chat?chat=c-smoke");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await mode.click();
+  await page.getByRole("menuitemradio", { name: /機能を使わない/ }).click();
+  await expect(mode).toContainText("機能 なし");
+  await page.locator("textarea.rumi-composer-textarea").fill("Answer using no external tools.");
+  await expect(mode).toContainText("機能 なし");
+  await page.getByRole("button", { name: "メッセージを送信" }).click();
+
+  try {
+    await expect.poll(() => savedTurnRequests.length).toBe(1);
+    expect(savedTurnRequests[0].request).toMatchObject({
+      conversation_id: "c-smoke",
+      conversation_revision: 1,
+      content: [{ type: "text", text: "Answer using no external tools." }],
+    });
+    expect(savedTurnRequests[0].request.tool_selection).toMatchObject({
+      mode: "none",
+      include: [],
+      must_use: false,
+    });
+    await expect(mode).toBeDisabled();
+    expect(settingsWrites).toEqual([]);
+  } finally {
+    releaseSavedTurn?.();
+  }
+
+  await expect(mode).toBeEnabled();
+  await expect(mode).toContainText("機能 自動");
+  await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+  expect(settingsWrites).toEqual([]);
+});
+
+test("new chat resets the draft tool mode and keeps persistent selected tools", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { initialSelectedToolIds: ["web_search"] });
+  await page.goto("/static/chat");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await mode.click();
+  await page.getByRole("menuitemradio", { name: /機能を使わない/ }).click();
+  await expect(mode).toContainText("機能 なし");
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+
+  await expect(mode).toContainText("機能 自動");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["web_search"]');
+});
+
+test("tool selection controller resets transient draft state while preserving persistent preferences", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+  await page.goto("/static/chat");
+  const snapshots = await page.evaluate(async () => {
+    const fixturePath = "/e2e/tool-selection-controller.fixture.tsx";
+    const fixture = await import(/* @vite-ignore */ fixturePath);
+    return fixture.exerciseToolSelectionControllerReset();
+  });
+
+  expect(snapshots.beforeReset).toMatchObject({
+    effectiveMode: "review",
+    turnModeOverride: "review",
+    turnExclude: [{ kind: "service", id: "github" }],
+    pendingReview: { previewId: "controller-reset-preview" },
+    latestDecision: { selected_tools: ["web_search"] },
+  });
+  expect(snapshots.afterReset).toMatchObject({
+    effectiveMode: "manual",
+    turnModeOverride: null,
+    turnExclude: [],
+    pendingReview: null,
+    latestDecision: null,
+    selectedToolIds: ["web_search"],
+    request: {
+      mode: "manual",
+      include: [{ kind: "service", id: "github" }, { kind: "tool", id: "web_search" }],
+      exclude: [{ kind: "tool", id: "computer_control" }],
+      must_use: true,
+    },
+  });
+  expect(snapshots.afterNewConversation).toMatchObject({
+    effectiveMode: "auto",
+    turnModeOverride: null,
+    turnExclude: [],
+    pendingReview: null,
+    latestDecision: null,
+    selectedToolIds: ["web_search"],
+    request: { mode: "manual", include: [{ kind: "tool", id: "web_search" }], exclude: [], must_use: true },
+  });
+  expect(snapshots.settingsValues).toEqual({ tools: { default_mode: "auto" } });
+});
+
+test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const approval = page.getByRole("button", { name: "アクションの承認方法" });
+  await expect(approval).toContainText("承認");
+
+  await composer.fill("/yolo");
+  await composer.press("Enter");
+  await expect(approval).toContainText("フル");
+  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
+  await expect(page.locator('[data-composer-widget="yolo-status"]')).toHaveCount(0);
+
+  await composer.fill("/yolo");
+  await composer.press("Enter");
+  await expect(approval).toContainText("承認");
+  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
+});
+
+test("new chat structured options open above the compact composer and apply values", async ({ page }) => {
+  await openDefaultspack(page, "/chat", { structuredComposer: true });
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+
+  const options = page.locator('[data-structured-composer="contract_composer"] > button[aria-haspopup="dialog"]');
+  await expect(options).toHaveAttribute("aria-expanded", "false");
+  await expect(options).toContainText("3/4");
+  await options.click();
+
+  const dialog = page.getByRole("dialog", { name: "入力オプション" });
+  await expect(dialog).toBeVisible();
+  await expect(options).toHaveAttribute("aria-expanded", "true");
+  await dialog.getByLabel("補足").fill("比較対象を含める");
+  await dialog.getByRole("button", { name: "入力に反映" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(options).toContainText("4/4");
+
+  const panelHeight = await page.locator(".rumi-composer-main-panel").evaluate((element) => element.getBoundingClientRect().height);
+  expect(panelHeight).toBeLessThanOrEqual(133);
 });
 
 test("browser approval uses the shared user-first decision surface at narrow width", async ({ page }) => {
@@ -1009,7 +2477,7 @@ test("browser approval uses the shared user-first decision surface at narrow wid
 
   const surface = page.locator('[data-approval-source="browser"]');
   await expect(surface).toBeVisible();
-  await expect(surface).toContainText("Rumi が許可を求めています");
+  await expect(surface).toContainText("Tobkiri が許可を求めています");
   await expect(surface).toContainText("https://example.test/long/path");
   await expect(surface).toContainText("必要な理由");
   await expect(surface).toContainText("許可範囲");
@@ -1102,7 +2570,9 @@ test("tool hub service selections can be scoped to the conversation and survive 
   await githubCard.getByTitle("サービスを使う").click();
   await expect(githubCard).toContainText("会話固定");
 
-  await page.reload();
+  // Explicitly revisit the compatibility route. Interactions may normalize
+  // history to /chat, which is intentionally owned by the Pack v4 host.
+  await page.goto("/static/chat");
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
   await page.locator('button[title="機能"]').click();
   await page.getByRole("button", { name: "この会話" }).click();
@@ -1245,8 +2715,11 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
 
   await composer.fill("Use @web");
+  await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
   await composer.press("Enter");
   await composer.fill("Use \\@Web Search");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => escapedRequests.length).toBe(1);
 
@@ -1262,15 +2735,20 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   expect(escapedMetadata.dropped_widgets).toEqual([]);
 });
 
-test("composer removes semantic tool state after its chip is toggled off", async ({ page }) => {
+test("composer renders semantic tool mentions inline and clears state after an escaped edit", async ({ page }) => {
   const chipRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => chipRequests.push(payload),
   });
   const chipComposer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
   await chipComposer.fill("Use @web");
+  await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
   await chipComposer.press("Enter");
-  await page.locator('.rumi-composer-frame button[title="Search the web."]').click();
+  await expect(chipComposer).toHaveValue("Use @Web Search ");
+  await expect(page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention')).toContainText("@Web Search");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["web_search"]');
+  await chipComposer.fill("Use \\@Web Search");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
@@ -1284,7 +2762,7 @@ test("composer removes semantic tool state after its chip is toggled off", async
   expect(chipMetadata.dropped_widgets).toEqual([]);
 });
 
-test("composer reconciles removed service tools before submit", async ({ page }) => {
+test("composer reconciles an escaped service mention before submit", async ({ page }) => {
   const serviceRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => serviceRequests.push(payload),
@@ -1292,8 +2770,16 @@ test("composer reconciles removed service tools before submit", async ({ page })
   const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
 
   await composer.fill("Use @gith");
-  await page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" }).click();
-  await page.getByRole("button", { name: "GitHub Issues の今回指定を解除" }).click();
+  const githubOption = page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" });
+  await expect(githubOption).toBeVisible();
+  await githubOption.click();
+  await expect(composer).toHaveValue("Use @GitHub ");
+  await expect(page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention')).toContainText("@GitHub");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["github_issue_search"]');
+  await composer.fill("Use \\@GitHub");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => serviceRequests.length).toBe(1);
   const serviceRequest = serviceRequests[0];
@@ -1303,6 +2789,31 @@ test("composer reconciles removed service tools before submit", async ({ page })
   expect(serviceMetadata.mentions).toBeUndefined();
   expect(serviceMetadata.selected_tools).toBeUndefined();
   expect(serviceMetadata.dropped_widgets).toEqual([]);
+});
+
+test("slash and mention candidates share one full-width JSON palette", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  await composer.fill("@");
+  const mentions = page.getByTestId("composer-at-mention-candidates");
+  await expect(mentions).toBeVisible();
+  await expect(mentions).toHaveAttribute("data-json-list-template", "composer-at-mention");
+  const mentionBox = await mentions.boundingBox();
+  expect(mentionBox).not.toBeNull();
+
+  await composer.fill("/");
+  const commands = page.getByTestId("composer-slash-command-candidates");
+  await expect(commands).toBeVisible();
+  await expect(commands).toHaveAttribute("data-json-list-template", "composer-slash-command");
+  await expect(commands).toContainText("/coding");
+  const commandBox = await commands.boundingBox();
+  expect(commandBox).not.toBeNull();
+
+  expect(Math.abs(commandBox!.x - mentionBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(commandBox!.width - mentionBox!.width)).toBeLessThanOrEqual(1);
+  await expect(composer).toHaveAttribute("aria-controls", "composer-slash-command-listbox");
+  await expect(composer).toHaveAttribute("aria-activedescendant", "composer-slash-command-option-0");
 });
 
 test("composer removes file mention metadata when its attachment is removed", async ({ page }) => {
@@ -1348,7 +2859,7 @@ test("composer supplementary-plane mention keeps textarea and parser indices ali
   ]);
 });
 
-test("composer keeps a no-space mention disabled after its chip is toggled off", async ({ page }) => {
+test("composer removes a no-space mention atomically without leaving tool state", async ({ page }) => {
   const streamRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
@@ -1357,11 +2868,15 @@ test("composer keeps a no-space mention disabled after its chip is toggled off",
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
-  await page.getByRole("button", { name: "𐐀tool", exact: true }).click();
+  await expect(composer).toHaveValue("Use @𐐀tool ");
+  await expect(page.getByRole("button", { name: "𐐀tool", exact: true })).toHaveCount(0);
+  await composer.press("End");
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("Use ");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
-  await composer.press("End");
-  await composer.pressSequentially(" and summarize the result");
+  await composer.pressSequentially("and summarize the result");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => streamRequests.length).toBe(1);
 
@@ -1373,7 +2888,7 @@ test("composer keeps a no-space mention disabled after its chip is toggled off",
   expect(metadata.dropped_widgets).toEqual([]);
 });
 
-test("editing and reselecting a dismissed no-space mention restores it", async ({ page }) => {
+test("editing and reselecting an atomically deleted no-space mention restores it", async ({ page }) => {
   const streamRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
@@ -1382,7 +2897,10 @@ test("editing and reselecting a dismissed no-space mention restores it", async (
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
-  await page.getByRole("button", { name: "𐐀tool", exact: true }).click();
+  await composer.press("End");
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("Use ");
   await composer.fill("Use again @𐐀");
   await composer.press("Enter");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
@@ -1579,10 +3097,24 @@ test("composer mention keyboard and ARIA contracts stay predictable at Unicode a
   await expect(composer).not.toBeFocused();
 
   await composer.focus();
+  await composer.evaluate((element) => {
+    const end = element.value.length;
+    element.setSelectionRange(end, end);
+  });
+  await expect.poll(() => composer.evaluate((element) => element.selectionStart)).toBe(
+    "@this_candidate_does_not_exist".length,
+  );
   await composer.press("Escape");
   await expect(mentions).toBeHidden();
 
   await composer.fill("@this_candidate_does_not_exist");
+  await composer.evaluate((element) => {
+    const end = element.value.length;
+    element.setSelectionRange(end, end);
+  });
+  await expect.poll(() => composer.evaluate((element) => element.selectionStart)).toBe(
+    "@this_candidate_does_not_exist".length,
+  );
   await composer.press("Shift+Enter");
   await expect(composer).toHaveValue("@this_candidate_does_not_exist\n");
   expect(streamRequests).toHaveLength(0);
@@ -1654,10 +3186,110 @@ test("composer controls are keyboard reachable, visibly named, and at least 44px
     page.getByRole("button", { name: "メッセージを送信" }),
   ]) {
     const box = await control.boundingBox();
+    const label = await control.getAttribute("aria-label");
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(44);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(44);
+    expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(44);
   }
+});
+
+test("composer uses a leading plus menu and accepts clipboard and workspace file drops", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  await page.getByTitle("New Chat").first().click();
+  await expect(page.locator(".rumi-composer-new")).toHaveCSS("filter", "blur(0px)");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const attach = page.getByRole("button", { name: "ファイルを添付" });
+  const composerBox = await composer.boundingBox();
+  const attachBox = await attach.boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(attachBox).not.toBeNull();
+  expect(attachBox!.x).toBeLessThan(composerBox!.x);
+  const composerCenterY = composerBox!.y + composerBox!.height / 2;
+  const attachCenterY = attachBox!.y + attachBox!.height / 2;
+  expect(Math.abs(attachCenterY - composerCenterY)).toBeLessThanOrEqual(1);
+
+  await attach.click();
+  await expect(page.getByRole("menu", { name: "添付メニュー" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /写真とファイルを追加/ })).toBeVisible();
+  await attach.click();
+
+  await composer.evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["clipboard"], "clipboard.txt", { type: "text/plain" }));
+    target.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer,
+    }));
+  });
+  const removeClipboardAttachment = page.getByRole("button", { name: "clipboard.txt を削除" });
+  await expect(removeClipboardAttachment).toBeVisible();
+  const removeAttachmentBox = await removeClipboardAttachment.boundingBox();
+  expect(removeAttachmentBox).not.toBeNull();
+  expect(removeAttachmentBox!.width).toBeGreaterThanOrEqual(44);
+  expect(removeAttachmentBox!.height).toBeGreaterThanOrEqual(44);
+  const attachmentRegion = page.locator("[data-composer-attachment-region]");
+  const composerPanel = page.locator(".rumi-composer-main-panel");
+  await expect(attachmentRegion).toHaveAttribute("data-attachment-state", "expanded");
+  await expect(composerPanel.locator("[data-composer-attachment-region]")).toHaveCount(1);
+  const regionBox = await attachmentRegion.boundingBox();
+  const inputBoxAfterAttachment = await composer.boundingBox();
+  expect(regionBox).not.toBeNull();
+  expect(inputBoxAfterAttachment).not.toBeNull();
+  expect(regionBox!.y).toBeLessThan(inputBoxAfterAttachment!.y);
+  const attachmentTransition = await attachmentRegion.evaluate(
+    (element) => getComputedStyle(element).transitionProperty,
+  );
+  expect(attachmentTransition).toContain("grid-template-rows");
+
+  await page.locator("main").evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["drop"], "workspace-drop.txt", { type: "text/plain" }));
+    target.dispatchEvent(new DragEvent("dragenter", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+  });
+  await expect(page.getByRole("status", { name: "ファイルをここにドロップ" })).toBeVisible();
+  await page.locator("main").evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["drop"], "workspace-drop.txt", { type: "text/plain" }));
+    target.dispatchEvent(new DragEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+  });
+  await expect(page.getByRole("status", { name: "ファイルをここにドロップ" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "workspace-drop.txt を削除" })).toBeVisible();
+  await removeClipboardAttachment.click();
+  await page.getByRole("button", { name: "workspace-drop.txt を削除" }).click();
+  await expect(attachmentRegion).toHaveAttribute("data-attachment-state", "collapsed");
+  await expect.poll(async () => (await attachmentRegion.boundingBox())?.height ?? -1).toBe(0);
+});
+
+test("composer mentions paste portably and delete as one semantic unit", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+
+  await composer.evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", '[@Web Search](plugin://web_search@openai-bundled")');
+    target.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer,
+    }));
+  });
+  await expect(composer).toHaveValue("@Web Search");
+  await expect(page.locator("[data-composer-inline-mentions]")).toContainText("@Web Search");
+
+  await composer.press("End");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("");
+  await expect(page.locator("[data-composer-inline-mentions]")).toHaveCount(0);
 });
 
 test("attachment remove and cancel actions expose 44px visible focus targets", async ({ page }) => {
@@ -1721,7 +3353,7 @@ test("history reload restores localized semantic mention badges", async ({ page 
   await openDefaultspack(page, "/chat");
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 
-  await page.reload();
+  await page.goto("/static/chat");
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 });
 
@@ -1807,17 +3439,48 @@ test("resizable canvas and tool widgets persist width choices", async ({ page })
   expect(storedToolWidth).toBeGreaterThanOrEqual(320);
 });
 
+test("open utility panel never covers the Home composer at desktop breakpoints", async ({ page }) => {
+  await page.setViewportSize({ width: 980, height: 760 });
+  await openDefaultspack(page, "/chat");
+  await page.getByTitle("New Chat").first().click();
+  await page.locator('button[title="機能"]').click();
+
+  const panel = page.locator(".rumi-right-sidebar-panel");
+  const composer = page.locator(".rumi-composer-frame");
+  const send = page.locator(".rumi-send-button");
+  await expect(panel).toBeVisible();
+  await expect(send).toBeVisible();
+
+  const [panelBox, composerBox, sendBox] = await Promise.all([
+    panel.boundingBox(),
+    composer.boundingBox(),
+    send.boundingBox(),
+  ]);
+  expect(panelBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  expect(sendBox).not.toBeNull();
+  expect(composerBox!.x + composerBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+  expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+
+  const sendOwnsCenterPoint = await send.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return hit === element || element.contains(hit);
+  });
+  expect(sendOwnsCenterPoint).toBe(true);
+});
+
 test("model picker search supports @provider filters", async ({ page }) => {
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: /Stub Default/ }).click();
-  const search = page.getByPlaceholder("モデルを検索... @google");
+  const search = page.getByPlaceholder(/モデルを検索/);
   await search.fill("@opencode");
-  await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeVisible();
-  await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
+  await expect(page.getByRole("option", { name: /@OpenCode Go/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /@OpenCode Zen/ })).toBeVisible();
   await expect(page.getByText("Gemini 2.5 Flash")).toBeHidden();
 
-  await search.fill("@opencode zen");
+  await page.getByRole("option", { name: /@OpenCode Zen/ }).click();
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
   await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeHidden();
 
@@ -1830,7 +3493,7 @@ test("model picker keeps unconfigured opencode zen visible for first-run setup",
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: /Stub Default/ }).click();
-  const search = page.getByPlaceholder("モデルを検索... @google");
+  const search = page.getByPlaceholder(/モデルを検索/);
   await search.fill("minimax");
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
 });
@@ -1921,7 +3584,10 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await expect(page.getByText("Range task")).toHaveCount(0);
 
   await page.getByTitle("Settings").last().click();
-  await expect(page.getByRole("heading", { name: "Rumi Control Center" })).toBeVisible();
+  const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(settingsDialog).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings categories" })).toBeVisible();
 });
 
 test("history card drag uses rumi history MIME and sends dropped_widgets metadata", async ({ page }) => {
@@ -2056,6 +3722,10 @@ test("mocked coding cockpit registers approves and connects an MCP server", asyn
   await page.getByTitle("Connect MCP server").click();
 
   const mcpServers = page.getByLabel("MCP servers");
+  const approvals = page.getByLabel("Approval queue");
+  await expect(approvals).toContainText("tool.mcp_connect");
+  await expect(approvals).toContainText("contract_digest");
+  await approvals.getByRole("button", { name: /許可|Approve/ }).click();
   await expect(mcpServers).toContainText("contract_digest");
   await expect(mcpServers).toContainText("approved");
   await expect(page.getByText("MCP connected: contract_digest (1 tools)")).toBeVisible();
@@ -2093,3 +3763,345 @@ test("checkpoint create selects the new snapshot and approved restore settles su
   await expect(checkpoints).toContainText("Restored checkpoint-2");
   await expect(checkpoints).not.toContainText("Approval required");
 });
+
+
+test("actual ChatApp retains missing owner root despite earlier completed reply and explicit local recovery never replays", async ({ page }) => {
+  const storeId = `sha256:${"a".repeat(64)}`;
+  await installDefaultspackApiMocks(page, { applicationChat: true, initialPendingStorage: { scopes: {
+    [storeId]: { "c-smoke": { conversationId: "c-smoke", operationId: "missing-third-turn",
+      savedTurn: true, ownerTurnObserved: true, startedAt: 100, status: "照合中", toolNames: [],
+      submittedText: "使えるtool教えて" } },
+  }, archive: [] } });
+  let reads = 0;
+  let writes = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turns") { reads += 1; return route.fulfill({ json: ok({ turns: [] }) }); }
+    if (target.startsWith("/api/chat/turn") && request.method() === "POST") {
+      writes += 1; return route.fulfill({ status: 500, json: { error: "unexpected mutation" } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/p/defaults/chat?chat=c-smoke&pending=1");
+  await expect.poll(() => reads).toBeGreaterThanOrEqual(3);
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  await expect(composer).toBeEnabled();
+  await composer.fill("A preserved new draft");
+  await composer.press("Enter");
+  expect(writes).toBe(0);
+  await page.getByRole("button", { name: "記録を残して待機を解除", exact: true }).click();
+  await expect(composer).toHaveValue("A preserved new draft");
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+  await page.getByText("未確認の送信記録（1件）", { exact: true }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("rumi-pending-chat-v2:defaults")!).archive[0].request.operationId)).toBe("missing-third-turn");
+  await expect(page.getByText("使えるtool教えて", { exact: true })).toBeVisible();
+  expect(writes).toBe(0);
+});
+
+test("actual ChatApp exact pre-execution refusal restores draft without another start", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let starts = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      return route.fulfill({ status: 409, json: { success: false, error: "execution did not start", data: {
+        host_operation_api_version: "io.tobkiri.host.operation.v1", state: "error",
+        code: "SAVED_TURN_NOT_STARTED", retryable: false, write_set: [],
+        request_id: request.headers()["x-tobkiri-request-id"],
+      } } });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: [] }) });
+    return route.fallback();
+  });
+  await page.goto("/p/defaults/chat?chat=c-smoke");
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  await composer.fill("A refused draft to preserve");
+  await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+  await expect.poll(() => starts).toBe(1);
+  await expect(composer).toHaveValue("A refused draft to preserve");
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "記録を残して待機を解除", exact: true })).toHaveCount(0);
+  expect(starts).toBe(1);
+});
+
+
+test("actual ChatApp switches saved stores without locking foreign pending or applying late old completion", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let storeId = `sha256:${"a".repeat(64)}`;
+  let healthReads = 0;
+  await page.route("**/health", (route) => { healthReads += 1; return route.fulfill({ json: ok({ status: "ok", saved_turn_store_id: storeId }) }); });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let starts = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      const input = request.postDataJSON().request;
+      await gate;
+      return route.fulfill({ json: ok({ status: "completed", turn: {
+        id: input.turn_id, conversation_id: input.conversation_id, status: "completed", revision: 2,
+      } }) });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: [] }) });
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat?chat=c-smoke");
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Store A original request");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    storeId = `sha256:${"b".repeat(64)}`;
+    const beforeHealth = healthReads;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => healthReads).toBeGreaterThan(beforeHealth);
+    await expect(composer).toBeEnabled();
+    await composer.fill("Store B untouched draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    await expect(page.getByText("未確認の送信記録（1件）", { exact: true })).toBeVisible();
+    const oldResponse = page.waitForResponse((response) => requestTarget(new URL(response.url())) === "/api/chat/turn");
+    release(); await oldResponse;
+    await expect(composer).toHaveValue("Store B untouched draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    expect(starts).toBe(1);
+  } finally { release(); }
+});
+
+test("actual ChatApp hung unregistered start becomes explicit recovery without replay and rejects its late completion", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let starts = 0;
+  let reads = 0;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const target = requestTarget(new URL(request.url()));
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1;
+      const input = request.postDataJSON().request;
+      await gate;
+      return route.fulfill({ json: ok({ status: "completed", turn: {
+        id: input.turn_id, conversation_id: input.conversation_id, status: "completed", revision: 2,
+      } }) });
+    }
+    if (target === "/api/chat/turns") { reads += 1; return route.fulfill({ json: ok({ turns: [] }) }); }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/p/defaults/chat?chat=c-smoke");
+    await page.clock.install();
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Hung original draft");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    await expect(composer).toBeDisabled();
+    await expect(page.getByRole("button", { name: "記録を残して待機を解除", exact: true })).toHaveCount(0);
+    await page.clock.runFor(17_000);
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(composer).toBeEnabled();
+    await composer.fill("Newer local draft");
+    await composer.press("Enter");
+    expect(starts).toBe(1);
+    await page.getByRole("button", { name: "記録を残して待機を解除", exact: true }).click();
+    const response = page.waitForResponse((result) => requestTarget(new URL(result.url())) === "/api/chat/turn");
+    release(); await response;
+    await expect(composer).toHaveValue("Newer local draft");
+    await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeEnabled();
+    expect(starts).toBe(1);
+  } finally { release(); }
+});
+
+
+test("actual ChatApp sends the selected finite tool and displays authenticated live start/result before canonical saved logs", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true,
+    initialSelectedToolIds: ["calculator"], initialSettingsValues: { tools: { default_mode: "manual" } } });
+  const base = { ...smokeConversation(), conversation_revision: 1, messages: [], tags: [], metadata: {} };
+  const userId = `message:${"a".repeat(64)}`;
+  const assistantId = `message:${"b".repeat(64)}`;
+  const stageTool = "c".repeat(64);
+  const stageAi = "d".repeat(64);
+  const inputDigest = `sha256:${"a".repeat(64)}`;
+  const requestId = "saved-turn.live-tool-fixture";
+  let operationId = "";
+  let starts = 0;
+  let progressReads = 0;
+  let toolComplete = false;
+  let aiStage = false;
+  let saved = false;
+  let submitted: SavedTurnRequest | null = null;
+  let release!: () => void;
+  const startGate = new Promise<void>((resolve) => { release = resolve; });
+  const result = JSON.stringify({ status: "success", result: 3, error: null });
+  const reference = () => ({ conversation_id: base.id, conversation_revision: 3, user_message_id: userId,
+    assistant_message_id: assistantId, outcome_digest: `sha256:${"e".repeat(64)}` });
+  const turn = () => ({ id: operationId, conversation_id: base.id, request_id: requestId, input_digest: inputDigest,
+    conversation_revision: 1, status: saved ? "completed" : "running", revision: saved ? 3 : 2,
+    ...(saved ? { result_reference: reference() } : {}) });
+  const user = () => ({ id: userId, conversation_id: base.id, role: "user", created_at: Date.now(),
+    content: [{ type: "text", text: "Calculate 1+2 using calculator" }], metadata: { turn_id: operationId } });
+  const conversation = () => operationId ? { ...base, conversation_revision: saved ? 3 : 2,
+    current_node_id: saved ? assistantId : userId, messages: [user(), ...(saved ? [{
+      id: assistantId, conversation_id: base.id, role: "assistant", created_at: Date.now(), finish_reason: "stop",
+      content: [{ type: "text", text: "Canonical calculator answer 3" }], metadata: { turn_id: operationId },
+      tool_logs: [{ tool_name: "calculator", tool_call_id: "call-calculator", arguments: { expression: "1+2" }, result }],
+    }] : [])] } : base;
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request(); const url = new URL(request.url()); const target = requestTarget(url);
+    if (target === "/api/tools/catalog") return route.fulfill({ json: ok({ services: [], count: 1, tools: [{
+      tool_id: "calculator", service_id: "local", service_label: "Local", name: "Calculator",
+      action_class: "read", connection_status: "connected",
+    }] }) });
+    if (target === "/api/chat/conversation" && request.method() === "GET") return route.fulfill({ json: ok(conversation()) });
+    if (target === "/api/chat/conversations" && request.method() === "GET") return route.fulfill({ json: ok({ conversations: [{ ...base, messages: [] }], total: 1, store_revision: 1 }) });
+    if (target === "/api/chat/turn" && request.method() === "POST") {
+      starts += 1; submitted = request.postDataJSON().request; operationId = submitted!.turn_id;
+      await startGate;
+      return route.fulfill({ json: ok({ status: "completed", turn: turn() }) });
+    }
+    if (target === "/api/chat/turns") return route.fulfill({ json: ok({ turns: operationId ? [turn()] : [] }) });
+    if (target === "/api/chat/turn/reconcile") return route.fulfill({ json: ok({ status: saved ? "completed" : "reconciliation_required", turn: turn() }) });
+    if (target === "/api/chat/turn/events") return route.fulfill({ json: ok({
+      turn_id: operationId, operation_id: operationId, conversation_id: base.id, request_id: requestId,
+      turn_revision: turn().revision, status: turn().status, turn: turn(), events: [],
+      terminal: saved ? { turn_id: operationId, operation_id: operationId, conversation_id: base.id,
+        request_id: requestId, turn_revision: 3, status: "completed", result_reference: reference() } : null,
+    }) });
+    if (target === "/api/chat/turn/progress") {
+      progressReads += 1;
+      const operation = decodeURIComponent(url.pathname.split("/api/contracts/defaultspack/")[1] ?? url.pathname);
+      const query = new URL(operation.slice(operation.indexOf(" ") + 1), url.origin).searchParams;
+      const cursor = Number(query.get("cursor") ?? 0);
+      const stage = aiStage ? stageAi : stageTool;
+      const matchingStage = query.get("progress_id") === stage;
+      const after = matchingStage ? cursor : 0;
+      const events = aiStage ? [{ cursor: 1, event: { type: "text_delta", delta: "Provisional calculator answer" } }] : [
+        { cursor: 1, event: { type: "tool_started", tool_id: "calculator", tool_call_id: "call-calculator", arguments: { expression: "1+2" } } },
+        ...(toolComplete ? [{ cursor: 2, event: { type: "tool_completed", tool_id: "calculator", tool_call_id: "call-calculator", status: "success", content: result } }] : []),
+      ];
+      const fresh = events.filter((item) => item.cursor > after);
+      return route.fulfill({ json: ok({ version: "tobkiri.turn-progress.v1", progress_id: stage, provisional: true,
+        binding: { turn_id: operationId, conversation_id: base.id, parent_id: userId, request_id: requestId,
+          conversation_revision: 2, input_digest: inputDigest, ai_input_digest: `sha256:${stage}` },
+        events: fresh, cursor: fresh.at(-1)?.cursor ?? after, provider_complete: !aiStage && toolComplete,
+        expires_at_ms: expiry, canonical_turn_status: "running",
+      }) });
+    }
+    return route.fallback();
+  });
+  const expiry = Date.now() + 110_000;
+  try {
+    await page.goto(`/p/defaults/chat?chat=${base.id}`);
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Calculate 1+2 using calculator");
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect.poll(() => starts).toBe(1);
+    expect(submitted?.tool_selection).toMatchObject({ mode: "manual", include: [{ kind: "tool", id: "calculator" }] });
+    await expect.poll(() => progressReads).toBeGreaterThan(0);
+    const history = page.getByRole("region", { name: "ツール履歴", exact: true });
+    await expect(history).toBeVisible();
+    await expect(history).toContainText("作業中");
+    toolComplete = true;
+    await expect(history).not.toContainText("作業中");
+    aiStage = true;
+    await expect(page.getByText("Provisional calculator answer", { exact: true })).toBeVisible();
+    await expect(history).toHaveCount(1);
+    saved = true; release();
+    await expect(page.getByText("Canonical calculator answer 3", { exact: true })).toBeVisible();
+    await expect(page.getByText("Provisional calculator answer", { exact: true })).toHaveCount(0);
+    await expect(history).toHaveCount(1);
+    await history.getByRole("button", { name: /作業状況を開く/ }).click();
+    await expect(history).toContainText("3");
+    expect(starts).toBe(1);
+  } finally { release(); }
+});
+
+
+for (const tabsEnabled of [true, false]) {
+  test(`Kanban and Desktops sidebar routes stay synchronized with tabs enabled=${tabsEnabled}`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true,
+      initialSettingsValues: { general: { workspace_tabs_enabled: tabsEnabled } } });
+    const requests: string[] = [];
+    const desktops = frontendFixtureBinding("desktopsList");
+    const providers = frontendFixtureBinding("runtimeProviders");
+    const templates = frontendFixtureBinding("sandboxTemplates");
+    const bootstrap = frontendFixtureBinding("kanbanCreate");
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const target = frontendFixtureRequest(route.request().url(), route.request().method());
+      if (target?.contractId === "tobkiri.resource.kanban.v1" || target?.contractId === "tobkiri.action.kanban.v1") {
+        requests.push(target.contributionId);
+        return route.fulfill({ status: 404, json: { status: "error", error: { code: "CONTRACT_OPERATION_UNKNOWN", message: "Kanban endpoint unavailable" } } });
+      }
+      if (matchesFrontendFixtureBinding(target, desktops)) {
+        requests.push(desktops.contributionId);
+        return fulfill(route, { desktops: [] });
+      }
+      if (matchesFrontendFixtureBinding(target, providers)) return fulfill(route, { providers: [] });
+      if (matchesFrontendFixtureBinding(target, templates)) return fulfill(route, { templates: [] });
+      return route.fallback();
+    });
+    await page.goto("/p/defaults/chat");
+    await page.getByRole("button", { name: "Kanban", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/kanban$/);
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Desktops", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Kanban", exact: true }).click();
+    await page.getByRole("button", { name: "Desktops", exact: true }).click();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    if (tabsEnabled) {
+      await expect(page.getByRole("tab", { name: "Desktops", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Desktops", exact: true })).toHaveCount(1);
+    }
+    await page.goBack();
+    await expect(page).toHaveURL(/\/p\/defaults\/kanban$/);
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/p\/defaults\/desktops$/);
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Desktops workspace" })).toBeVisible();
+    expect(requests).toContain(desktops.contributionId);
+    expect(requests).not.toContain(bootstrap.contributionId);
+  });
+}
+
+for (const status of [401, 404, 503]) {
+  test(`Kanban distinguishes endpoint ${status} from empty data and recovers on Retry`, async ({ page }) => {
+    await installDefaultspackApiMocks(page, { applicationChat: true });
+    const list = frontendFixtureBinding("kanbanList");
+    const bootstrap = frontendFixtureBinding("kanbanCreate");
+    let available = false;
+    let bootstrapCalls = 0;
+    const board = { revision: 1,
+      board: { board_id: "local-board", title: "All Tobkiri Runs", scope_type: "global", scope_id: "default" },
+      columns: [{ column_id: "todo", board_id: "local-board", title: "Backlog", position: 0 }], cards: [], events: [] };
+    await page.route("**/api/contracts/defaultspack/**", async (route) => {
+      const target = frontendFixtureRequest(route.request().url(), route.request().method());
+      if (matchesFrontendFixtureBinding(target, list)) return available
+        ? fulfill(route, { revision: 0, boards: [] })
+        : route.fulfill({ status, json: { status: "error", error: { message: `Kanban HTTP ${status}` } } });
+      if (matchesFrontendFixtureBinding(target, bootstrap)) {
+        bootstrapCalls += 1;
+        expect(route.request().postDataJSON()).toMatchObject({ expected_revision: 0, scope_type: "global", scope_id: "default" });
+        return fulfill(route, board);
+      }
+      return route.fallback();
+    });
+    await page.goto("/p/defaults/kanban");
+    await expect(page.getByText("Kanban is unavailable", { exact: true })).toBeVisible();
+    expect(bootstrapCalls).toBe(0);
+    available = true;
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("listitem", { name: "Backlog, 0 cards" })).toBeVisible();
+    expect(bootstrapCalls).toBe(1);
+    await page.reload();
+    await expect(page.getByRole("listitem", { name: "Backlog, 0 cards" })).toBeVisible();
+  });
+}

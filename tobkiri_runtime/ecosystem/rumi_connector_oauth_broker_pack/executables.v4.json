@@ -1,0 +1,110 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:d244720fb373f3dc825c81ac0343acb5580b1a6cd40ae753a3cd0a704ee4f04f",
+  "pack_id": "rumi_connector_oauth_broker_pack",
+  "source_identity": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_oauth_broker_pack.connector-oauth.action",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "implementation_path": "runtime/broker.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.connector.oauth.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-action",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:295bd4d95e33a945a2d54b9924bfdc91a533caf4233d74ca5d607667829a5ad3",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_oauth_broker_pack.connector-oauth.action.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_oauth_broker_pack.connector-oauth.callback",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "implementation_path": "runtime/broker.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.transport.connector.oauth.callback.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-callback",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:bfa6d64858a26620c6cbe913a02eb408b6990cb412b2ec17d6a67e52a9e04a72",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_oauth_broker_pack.connector-oauth.callback.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_oauth_broker_pack.connector-oauth.resource",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "implementation_path": "runtime/broker.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.connector.oauth.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:354355b822d7ed764828bbf3e73ef06a6955c2214398eaf4932ce5ea985bea83",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_oauth_broker_pack.connector-oauth.resource.python"
+    }
+  ]
+}

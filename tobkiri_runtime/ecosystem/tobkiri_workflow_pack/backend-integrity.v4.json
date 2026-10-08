@@ -1,0 +1,19 @@
+{
+  "files": {
+    "core_runtime/workflow_v4/__init__.py": "sha256:da40d71dce8a893305036c767481cd60fad1675fe2ca91e603ec899d8e77d16e",
+    "core_runtime/workflow_v4/attempt_adapter.py": "sha256:e4adc1736522fc97f05211d4839556b71ed76a0bcf45c9c8263c7f525753e53d",
+    "core_runtime/workflow_v4/attempt_binding.py": "sha256:c97d1969d4b4f88f2183bd5f459ec5a8a5e1d0049cca23312567c4d8bfc6d9ad",
+    "core_runtime/workflow_v4/attempt_port.py": "sha256:54242acccaa2e476b53080a3cab0d36e7c1596358cf02fba74df04b0716ae40f",
+    "core_runtime/workflow_v4/attempt_service.py": "sha256:d2948dbdc7d2569bcec681db376e10be65bc4729a84e693b3a6ac11edabb0688",
+    "core_runtime/workflow_v4/attempt_store.py": "sha256:2ed3677317fbb6ed45386b3b2785e6a7a76d75b04e306ad036e2eb1c3bd20650",
+    "core_runtime/workflow_v4/engine.py": "sha256:4ee4423fa5e02b6bbc0d7020a83f81a305b6395d612cbde141de9d588ef63ccd",
+    "core_runtime/workflow_v4/integration.py": "sha256:830b504b708e55da19683430f436eb0c6e572e3cbece47f59cc85f79ad515ffa",
+    "core_runtime/workflow_v4/models.py": "sha256:b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684",
+    "core_runtime/workflow_v4/protocols.py": "sha256:1c775cd87cbe80f5090204d639a7ece2c2a557d6cad2c975b91d7947fe254219",
+    "core_runtime/workflow_v4/provider.py": "sha256:d25452a46bfa2d2431e8cd88fae54d2b1bde0272ff2b99ce1d4a3b1522874171",
+    "core_runtime/workflow_v4/selected_run.py": "sha256:c6fd7b5d1fb28d9d5bf530bb573e4a5e8f9d9f4b277a65e3fd18929053e1f027",
+    "core_runtime/workflow_v4/store.py": "sha256:fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea",
+    "core_runtime/workflow_v4/templates.py": "sha256:b81e5e592b2927010c89075208afaa003671264820a22cf97fbf005be2d281b0"
+  },
+  "schema": "io.tobkiri.workflow-backend-integrity.v4"
+}

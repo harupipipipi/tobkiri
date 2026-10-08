@@ -1,0 +1,86 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "acceptance.cli.application.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "pure"
+          ],
+          "error_schema_digest": "sha256:776804b9ce30130df4f8b4cdef802002e4d9d81df6a5e4a641fc5da7b5a55ac7",
+          "idempotency": {
+            "mode": "replayable"
+          },
+          "input_schema_digest": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+          "operation_id": "launch",
+          "output_schema_digest": "sha256:70b25186b375e1b6912d546ee549a92336d34745a23f2215334d0d55cbf72c52",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "acceptance.cli.application",
+      "provenance": {
+        "evidence": [],
+        "generator": "acceptance.cli.application.author",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "working-tree",
+        "repository_tree": "d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+        "source_kind": "repository",
+        "source_path": "source/application.py"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {},
+        "provider_id": "acceptance.cli.application",
+        "required_capabilities": [],
+        "security": "public"
+      },
+      "revision_digest": "sha256:e6f3cadc3ebb8f238e77b5e488892b5377717c6ecc0152124189b225a9e13da0",
+      "schema_catalog": {
+        "sha256:70b25186b375e1b6912d546ee549a92336d34745a23f2215334d0d55cbf72c52": {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "const": "transcript.render"
+            },
+            "presentation": {
+              "const": "terminal_stdio"
+            }
+          },
+          "required": [
+            "presentation",
+            "command_id"
+          ],
+          "type": "object"
+        },
+        "sha256:776804b9ce30130df4f8b4cdef802002e4d9d81df6a5e4a641fc5da7b5a55ac7": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "type": "object"
+        },
+        "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "status": "draft",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "acceptance.cli.application",
+  "source_identity": "sha256:39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3"
+}

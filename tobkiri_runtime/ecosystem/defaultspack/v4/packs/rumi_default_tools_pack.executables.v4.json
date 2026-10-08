@@ -1,0 +1,1863 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_default_tools_pack",
+  "source_identity": "sha256:449c71687649d01d15f8dbce1cce3e25bd70c3bb0ff81485a09d359b616d7205",
+  "variants": [
+    {
+      "variant_id": "rumi_default_tools_pack.calculator.python",
+      "function_id": "rumi_default_tools_pack.calculator",
+      "implementation_path": "runtime/calculator.py",
+      "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+          "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.chat-message-prepare.service.python",
+      "function_id": "rumi_default_tools_pack.chat-message-prepare.service",
+      "implementation_path": "runtime/chat_messages.py",
+      "implementation_digest": "sha256:e177c9eab537e64c122c40553ffefaa3b572a79d80f1666bd6a6c3163a66b0ca",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.chat.message.send.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:bfe0ebb6d974c58451188c11319297634fc62a55a0790242e2b66fe52b9dadd3",
+          "operation_id": "rumi_default_tools_pack.chat-message-prepare",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "maxLength": 16384,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "delivery": {
+                    "enum": [
+                      "steer",
+                      "interrupt"
+                    ]
+                  },
+                  "invocation_key": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_turn_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_kind": {
+                    "enum": [
+                      "chat",
+                      "group"
+                    ]
+                  },
+                  "tool_call_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profile_id",
+                  "source_conversation_id",
+                  "source_turn_id",
+                  "target_id",
+                  "tool_call_id",
+                  "invocation_key",
+                  "target_kind",
+                  "content",
+                  "delivery"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "plan_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recipient_ids": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "request_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "snapshot": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "expires_at": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "const": "tobkiri.chat.reference.snapshot.v1"
+                          },
+                          "next_cursor": {
+                            "type": "null"
+                          },
+                          "profile_id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "project_revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "references": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "conversation_ids": {
+                                  "items": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                    "type": "string"
+                                  },
+                                  "maxItems": 256,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "chat",
+                                    "group"
+                                  ]
+                                },
+                                "label": {
+                                  "maxLength": 256,
+                                  "type": "string"
+                                },
+                                "member_count": {
+                                  "maximum": 4096,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "membership_complete": {
+                                  "type": "boolean"
+                                },
+                                "snapshot_digest": {
+                                  "pattern": "^sha256:[0-9a-f]{64}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id",
+                                "label",
+                                "conversation_ids",
+                                "snapshot_digest",
+                                "member_count",
+                                "membership_complete"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "snapshot_time": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "store_revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "truncated": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "profile_id",
+                          "store_revision",
+                          "project_revision",
+                          "snapshot_time",
+                          "expires_at",
+                          "references",
+                          "next_cursor",
+                          "truncated"
+                        ],
+                        "type": "object"
+                      },
+                      "snapshot_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "source_conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_turn_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_states": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "conversation_revision": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "request_id": {
+                              "maxLength": 256,
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "status": {
+                              "enum": [
+                                "idle",
+                                "queued",
+                                "running",
+                                "waiting"
+                              ]
+                            },
+                            "turn_id": {
+                              "maxLength": 256,
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "conversation_id",
+                            "conversation_revision",
+                            "turn_id",
+                            "request_id",
+                            "revision",
+                            "status"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
+                      },
+                      "version": {
+                        "const": "tobkiri.chat.message-plan.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "request_digest",
+                      "snapshot",
+                      "snapshot_digest",
+                      "recipient_ids",
+                      "source_conversation_id",
+                      "source_turn_id",
+                      "profile_id",
+                      "content_digest",
+                      "plan_digest",
+                      "target_states"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "maxLength": 16384,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "delivery": {
+                        "enum": [
+                          "steer",
+                          "interrupt"
+                        ]
+                      },
+                      "invocation_key": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_turn_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_kind": {
+                        "enum": [
+                          "chat",
+                          "group"
+                        ]
+                      },
+                      "tool_call_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "profile_id",
+                      "source_conversation_id",
+                      "source_turn_id",
+                      "target_id",
+                      "tool_call_id",
+                      "invocation_key",
+                      "target_kind",
+                      "content",
+                      "delivery"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "output_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "content_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "plan_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "recipient_ids": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "snapshot": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expires_at": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "tobkiri.chat.reference.snapshot.v1"
+                      },
+                      "next_cursor": {
+                        "type": "null"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "project_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "references": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_ids": {
+                              "items": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "chat",
+                                "group"
+                              ]
+                            },
+                            "label": {
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "member_count": {
+                              "maximum": 4096,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "membership_complete": {
+                              "type": "boolean"
+                            },
+                            "snapshot_digest": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "label",
+                            "conversation_ids",
+                            "snapshot_digest",
+                            "member_count",
+                            "membership_complete"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "snapshot_time": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "store_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "truncated": {
+                        "const": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "store_revision",
+                      "project_revision",
+                      "snapshot_time",
+                      "expires_at",
+                      "references",
+                      "next_cursor",
+                      "truncated"
+                    ],
+                    "type": "object"
+                  },
+                  "snapshot_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "source_conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_turn_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_states": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "conversation_revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "request_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "revision": {
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "idle",
+                            "queued",
+                            "running",
+                            "waiting"
+                          ]
+                        },
+                        "turn_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "conversation_id",
+                        "conversation_revision",
+                        "turn_id",
+                        "request_id",
+                        "revision",
+                        "status"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "version": {
+                    "const": "tobkiri.chat.message-plan.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "request_digest",
+                  "snapshot",
+                  "snapshot_digest",
+                  "recipient_ids",
+                  "source_conversation_id",
+                  "source_turn_id",
+                  "profile_id",
+                  "content_digest",
+                  "plan_digest",
+                  "target_states"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "deliveries": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "assistant_message_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assistant_message_saved": {
+                          "type": "boolean"
+                        },
+                        "delivery": {
+                          "enum": [
+                            "steer",
+                            "interrupt"
+                          ]
+                        },
+                        "delivery_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "guidance_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "interrupt_status": {
+                          "enum": [
+                            "stopped_confirmed",
+                            "idle_noop",
+                            "stop_unconfirmed",
+                            null
+                          ]
+                        },
+                        "interrupted_turn_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "parent_turn_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "reason": {
+                          "enum": [
+                            "target_stop_owner_unavailable",
+                            "target_stop_unconfirmed",
+                            "target_guidance_pending",
+                            "target_state_changed",
+                            "delivery_not_started"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "reserved",
+                            "queued",
+                            "running",
+                            "waiting",
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "not_started",
+                            "reconciliation_required",
+                            "stop_required",
+                            "unsupported"
+                          ]
+                        },
+                        "target_conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "target_turn_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "user_message_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "user_message_saved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "delivery_id",
+                        "profile_id",
+                        "target_conversation_id",
+                        "target_turn_id",
+                        "user_message_id",
+                        "assistant_message_id",
+                        "guidance_id",
+                        "parent_turn_id",
+                        "status",
+                        "user_message_saved",
+                        "assistant_message_saved",
+                        "delivery",
+                        "interrupted_turn_id",
+                        "interrupt_status"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "plan_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "completed",
+                      "queued",
+                      "partial",
+                      "reconciliation_required"
+                    ]
+                  },
+                  "version": {
+                    "const": "tobkiri.chat.message-delivery.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "plan_digest",
+                  "status",
+                  "deliveries"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.chat-message-send.service.python",
+      "function_id": "rumi_default_tools_pack.chat-message-send.service",
+      "implementation_path": "runtime/chat_messages.py",
+      "implementation_digest": "sha256:e177c9eab537e64c122c40553ffefaa3b572a79d80f1666bd6a6c3163a66b0ca",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.chat.message.send.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:bfe0ebb6d974c58451188c11319297634fc62a55a0790242e2b66fe52b9dadd3",
+          "operation_id": "rumi_default_tools_pack.chat-message-send",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "maxLength": 16384,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "delivery": {
+                    "enum": [
+                      "steer",
+                      "interrupt"
+                    ]
+                  },
+                  "invocation_key": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_turn_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_kind": {
+                    "enum": [
+                      "chat",
+                      "group"
+                    ]
+                  },
+                  "tool_call_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profile_id",
+                  "source_conversation_id",
+                  "source_turn_id",
+                  "target_id",
+                  "tool_call_id",
+                  "invocation_key",
+                  "target_kind",
+                  "content",
+                  "delivery"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "plan_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recipient_ids": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "request_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "snapshot": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "expires_at": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "const": "tobkiri.chat.reference.snapshot.v1"
+                          },
+                          "next_cursor": {
+                            "type": "null"
+                          },
+                          "profile_id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "project_revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "references": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "conversation_ids": {
+                                  "items": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                    "type": "string"
+                                  },
+                                  "maxItems": 256,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "chat",
+                                    "group"
+                                  ]
+                                },
+                                "label": {
+                                  "maxLength": 256,
+                                  "type": "string"
+                                },
+                                "member_count": {
+                                  "maximum": 4096,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "membership_complete": {
+                                  "type": "boolean"
+                                },
+                                "snapshot_digest": {
+                                  "pattern": "^sha256:[0-9a-f]{64}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id",
+                                "label",
+                                "conversation_ids",
+                                "snapshot_digest",
+                                "member_count",
+                                "membership_complete"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "snapshot_time": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "store_revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "truncated": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "profile_id",
+                          "store_revision",
+                          "project_revision",
+                          "snapshot_time",
+                          "expires_at",
+                          "references",
+                          "next_cursor",
+                          "truncated"
+                        ],
+                        "type": "object"
+                      },
+                      "snapshot_digest": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "source_conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_turn_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_states": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "conversation_revision": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "request_id": {
+                              "maxLength": 256,
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "status": {
+                              "enum": [
+                                "idle",
+                                "queued",
+                                "running",
+                                "waiting"
+                              ]
+                            },
+                            "turn_id": {
+                              "maxLength": 256,
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "conversation_id",
+                            "conversation_revision",
+                            "turn_id",
+                            "request_id",
+                            "revision",
+                            "status"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
+                      },
+                      "version": {
+                        "const": "tobkiri.chat.message-plan.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "request_digest",
+                      "snapshot",
+                      "snapshot_digest",
+                      "recipient_ids",
+                      "source_conversation_id",
+                      "source_turn_id",
+                      "profile_id",
+                      "content_digest",
+                      "plan_digest",
+                      "target_states"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "maxLength": 16384,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "delivery": {
+                        "enum": [
+                          "steer",
+                          "interrupt"
+                        ]
+                      },
+                      "invocation_key": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source_turn_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_kind": {
+                        "enum": [
+                          "chat",
+                          "group"
+                        ]
+                      },
+                      "tool_call_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "profile_id",
+                      "source_conversation_id",
+                      "source_turn_id",
+                      "target_id",
+                      "tool_call_id",
+                      "invocation_key",
+                      "target_kind",
+                      "content",
+                      "delivery"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "output_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "content_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "plan_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "recipient_ids": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "snapshot": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expires_at": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "tobkiri.chat.reference.snapshot.v1"
+                      },
+                      "next_cursor": {
+                        "type": "null"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "project_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "references": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_ids": {
+                              "items": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "chat",
+                                "group"
+                              ]
+                            },
+                            "label": {
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "member_count": {
+                              "maximum": 4096,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "membership_complete": {
+                              "type": "boolean"
+                            },
+                            "snapshot_digest": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "label",
+                            "conversation_ids",
+                            "snapshot_digest",
+                            "member_count",
+                            "membership_complete"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "snapshot_time": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "store_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "truncated": {
+                        "const": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "store_revision",
+                      "project_revision",
+                      "snapshot_time",
+                      "expires_at",
+                      "references",
+                      "next_cursor",
+                      "truncated"
+                    ],
+                    "type": "object"
+                  },
+                  "snapshot_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "source_conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_turn_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_states": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "conversation_revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "request_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "revision": {
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "idle",
+                            "queued",
+                            "running",
+                            "waiting"
+                          ]
+                        },
+                        "turn_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "conversation_id",
+                        "conversation_revision",
+                        "turn_id",
+                        "request_id",
+                        "revision",
+                        "status"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "version": {
+                    "const": "tobkiri.chat.message-plan.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "request_digest",
+                  "snapshot",
+                  "snapshot_digest",
+                  "recipient_ids",
+                  "source_conversation_id",
+                  "source_turn_id",
+                  "profile_id",
+                  "content_digest",
+                  "plan_digest",
+                  "target_states"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "deliveries": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "assistant_message_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assistant_message_saved": {
+                          "type": "boolean"
+                        },
+                        "delivery": {
+                          "enum": [
+                            "steer",
+                            "interrupt"
+                          ]
+                        },
+                        "delivery_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "guidance_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "interrupt_status": {
+                          "enum": [
+                            "stopped_confirmed",
+                            "idle_noop",
+                            "stop_unconfirmed",
+                            null
+                          ]
+                        },
+                        "interrupted_turn_id": {
+                          "maxLength": 256,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "parent_turn_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "reason": {
+                          "enum": [
+                            "target_stop_owner_unavailable",
+                            "target_stop_unconfirmed",
+                            "target_guidance_pending",
+                            "target_state_changed",
+                            "delivery_not_started"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "reserved",
+                            "queued",
+                            "running",
+                            "waiting",
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "not_started",
+                            "reconciliation_required",
+                            "stop_required",
+                            "unsupported"
+                          ]
+                        },
+                        "target_conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "target_turn_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "user_message_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "user_message_saved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "delivery_id",
+                        "profile_id",
+                        "target_conversation_id",
+                        "target_turn_id",
+                        "user_message_id",
+                        "assistant_message_id",
+                        "guidance_id",
+                        "parent_turn_id",
+                        "status",
+                        "user_message_saved",
+                        "assistant_message_saved",
+                        "delivery",
+                        "interrupted_turn_id",
+                        "interrupt_status"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "plan_digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "completed",
+                      "queued",
+                      "partial",
+                      "reconciliation_required"
+                    ]
+                  },
+                  "version": {
+                    "const": "tobkiri.chat.message-delivery.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "plan_digest",
+                  "status",
+                  "deliveries"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 300000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.chat-message-tool.python",
+      "function_id": "rumi_default_tools_pack.chat-message-tool",
+      "implementation_path": "runtime/chat_messages.py",
+      "implementation_digest": "sha256:e177c9eab537e64c122c40553ffefaa3b572a79d80f1666bd6a6c3163a66b0ca",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+          "operation_id": "rumi_default_tools_pack.chat-message-operation",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 300000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.chat-reference-tools.python",
+      "function_id": "rumi_default_tools_pack.chat-reference-tools",
+      "implementation_path": "runtime/chat_reference_tools.py",
+      "implementation_digest": "sha256:5a7acb6684a1d3630bbb7ac1772017719d019080734379b7be40743922d61410",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+          "operation_id": "rumi_default_tools_pack.chat-reference-operation",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.file-create-prepare.service.python",
+      "function_id": "rumi_default_tools_pack.file-create-prepare.service",
+      "implementation_path": "runtime/file_create.py",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+          "operation_id": "rumi_default_tools_pack.file-create-prepare",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.file-create-tool.python",
+      "function_id": "rumi_default_tools_pack.file-create-tool",
+      "implementation_path": "runtime/file_create.py",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+          "operation_id": "rumi_default_tools_pack.file-create-operation",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.file-create.service.python",
+      "function_id": "rumi_default_tools_pack.file-create.service",
+      "implementation_path": "runtime/file_create.py",
+      "implementation_digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.create.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+          "operation_id": "rumi_default_tools_pack.file-create",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tools_pack.files-read.python",
+      "function_id": "rumi_default_tools_pack.files-read",
+      "implementation_path": "runtime/files.py",
+      "implementation_digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+          "operation_id": "rumi_default_tools_pack.files-read-operation",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:86bd597eb67ca0715e1bc875afc6d57d9405d8ebbd6ec91e240f35f759826e58",
+  "catalog_digest": "sha256:dea3592a3e35979a38b2a4dbefe4c1e3d3aa936a65b91596fca94d84c8243f7a"
+}

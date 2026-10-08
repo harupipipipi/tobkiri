@@ -1,0 +1,141 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "tobkiri.ui.surface-intent.v1"
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "intent_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "event": {
+      "enum": [
+        "activate",
+        "retry",
+        "dismiss",
+        "cancel",
+        "submit",
+        "select",
+        "confirm",
+        "decline",
+        "close"
+      ]
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selected": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "selected_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "fields": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer",
+              "boolean"
+            ],
+            "maxLength": 16384,
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "const": "tobkiri.ui.surface-resource.v1"
+            },
+            "selection_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{32,128}$"
+            },
+            "kind": {
+              "enum": [
+                "file",
+                "image",
+                "audio"
+              ]
+            },
+            "display_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "expires_at_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "stage": {
+              "enum": [
+                "selected",
+                "exchanged"
+              ]
+            }
+          },
+          "required": [
+            "version",
+            "selection_id",
+            "kind",
+            "display_name",
+            "expires_at_ms",
+            "stage"
+          ],
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "tobkiri.ui.surface-resource.v1"
+        }
+      },
+      "required": [],
+      "maxProperties": 1
+    }
+  },
+  "required": [
+    "version",
+    "template_id",
+    "node_id",
+    "intent_id",
+    "event",
+    "values"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tobkiri.ui.surface-intent.v1"
+}

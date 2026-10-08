@@ -1,0 +1,80 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:64adb8fbfbe2ebd19a34708fefbbfcbfc2a57467741b8987307deb1c598e5612",
+  "pack_id": "rumi_ai_tool_bridge_pack",
+  "source_identity": "sha256:6ff34bed88d9d7d9c31c25676e7cfc4895eb5514b0da010b5094ca938ad390c4",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "implementation_digest": "sha256:27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0",
+      "implementation_path": "runtime/bridge.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize.python"
+    }
+  ]
+}

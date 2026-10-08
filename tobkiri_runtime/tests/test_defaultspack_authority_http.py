@@ -71,44 +71,16 @@ def test_authority_http_approve_returns_decision(monkeypatch):
     assert service.calls == [("auth_1", "once", {"provider_ids": ["opencode-go"]}, 60)]
 
 
-def test_authority_http_transport_approve_passes_related_permissions_and_ui_operator(monkeypatch):
-    from ecosystem.defaultspack.transport.http import DefaultsHttpServer
-
-    service = _FakeAuthorityService({
-        "success": True,
-        "approved": True,
-        "request_id": "auth_1",
-        "scope": "session",
-        "token": "approval-token",
-    })
-    monkeypatch.setattr("core_runtime.authority.get_authority_service", lambda: service)
-    server = DefaultsHttpServer.__new__(DefaultsHttpServer)
-    ui_operator = {
-        "kind": "ui_operator",
-        "request_id": "auth_1",
-        "nonce": "nonce-1",
-    }
-
-    result = server._handle_authority_approve(
-        {
-            "scope": "session",
-            "config": {"provider_ids": ["opencode-go"]},
-            "expires_in_seconds": 60,
-            "related_permissions": ["api_key.use", 123],
-            "ui_operator": ui_operator,
-            "approved": True,
-        },
-        {"request_id": "auth_1"},
+def test_authority_http_transport_cannot_auto_approve_from_payload(tmp_path):
+    from tests.v4_batch_support import (
+        assert_lease_is_single_use,
+        assert_payload_mutations_denied,
+        harness,
     )
 
-    assert result["status"] == "ok"
-    assert result["data"]["approved"] is True
-    assert service.calls == [("auth_1", "session", {"provider_ids": ["opencode-go"]}, 60)]
-    assert service.approve_kwargs == [{
-        "related_permissions": ["api_key.use", "123"],
-        "ui_operator": ui_operator,
-        "actor_principal": None,
-    }]
+    authority = harness(tmp_path)
+    assert_payload_mutations_denied(authority)
+    assert_lease_is_single_use(authority)
 
 
 def _browser_exchange_request(request_id="auth_1"):

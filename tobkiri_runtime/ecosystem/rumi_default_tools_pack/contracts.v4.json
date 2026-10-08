@@ -1,0 +1,1073 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.files-read-operation",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.file-create-operation",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.chat-reference-operation",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.chat-message-operation",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_default_tool_projection_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_default_tools_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_default_tools_pack.calculator",
+        "required_capabilities": [
+          "tool.local.operation"
+        ],
+        "routing_keys": [
+          "calculator",
+          "chat_list_targets",
+          "chat_resolve_target",
+          "chat_send_message",
+          "coding_file_create",
+          "coding_file_list",
+          "coding_file_read",
+          "coding_file_search",
+          "file_reader"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.file.create.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:file.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.file-create-prepare",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:file.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_default_tools_pack.file-create",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_default_tools_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_default_tools_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_default_tools_pack.file-create.service",
+        "required_capabilities": [
+          "file.write"
+        ],
+        "routing_keys": [],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:84e0b303c3653b0ea530bf8cc15600dc1057a3e0289e5a4670bb32a9b74d6f3f",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.chat.message.send.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.execute",
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:dfa16428790b06bfe6a381b10c2cba9e7fbc720a3ad68b950367acf62b5febe8",
+          "operation_id": "rumi_default_tools_pack.chat-message-prepare",
+          "output_schema_digest": "sha256:66719816ef674ddd472d3eeb1d3f55d9a2029ef5c8c493d162ad275169a9e5ce",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:turn.execute",
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:dfa16428790b06bfe6a381b10c2cba9e7fbc720a3ad68b950367acf62b5febe8",
+          "operation_id": "rumi_default_tools_pack.chat-message-send",
+          "output_schema_digest": "sha256:66719816ef674ddd472d3eeb1d3f55d9a2029ef5c8c493d162ad275169a9e5ce",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_default_tools_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_default_tools_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_default_tools_pack.chat-message-send.service",
+        "required_capabilities": [
+          "turn.execute",
+          "turn.manage"
+        ],
+        "routing_keys": [],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:bfe0ebb6d974c58451188c11319297634fc62a55a0790242e2b66fe52b9dadd3",
+      "schema_catalog": {
+        "sha256:66719816ef674ddd472d3eeb1d3f55d9a2029ef5c8c493d162ad275169a9e5ce": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "content_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "plan_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "recipient_ids": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "request_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expires_at": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "tobkiri.chat.reference.snapshot.v1"
+                    },
+                    "next_cursor": {
+                      "type": "null"
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "project_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "references": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversation_ids": {
+                            "items": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "chat",
+                              "group"
+                            ]
+                          },
+                          "label": {
+                            "maxLength": 256,
+                            "type": "string"
+                          },
+                          "member_count": {
+                            "maximum": 4096,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "membership_complete": {
+                            "type": "boolean"
+                          },
+                          "snapshot_digest": {
+                            "pattern": "^sha256:[0-9a-f]{64}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "label",
+                          "conversation_ids",
+                          "snapshot_digest",
+                          "member_count",
+                          "membership_complete"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "snapshot_time": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "store_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "truncated": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "profile_id",
+                    "store_revision",
+                    "project_revision",
+                    "snapshot_time",
+                    "expires_at",
+                    "references",
+                    "next_cursor",
+                    "truncated"
+                  ],
+                  "type": "object"
+                },
+                "snapshot_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "source_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_states": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "conversation_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "request_id": {
+                        "maxLength": 256,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "enum": [
+                          "idle",
+                          "queued",
+                          "running",
+                          "waiting"
+                        ]
+                      },
+                      "turn_id": {
+                        "maxLength": 256,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "conversation_id",
+                      "conversation_revision",
+                      "turn_id",
+                      "request_id",
+                      "revision",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
+                },
+                "version": {
+                  "const": "tobkiri.chat.message-plan.v1"
+                }
+              },
+              "required": [
+                "version",
+                "request_digest",
+                "snapshot",
+                "snapshot_digest",
+                "recipient_ids",
+                "source_conversation_id",
+                "source_turn_id",
+                "profile_id",
+                "content_digest",
+                "plan_digest",
+                "target_states"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "deliveries": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "assistant_message_id": {
+                        "anyOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "assistant_message_saved": {
+                        "type": "boolean"
+                      },
+                      "delivery": {
+                        "enum": [
+                          "steer",
+                          "interrupt"
+                        ]
+                      },
+                      "delivery_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "guidance_id": {
+                        "anyOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "interrupt_status": {
+                        "enum": [
+                          "stopped_confirmed",
+                          "idle_noop",
+                          "stop_unconfirmed",
+                          null
+                        ]
+                      },
+                      "interrupted_turn_id": {
+                        "maxLength": 256,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "parent_turn_id": {
+                        "anyOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "enum": [
+                          "target_stop_owner_unavailable",
+                          "target_stop_unconfirmed",
+                          "target_guidance_pending",
+                          "target_state_changed",
+                          "delivery_not_started"
+                        ]
+                      },
+                      "status": {
+                        "enum": [
+                          "reserved",
+                          "queued",
+                          "running",
+                          "waiting",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "not_started",
+                          "reconciliation_required",
+                          "stop_required",
+                          "unsupported"
+                        ]
+                      },
+                      "target_conversation_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_turn_id": {
+                        "anyOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "user_message_id": {
+                        "anyOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "user_message_saved": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "delivery_id",
+                      "profile_id",
+                      "target_conversation_id",
+                      "target_turn_id",
+                      "user_message_id",
+                      "assistant_message_id",
+                      "guidance_id",
+                      "parent_turn_id",
+                      "status",
+                      "user_message_saved",
+                      "assistant_message_saved",
+                      "delivery",
+                      "interrupted_turn_id",
+                      "interrupt_status"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "plan_digest": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "completed",
+                    "queued",
+                    "partial",
+                    "reconciliation_required"
+                  ]
+                },
+                "version": {
+                  "const": "tobkiri.chat.message-delivery.v1"
+                }
+              },
+              "required": [
+                "version",
+                "plan_digest",
+                "status",
+                "deliveries"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:dfa16428790b06bfe6a381b10c2cba9e7fbc720a3ad68b950367acf62b5febe8": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "delivery": {
+                  "enum": [
+                    "steer",
+                    "interrupt"
+                  ]
+                },
+                "invocation_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "target_kind": {
+                  "enum": [
+                    "chat",
+                    "group"
+                  ]
+                },
+                "tool_call_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "source_conversation_id",
+                "source_turn_id",
+                "target_id",
+                "tool_call_id",
+                "invocation_key",
+                "target_kind",
+                "content",
+                "delivery"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "plan": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content_digest": {
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "plan_digest": {
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "recipient_ids": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "request_digest": {
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "snapshot": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "expires_at": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "const": "tobkiri.chat.reference.snapshot.v1"
+                        },
+                        "next_cursor": {
+                          "type": "null"
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        },
+                        "project_revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "references": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "conversation_ids": {
+                                "items": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                  "type": "string"
+                                },
+                                "maxItems": 256,
+                                "type": "array",
+                                "uniqueItems": true
+                              },
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "chat",
+                                  "group"
+                                ]
+                              },
+                              "label": {
+                                "maxLength": 256,
+                                "type": "string"
+                              },
+                              "member_count": {
+                                "maximum": 4096,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "membership_complete": {
+                                "type": "boolean"
+                              },
+                              "snapshot_digest": {
+                                "pattern": "^sha256:[0-9a-f]{64}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id",
+                              "label",
+                              "conversation_ids",
+                              "snapshot_digest",
+                              "member_count",
+                              "membership_complete"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "snapshot_time": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "store_revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "truncated": {
+                          "const": false
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "profile_id",
+                        "store_revision",
+                        "project_revision",
+                        "snapshot_time",
+                        "expires_at",
+                        "references",
+                        "next_cursor",
+                        "truncated"
+                      ],
+                      "type": "object"
+                    },
+                    "snapshot_digest": {
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "source_conversation_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source_turn_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "target_states": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversation_id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "conversation_revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "request_id": {
+                            "maxLength": 256,
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "revision": {
+                            "minimum": 1,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "enum": [
+                              "idle",
+                              "queued",
+                              "running",
+                              "waiting"
+                            ]
+                          },
+                          "turn_id": {
+                            "maxLength": 256,
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "conversation_id",
+                          "conversation_revision",
+                          "turn_id",
+                          "request_id",
+                          "revision",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
+                    },
+                    "version": {
+                      "const": "tobkiri.chat.message-plan.v1"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "request_digest",
+                    "snapshot",
+                    "snapshot_digest",
+                    "recipient_ids",
+                    "source_conversation_id",
+                    "source_turn_id",
+                    "profile_id",
+                    "content_digest",
+                    "plan_digest",
+                    "target_states"
+                  ],
+                  "type": "object"
+                },
+                "request": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "maxLength": 16384,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "delivery": {
+                      "enum": [
+                        "steer",
+                        "interrupt"
+                      ]
+                    },
+                    "invocation_key": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source_conversation_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source_turn_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "target_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "target_kind": {
+                      "enum": [
+                        "chat",
+                        "group"
+                      ]
+                    },
+                    "tool_call_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "profile_id",
+                    "source_conversation_id",
+                    "source_turn_id",
+                    "target_id",
+                    "tool_call_id",
+                    "invocation_key",
+                    "target_kind",
+                    "content",
+                    "delivery"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "request",
+                "plan"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_default_tools_pack",
+  "source_identity": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3"
+}

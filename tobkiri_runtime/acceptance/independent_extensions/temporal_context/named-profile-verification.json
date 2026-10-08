@@ -1,0 +1,31 @@
+{
+  "activation_authority": "unbound",
+  "contract_revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
+  "historical_failure_logs": [
+    "named-profile-build-failure.log",
+    "named-profile-provider-binding-failure.log"
+  ],
+  "legacy_flow_execution": "V4_OPERATION_UNAVAILABLE (Root verification)",
+  "native_execution_verified_by_author": false,
+  "owner_context_binding": "owner read -> direct sealed dependent context -> timing.task_gap",
+  "profile_id": "acceptance.temporal.named",
+  "projections": [
+    {
+      "artifact_root": "content",
+      "content_digest": "sha256:04455fb58cb5f0636989e5767aebfdb89329e7e6f50d51b27ab7625124bc15d3",
+      "file_count": 4,
+      "kind": "profile_content",
+      "projection_id": "acceptance.temporal.rules",
+      "source_artifact_digest": "sha256:fecc8d703c657e2e8b83a026dd424d855dad098f3fb6fead7ecdb896ad75b403",
+      "source_pack_id": "acceptance.temporal.context"
+    }
+  ],
+  "recipe": "build_pack.build(new_pack); build_profile.build_profile(new_release, new_pack)",
+  "release_files": 320,
+  "ruff": "passed",
+  "source_only": true,
+  "template_bundle_lock_sha256": "87cdfb85d6c15f5cc335f69bc93314b0caaf00e36a3afa325bdf8e26db894fab",
+  "tests_passed": 22,
+  "workflow_active_binding_verified_by_author": false,
+  "workflow_source_format": "io.tobkiri.profile-workflow-intent.v1"
+}

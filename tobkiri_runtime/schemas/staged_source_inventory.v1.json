@@ -1,0 +1,77 @@
+{
+  "schema": "io.tobkiri.staged-source-inventory.v1",
+  "records": [
+    {
+      "source_id": "tobkiri_surface_renderer_pack",
+      "source_root": "ecosystem/tobkiri_surface_renderer_pack",
+      "state": "staged_unadmitted",
+      "runtime_authority": false,
+      "installed_claim": false,
+      "profile_selection": false,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "sha256:3b1286af464976be925725287c33ea3f9826a54ec7bc92cf3fa30fb92dbc9042"
+        },
+        {
+          "path": "frontend/contributions/compact.json",
+          "sha256": "sha256:72df438c365d1687a88c0f1e731d7094b93de5aeeb6544742543d601fb72d022"
+        },
+        {
+          "path": "frontend/contributions/standard.json",
+          "sha256": "sha256:7377967d3a5ba624cbc0443a2e7311f971ceae4e79540e43cf3cb78e0733d18d"
+        },
+        {
+          "path": "integration-input.v1.json",
+          "sha256": "sha256:5b8f9fec5a05755ef3c27f9dfc1f07bd9bdd5ae4e2f4970a5602abf889dadfaf"
+        }
+      ]
+    },
+    {
+      "source_id": "tobkiri_voice_agent_pack",
+      "source_root": "ecosystem/tobkiri_voice_agent_pack",
+      "state": "staged_unadmitted",
+      "runtime_authority": false,
+      "installed_claim": false,
+      "profile_selection": false,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "sha256:14f779a5eec4cfd503a68669bf774ac1b7c3aa2d7ecee2ca1b2c2ed083e71d57"
+        },
+        {
+          "path": "frontend_extensions/voice_agent.ui.json",
+          "sha256": "sha256:760993272878090ecb066f2575263c77e9f4f91dd3255bae9da705d28e907545"
+        },
+        {
+          "path": "prompts/voice_coordinator.system.md",
+          "sha256": "sha256:1080156a29f61420dff254aeb24535295afd4e3448a4fa7874c7cc33fd1975f4"
+        },
+        {
+          "path": "voice/coordinator.json",
+          "sha256": "sha256:5ea16a240931e2c3a85fd2d725a94d4816f17b40da6a045c3fc0602e3b4e1fbd"
+        },
+        {
+          "path": "voice/ports.py",
+          "sha256": "sha256:11409a83d77747527f393f9b83488cb37190e5daac766b1b956551a2f1daaacb"
+        },
+        {
+          "path": "voice/protocol.py",
+          "sha256": "sha256:bc4f46a01b0ca2f1dd3150a6ec813edaebed669edd69ff3e296bd5b3e25ccadd"
+        },
+        {
+          "path": "voice/receipts.py",
+          "sha256": "sha256:8f2108c28beb00a893375ce68211882a9dc14a0bde07eb68f6746c98d9855006"
+        },
+        {
+          "path": "voice/session.ports.v1.json",
+          "sha256": "sha256:e2cb78e083b8605d098483500b958fcf31dcccf30363cb6a743f57df123662a4"
+        },
+        {
+          "path": "voice/session.py",
+          "sha256": "sha256:3bfd83401239f7ccc724a44f5470eeb1e49b576267ba1de887007695e2e9e8a0"
+        }
+      ]
+    }
+  ]
+}

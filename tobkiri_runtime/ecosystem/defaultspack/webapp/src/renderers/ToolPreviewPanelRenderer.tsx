@@ -4,22 +4,20 @@ import type { ToolPreviewPanelRendererProps } from "./types";
 export function ToolPreviewPanelRenderer({
   previews,
   showPreview,
-  previewMode,
   activePreviewId,
+  activePreviewRevision,
   memo,
   onClose,
-  onModeChange,
   onMemoChange,
 }: ToolPreviewPanelRendererProps) {
   return (
-    <div className="w-[clamp(300px,28vw,380px)] flex-shrink-0 h-full max-[1050px]:w-[300px] max-[900px]:hidden rumi-anim-fade-right">
+    <div className="w-full min-w-0 h-full rumi-anim-fade-right">
       <ToolPreviewPanel
         previews={previews}
         isVisible={showPreview}
         onClose={onClose}
-        mode={previewMode}
-        onModeChange={onModeChange}
         activePreviewId={activePreviewId}
+        activePreviewRevision={activePreviewRevision}
         memo={memo}
         onMemoChange={onMemoChange}
       />

@@ -1,15 +1,15 @@
-import { Check, ChevronDown, Hand, Settings, Shield, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Check, ChevronDown, Hand, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-export type ActionApprovalMode = "ask" | "agent" | "full" | "custom";
+export type ActionApprovalMode = "ask" | "agent" | "full";
 
 const MENU_WIDTH = 420;
 const MENU_HEIGHT_ESTIMATE = 260;
 const MENU_GAP = 8;
 const MENU_MARGIN = 10;
 
-const OPTIONS: Array<{
+export const ACTION_APPROVAL_OPTIONS: Array<{
   mode: ActionApprovalMode;
   label: string;
   shortLabel: string;
@@ -18,37 +18,32 @@ const OPTIONS: Array<{
 }> = [
   {
     mode: "ask",
-    label: "承認を求める",
+    label: "人が承認",
     shortLabel: "承認",
-    description: "外部ファイル編集やネット利用を常に確認します",
+    description: "操作ごとに、あなたが確認してから実行します",
     icon: Hand,
   },
   {
     mode: "agent",
-    label: "代理で承認",
+    label: "別のAIが承認",
     shortLabel: "代理",
-    description: "安全でない可能性がある操作だけ確認します",
+    description: "別のAIが操作と引数を審査します。危険・判定不能な場合は理由を知らせて停止します",
     icon: ShieldCheck,
   },
   {
     mode: "full",
-    label: "フルアクセス",
+    label: "追加承認なし",
     shortLabel: "フル",
-    description: "ネットと全ファイルへ制限なくアクセスします",
+    description: "あなたが許可した範囲内で実行します。禁止された操作は実行できません",
     icon: ShieldAlert,
-  },
-  {
-    mode: "custom",
-    label: "カスタム（設定）",
-    shortLabel: "カスタム",
-    description: "Settings で定義された権限を使用します",
-    icon: Settings,
   },
 ];
 
 export function ActionApprovalControl({
   mode,
   disabled = false,
+  disabledReason,
+  availableModes = ["ask"],
   surfaceClassName,
   tabIndex,
   onModeChange,
@@ -56,6 +51,8 @@ export function ActionApprovalControl({
 }: {
   mode: ActionApprovalMode;
   disabled?: boolean;
+  disabledReason?: string;
+  availableModes?: readonly ActionApprovalMode[];
   surfaceClassName: string;
   tabIndex?: number;
   onModeChange: (mode: ActionApprovalMode) => void;
@@ -64,8 +61,9 @@ export function ActionApprovalControl({
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const current = OPTIONS.find((option) => option.mode === mode) ?? OPTIONS[0];
-  const Icon = current.mode === "custom" ? Shield : current.icon;
+  const current = ACTION_APPROVAL_OPTIONS.find((option) => option.mode === mode)
+    ?? ACTION_APPROVAL_OPTIONS[0];
+  const Icon = current.icon;
 
   const closeMenu = useCallback(() => {
     setOpen(false);
@@ -133,8 +131,7 @@ export function ActionApprovalControl({
         style={menuStyle ?? undefined}
         className="fixed rumi-layer-command-palette overflow-y-auto rounded-[0.9rem] border border-zinc-700/70 bg-[#2b2b2b] p-1.5 shadow-xl shadow-black/40"
       >
-        <div className="flex items-center justify-between gap-2 px-3 pb-1.5 pt-1 text-zinc-400">
-          <span className="min-w-0 truncate text-[12px] leading-4">Codex アクションの承認方法</span>
+        <div className="flex items-center justify-end px-3 pb-1.5 pt-1 text-zinc-400">
           <button
             type="button"
             tabIndex={tabIndex}
@@ -147,33 +144,32 @@ export function ActionApprovalControl({
             詳細はこちら
           </button>
         </div>
-        {OPTIONS.map((option) => {
+        {ACTION_APPROVAL_OPTIONS.map((option) => {
           const OptionIcon = option.icon;
           const selected = option.mode === mode;
+          const available = option.mode === "ask" || availableModes.includes(option.mode);
           return (
             <button
               key={option.mode}
               type="button"
               role="menuitemradio"
               aria-checked={selected}
+              disabled={!available}
+              title={available ? option.description : "この承認方式は現在利用できません"}
               tabIndex={tabIndex}
               onClick={() => {
-                if (option.mode === "custom") {
-                  closeMenu();
-                  onOpenSettings?.();
-                  return;
-                }
+                if (!available) return;
                 onModeChange(option.mode);
                 setOpen(false);
               }}
-              className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[0.65rem] px-3 py-2 text-left transition-colors ${
+              className={`flex min-h-[50px] w-full items-center gap-2.5 rounded-[0.65rem] px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected ? "bg-zinc-700/55 text-zinc-50" : "text-zinc-200 hover:bg-zinc-700/35"
               }`}
             >
               <OptionIcon size={18} className="flex-shrink-0 text-zinc-300" />
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium leading-5">{option.label}</span>
-                <span className="block text-[11px] leading-4 text-zinc-400">{option.description}</span>
+                <span className="block text-[11px] leading-4 text-zinc-400">{available ? option.description : "この承認方式は現在利用できません"}</span>
               </span>
               {selected && <Check size={16} className="flex-shrink-0 text-zinc-200" />}
             </button>
@@ -194,13 +190,14 @@ export function ActionApprovalControl({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="アクションの承認方法"
-        title="アクションの承認方法"
+        aria-description={disabledReason}
+        title={disabledReason ?? "アクションの承認方法"}
         onClick={() => setOpen((value) => !value)}
         className={`${surfaceClassName} min-w-[86px] max-w-[132px] gap-1.5 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:opacity-50 max-[760px]:min-w-[64px]`}
       >
         <Icon size={15} className="flex-shrink-0" />
         <span className="min-w-0 truncate text-[12px] font-medium max-[760px]:hidden">
-          {current.shortLabel}
+          {disabledReason ? "ポリシー" : current.shortLabel}
         </span>
         <ChevronDown size={12} className={`flex-shrink-0 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>

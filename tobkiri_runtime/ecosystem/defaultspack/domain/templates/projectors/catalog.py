@@ -163,6 +163,7 @@ def project_resolved_templates(
     catalog["settings_sections"], settings_diagnostics = _merge_settings_sections(
         catalog["settings_sections"]
     )
+    _apply_selector_schema(catalog)
     catalog["template_diagnostics"].extend(settings_diagnostics)
     catalog["template_diagnostics"] = _dedupe_diagnostics(catalog["template_diagnostics"])
     return catalog
@@ -205,8 +206,33 @@ def _field_renderer_component_bindings(
     return [by_part[part_id] for part_id in order]
 
 
+def _is_retired_composer_chip(piece: TemplatePiece) -> bool:
+    """Keep legacy tool/service chip templates out of selectable UI metadata."""
+    nested = piece.data.get("widget")
+    payload = nested if isinstance(nested, dict) else piece.data
+    sources = (payload, piece.data)
+    widget_kinds = [
+        source[key].strip()
+        for source in sources
+        for key in ("widgetKind", "widget_kind")
+        if isinstance(source.get(key), str) and source[key].strip()
+    ]
+    if any(kind in {"tool_toggle", "service_reference"} for kind in widget_kinds):
+        return True
+    if any(source.get("type") in ("tool", "service") for source in sources):
+        return True
+    # Older templates implicitly meant tool_toggle when their kind was omitted.
+    return not widget_kinds and any(
+        source.get(key)
+        for source in sources
+        for key in ("tool_id", "sourceItemId", "source_item_id")
+    )
+
+
 def _project_piece(catalog: dict[str, Any], template: RumiTemplate, piece: TemplatePiece) -> None:
     kind = _value(piece.kind)
+    if kind == "composer_widget" and _is_retired_composer_chip(piece):
+        return
     role = str(piece.data.get("role") or piece.data.get("template_piece_type") or "").strip()
 
     if kind == "settings_section":
@@ -406,6 +432,37 @@ def _settings_section_for_field(template: RumiTemplate, piece: TemplatePiece) ->
         "_synthetic_field_section": True,
         "_source": _source(template),
     }
+
+
+def _apply_selector_schema(catalog: dict[str, Any]) -> None:
+    """Attach the active selector contract to every model/provider field.
+
+    Settings fields can originate in Calendar, Ambient, API, or third-party
+    templates.  The model-selector template owns their shared behavior, so the
+    policy is applied only after all settings sections have been merged.
+    """
+    template = next(
+        (
+            item
+            for item in catalog.get("templates", [])
+            if item.get("id") == "rumi.model_selector.default"
+        ),
+        None,
+    )
+    metadata = template.get("metadata") if isinstance(template, dict) else None
+    selector_schema = metadata.get("selector_schema") if isinstance(metadata, dict) else None
+    if not isinstance(selector_schema, dict):
+        return
+    for section in catalog.get("settings_sections", []):
+        if not isinstance(section, dict):
+            continue
+        for field in section.get("fields", []):
+            if isinstance(field, dict) and field.get("type") in {
+                "model_select",
+                "provider_select",
+                "model_api_routes",
+            }:
+                field["selector_schema"] = deepcopy(selector_schema)
 
 
 def _permission(template: RumiTemplate, piece: TemplatePiece) -> dict[str, Any]:
@@ -698,7 +755,7 @@ def _dedupe_diagnostics(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _diagnostic_to_dict(diagnostic: TemplateDiagnostic) -> dict[str, Any]:
-    result = {
+    result: dict[str, Any] = {
         "level": diagnostic.severity,
         "severity": diagnostic.severity,
         "code": diagnostic.code,
@@ -732,7 +789,7 @@ def _projected_id(template: RumiTemplate, piece: TemplatePiece) -> str:
 
 
 def _source(template: RumiTemplate) -> str:
-    return str(template.source_path) if template.source_path else ""
+    return template.source_path.as_posix() if template.source_path else ""
 
 
 def _value(value: object) -> str:

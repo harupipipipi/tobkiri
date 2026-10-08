@@ -1,17 +1,18 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import ok, error
 from domain.agent.subagent_orchestrator import run_subagent_compat
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     data = input_data if isinstance(input_data, dict) else {}
     role_id = str(data.get("role_id") or data.get("role") or "").strip()
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
     runtime_context = _runtime_context_for_subagent(data, payload, context)
+    if settings_owner is None:
+        settings_owner = runtime_context.get("_settings_owner_port")
     if payload is not data and "timeout_seconds" in data and "timeout_seconds" not in payload:
         payload = dict(payload)
         payload["timeout_seconds"] = data.get("timeout_seconds")
@@ -28,6 +29,7 @@ def run(input_data, context):
                 settings=data.get("settings") if isinstance(data.get("settings"), dict) else {},
                 call_handler=runtime_context.get("call_handler"),
                 context=runtime_context,
+                **({"settings_owner": settings_owner} if settings_owner is not None else {}),
             )
         )
     except ValueError as exc:

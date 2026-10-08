@@ -1,0 +1,86 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "defaults-basepack",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "content_projections": [
+    {
+      "artifact_root": "content",
+      "content_digest": null,
+      "kind": "profile_content",
+      "projection_id": "acceptance.temporal.rules",
+      "source_artifact_digest": null,
+      "source_pack_id": "acceptance.temporal.context"
+    }
+  ],
+  "display_name": "Tobkiri temporal context",
+  "intent_api_version": "io.tobkiri.profile-intent.v1",
+  "mode": "interactive",
+  "packs": [
+    {
+      "artifact_digest": null,
+      "pack_id": "runtime.tauri.application.default",
+      "role": "application"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "acceptance.temporal.context",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_workflow_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_conversation_store_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_turn_runtime_pack",
+      "role": "provider"
+    }
+  ],
+  "profile_authority_snapshot_digest": null,
+  "profile_id": "acceptance.temporal.named",
+  "requested_edges": [
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "contract_id": "tobkiri.workflow.v4",
+      "operation_id": "run.selected",
+      "requested_scope_template": {},
+      "target_provider_id": "tobkiri.workflow.provider"
+    },
+    {
+      "caller_function_id": "tobkiri.workflow.provider",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {},
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "tobkiri.workflow.provider",
+      "contract_id": "acceptance.temporal.context.v1",
+      "operation_id": "timing.project.owner",
+      "requested_scope_template": {},
+      "target_provider_id": "acceptance.temporal.context.reduce"
+    }
+  ],
+  "shell": {
+    "architecture": "arm64",
+    "artifact_digest": null,
+    "contract_id": "app.shell.v1",
+    "definition_revision": null,
+    "executable_artifact_digest": null,
+    "pack_id": "shell.tauri.default",
+    "platform": "macos",
+    "provider_id": "shell.tauri.default"
+  },
+  "state": "needs_resolution"
+}

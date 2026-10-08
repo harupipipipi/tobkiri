@@ -1,0 +1,227 @@
+{
+  "artifact_set_digest": "sha256:7e77c82ae89ef19ed84fea6335b9734f135c8467f5436ca6d1e32253390d803f",
+  "artifacts": [
+    {
+      "digest": "sha256:7a3aab29c2895b00f933277ffff079efddeec84ecd1b99ce6fe436333c78ac3b",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+      "path": "domain/tool/calculator.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:845285341a6a2e746f05253fdd1fabbba66fcb4f19aff2d556fb984de734f0cb",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
+      "path": "host_contract_contributions.v1.json",
+      "role": "host_contract_contribution"
+    },
+    {
+      "digest": "sha256:449c71687649d01d15f8dbce1cce3e25bd70c3bb0ff81485a09d359b616d7205",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "path": "runtime/calculator.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e177c9eab537e64c122c40553ffefaa3b572a79d80f1666bd6a6c3163a66b0ca",
+      "path": "runtime/chat_messages.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5a7acb6684a1d3630bbb7ac1772017719d019080734379b7be40743922d61410",
+      "path": "runtime/chat_reference_tools.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:98cfddf7cda0c3a66b4395712fd713562fee92ef83552e525049a9121a6bc8a0",
+      "path": "runtime/file_create.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+      "path": "runtime/files.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
+      "path": "tools/browser_companion/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
+      "path": "tools/browser_computer/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a70a50780d27d0e2bcce6e405ad2bbe4ab730ee24702ad62e50cba6e9d5ea7ac",
+      "path": "tools/browser_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+      "path": "tools/calculator/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6525157427ce8585d89aa6b963b5369d339b1205aab9981ccaa5565bbc4fd68e",
+      "path": "tools/chat_list_targets/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ac86eaaece23e6a8ccc830a9d6c95d6357debbe72ba8af2a38c94330d055466c",
+      "path": "tools/chat_resolve_target/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:919d5d48a35c93aba8ce3df23627a46070c69bc8fc90f247a3ae2ba61e3436c4",
+      "path": "tools/chat_send_message/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:96ed5072ee1d229d70b5e631cf078156148ac5528dbe2c1a25deb04bf960669c",
+      "path": "tools/coding_file_create/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:83f9d3f52cce0b5b5b507b95878dd09856fcc4b867f8bfcdc0d8c809a49d8f99",
+      "path": "tools/coding_file_delete/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a8ae2eee3b76859cea0a42ede6e28bdabfcbf475bf02d59d6c420dffb3f9cfa7",
+      "path": "tools/coding_file_list/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a58544e5c9630ef431493b80ea356bc7fa26a4b67b2288dd77e37d51268bf229",
+      "path": "tools/coding_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f18e4a0fc67dd5f76ea48b181d2291fb87c4035d61c7ab40a93ac94bf9864135",
+      "path": "tools/coding_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a15ef52451186ec549fca1d8d5dd89ffee43e8582b33cf758716a43d7a2eb0b4",
+      "path": "tools/coding_file_restore/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:74f3dceda7641b4dac1856eeff6d9fe969d206c759f703c34601ae8c86ac1540",
+      "path": "tools/coding_file_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:cda92740f8be1d4154b78e7bc086cbb4525ad5091400cf4db18dacc11b11954a",
+      "path": "tools/coding_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:deca8db7f154050f0a209b89eb1b441f68c5b027d0197fea8f30eb736b6c3a0a",
+      "path": "tools/coding_git_commit/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:238d0f1db3056d93d791b58c37cfd0bd9f2a49d9a4d499bff52e98ae71b272c1",
+      "path": "tools/coding_git_diff/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0c6d3ec594a9606d77b2de4332dfba15dae5ada8a5a7dc878dcc039ed8f28ec7",
+      "path": "tools/coding_git_push/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1569ef8cd7c6ec477b5945694958fd8ea929477d3790e8f1a279fbd9fdfbae67",
+      "path": "tools/coding_git_status/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4cf11d53575c446273842ca8b06b7ca0a4f1e65f87c66a7234280c8f7041b156",
+      "path": "tools/coding_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5090b5750ca310341c351b68fb33c541e2c901fa420ebf9a30a1912249e614d9",
+      "path": "tools/computer_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a3cf706dfa5419bbd0422730eb7f02ae52b266f93ea4eca053c747b330196e47",
+      "path": "tools/file_reader/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
+      "path": "tools/reddit_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d3ce97cd1aec505cc262c425b4fa9b8ad4b0b0cf6d4a79317c899efe39e58d96",
+      "path": "tools/rumi_api/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+      "path": "tools/sandbox_artifact_export/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+      "path": "tools/sandbox_diff_preview/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+      "path": "tools/sandbox_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+      "path": "tools/sandbox_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+      "path": "tools/sandbox_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+      "path": "tools/sandbox_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6ca93d8bbf377de2263c0e198d70085d33474f933311fe30d3af979249366d13",
+      "path": "tools/subagent/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:67985990f948ebc105adf3a0231c143e2eef832930b2be5f4c9776f26cdefd09",
+      "path": "tools/todo/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f37b93bf630a0d5250ecb9ebbb94ec6ab25f97ed758440b31d57d734b91a443b",
+      "path": "tools/web_search/manifest.json",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:0deaee00d636b60b173385d40deec18851316c91369eb66c9aacb3b24fb7a9af"
+  },
+  "pack_id": "rumi_default_tools_pack",
+  "source_identity": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3"
+}

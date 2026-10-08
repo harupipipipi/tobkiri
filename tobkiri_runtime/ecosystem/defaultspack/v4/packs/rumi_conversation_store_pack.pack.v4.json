@@ -1,0 +1,394 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:256afdef124bdf2fea237cf5b427e50f6c4e2294cb9121c51cb205cc0b08b1ca",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:5bebd23f8de56c8e9359803cec2ee80e13c0a48a1f07d1e6372c60dcdc9f5443",
+      "kind": "executable",
+      "path": "runtime/calendar_completion_source.py"
+    },
+    {
+      "digest": "sha256:192eaa3956ea51aeb84b436805f338cba15920f92d4559dce040d0a123a76b29",
+      "kind": "executable",
+      "path": "runtime/chat_reference.py"
+    },
+    {
+      "digest": "sha256:18b1a5762385b08f2377553ebb5d3dc437d9930d694e998ad02717a5231f81be",
+      "kind": "executable",
+      "path": "runtime/chat_reference_host.py"
+    },
+    {
+      "digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+      "kind": "executable",
+      "path": "runtime/completion_host.py"
+    },
+    {
+      "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "kind": "executable",
+      "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+      "kind": "executable",
+      "path": "runtime/manage_host.py"
+    },
+    {
+      "digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+      "kind": "executable",
+      "path": "runtime/message_host.py"
+    },
+    {
+      "digest": "sha256:76f288670824bf0b4da4d546ea92e800ff4428a9602f01e875ba1f8bf2fc2f63",
+      "kind": "executable",
+      "path": "runtime/saved_receipt.py"
+    },
+    {
+      "digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.conversation.completion.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "revision_digest": "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086"
+    },
+    {
+      "contract_id": "tobkiri.action.conversation.manage.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-manage"
+      ],
+      "revision_digest": "sha256:8869274e7d77752a9d1e64e274bf82fab48f10b0a7dd5f316cb5cb528a4407aa"
+    },
+    {
+      "contract_id": "tobkiri.action.conversation.migrate.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-migrate"
+      ],
+      "revision_digest": "sha256:63e37193150031bc4b48fc60403da64da801a9c582373546093e5095ad88ea1f"
+    },
+    {
+      "contract_id": "tobkiri.action.message.manage.v1",
+      "operations": [
+        "rumi_conversation_store_pack.message-manage"
+      ],
+      "revision_digest": "sha256:9dd8f4b40122ccebecee571c81ad10a71b07bc791baee7dedfa96ed8214e5fc4"
+    },
+    {
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-resource"
+      ],
+      "revision_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156"
+    },
+    {
+      "contract_id": "tobkiri.resource.message.v1",
+      "operations": [
+        "rumi_conversation_store_pack.message-resource"
+      ],
+      "revision_digest": "sha256:8f779c596e495c4f6030dcd2fa1506e1bb25290ed30fe0413ffd58962b35d5c9"
+    },
+    {
+      "contract_id": "tobkiri.resource.chat.reference.v1",
+      "operations": [
+        "rumi_conversation_store_pack.chat-reference-read"
+      ],
+      "revision_digest": "sha256:93d90b4086ac492183733c198cfcc39b63e1533667e2c061092a7b0cbc73d848"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:93d90b4086ac492183733c198cfcc39b63e1533667e2c061092a7b0cbc73d848",
+      "id": "rumi_conversation_store_pack.chat-reference.resource",
+      "implementation_digest": "sha256:18b1a5762385b08f2377553ebb5d3dc437d9930d694e998ad02717a5231f81be",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.chat-reference-read"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086",
+      "id": "rumi_conversation_store_pack.conversation-store.completion",
+      "implementation_digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:8869274e7d77752a9d1e64e274bf82fab48f10b0a7dd5f316cb5cb528a4407aa",
+      "id": "rumi_conversation_store_pack.conversation-store.manage",
+      "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9dd8f4b40122ccebecee571c81ad10a71b07bc791baee7dedfa96ed8214e5fc4",
+      "id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "implementation_digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.message-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:8f779c596e495c4f6030dcd2fa1506e1bb25290ed30fe0413ffd58962b35d5c9",
+      "id": "rumi_conversation_store_pack.conversation-store.message-resource",
+      "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.message-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:63e37193150031bc4b48fc60403da64da801a9c582373546093e5095ad88ea1f",
+      "id": "rumi_conversation_store_pack.conversation-store.migrate",
+      "implementation_digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-migrate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+      "id": "rumi_conversation_store_pack.conversation-store.resource",
+      "implementation_digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-resource"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded",
+    "artifact_set_digest": "sha256:832a0d1e98421bdab459cfb85b1d5d211e38c6cb920c3e8d3bb719b3fbe21ba5",
+    "contract_catalog_digest": "sha256:011069d031df979fca259bf4fa595eb8789e0accc479432c485e2019a5f72bd9"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.conversation.manage.v1",
+      "rumi.action.conversation.migrate.v1",
+      "rumi.action.message.manage.v1",
+      "rumi.resource.conversation.v1",
+      "rumi.resource.message.v1",
+      "rumi:ecosystem/rumi_conversation_store_pack",
+      "rumi_conversation_store_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.chat.reference.v1",
+      "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.conversation-completion",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.completion.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.conversation-manage",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.manage.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.conversation-migrate",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.migrate.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.migrate",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.conversation.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.message-manage",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.message.manage.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.message-resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.message.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:46c69724254b53dc3d180dc82567f11846af0ba306339882482de8998a016bd2",
+    "display_name": "Rumi Conversation Store",
+    "id": "rumi_conversation_store_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
+    "source_digest": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:b4ecda4c46f84b37c550566a48c3525dbca27ed11eb20a5587c2a4332212bd41",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
+    "input_inventory_digest": "sha256:8b9565047e0536b0829da0f9f2e7fdcbcc25c78703e66ec153db1e55bdbddad5",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827"
+      },
+      {
+        "path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:48f2e81d5b893edef405bfc6ed2e98213cd74689a76be3c253452bec2721fded"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.chat.reference.v1",
+      "operations": [
+        "rumi_conversation_store_pack.chat-reference-read"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.completion.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.manage.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-manage"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.message.manage.v1",
+      "operations": [
+        "rumi_conversation_store_pack.message-manage"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.message.v1",
+      "operations": [
+        "rumi_conversation_store_pack.message-resource"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.migrate",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.conversation.migrate.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-migrate"
+      ]
+    },
+    {
+      "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.conversation.v1",
+      "operations": [
+        "rumi_conversation_store_pack.conversation-resource"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "conversation.manage",
+      "conversation.migrate",
+      "conversation.read",
+      "message.manage",
+      "message.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.project.state.v1",
+        "operations": [
+          "tobkiri_ui_settings_pack.projects-read"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

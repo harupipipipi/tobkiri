@@ -1,0 +1,139 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:261e264f1bc7767574b47943d3df82a8f5797f897c78b99560a0bfb375c38eb1",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:2292db6276ebff6f5019f7e06c8f87837642c00f0056d13b1af871785045dd50",
+      "kind": "sidecar",
+      "path": "frontend/contributions/ai-strategy.json"
+    },
+    {
+      "digest": "sha256:d54caa69e2b482cc0612ba3b2321d844123c82af5013b00e39ae6ec275289485",
+      "kind": "executable",
+      "path": "runtime/strategy.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.strategy.execute.v1",
+      "operations": [
+        "rumi_deepthink_pack.deepthink.execute"
+      ],
+      "revision_digest": "sha256:e1ef41b40fbecfb0e906995c37545b94b0c70ac46d95031b666804f03ba2f761"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:e1ef41b40fbecfb0e906995c37545b94b0c70ac46d95031b666804f03ba2f761",
+      "id": "rumi_deepthink_pack.deepthink.execute",
+      "implementation_digest": "sha256:d54caa69e2b482cc0612ba3b2321d844123c82af5013b00e39ae6ec275289485",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_deepthink_pack.deepthink.execute"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:88d9c685090a1cc05882871a859c56355e535790c63fcaa28fcb98ce310cb49e",
+    "artifact_set_digest": "sha256:ff99e7061c081764a288af8cca092ef50dec84d83a97ea09ccfbb323dcbe6598",
+    "contract_catalog_digest": "sha256:d8804174ea05a5f158f5d3b3dd8b3bedaa4f35ce6ad4ad400e7b92928bf8db0a"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_deepthink_pack.deepthink.execute",
+      "owner": "rumi_deepthink_pack",
+      "contract_reference": "tobkiri.service.ai.strategy.execute.v1",
+      "provider_id": "rumi_deepthink_pack.deepthink.execute",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:0f85e2a2442d18af94af17093a7216ec7e5d9d2286f83d12218ad5c0a889b57e",
+    "display_name": "DeepThink Strategy",
+    "id": "rumi_deepthink_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_deepthink_pack/pack.v4.json",
+    "source_digest": "sha256:88d9c685090a1cc05882871a859c56355e535790c63fcaa28fcb98ce310cb49e",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:2709f78f39199eedcc51fca8bbef01fd60aacf7f46ff13ae31db410bd035b723",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
+    "input_inventory_digest": "sha256:6aba1fe7226c0380656c51191bd0c87b75ad3cc2f920e24471c645987a925434",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827"
+      },
+      {
+        "path": "ecosystem/rumi_deepthink_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:88d9c685090a1cc05882871a859c56355e535790c63fcaa28fcb98ce310cb49e"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_deepthink_pack.deepthink.execute",
+      "owner": "rumi_deepthink_pack",
+      "contract_reference": "tobkiri.service.ai.strategy.execute.v1",
+      "operations": [
+        "rumi_deepthink_pack.deepthink.execute"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.gateway.generate",
+      "ai.gateway.route.quote.read",
+      "ai.strategy.execute"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.route.quote.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_ai_gateway_pack": ">=1.0.0,<2.0.0",
+      "rumi_ai_strategy_runtime_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "none"
+  }
+}

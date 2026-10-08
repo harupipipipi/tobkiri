@@ -2,6 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { sandboxesApi } from "./api";
+import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../../../test-support/frontendContractFixture";
+
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
 
 function desktopResponse(status: "running" | "stopped") {
   return {
@@ -33,7 +48,7 @@ test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => 
     },
   });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -56,7 +71,7 @@ test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => 
 
   const headers = new Headers(requestInit?.headers);
   const body = JSON.parse(String(requestInit?.body));
-  assert.equal(requestUrl, "/api/runtime/ensure");
+  assert.equal(requestUrl, routeKey("api/runtime/ensure"));
   assert.equal(requestInit?.method, "POST");
   assert.equal(headers.get("Authorization"), "Bearer local-token-1");
   assert.equal(headers.get("X-Rumi-CSRF"), "panel-csrf-1");
@@ -69,7 +84,7 @@ test("createDesktop does not accept client-supplied owner authority", async () =
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -90,7 +105,7 @@ test("createDesktop does not accept client-supplied owner authority", async () =
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/desktops");
+  assert.equal(requestUrl, routeKey("api/desktops"));
   assert.equal(requestInit?.method, "POST");
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(body.owner_id, undefined);
@@ -138,7 +153,7 @@ test("requestDesktopAccess lets the backend derive requester identity", async ()
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -158,7 +173,7 @@ test("requestDesktopAccess lets the backend derive requester identity", async ()
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/desktops/seat-1/access-requests");
+  assert.equal(requestUrl, routeKey("api/desktops/seat-1/access-requests"));
   assert.equal(requestInit?.method, "POST");
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(body.requester_id, undefined);
@@ -171,7 +186,7 @@ test("listDesktops unwraps standard desktop list envelopes", async () => {
   let requestUrl = "";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: {
@@ -182,7 +197,7 @@ test("listDesktops unwraps standard desktop list envelopes", async () => {
 
   try {
     const result = await sandboxesApi.listDesktops();
-    assert.equal(requestUrl, "/api/desktops");
+    assert.equal(requestUrl, routeKey("api/desktops"));
     assert.equal(result.desktops.length, 1);
     assert.equal(result.desktops[0].seat_id, "seat-1");
     assert.equal(result.desktops[0].status, "running");
@@ -368,7 +383,7 @@ test("fetchDesktopFrame sends scoped credential without legacy authority headers
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(new Blob(["frame"], { type: "image/png" }), {
       status: 200,
@@ -388,7 +403,7 @@ test("fetchDesktopFrame sends scoped credential without legacy authority headers
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/desktops/seat-1/frame");
+  assert.equal(requestUrl, routeKey("api/desktops/seat-1/frame"));
   const headers = new Headers(requestInit?.headers);
   assert.equal(headers.get("X-Rumi-Desktop-Session-Credential"), "key-1");
   assert.equal(headers.get("X-Rumi-Desktop-Access-Key"), null);
@@ -400,7 +415,7 @@ test("stopDesktop confirms the destructive action after the UI confirmation flow
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -415,7 +430,7 @@ test("stopDesktop confirms the destructive action after the UI confirmation flow
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/desktops/seat-1/stop");
+  assert.equal(requestUrl, routeKey("api/desktops/seat-1/stop"));
   assert.equal(requestInit?.method, "POST");
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(body.owner_id, undefined);
@@ -429,7 +444,7 @@ test("startDesktop and restartDesktop forward the scoped session credential", as
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+    calls.push({ url: requestTarget(input), body: JSON.parse(String(init?.body)) });
     return new Response(JSON.stringify({
       status: "ok",
       data: desktopResponse("running"),
@@ -443,10 +458,10 @@ test("startDesktop and restartDesktop forward the scoped session credential", as
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(calls[0].url, "/api/desktops/seat-1/start");
+  assert.equal(calls[0].url, routeKey("api/desktops/seat-1/start"));
   assert.equal(calls[0].body.desktop_session_credential, "key-1");
   assert.equal(calls[0].body.access_key, undefined);
-  assert.equal(calls[1].url, "/api/desktops/seat-1/restart");
+  assert.equal(calls[1].url, routeKey("api/desktops/seat-1/restart"));
   assert.equal(calls[1].body.desktop_session_credential, "key-1");
 });
 
@@ -455,7 +470,7 @@ test("deleteDesktop confirms the destructive action after the UI confirmation fl
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -487,7 +502,7 @@ test("grantDesktopAccess sends owner approval to the request grant endpoint", as
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestInit = init;
     return new Response(JSON.stringify({
       status: "ok",
@@ -508,7 +523,7 @@ test("grantDesktopAccess sends owner approval to the request grant endpoint", as
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/desktops/seat-1/access-requests/dreq-1/grant");
+  assert.equal(requestUrl, routeKey("api/desktops/seat-1/access-requests/dreq-1/grant"));
   assert.equal(requestInit?.method, "POST");
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(body.owner_id, undefined);
@@ -563,4 +578,32 @@ test("desktop control renew normalizes expiry without requiring a lease token in
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(body.lease_token, "secret-token");
   assert.match(body.request_id, /^desktop-control-renew-/);
+});
+
+
+test("managed desktop reads accept the canonical Host success envelope", async () => {
+  const originalFetch = globalThis.fetch;
+  const desktops = frontendFixtureBinding("desktopsList");
+  const providers = frontendFixtureBinding("runtimeProviders");
+  const templates = frontendFixtureBinding("sandboxTemplates");
+  globalThis.fetch = async (input, init) => {
+    const binding = frontendFixtureRequest(input, init?.method ?? "GET");
+    const data = matchesFrontendFixtureBinding(binding, desktops) ? { desktops: [desktopResponse("running")] }
+      : matchesFrontendFixtureBinding(binding, providers) ? { providers: [] }
+        : matchesFrontendFixtureBinding(binding, templates) ? { templates: [] } : null;
+    assert.notEqual(data, null, "Unexpected formal managed-desktop read");
+    return new Response(JSON.stringify({ success: true, data, error: null }));
+  };
+  try {
+    assert.equal((await sandboxesApi.listDesktops()).desktops[0].seat_id, "seat-1");
+    assert.deepEqual(await sandboxesApi.listRuntimeProviders(), { providers: [] });
+    assert.deepEqual(await sandboxesApi.listSandboxTemplates(), { templates: [] });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("managed desktop reads reject a canonical Host failure instead of showing empty data", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: false, data: null, error: "Unavailable" }));
+  try { await assert.rejects(sandboxesApi.listDesktops()); }
+  finally { globalThis.fetch = originalFetch; }
 });

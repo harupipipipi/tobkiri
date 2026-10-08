@@ -1,0 +1,31 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.surface-renderer.standard",
+  "kind": "renderer",
+  "mode": "declarative",
+  "label": "Tobkiri Surface Standard",
+  "priority": 0,
+  "renderer": "tobkiri.ui.surface-renderer.v1",
+  "view": {
+    "version": "tobkiri.ui.surface-renderer.v1",
+    "api_version": "1.0.0",
+    "implementation": "semantic_standard",
+    "patterns": [
+      "content",
+      "problem",
+      "notice",
+      "progress",
+      "resource_input",
+      "choice",
+      "form",
+      "confirmation",
+      "collection",
+      "detail"
+    ],
+    "ttl_ms": 300000
+  },
+  "accessibility": {
+    "name": "Tobkiri Surface Standard",
+    "keyboard": true
+  }
+}

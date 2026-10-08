@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+  "artifacts": [
+    {
+      "digest": "sha256:2e50237127118192889beb5e24828d0ae703dcd78024312e7910a32eb6d14aa9",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:54d2ff93fe7c5356acaa4d9c56b4e1ae9c0ebfa0771508d2efccaa3f357aba9c",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:beff1e1f032b498e04b57363b43117f8c0ef3ddc5368c11d9d4c622954b4bad7",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
+      "path": "runtime/model_search.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
+      "path": "runtime/projects.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
+      "path": "runtime/public-settings-fields.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
+      "path": "runtime/settings.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
+      "path": "runtime/state_changes.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:a256eb247ff8ff1d402af20230add2ca44f7f945c6a11e3bc45f582531e9fb9a"
+  },
+  "pack_id": "tobkiri_ui_settings_pack",
+  "source_identity": "sha256:6a07b6ae71297a03ba10925a621df3e8c9180f0079095b223948ce4c4c1d7184"
+}
