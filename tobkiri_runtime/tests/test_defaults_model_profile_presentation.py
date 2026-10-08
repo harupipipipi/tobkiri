@@ -16,6 +16,7 @@ from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
     present_model_profiles,
     present_model_profile_saved,
+    normalize_model_profile_save,
 )
 from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
 
@@ -120,3 +121,54 @@ def test_model_list_rejects_invalid_provider_result(result: dict[str, Any]) -> N
     """Missing results must not become a successful empty list."""
     with pytest.raises(ValueError):
         present_model_profiles(result)
+
+
+def test_output_limit_is_saved_and_exposed_without_resetting_existing_policy(
+    tmp_path: Path,
+) -> None:
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "gemma",
+            "requirements": {"tool_calling": True},
+            "parameters": {"temperature": 0.2},
+            "metadata": {"provider_connection_id": "provider.fixture", "note": "private"},
+        },
+        expected_revision=0,
+    )
+    normalized = normalize_model_profile_save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "gemma",
+            "display_name": "Daily",
+            "provider_instance_id": "provider.fixture",
+            "expected_revision": 1,
+            "provider_registry_revision": 2,
+            "max_output_tokens": 2048,
+        }
+    )
+    registry.save(normalized["record"], expected_revision=1, preserve_existing=True)
+    stored = registry.get("daily")
+    assert stored["parameters"] == {"temperature": 0.2, "max_tokens": 2048}
+    assert stored["requirements"] == {"tool_calling": True}
+    assert stored["metadata"]["note"] == "private"
+    view = present_model_profiles(registry.snapshot())["profiles"][0]
+    assert view["max_output_tokens"] == 2048
+    assert "parameters" not in view and "metadata" not in view
+
+
+@pytest.mark.parametrize("cap", [True, False, 0, -1, 131073, 2.5, "2048", None])
+def test_model_output_limit_rejects_non_finite_configuration(cap: Any) -> None:
+    with pytest.raises(ValueError, match="limit"):
+        normalize_model_profile_save(
+            {
+                "model_profile_id": "daily",
+                "model_id": "gemma",
+                "display_name": "Daily",
+                "provider_instance_id": "provider.fixture",
+                "expected_revision": 0,
+                "provider_registry_revision": 2,
+                "max_output_tokens": cap,
+            }
+        )

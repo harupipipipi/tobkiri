@@ -126,8 +126,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 65421,
-      "sha256": "f83e5c2d1ea96a261a95d825aca7e1e31d8c883fd6c3a2ea13fca6b513a10092",
+      "size": 65454,
+      "sha256": "41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9",
       "executable": false
     },
     {
@@ -175,8 +175,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/model_profile_presentation.py",
       "type": "regular-file",
-      "size": 5114,
-      "sha256": "3764f907e3a6b144c9b7047f3d9d34f766eb607a7c4fab6279fae1763dce4dd7",
+      "size": 5849,
+      "sha256": "27160d2662049c87e99f3ded3cc7d8e1944972ae3e2cf3296061a85e9a0b43b4",
       "executable": false
     },
     {

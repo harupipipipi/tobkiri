@@ -83,6 +83,7 @@ class ModelRegistryService:
             return registry.save(
                 record,
                 expected_revision=int(data.get("expected_revision") or 0),
+                preserve_existing=data.get("preserve_existing") is True,
             )
         if operation == "delete":
             return registry.delete(

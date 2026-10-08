@@ -1167,7 +1167,8 @@
             "provider_instance_id",
             "display_name",
             "expected_revision",
-            "provider_registry_revision"
+            "provider_registry_revision",
+            "max_output_tokens"
           ]
         }
       ]

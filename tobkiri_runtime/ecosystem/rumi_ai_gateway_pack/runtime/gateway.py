@@ -811,8 +811,11 @@ def _resolve_model_reference(
         request.get("requirements"),
         model_id=str(profile.get("model_id") or ""),
     )
-    parameters = dict(profile.get("parameters") or {})
-    parameters.update(dict(request.get("parameters") or {}))
+    from .model_parameters import bounded_model_parameters
+
+    parameters = bounded_model_parameters(
+        dict(profile.get("parameters") or {}), dict(request.get("parameters") or {})
+    )
     request["parameters"] = parameters
     # Legacy model profiles may retain an opaque credential reference, but
     # credentials belong exclusively to the current Provider connection owner.

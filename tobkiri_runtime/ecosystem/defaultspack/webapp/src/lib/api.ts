@@ -1713,6 +1713,7 @@ export function conversationArtifactFileUrl(conversationId: string, path: string
 }
 
 export type ModelProfile = {
+  max_output_tokens?: number;
   profile_id: string;
   display_name: string;
   /** A saved routing record, not proof of credentials or Provider health. */
@@ -2785,6 +2786,8 @@ export function isModelProfilesResponse(
         item
         && hasNonEmptyString(item, "profile_id")
         && hasNonEmptyString(item, "display_name")
+        && (item.max_output_tokens === undefined || (Number.isSafeInteger(item.max_output_tokens)
+          && Number(item.max_output_tokens) >= 1 && Number(item.max_output_tokens) <= 131072))
       );
     })
     && typeof record.count === "number"
@@ -4646,6 +4649,7 @@ export const api = {
   },
 
   async createModelProfile(input: {
+    max_output_tokens?: number;
     model_profile_id: string;
     model_id: string;
     provider_instance_id: string;
@@ -4655,10 +4659,11 @@ export const api = {
     const current = await api.listModelProfiles();
     const matches = (profile: ModelProfile) => profile.profile_id === input.model_profile_id
       && profile.model_id === input.model_id && profile.provider_id === input.provider_instance_id
-      && profile.display_name === input.display_name;
+      && profile.display_name === input.display_name
+      && (input.max_output_tokens === undefined || profile.max_output_tokens === input.max_output_tokens);
     const existing = current.profiles.find((profile) => profile.profile_id === input.model_profile_id);
     if (existing) {
-      if (!matches(existing)) {
+      if (existing.model_id !== input.model_id || existing.provider_id !== input.provider_instance_id) {
         throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
       }
     }

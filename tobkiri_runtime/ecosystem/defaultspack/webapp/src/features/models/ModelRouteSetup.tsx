@@ -160,6 +160,10 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
   const effectiveAccessBinding = modelAccessBinding ?? (capturedProfile
     ? { profile_id: capturedProfile, resources: nativeProviderModelAccessResources } : undefined);
   const connectionSelectId = useId();
+  const outputLimitId = useId();
+  const [outputLimit, setOutputLimit] = useState("2048");
+  const validOutputLimit = /^\d+$/.test(outputLimit) && Number.isSafeInteger(Number(outputLimit))
+    && Number(outputLimit) >= 1 && Number(outputLimit) <= 131072;
   const [accessSnapshot, setAccessSnapshot] = useState<ModelAccessSnapshot | null>(null);
   const [catalogModel, setCatalogModel] = useState("");
   const [selectedCatalogOption, setSelectedCatalogOption] = useState<ModelSelectOption | null>(null);
@@ -268,7 +272,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
   const validModel = accessKnown && modelAllowed(activePolicy, model.trim()) && Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
     || selectedCatalogOption?.value === model);
   const save = async () => {
-    if (!selectedConnection || providerRegistryRevision === null || !validModel) return;
+    if (!selectedConnection || providerRegistryRevision === null || !validModel || !validOutputLimit) return;
     setBusy(true);
     setMessage("");
     setSaveError("");
@@ -276,6 +280,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       const profileId = await catalogModelProfileId(selectedConnection.provider_instance_id, model.trim());
       await settingsApiResources.createModelProfile({
         model_profile_id: profileId,
+        max_output_tokens: Number(outputLimit),
         model_id: model.trim(),
         provider_instance_id: selectedConnection.provider_instance_id,
         display_name: `${selectedModel?.display_name || selectedCatalogOption?.label || model.trim()} (${selectedConnection.display_name})`,
@@ -326,11 +331,16 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
         onChange={setCustomModel}
       />
     </>}
+    <label htmlFor={outputLimitId} className="grid gap-1 text-xs">1回の応答の最大出力トークン数
+      <input id={outputLimitId} type="number" min={1} max={131072} step={1}
+        className={field} value={outputLimit} onChange={(event) => setOutputLimit(event.target.value)} />
+      <span className="text-zinc-400">このモデル設定を使う各応答の上限です。ツール実行後の応答にも適用します。</span>
+    </label>
     <ModelRouteErrorNotices
       connectionsError={connectionsError}
       saveError={saveError}
     />
-    <button type="button" disabled={busy || !validModel || !selectedConnection || providerRegistryRevision === null} onClick={() => void save()} className="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-50">{busy ? "保存結果を確認中" : "このモデルを使う"}</button>
+    <button type="button" disabled={busy || !validModel || !validOutputLimit || !selectedConnection || providerRegistryRevision === null} onClick={() => void save()} className="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-50">{busy ? "保存結果を確認中" : "このモデルを使う"}</button>
     {message && <p role="status" className="text-xs text-zinc-300">{message}</p>}
   </fieldset>;
 }

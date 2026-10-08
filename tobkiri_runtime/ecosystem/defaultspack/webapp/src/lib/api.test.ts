@@ -4,6 +4,7 @@ import { configureProvider, type ProviderConfigurationStatus } from "./providerC
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { isModelProfilesResponse } from "./api";
 import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -5140,4 +5141,28 @@ test("saved turn binds exact approval preference and nested request before calle
   assert.deepEqual(request.tool_selection?.include, ["tool:one"]);
   await assert.rejects(api.startSavedTurn({ ...input, action_approval_mode: "side_model" } as never), /invalid/);
   await assert.rejects(api.startSavedTurn({ ...input, approved: true } as never), /invalid/);
+});
+
+
+test("model output limits can update the same saved route with exact CAS verification", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  const input = { model_profile_id: "daily", model_id: "gemma", provider_instance_id: "provider.fixture",
+    display_name: "Daily", provider_registry_revision: 4, max_output_tokens: 2048 };
+  const profile = { profile_id: "daily", model_id: "gemma", provider_id: "provider.fixture",
+    display_name: "Daily", max_output_tokens: 4096 };
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      profile.max_output_tokens = Number(bodies.at(-1)?.max_output_tokens);
+    }
+    return new Response(JSON.stringify({ status: "ok", data: {
+      profiles: [profile], count: 1, registry_revision: 7,
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.equal((await api.createModelProfile(input)).max_output_tokens, 2048);
+    assert.deepEqual(bodies, [{ ...input, expected_revision: 7 }]);
+    assert.equal(isModelProfilesResponse({profiles:[{...profile,max_output_tokens:true}],count:1}),false);
+  } finally { globalThis.fetch = originalFetch; }
 });

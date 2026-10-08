@@ -85,6 +85,7 @@ class ModelRegistry:
         record: Mapping[str, Any],
         *,
         expected_revision: int,
+        preserve_existing: bool = False,
     ) -> dict[str, Any]:
         """Atomically save a normalized profile at one expected revision."""
         normalized = _profile_record(record)
@@ -93,6 +94,14 @@ class ModelRegistry:
             self._assert_revision(state, expected_revision)
             profile_id = normalized["model_profile_id"]
             current = state["profiles"].get(profile_id)
+            if preserve_existing and isinstance(current, Mapping):
+                merged = {**dict(current), **dict(record)}
+                for key in ("parameters", "metadata"):
+                    merged[key] = {
+                        **dict(current.get(key) or {}),
+                        **dict(record.get(key) or {}),
+                    }
+                normalized = _profile_record(merged)
             if isinstance(current, Mapping) and all(
                 current.get(key) == value for key, value in normalized.items()
             ):
@@ -301,7 +310,7 @@ def _profile_record(value: Mapping[str, Any]) -> dict[str, Any]:
         "model_id": model_id,
         "requirements": _safe_requirements(requirements),
         "credential_handle": credential_handle,
-        "parameters": _safe_scalars(value.get("parameters")),
+        "parameters": _safe_parameters(value.get("parameters")),
         "enabled": bool(value.get("enabled", True)),
         "metadata": _safe_scalars(value.get("metadata")),
     }
@@ -326,6 +335,17 @@ def _safe_requirements(value: Mapping[str, Any]) -> dict[str, Any]:
         for key, item in value.items()
         if key in allowed and _json_safe(item)
     }
+
+
+def _safe_parameters(value: Any) -> dict[str, Any]:
+    """Preserve a validated output ceiling without relaxing secret filtering."""
+    result = _safe_scalars(value)
+    if isinstance(value, Mapping) and "max_tokens" in value:
+        cap = value["max_tokens"]
+        if type(cap) is not int or not 1 <= cap <= 131072:
+            raise ValueError("model output token limit is invalid")
+        result["max_tokens"] = cap
+    return result
 
 
 def _safe_scalars(value: Any) -> dict[str, Any]:

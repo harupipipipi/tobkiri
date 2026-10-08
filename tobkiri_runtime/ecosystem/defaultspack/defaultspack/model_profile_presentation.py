@@ -33,8 +33,11 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
         "expected_revision",
         "provider_registry_revision",
     }
-    if set(payload) != fields:
+    if set(payload) - fields - {"max_output_tokens"} or fields - set(payload):
         raise ValueError("model configuration fields are invalid")
+    cap = payload.get("max_output_tokens")
+    if "max_output_tokens" in payload and (type(cap) is not int or not 1 <= cap <= 131072):
+        raise ValueError("model output token limit is invalid")
     revision = payload["expected_revision"]
     if type(revision) is not int or revision < 0:
         raise ValueError("model configuration revision is invalid")
@@ -43,7 +46,10 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
         raise ValueError("provider registry revision is invalid")
     for key in ("model_profile_id", "model_id", "provider_instance_id"):
         value = payload[key]
-        if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value) is None:
+        if (
+            not isinstance(value, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value) is None
+        ):
             raise ValueError("model configuration identity is invalid")
     name = payload["display_name"]
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
@@ -52,10 +58,13 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
         "operation": "save",
         "expected_revision": revision,
         "provider_registry_revision": provider_registry_revision,
+        "preserve_existing": True,
         "record": {
             "model_profile_id": payload["model_profile_id"],
-            "model_id": payload["model_id"], "display_name": name,
+            "model_id": payload["model_id"],
+            "display_name": name,
             "metadata": {"provider_connection_id": payload["provider_instance_id"]},
+            **({"parameters": {"max_tokens": cap}} if cap is not None else {}),
         },
     }
 
@@ -71,7 +80,7 @@ def present_model_profile_saved(result: Mapping[str, object]) -> dict[str, objec
 
 
 def present_model_profiles(result: Mapping[str, object]) -> dict[str, object]:
-    """Expose model identities, never credentials, metadata or parameters."""
+    """Expose model identities and the output ceiling without private metadata."""
 
     if result.get("state") == "error":
         return dict(result)
@@ -93,12 +102,15 @@ def present_model_profiles(result: Mapping[str, object]) -> dict[str, object]:
                 raise ValueError("model registry returned an invalid identity")
             record[destination] = value
         enabled = profile.get("enabled")
+        parameters = profile.get("parameters")
+        cap = parameters.get("max_tokens") if isinstance(parameters, Mapping) else None
+        if cap is not None:
+            if type(cap) is not int or not 1 <= cap <= 131072:
+                raise ValueError("model registry returned an invalid output limit")
+            record["max_output_tokens"] = cap
         requirements = profile.get("requirements")
         metadata = profile.get("metadata")
-        provider = (
-            metadata.get("provider_connection_id")
-            if isinstance(metadata, Mapping) else None
-        )
+        provider = metadata.get("provider_connection_id") if isinstance(metadata, Mapping) else None
         if not provider and isinstance(requirements, Mapping):
             provider = requirements.get("preferred_provider_instance_id")
         if isinstance(provider, str) and provider:

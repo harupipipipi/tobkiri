@@ -443,3 +443,58 @@ def test_stream_completion_and_event_tool_intents_share_canonical_normalization(
     assert result["events"][0]["tool_intent"] == expected
     assert len([call for call in client.calls if call[0] == STREAM_PROVIDER_CONTRACT]) == 1
     assert result["delivery_mode"] == "incremental"
+
+
+@pytest.mark.parametrize(
+    "requested, effective",
+    [
+        ({}, 2048),
+        ({"max_tokens": 4096}, 2048),
+        ({"max_tokens": 128}, 128),
+        ({"max_completion_tokens": 4096, "max_output_tokens": 64}, 64),
+    ],
+)
+@pytest.mark.parametrize("streaming", [False, True])
+def test_saved_model_output_ceiling_reaches_the_selected_provider(
+    requested, effective, streaming
+) -> None:
+    class LimitedClient(FakeContractClient):
+        def invoke(self, contract_id, operation, payload, *, provider_instance_id=None):
+            response = super().invoke(
+                contract_id, operation, payload, provider_instance_id=provider_instance_id
+            )
+            if contract_id == MODEL_PROFILE_CONTRACT:
+                response["profile"]["parameters"]["max_tokens"] = 2048
+            return response
+
+    client = LimitedClient()
+    factory = create_stream_operation if streaming else create_generate_operation
+    factory(client)(
+        "stream" if streaming else "generate",
+        {"model_profile_id": "saved-default", "messages": [], "parameters": requested},
+    )
+    contract = STREAM_PROVIDER_CONTRACT if streaming else GENERATE_PROVIDER_CONTRACT
+    call = next(item for item in client.calls if item[0] == contract)
+    assert call[3]["parameters"]["max_tokens"] == effective
+    assert "max_completion_tokens" not in call[3]["parameters"]
+    assert "max_output_tokens" not in call[3]["parameters"]
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"max_tokens": True},
+        {"max_tokens": 0},
+        {"max_output_tokens": "2048"},
+        {"n": 2},
+        {"best_of": 2},
+    ],
+)
+def test_invalid_limits_and_multiple_completions_never_reach_provider(parameters) -> None:
+    client = FakeContractClient()
+    with pytest.raises(GlobalContractInvocationError):
+        create_generate_operation(client)(
+            "generate",
+            {"model_profile_id": "saved-default", "messages": [], "parameters": parameters},
+        )
+    assert not any(item[0] == GENERATE_PROVIDER_CONTRACT for item in client.calls)

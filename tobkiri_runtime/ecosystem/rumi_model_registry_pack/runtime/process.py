@@ -97,6 +97,7 @@ class ModelRegistryHostFactoryV4:
                     "record",
                     "expected_revision",
                     "provider_registry_revision",
+                    "preserve_existing",
                 },
                 "delete": {"model_profile_id", "expected_revision"},
                 "alias.set": {"alias", "target_profile_id", "expected_revision"},
@@ -111,6 +112,8 @@ class ModelRegistryHostFactoryV4:
                     raise PermissionError("model registry revision is invalid")
             invocation.assert_current()
             if operation == "save":
+                if "preserve_existing" in payload and type(payload["preserve_existing"]) is not bool:
+                    raise PermissionError("model registry update mode is invalid")
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
                     consumer_pack_id=_PACK_ID,
