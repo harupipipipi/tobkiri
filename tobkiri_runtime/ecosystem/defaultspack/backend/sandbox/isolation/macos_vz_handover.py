@@ -110,7 +110,9 @@ class MacOSVZStorageHandover:
             raise ValueError("Host handover destination requires recovery")
         if (target_root / "packvm-vz-attestation.key").exists():
             raise ValueError("Host handover destination key already exists")
-        _empty_domains(source_root)
+        retained_domains = _retained_source_domains(source_root)
+        if retained_domains["entries"]:
+            self._require_owners_exited()
         _empty_domains(target_root)
         state = self.source._load_state()
         manifest = self.target._require_manifest()
@@ -167,8 +169,12 @@ class MacOSVZStorageHandover:
             "image_download_required": False,
             "fresh_authority_required": True,
             "live_guest_resume": False,
+            "retained_source_domain_storage": retained_domains,
         }
-        return {**facts, "plan_digest": canonical_digest(facts)}
+        plan = {**facts, "plan_digest": canonical_digest(facts)}
+        if len(json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()) > 64 * 1024:
+            raise ValueError("Host handover storage plan exceeds its review limit")
+        return plan
 
     def commit(
         self, plan: Mapping[str, Any], *, session_digest: str, ceremony_nonce: str
@@ -241,6 +247,8 @@ class MacOSVZStorageHandover:
                     raise ValueError("Host handover storage changed during publication")
             _require_metadata_digest(instance, str(plan["instance_metadata_digest"]))
             self.target._verify_state_bindings(registered, manifest)
+            self._require_owners_exited()
+            self._require_retained_domains(plan)
             self.target._audit("host-handover", str(plan["plan_digest"]))
             journal["stage"] = "finalized"
             self._write_journal(journal)
@@ -295,6 +303,11 @@ class MacOSVZStorageHandover:
                 self.source._verify_registration_source(
                     self.source._load_state(), self.target._require_manifest()
                 )
+                _require_metadata_digest(
+                    Path(plan["moves"][0]["source"]), str(plan["instance_metadata_digest"])
+                )
+                self._require_owners_exited()
+                self._require_retained_domains(plan)
                 return {"plan_digest": plan["plan_digest"], "stage": "rolled-back"}
             for move in reversed(plan["moves"]):
                 source, destination = Path(move["source"]), Path(move["target"])
@@ -315,6 +328,8 @@ class MacOSVZStorageHandover:
             self.source._verify_registration_source(
                 self.source._load_state(), self.target._require_manifest()
             )
+            self._require_owners_exited()
+            self._require_retained_domains(plan)
             journal["stage"] = "rolled-back"
             self._write_journal(journal)
             return {"plan_digest": plan["plan_digest"], "stage": "rolled-back"}
@@ -357,6 +372,7 @@ class MacOSVZStorageHandover:
         facts = {key: value for key, value in plan.items() if key != "plan_digest"}
         if canonical_digest(facts) != plan.get("plan_digest"):
             raise ValueError("Host handover recovery plan digest changed")
+        self._require_retained_domains(plan)
         source_root, target_root = self.source.state_path.parent, self.target.state_path.parent
         for root, digest, prefix in (
             (source_root, self.source_host_digest, "source"),
@@ -402,6 +418,12 @@ class MacOSVZStorageHandover:
             or plan.get("image_source") != manifest.image_source
         ):
             raise ValueError("Host handover recovery authority binding changed")
+
+    def _require_retained_domains(self, plan: Mapping[str, Any]) -> None:
+        if plan.get("retained_source_domain_storage") != _retained_source_domains(
+            self.source.state_path.parent
+        ):
+            raise ValueError("Host handover retained source domain storage changed")
 
     def _write_journal(self, journal: Mapping[str, Any]) -> None:
         signed = {key: value for key, value in journal.items() if key != "authentication"}
@@ -455,6 +477,10 @@ def _empty_domains(root: Path) -> None:
         _private_path(domains, directory=True)
         if any(domains.iterdir()):
             raise ValueError("Host handover does not transfer guest or domain storage")
+    _require_no_domain_recovery(root)
+
+
+def _require_no_domain_recovery(root: Path) -> None:
     for name in (
         "packvm-vz-recovery.json",
         "packvm-vz-allocation-recovery.json",
@@ -462,6 +488,158 @@ def _empty_domains(root: Path) -> None:
     ):
         if (root / name).exists() or (root / name).is_symlink():
             raise ValueError("Host handover requires existing operation recovery first")
+
+
+def _retained_source_domains(root: Path) -> dict[str, Any]:
+    """Inventory closed allocations in place; confer no guest authority."""
+    from .macos_vz_provisioner import _validate_allocation_identifier, _valid_process_id
+
+    _require_no_domain_recovery(root)
+    domains = root / "domains"
+    result: dict[str, Any] = {
+        "policy": "retain-in-source-no-resume",
+        "domains_root_identity": None,
+        "entries": [],
+    }
+    if not domains.exists() and not domains.is_symlink():
+        return result
+    result["domains_root_identity"] = _retained_identity(domains, directory=True)
+    children = sorted(domains.iterdir())
+    if len(children) > 32:
+        raise ValueError("Host handover retained domain inventory exceeds its limit")
+    names = {
+        "allocation.json",
+        "boot-cow.raw",
+        "efi-variable-store.bin",
+        "agent-seed.iso",
+        "config-seed.iso",
+    }
+    fields = {
+        "domain_id",
+        "reservation_id",
+        "lease_id",
+        "run_root",
+        "cow_disk_path",
+        "efi_store_path",
+        "owner_pid",
+        "owner_identity",
+        "cow_disk_digest",
+        "efi_variable_store_digest",
+        "agent_seed_path",
+        "agent_seed_digest",
+        "config_seed_path",
+        "config_seed_digest",
+        "guest_public_key_b64",
+        "guest_public_key_digest",
+    }
+    for directory in children:
+        before = _retained_identity(directory, directory=True)
+        if before["device"] != root.stat().st_dev or {p.name for p in directory.iterdir()} != names:
+            raise ValueError("Host handover retained domain storage is unreviewed")
+        allocation = SecureDirectory(directory, create=False).read_bytes_bounded(
+            "allocation.json", max_bytes=16 * 1024
+        )
+        record = json.loads(allocation)
+        if not isinstance(record, dict) or set(record) != fields:
+            raise ValueError("Host handover retained allocation is invalid")
+        identifiers = []
+        for key, label in (
+            ("domain_id", "domain"),
+            ("reservation_id", "reservation"),
+            ("lease_id", "lease"),
+        ):
+            _validate_allocation_identifier(record[key], label)
+            identifiers.append(record[key])
+        if directory.name != hashlib.sha256("\0".join(identifiers).encode()).hexdigest():
+            raise ValueError("Host handover retained allocation namespace changed")
+        for key, name in (
+            ("run_root", None),
+            ("cow_disk_path", "boot-cow.raw"),
+            ("efi_store_path", "efi-variable-store.bin"),
+            ("agent_seed_path", "agent-seed.iso"),
+            ("config_seed_path", "config-seed.iso"),
+        ):
+            if record[key] != str(directory if name is None else directory / name):
+                raise ValueError("Host handover retained allocation path changed")
+        if (
+            not _valid_process_id(record["owner_pid"])
+            or not isinstance(record["owner_identity"], str)
+            or not record["owner_identity"]
+            or process_start_identity(record["owner_pid"]).state != "dead"
+        ):
+            raise ValueError("Host handover retained allocation owner must be exited")
+        for key in fields:
+            if key.endswith("_digest"):
+                validate_artifact_digest(record[key], field=key)
+        if (
+            not isinstance(record["guest_public_key_b64"], str)
+            or not record["guest_public_key_b64"]
+        ):
+            raise ValueError("Host handover retained allocation key binding is invalid")
+        # Guest bytes confer no authority and never enter the destination.
+        # Bind kernel metadata instead of repeatedly reading multi-GiB COWs
+        # or private seeds. Only the bounded allocation claim is hashed.
+        files = {
+            name: (
+                _retained_file(directory / name)
+                if name == "allocation.json"
+                else _retained_identity(directory / name, directory=False)
+            )
+            for name in sorted(names)
+        }
+        if any(item["device"] != before["device"] for item in files.values()):
+            raise ValueError("Host handover retained storage crosses filesystems")
+        if files["allocation.json"]["digest"] != "sha256:" + hashlib.sha256(allocation).hexdigest():
+            raise ValueError("Host handover retained allocation changed during inspection")
+        if (
+            before != _retained_identity(directory, directory=True)
+            or {p.name for p in directory.iterdir()} != names
+        ):
+            raise ValueError("Host handover retained domain changed during inspection")
+        result["entries"].append({"name": directory.name, "identity": before, "files": files})
+    if result["domains_root_identity"] != _retained_identity(domains, directory=True) or (
+        sorted(domains.iterdir()) != children
+    ):
+        raise ValueError("Host handover retained inventory changed during inspection")
+    return result
+
+
+def _retained_identity(path: Path, *, directory: bool) -> dict[str, int]:
+    _private_path(path, directory=directory)
+    value = path.lstat()
+    return {
+        "device": value.st_dev,
+        "inode": value.st_ino,
+        "size": 0 if directory else value.st_size,
+        "mtime_ns": value.st_mtime_ns,
+        "ctime_ns": value.st_ctime_ns,
+    }
+
+
+def _retained_file(path: Path) -> dict[str, Any]:
+    before = _retained_identity(path, directory=False)
+    if before["size"] > 16 * 1024:
+        raise ValueError("Host handover retained allocation exceeds its byte limit")
+    digest = hashlib.sha256()
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        value = os.fstat(descriptor)
+        if (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns) != (
+            before["device"],
+            before["inode"],
+            before["size"],
+            before["mtime_ns"],
+            before["ctime_ns"],
+        ):
+            raise ValueError("Host handover retained file was redirected")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            for chunk in iter(lambda: stream.read(16 * 1024), b""):
+                digest.update(chunk)
+        if before != _retained_identity(path, directory=False):
+            raise ValueError("Host handover retained file changed during inspection")
+        return {**before, "digest": "sha256:" + digest.hexdigest()}
+    finally:
+        os.close(descriptor)
 
 
 def _ensure_private_parents(path: Path, root: Path) -> None:

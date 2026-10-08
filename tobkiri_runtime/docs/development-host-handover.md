@@ -12,8 +12,14 @@ Settings → Previous development Host. The native pickers select the old
 `.app` and its exact `user_data` folder. Review the displayed plan before
 choosing **Move storage and import data**. A browser or Pack cannot provide
 the selected paths or approve this operation. The feature rejects live
-owners, changed files, existing target storage, stopped registrations and
-guest-domain residue. Use ordinary Launcher Quit rather than the separate
+owners, changed files, existing target storage and stopped registrations.
+Closed guest allocations may remain only in the previous namespace: the
+plan binds their exact finite file inventory, inode/size/change-time identities
+and the bounded allocation-record digest without reading private guest seeds,
+requires exited owners and quiescent storage, and rechecks them at publication
+and recovery. Unknown files or unresolved allocation recovery still block
+handover. These allocations are never moved, copied, deleted or resumed.
+Use ordinary Launcher Quit rather than the separate
 administrative PackVM Stop command; the latter is not a handover operation.
 
 The plan transfers only the authenticated instance metadata and verified

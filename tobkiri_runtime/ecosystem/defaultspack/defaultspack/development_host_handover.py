@@ -23,7 +23,7 @@ from core_runtime.development_host_handover_guard import (
 from core_runtime.runtime_locks import NamedLock
 from core_runtime.process_identity import process_start_identity
 from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
-from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.canonical import canonical_bytes, canonical_digest
 from tobkiri_protocol.secure_persistence import SecureDirectory
 
 from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_handover import (
@@ -102,6 +102,7 @@ class DevelopmentHostHandover:
                 "fresh_profile_activation_required": True,
             }
             plan = {**facts, "plan_digest": canonical_digest(facts)}
+            _require_journal_budget(self._root, plan)
             nonce = secrets.token_urlsafe(32)
             self._pending.clear()
             self._pending[nonce] = (time.monotonic() + 300, plan, transfer)
@@ -199,6 +200,8 @@ class DevelopmentHostHandover:
             def complete(snapshot: Mapping[str, Any]) -> None:
                 _require_inactive(self._root)
                 _require_source_root(plan)
+                transfer._require_owners_exited()
+                transfer._require_retained_domains(plan["vm_plan"])
                 for relative, identity in staged_owners.items():
                     if _identity(self._root / relative) != identity:
                         raise ValueError("Host handover destination owner changed")
@@ -481,6 +484,43 @@ def _require_inactive(root: Path) -> None:
             paths.append(workspace / "activation" / "active.json")
     if any(path.exists() or path.is_symlink() for path in paths):
         raise ValueError("Host handover requires an inactive destination")
+
+
+def _require_journal_budget(root: Path, plan: Mapping[str, Any]) -> None:
+    """Reject a plan before custody unless all later receipts fit recovery."""
+    maximum = (1 << 64) - 1
+    identity = {"device": maximum, "inode": maximum, "size": maximum}
+    upper = {
+        "schema": "io.tobkiri.development-host-handover-journal.v1",
+        "authentication": "0" * 64,
+        "stage": "completed",
+        "plan": dict(plan),
+        "staging": str(root / "development-host-staging" / ("0" * 32) / "user_data"),
+        "staged_owners": {relative: identity for relative in plan["publications"]},
+        "published": [
+            {"relative_path": relative, "identity": identity} for relative in plan["publications"]
+        ],
+        "imported": {
+            "data_digest": "sha256:" + "0" * 64,
+            "counts": {
+                key: maximum
+                for key in ("definitions", "providers", "models", "conversations", "messages")
+            },
+            "activation_required": True,
+            "provider_credentials_required": True,
+        },
+        "vm_result": {
+            "plan_digest": "sha256:" + "0" * 64,
+            "attestation_digest": "sha256:" + "0" * 64,
+            "stage": "finalized",
+        },
+        "destination_definition_policy": "Immutable successors retained and fenced on recovery",
+        "destination_profile_generation": maximum,
+        "destination_profile_snapshot_digest": "sha256:" + "0" * 64,
+    }
+    # Reserve another 4 KiB for fresh rollback/abandonment receipts.
+    if len(canonical_bytes(upper)) > 124 * 1024:
+        raise ValueError("Host handover plan exceeds its recovery budget")
 
 
 def _owner_publications(target: Path, data: Mapping[str, Any]) -> list[str]:

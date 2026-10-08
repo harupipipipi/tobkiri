@@ -52,6 +52,12 @@ def read_handover_journal(root: Path) -> dict[str, Any] | None:
 
 def write_handover_journal(root: Path, value: Mapping[str, Any]) -> None:
     """Durably record an unpublished migration using a fresh local key."""
+    payload = {
+        "schema": SCHEMA,
+        **{key: item for key, item in value.items() if key != "authentication"},
+    }
+    if len(canonical_bytes({**payload, "authentication": "0" * 64})) > 128 * 1024:
+        raise ValueError("Development Host handover journal exceeds its recovery limit")
     storage = SecureDirectory(root, create=False)
     if not storage.exists(KEY):
         storage.write_bytes_atomic(
@@ -60,10 +66,6 @@ def write_handover_journal(root: Path, value: Mapping[str, Any]) -> None:
     key = storage.read_bytes_bounded(KEY, max_bytes=32)
     if len(key) != 32:
         raise ValueError("Development Host handover key is invalid")
-    payload = {
-        "schema": SCHEMA,
-        **{key: item for key, item in value.items() if key != "authentication"},
-    }
     payload["authentication"] = hmac.new(key, canonical_bytes(payload), hashlib.sha256).hexdigest()
     storage.write_bytes_atomic(JOURNAL, canonical_bytes(payload))
 

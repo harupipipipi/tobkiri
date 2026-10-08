@@ -7,6 +7,7 @@ from dataclasses import replace
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 import time
 
@@ -101,6 +102,202 @@ def transfer_fixture(tmp_path, provisioner_fixture, monkeypatch):
 
 def _commit(transfer, plan):
     return transfer.commit(plan, session_digest="sha256:" + "c" * 64, ceremony_nonce="n" * 43)
+
+
+@pytest.fixture
+def retained_domain(transfer_fixture, monkeypatch):
+    root = transfer_fixture.source.state_path.parent
+    ids = ["domain.closed.1", "reservation.closed.1", "lease.closed.1"]
+    directory = root / "domains" / hashlib.sha256("\0".join(ids).encode()).hexdigest()
+    store = SecureDirectory(directory, create=True)
+    record = dict(zip(("domain_id", "reservation_id", "lease_id"), ids))
+    record.update(
+        run_root=str(directory),
+        owner_pid=99_999_999,
+        owner_identity="exited-kernel-start",
+        guest_public_key_b64="cHVibGlj",
+    )
+    for path_key, name, digest_key in (
+        ("cow_disk_path", "boot-cow.raw", "cow_disk_digest"),
+        ("efi_store_path", "efi-variable-store.bin", "efi_variable_store_digest"),
+        ("agent_seed_path", "agent-seed.iso", "agent_seed_digest"),
+        ("config_seed_path", "config-seed.iso", "config_seed_digest"),
+    ):
+        raw = ("retained private test bytes:" + name).encode()
+        store.write_bytes_atomic(name, raw)
+        record[path_key] = str(directory / name)
+        record[digest_key] = "sha256:" + hashlib.sha256(raw).hexdigest()
+    record["guest_public_key_digest"] = "sha256:" + hashlib.sha256(b"public").hexdigest()
+    store.write_bytes_atomic("allocation.json", json.dumps(record).encode())
+    monkeypatch.setattr(
+        storage, "process_start_identity", lambda _: ProcessIdentityEvidence("dead", "")
+    )
+    return directory
+
+
+@pytest.mark.parametrize("stage", [None, "prepared", "moved-1", "moved-2", "registered"])
+def test_closed_domain_remains_in_source_during_transfer_and_recovery(
+    transfer_fixture, retained_domain, stage
+):
+    transfer = transfer_fixture
+    before = {p.name: (p.stat().st_ino, p.read_bytes()) for p in retained_domain.iterdir()}
+    plan = transfer.prepare()
+    assert plan["retained_source_domain_storage"]["policy"] == "retain-in-source-no-resume"
+    assert len(plan["retained_source_domain_storage"]["entries"]) == 1
+    assert len(plan["moves"]) == 2
+    assert "exited-kernel-start" not in json.dumps(plan)
+    assert "cHVibGlj" not in json.dumps(plan)
+    if stage is None:
+        assert _commit(transfer, plan)["stage"] == "finalized"
+    else:
+
+        def fail(current):
+            if current == stage:
+                raise RuntimeError("retained test interruption")
+
+        transfer._fault = fail
+        with pytest.raises(RuntimeError):
+            _commit(transfer, plan)
+        assert transfer.recover_to_source(plan)["stage"] == "rolled-back"
+        assert transfer.recover_to_source(plan)["stage"] == "rolled-back"
+    assert {p.name: (p.stat().st_ino, p.read_bytes()) for p in retained_domain.iterdir()} == before
+    assert not (transfer.target.state_path.parent / "domains").exists()
+
+
+@pytest.mark.parametrize("state", ["live", "unknown"])
+def test_retained_owner_live_reused_or_unknown_blocks_prepare(
+    transfer_fixture, retained_domain, monkeypatch, state
+):
+    monkeypatch.setattr(
+        storage, "process_start_identity", lambda _: ProcessIdentityEvidence(state, "reused-start")
+    )
+    with pytest.raises(ValueError, match="owner must be exited"):
+        transfer_fixture.prepare()
+    assert not transfer_fixture.target.state_path.exists()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "extra",
+        "missing",
+        "symlink",
+        "hardlink",
+        "path",
+        "namespace",
+        "digest",
+        "replacement",
+        "target",
+        "recovery",
+    ],
+)
+def test_retained_domain_mutation_denies_transfer_before_custody(
+    transfer_fixture, retained_domain, case
+):
+    transfer = transfer_fixture
+    plan = transfer.prepare()
+    path = retained_domain / "agent-seed.iso"
+    if case == "extra":
+        SecureDirectory(retained_domain, create=False).write_bytes_atomic("extra", b"unknown")
+    elif case == "missing":
+        path.unlink()
+    elif case == "symlink":
+        path.unlink()
+        path.symlink_to(retained_domain / "config-seed.iso")
+    elif case == "hardlink":
+        os.link(path, retained_domain.parent / "external-link")
+    elif case == "path":
+        record = json.loads((retained_domain / "allocation.json").read_bytes())
+        record["cow_disk_path"] = str(retained_domain.parent / "outside")
+        SecureDirectory(retained_domain, create=False).write_bytes_atomic(
+            "allocation.json", json.dumps(record).encode()
+        )
+    elif case == "namespace":
+        retained_domain.rename(retained_domain.with_name("f" * 64))
+    elif case == "digest":
+        path.write_bytes(b"changed")
+    elif case == "replacement":
+        SecureDirectory(retained_domain, create=False).write_bytes_atomic(
+            path.name, path.read_bytes()
+        )
+    elif case == "target":
+        SecureDirectory(transfer.target.state_path.parent / "domains" / "unexpected", create=True)
+    else:
+        SecureDirectory(transfer.source.state_path.parent, create=False).write_bytes_atomic(
+            "packvm-vz-allocation-recovery.json", b"{}"
+        )
+    with pytest.raises((OSError, ValueError)):
+        _commit(transfer, plan)
+    assert all(Path(move["source"]).exists() for move in plan["moves"])
+    assert not (transfer.target.state_path.parent / storage.JOURNAL_NAME).exists()
+
+
+def test_retained_mutation_after_move_fences_publication_and_rollback(
+    transfer_fixture, retained_domain
+):
+    transfer = transfer_fixture
+    plan = transfer.prepare()
+
+    def mutate(stage):
+        if stage == "registered":
+            (retained_domain / "boot-cow.raw").write_bytes(b"changed after custody")
+
+    transfer._fault = mutate
+    with pytest.raises(ValueError, match="retained source domain storage changed"):
+        _commit(transfer, plan)
+    with pytest.raises(ValueError, match="recovery"):
+        transfer.target._load_state()
+    with pytest.raises(ValueError, match="retained source domain storage changed"):
+        transfer.recover_to_source(plan)
+    assert Path(plan["moves"][0]["target"]).exists()
+
+
+def test_retained_large_guest_files_are_not_read(transfer_fixture, retained_domain, monkeypatch):
+    cow = retained_domain / "boot-cow.raw"
+    with cow.open("r+b") as stream:
+        stream.truncate(32 * 1024**3)  # Sparse test file, no 32-GiB allocation.
+    original = storage._retained_file
+    seen = []
+
+    def only_allocation(path):
+        seen.append(path.name)
+        assert path.name == "allocation.json"
+        return original(path)
+
+    monkeypatch.setattr(storage, "_retained_file", only_allocation)
+    plan = transfer_fixture.prepare()
+    assert seen == ["allocation.json"]
+    assert (
+        plan["retained_source_domain_storage"]["entries"][0]["files"][cow.name]["size"]
+        == 32 * 1024**3
+    )
+
+
+def test_recovery_budget_rejects_before_creating_authority(tmp_path):
+    root = tmp_path / "private"
+    SecureDirectory(root, create=True)
+    with pytest.raises(ValueError, match="recovery limit"):
+        write_handover_journal(root, {"oversized": "x" * (128 * 1024)})
+    assert not (root / "development-host-handover.key").exists()
+    assert not (root / "development-host-handover.json").exists()
+    with pytest.raises(ValueError, match="recovery budget"):
+        owner._require_journal_budget(root, {"publications": ["x" * 512] * 512})
+
+
+def test_idempotent_rollback_rechecks_instance_metadata(transfer_fixture):
+    transfer = transfer_fixture
+    plan = transfer.prepare()
+    transfer._fault = lambda stage: (
+        (_ for _ in ()).throw(RuntimeError("stop")) if stage == "moved-1" else None
+    )
+    with pytest.raises(RuntimeError):
+        _commit(transfer, plan)
+    transfer.recover_to_source(plan)
+    SecureDirectory(Path(plan["moves"][0]["source"]), create=False).write_bytes_atomic(
+        "base-image.json", b'{"changed":true}'
+    )
+    with pytest.raises(ValueError, match="metadata"):
+        transfer.recover_to_source(plan)
 
 
 def test_exact_storage_moves_and_fresh_registration_retains_old_keys(transfer_fixture):
