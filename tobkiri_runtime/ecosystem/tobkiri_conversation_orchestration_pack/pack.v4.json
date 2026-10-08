@@ -1,0 +1,228 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:9251c36e2e9bfa7a6ee4e32203bc69db525dcc217670417e8b992ae7204ec631",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+      "kind": "executable",
+      "path": "runtime/messages.py"
+    },
+    {
+      "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+      "kind": "executable",
+      "path": "runtime/saved_conversation.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "conversation.saved-turn.v1",
+      "operations": [
+        "saved_complete"
+      ],
+      "revision_digest": "sha256:c8f748e29c75e01a3ea58533a66d84a4debc410808ba7bd45c30e04fb81efc50"
+    },
+    {
+      "contract_id": "tobkiri.service.conversation.messages.build.v1",
+      "operations": [
+        "messages_build"
+      ],
+      "revision_digest": "sha256:7f6e38f70c2ab3a5c0339579f941861720efcd858f597f485e5e434db0359559"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:7f6e38f70c2ab3a5c0339579f941861720efcd858f597f485e5e434db0359559",
+      "id": "tobkiri_conversation_orchestration_pack.messages",
+      "implementation_digest": "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+      "isolation": "pack_vm",
+      "operations": [
+        "messages_build"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:c8f748e29c75e01a3ea58533a66d84a4debc410808ba7bd45c30e04fb81efc50",
+      "id": "tobkiri_conversation_orchestration_pack.saved",
+      "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+      "isolation": "pack_vm",
+      "operations": [
+        "saved_complete"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:3f2ae22f64ed02ff00a65ee61d6b9687e1f965888b693b8d75deac7d55c3e378",
+    "contract_catalog_digest": "sha256:8844ca0dbda695745c2a0c11a13a5a94cf8a0f08ecf8c32b019ea07ff1e3c161",
+    "source_identity": "sha256:39884ccd98c445d7ebf18ade908b5320aacc59c1811a95267bd5243e29b50957"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2026-08-05"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.conversation.messages.build.v1",
+      "effect_ceiling": [],
+      "operation_id": "messages_build",
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "provider_id": "tobkiri_conversation_orchestration_pack.messages",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "conversation.saved-turn.v1",
+      "effect_ceiling": [],
+      "operation_id": "saved_complete",
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "provider_id": "tobkiri_conversation_orchestration_pack.saved",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3f2ae22f64ed02ff00a65ee61d6b9687e1f965888b693b8d75deac7d55c3e378",
+    "display_name": "Tobkiri Conversation Orchestration",
+    "id": "tobkiri_conversation_orchestration_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:39884ccd98c445d7ebf18ade908b5320aacc59c1811a95267bd5243e29b50957",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:39884ccd98c445d7ebf18ade908b5320aacc59c1811a95267bd5243e29b50957",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_conversation_orchestration_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.conversation.messages.build.v1",
+      "operations": [
+        "messages_build"
+      ],
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "provider_id": "tobkiri_conversation_orchestration_pack.messages"
+    },
+    {
+      "contract_reference": "conversation.saved-turn.v1",
+      "operations": [
+        "saved_complete"
+      ],
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "provider_id": "tobkiri_conversation_orchestration_pack.saved"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.message.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.route.quote.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.prompt.studio.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.strategy.dispatch.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.invoke.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.stream.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.progress.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-progress"
+        ],
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.turn.progress.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-progress-resource"
+        ],
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

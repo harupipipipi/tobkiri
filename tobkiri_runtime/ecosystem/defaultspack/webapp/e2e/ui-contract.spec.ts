@@ -1,6 +1,7 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route, type Request } from "@playwright/test";
 import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../test-support/frontendContractFixture";
 import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
+import { canonicalRequestQuery } from "./contractRequestMatcher";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -31,28 +32,26 @@ test("actual ChatApp tab loads keep selected identity and Stop scoped through de
   });
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
-    const url = new URL(request.url());
-    const target = requestTarget(url);
-    const method = request.method();
-    if (target === "/api/chat/conversations" && method === "GET") {
+    const target = chatRequestKind(request);
+    if (target === "listConversations") {
       return route.fulfill({ json: ok({ conversations: [{ ...settled, messages: [] }], total: 1, store_revision: 1 }) });
     }
-    if (target === "/api/chat/conversations" && method === "POST") {
+    if (target === "createConversation") {
       return route.fulfill({ json: ok(active) });
     }
-    if (target === "/api/chat/conversation" && requestConversationId(url) === settled.id && method === "GET") {
+    if (target === "getConversation" && requestConversationId(request) === settled.id) {
       if (delayB) { delayedBReads += 1; await delayedB; }
       return route.fulfill({ json: ok(settled) });
     }
-    if (target === "/api/chat/conversation" && requestConversationId(url) === active.id && method === "GET") {
+    if (target === "getConversation" && requestConversationId(request) === active.id) {
       return route.fulfill({ json: ok(active) });
     }
-    if (target === "/api/chat/turn" && method === "POST") {
+    if (target === "startTurn") {
       operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
       await inflightStart;
       return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
     }
-    if (target === "/api/chat/turn/events") {
+    if (target === "turnEvents") {
       if (!operationId) return route.fulfill({ status: 404, json: { status: "error", error: { message: "not yet registered" } } });
       return route.fulfill({ json: ok({
         turn_id: operationId, operation_id: operationId, conversation_id: active.id,
@@ -60,13 +59,13 @@ test("actual ChatApp tab loads keep selected identity and Stop scoped through de
         turn: turn(), events: [], terminal: null,
       }) });
     }
-    if (target === "/api/chat/turns") {
+    if (target === "turns") {
       return route.fulfill({ json: ok({ turns: operationId ? [turn()] : [] }) });
     }
-    if (target === "/api/chat/turn/reconcile") {
+    if (target === "reconcile") {
       return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
     }
-    if (target === "/api/chat/turn/stop") {
+    if (target === "stop") {
       const id = (request.postDataJSON() as { turn_id: string }).turn_id;
       stopped.push(id);
       return route.fulfill({ json: ok({ turn_id: id, status: "cancellation_requested", stopped: false }) });
@@ -91,7 +90,7 @@ test("actual ChatApp tab loads keep selected identity and Stop scoped through de
     await page.getByRole("tab", { name: "Pending A", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`chat=${active.id}`));
     await expect(page.getByText("Keep pending A separate", { exact: true })).toBeVisible();
-    const lateResponse = page.waitForResponse((response) => requestConversationId(new URL(response.url())) === settled.id);
+    const lateResponse = page.waitForResponse((response) => requestConversationId(response.request()) === settled.id);
     releaseB();
     await lateResponse;
     await expect(page.getByRole("tab", { name: "Pending A", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -130,23 +129,23 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
   });
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
-    const target = requestTarget(new URL(request.url()));
-    if (target === "/api/chat/conversations" && request.method() === "GET") {
+    const target = chatRequestKind(request);
+    if (target === "listConversations") {
       return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
     }
-    if (target === "/api/chat/conversations" && request.method() === "POST") {
+    if (target === "createConversation") {
       return route.fulfill({ json: ok(conversation) });
     }
-    if (target === "/api/chat/conversation") {
+    if (target === "getConversation") {
       return route.fulfill({ json: ok(conversation) });
     }
-    if (target === "/api/chat/turn" && request.method() === "POST") {
+    if (target === "startTurn") {
       starts += 1;
       operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
       await pendingStart;
       return route.abort("failed");
     }
-    if (target === "/api/chat/turns") {
+    if (target === "turns") {
       if (!registered) emptyListReads += 1;
       if (registered) {
         registeredListReads += 1;
@@ -154,7 +153,7 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
       }
       return route.fulfill({ json: ok({ turns: registered ? [turn()] : [] }) });
     }
-    if (target === "/api/chat/turn/events") {
+    if (target === "turnEvents") {
       eventReads += 1;
       return route.fulfill({ json: ok({
         turn_id: operationId, operation_id: operationId, conversation_id: conversation.id,
@@ -162,10 +161,10 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
         turn: turn(), events: [], terminal: null,
       }) });
     }
-    if (target === "/api/chat/turn/reconcile") {
+    if (target === "reconcile") {
       return route.fulfill({ json: ok({ status: "reconciliation_required", turn: turn() }) });
     }
-    if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+    if (target === "stop" || target === "steer") {
       controls.push(target);
       return route.fulfill({ json: ok({ turn_id: operationId, status: "cancellation_requested", stopped: false }) });
     }
@@ -188,7 +187,7 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
     registered = true;
     await expect.poll(() => registeredListReads).toBeGreaterThan(0);
     await page.getByRole("button", { name: "New Chat", exact: true }).click();
-    const lateRegistration = page.waitForResponse((response) => requestTarget(new URL(response.url())) === "/api/chat/turns");
+    const lateRegistration = page.waitForResponse((response) => chatRequestKind(response.request()) === "turns");
     delayRegistrationRead = false;
     releaseRegistrationRead();
     await lateRegistration;
@@ -201,7 +200,7 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
     expect(starts).toBe(1);
     await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "生成を停止", exact: true }).click();
-    await expect.poll(() => controls).toEqual(["/api/chat/turn/stop"]);
+    await expect.poll(() => controls).toEqual(["stop"]);
   } finally {
     releaseStart();
     releaseRegistrationRead();
@@ -223,20 +222,20 @@ for (const failure of ["transport", "auth", "foreign conversation", "duplicate r
     const controls: string[] = [];
     await page.route("**/api/contracts/defaultspack/**", async (route) => {
       const request = route.request();
-      const target = requestTarget(new URL(request.url()));
-      if (target === "/api/chat/conversations" && request.method() === "GET") {
+      const target = chatRequestKind(request);
+      if (target === "listConversations") {
         return route.fulfill({ json: ok({ conversations: [], total: 0, store_revision: 1 }) });
       }
-      if (target === "/api/chat/conversations" && request.method() === "POST") {
+      if (target === "createConversation") {
         return route.fulfill({ json: ok(conversation) });
       }
-      if (target === "/api/chat/turn" && request.method() === "POST") {
+      if (target === "startTurn") {
         starts += 1;
         operationId = (request.postDataJSON() as { request: { turn_id: string } }).request.turn_id;
         await pendingStart;
         return route.abort("failed");
       }
-      if (target === "/api/chat/turns") {
+      if (target === "turns") {
         if (failure === "transport") return route.abort("failed");
         if (failure === "auth") return route.fulfill({ status: 403, json: { success: false, error: "Unauthorized" } });
         const root = {
@@ -249,11 +248,11 @@ for (const failure of ["transport", "auth", "foreign conversation", "duplicate r
             : [{ ...root, guidance_parent_turn_id: "different-root", guidance_source_turn_id: "different-root", guidance_id: "guidance-1" }];
         return route.fulfill({ json: ok({ turns }) });
       }
-      if (target === "/api/chat/turn/events") {
+      if (target === "turnEvents") {
         eventReads += 1;
         return route.abort("failed");
       }
-      if (target === "/api/chat/turn/stop" || target === "/api/chat/turn/steer") {
+      if (target === "stop" || target === "steer") {
         controls.push(target);
         return route.abort("failed");
       }
@@ -287,20 +286,19 @@ test("actual ChatApp preserves an uncached selected root and draft while its rec
   const writes: string[] = [];
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
-    const url = new URL(request.url());
-    const target = requestTarget(url);
-    if (target === "/api/chat/conversations" && request.method() === "GET") {
+    const target = chatRequestKind(request);
+    if (target === "listConversations") {
       return route.fulfill({ json: ok({ conversations: [a, b].map((item) => ({ ...item, messages: [] })), total: 2, store_revision: 1 }) });
     }
-    if (target === "/api/chat/conversation" && requestConversationId(url) === a.id && request.method() === "GET") {
+    if (target === "getConversation" && requestConversationId(request) === a.id) {
       return route.fulfill({ json: ok(a) });
     }
-    if (target === "/api/chat/conversation" && requestConversationId(url) === b.id && request.method() === "GET") {
+    if (target === "getConversation" && requestConversationId(request) === b.id) {
       bReads += 1;
       await delayedB;
       return route.fulfill({ json: ok(b) });
     }
-    if (["/api/chat/conversations", "/api/chat/turn"].includes(target) && request.method() === "POST") {
+    if (target === "createConversation" || target === "startTurn") {
       writes.push(target);
       return route.abort();
     }
@@ -323,7 +321,7 @@ test("actual ChatApp preserves an uncached selected root and draft while its rec
     expect(writes).toEqual([]);
     await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`chat=${b.id}`));
-    const response = page.waitForResponse((result) => requestConversationId(new URL(result.url())) === b.id);
+    const response = page.waitForResponse((result) => requestConversationId(result.request()) === b.id);
     releaseB();
     await response;
     await expect(page.getByRole("tab", { name: "Uncached B", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -364,16 +362,15 @@ for (const switchToB of [false, true]) {
     let listsAfterMutation = 0;
     await page.route("**/api/contracts/defaultspack/**", async (route) => {
       const request = route.request();
-      const url = new URL(request.url());
-      const target = requestTarget(url);
-      if (target === "/api/chat/conversations" && request.method() === "GET") {
+        const target = chatRequestKind(request);
+      if (target === "listConversations") {
         if (completedMutation) listsAfterMutation += 1;
         return route.fulfill({ json: ok({ conversations: [a, b], total: 2, store_revision: 1 }) });
       }
-      if (target === "/api/chat/conversation" && request.method() === "GET") {
-        return route.fulfill({ json: ok(requestConversationId(url) === a.id ? a : b) });
+      if (target === "getConversation") {
+        return route.fulfill({ json: ok(requestConversationId(request) === a.id ? a : b) });
       }
-      if (target === "/api/command-protocol/v1/invoke") {
+      if (target === "invokeCommand") {
         expect((request.postDataJSON() as Record<string, unknown>).conversation_id).toBe(a.id);
         commandSeen = true;
         await commandGate;
@@ -382,10 +379,10 @@ for (const switchToB of [false, true]) {
           legacy_result: { executed: true, requires_approval: false, selected_model: googleProfile.profile_id },
         }) });
       }
-      if (/\/api\/command-protocol\/v1\/invocations\/[^/]+\/events$/.test(target)) {
+      if (target === "commandEvents") {
         return fulfillStreamEvents(route, [{ type: "completed", sequence: 1 }]);
       }
-      if (target === "/api/chat/conversation" && request.method() === "PUT") {
+      if (target === "updateConversation") {
         const mutation = request.postDataJSON() as Record<string, unknown>;
         mutations.push(mutation);
         await mutationGate;
@@ -449,11 +446,32 @@ function requestTarget(url: URL): string {
   return queryIndex < 0 ? target : target.slice(0, queryIndex);
 }
 
-function requestConversationId(url: URL): string | null {
-  const operation = decodeURIComponent(url.pathname.split("/api/contracts/defaultspack/")[1] ?? url.pathname);
-  const separator = operation.indexOf(" ");
-  const target = separator < 0 ? operation : operation.slice(separator + 1);
-  return new URL(target, url.origin).searchParams.get("conversation_id");
+const chatRoutes = {
+  listConversations: ["api/chat/conversations", "GET"],
+  createConversation: ["api/chat/conversations", "POST"],
+  getConversation: ["api/chat/conversation", "GET"],
+  updateConversation: ["api/chat/conversation", "PUT"],
+  startTurn: ["api/chat/turn", "POST"],
+  turnEvents: ["api/chat/turn/events", "GET"],
+  turns: ["api/chat/turns", "GET"],
+  reconcile: ["api/chat/turn/reconcile", "POST"],
+  stop: ["api/chat/turn/stop", "POST"],
+  steer: ["api/chat/turn/steer", "POST"],
+  invokeCommand: ["api/command-protocol/v1/invoke", "POST"],
+  commandEvents: ["api/command-protocol/v1/invocations/command-model-a/events", "GET"],
+} as const;
+
+function chatRequestKind(request: Pick<Request, "url" | "method">): string {
+  for (const [kind, [path, method]] of Object.entries(chatRoutes)) {
+    if (canonicalRequestQuery(request, path, method) !== null) return kind;
+  }
+  return "unmatched";
+}
+
+function requestConversationId(request: Pick<Request, "url" | "method">): string | null {
+  const query = canonicalRequestQuery(request, "api/chat/conversation", "GET");
+  const ids = query?.getAll("conversation_id") ?? [];
+  return ids.length === 1 ? ids[0] : null;
 }
 
 test("bootstrap loading state uses the Tobkiri Launcher animation and honors reduced motion", async ({ page }) => {

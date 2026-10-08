@@ -181,6 +181,27 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
                 or validation.get("arguments") != payload["arguments"]
             ):
                 raise ValueError("tool arguments are invalid")
+            result_format = definition.get("result_schema_format")
+            if result_format not in (None, "normalized-result.v1"):
+                raise ValueError("tool result schema format is unsupported")
+            # Older advisory schemas never established raw-vs-normalized
+            # semantics. Do not reinterpret them after an executor has acted.
+            result_schema = (definition.get("result_schema", {})
+                             if result_format == "normalized-result.v1" else {})
+            if not isinstance(result_schema, Mapping):
+                raise ValueError("tool result schema is invalid")
+            if result_schema:
+                # Check supported schema syntax before any executor effects.
+                # Null need not conform: this call only verifies the schema is
+                # supported by the same captured validator used below.
+                probe = client.invoke(
+                    VALIDATE, "rumi_tool_validation_pack.tool-arguments-validate",
+                    {"schema": dict(result_schema), "arguments": None},
+                )
+                if (not isinstance(probe, Mapping)
+                        or type(probe.get("valid")) is not bool
+                        or probe.get("coerced") is not False):
+                    raise ValueError("tool result schema could not be checked")
             execution = definition.get("execution")
             if not isinstance(execution, Mapping) or execution.get("kind") not in _EXECUTORS:
                 raise PermissionError("tool execution kind is unavailable")
@@ -236,6 +257,20 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
                     "value": raw,
                 },
             )
+            if result_schema:
+                if not isinstance(normalized, Mapping) or "result" not in normalized:
+                    raise ValueError("tool result envelope is invalid")
+                checked = client.invoke(
+                    VALIDATE, "rumi_tool_validation_pack.tool-arguments-validate",
+                    {"schema": dict(result_schema), "arguments": normalized["result"]},
+                )
+                if (not isinstance(checked, Mapping)
+                        or checked.get("valid") is not True
+                        or checked.get("coerced") is not False
+                        or checked.get("arguments") != normalized["result"]):
+                    # The executor may already have acted. Never retry it or
+                    # publish an invalid value to dependent Flow steps.
+                    raise ValueError("tool result does not match its declared schema")
             if progress_bound:
                 try:
                     content = json.dumps(

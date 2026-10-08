@@ -130,8 +130,17 @@ def run_command(
 ) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ if env is None else env)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    arguments = [os.fspath(part) for part in command]
+    if os.name == "nt" and arguments and arguments[0].lower() in {"npm", "npm.cmd"}:
+        # CreateProcess does not resolve a bare npm name to its official .cmd
+        # shim. Resolve that exact shim from this invocation's PATH, keeping
+        # the argument vector and the default shell=False behavior intact.
+        npm = shutil.which("npm.cmd", path=environment.get("PATH", os.defpath))
+        if npm is None:
+            raise RuntimeError("npm.cmd was not found in the development PATH")
+        arguments[0] = npm
     return subprocess.run(
-        [os.fspath(part) for part in command],
+        arguments,
         cwd=cwd,
         check=True,
         env=environment,
@@ -161,6 +170,9 @@ def verify_uv_binary(path: Path) -> str:
 
 def copy_dev_uv(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        _copy_writable_development_binary(source, destination)
+        return
     if source.resolve() == destination.resolve():
         return
 
@@ -178,6 +190,67 @@ def copy_dev_uv(source: Path, destination: Path) -> None:
             )
         os.replace(temporary, destination)
     finally:
+        temporary.unlink(missing_ok=True)
+
+
+
+def _copy_writable_development_binary(source: Path, destination: Path) -> None:
+    """Stage Windows dev bytes without inheriting a source's read-only flag.
+
+    Existing read-only artifacts need a separate, handle-bound recovery path.
+    Never repair their attributes through a pathname or mutate the source.
+    """
+    try:
+        existing = destination.lstat()
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        if (
+            _is_link_or_reparse(existing)
+            or not stat.S_ISREG(existing.st_mode)
+            or existing.st_nlink != 1
+        ):
+            raise RuntimeError(f"Unsafe development binary destination: {destination}")
+        if not existing.st_mode & stat.S_IWUSR:
+            raise RuntimeError(
+                f"Existing development binary is read-only: {destination}. "
+                "Use a fresh isolated development staging directory."
+            )
+    if source.resolve() == destination.resolve():
+        return
+    before = source.lstat()
+    if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+        raise RuntimeError(f"Development binary source must be regular: {source}")
+    descriptor, name = tempfile.mkstemp(prefix=".dev-binary-", suffix=".tmp", dir=destination.parent)
+    temporary = Path(name)
+    try:
+        try:
+            with os.fdopen(descriptor, "wb", closefd=False) as output:
+                with source.open("rb") as input_handle:
+                    opened = os.fstat(input_handle.fileno())
+                    if _named_descriptor_identity(before) != _named_descriptor_identity(opened):
+                        raise RuntimeError("Development binary source changed before staging")
+                    shutil.copyfileobj(input_handle, output)
+                    output.flush()
+                    os.fsync(output.fileno())
+                    after = os.fstat(input_handle.fileno())
+                if (
+                    _snapshot_identity(opened) != _snapshot_identity(after)
+                    or _snapshot_identity(before) != _snapshot_identity(source.lstat())
+                    or output.tell() != after.st_size
+                ):
+                    raise RuntimeError("Development binary source changed while staging")
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, destination)
+    except BaseException as original:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            if hasattr(original, "add_note"):
+                original.add_note(f"Development temp cleanup also failed: {cleanup_error}")
+        raise
+    else:
         temporary.unlink(missing_ok=True)
 
 
@@ -403,7 +476,8 @@ def _snapshot_development_shell_file(source: Path, destination: Path) -> None:
         or size != after.st_size
     ):
         raise RuntimeError(f"Development Shell file changed while staging: {source}")
-    destination.chmod(stat.S_IMODE(after.st_mode))
+    if os.name != "nt":
+        destination.chmod(stat.S_IMODE(after.st_mode))
 
 
 def _snapshot_development_shell_entry(source: Path, destination: Path) -> None:
@@ -429,7 +503,8 @@ def _snapshot_development_shell_entry(source: Path, destination: Path) -> None:
         raise RuntimeError(f"Development Shell directory changed while staging: {source}") from exc
     if _is_link_or_reparse(after) or _snapshot_identity(before) != _snapshot_identity(after):
         raise RuntimeError(f"Development Shell directory changed while staging: {source}")
-    destination.chmod(stat.S_IMODE(after.st_mode))
+    if os.name != "nt":
+        destination.chmod(stat.S_IMODE(after.st_mode))
 
 
 def _validate_detached_development_shell(path: Path) -> None:

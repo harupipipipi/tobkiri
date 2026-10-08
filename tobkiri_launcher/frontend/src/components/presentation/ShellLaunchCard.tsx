@@ -125,7 +125,7 @@ export function ShellLaunchCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <Monitor className="h-4 w-4 text-accent" aria-hidden="true" />
-            <CardTitle id={`shell-launch-title-${profileId ?? 'default'}`}>{profileDisplayName ?? 'Defaults Profile'} launch</CardTitle>
+            <CardTitle id={`shell-launch-title-${profileId ?? 'default'}`}>{profileDisplayName ?? 'Tobkiri Harness'} launch</CardTitle>
           </div>
           <Badge variant={blockedReason ? 'warning' : 'success'}>
             {blockedReason ? 'Unavailable' : 'Shell verified'}
@@ -188,9 +188,9 @@ export function ShellLaunchCard({
                 loading={launching}
                 onClick={() => needsSelection && onChooseShell ? onChooseShell() : void launch()}
                 aria-busy={launching}
-                aria-label={`${needsSelection && onChooseShell ? 'Choose Shell for' : 'Launch'} ${profileDisplayName ?? 'Defaults Profile'}`}
+                aria-label={`${needsSelection && onChooseShell ? 'Choose Shell for' : 'Launch'} ${profileDisplayName ?? 'Tobkiri Harness'}`}
               >
-                {launching ? 'Opening…' : needsSelection && onChooseShell ? 'Choose Shell' : `Launch ${profileDisplayName ?? 'Defaults Profile'}`}
+                {launching ? 'Opening…' : needsSelection && onChooseShell ? 'Choose Shell' : `Launch ${profileDisplayName ?? 'Tobkiri Harness'}`}
               </Button>
               {!active && activationHref ? (
                 <Link

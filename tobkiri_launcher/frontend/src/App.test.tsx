@@ -259,10 +259,10 @@ test('embedded verification gate blocks runtime route content inside the Home la
 
 test('disabled Devtools deep links keep their URL contract but do not mount raw tools', () => {
   const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/flows']}>
+    <MemoryRouter initialEntries={['/profile-graph']}>
       <Routes>
         <Route
-          path="/flows"
+          path="/profile-graph"
           element={(
             <DevtoolsRouteGate enabled={false}>
               <p data-testid="raw-invocation">raw invocation controls</p>
@@ -470,4 +470,33 @@ test('runtime-only routes show one recovery gate without a duplicate layout bann
   assert.doesNotMatch(html, /data-testid="setup-verification-banner"/);
   assert.match(html, /data-testid="runtime-route-verification-gate"/);
   assert.doesNotMatch(html, /runtime content/);
+});
+
+
+test('Host verification opens routes in a fresh browser without a local setup flag', () => {
+  const props = gateProps({
+    isSetupDone: false,
+    runtimeReady: true,
+    runtimeStatus: 'runtime_ready',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
+  });
+  const html = renderToStaticMarkup(
+    <MemoryRouter>
+      <SetupVerificationBanner {...props} />
+      <SetupVerificationGate {...props}><p>verified runtime page</p></SetupVerificationGate>
+    </MemoryRouter>,
+  );
+  assert.match(html, /verified runtime page/);
+  assert.doesNotMatch(html, /Complete setup|setup-verification-banner|setup-verification-gate/);
+
+  const blocked = renderToStaticMarkup(
+    <MemoryRouter>
+      <SetupVerificationGate {...props} defaultsBootstrapRequired>
+        <p>verified runtime page</p>
+      </SetupVerificationGate>
+    </MemoryRouter>,
+  );
+  assert.match(blocked, /Complete setup/);
+  assert.doesNotMatch(blocked, /verified runtime page/);
 });

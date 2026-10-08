@@ -306,1121 +306,6 @@
       ],
       "variant_id": "defaultspack.conversation.python"
     },
-    "defaultspack.conversation.saved": {
-      "contract_id": "conversation.saved-turn.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ],
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
-      "implementation_path": "runtime/saved_conversation.py",
-      "input_schema": {
-        "$defs": {
-          "identifier": {
-            "maxLength": 256,
-            "minLength": 1,
-            "not": {
-              "pattern": "[^A-Za-z0-9._:-]"
-            },
-            "pattern": "^[A-Za-z0-9]",
-            "type": "string"
-          },
-          "image_block": {
-            "additionalProperties": false,
-            "properties": {
-              "image_url": {
-                "additionalProperties": false,
-                "properties": {
-                  "url": {
-                    "maxLength": 1398127,
-                    "minLength": 1,
-                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url"
-                ],
-                "type": "object"
-              },
-              "type": {
-                "const": "image_url"
-              }
-            },
-            "required": [
-              "type",
-              "image_url"
-            ],
-            "type": "object"
-          },
-          "text_block": {
-            "additionalProperties": false,
-            "properties": {
-              "text": {
-                "maxLength": 61440,
-                "minLength": 1,
-                "pattern": "\\S",
-                "type": "string"
-              },
-              "type": {
-                "const": "text"
-              }
-            },
-            "required": [
-              "type",
-              "text"
-            ],
-            "type": "object"
-          }
-        },
-        "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
-        "properties": {
-          "request": {
-            "additionalProperties": false,
-            "properties": {
-              "action_approval_mode": {
-                "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
-                "enum": [
-                  "ask",
-                  "agent",
-                  "full"
-                ],
-                "type": "string"
-              },
-              "chat_references": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "id": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                      "type": "string"
-                    },
-                    "kind": {
-                      "enum": [
-                        "chat",
-                        "group"
-                      ]
-                    },
-                    "profile_id": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "kind",
-                    "profile_id",
-                    "id"
-                  ],
-                  "type": "object"
-                },
-                "maxItems": 16,
-                "type": "array",
-                "uniqueItems": true
-              },
-              "content": {
-                "oneOf": [
-                  {
-                    "maxLength": 61440,
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
-                  },
-                  {
-                    "items": {
-                      "$ref": "#/$defs/image_block"
-                    },
-                    "maxItems": 3,
-                    "minItems": 1,
-                    "prefixItems": [
-                      {
-                        "$ref": "#/$defs/text_block"
-                      }
-                    ],
-                    "type": "array"
-                  }
-                ]
-              },
-              "context_binding": {
-                "additionalProperties": false,
-                "properties": {
-                  "context_digest": {
-                    "pattern": "^sha256:[0-9a-f]{64}$",
-                    "type": "string"
-                  },
-                  "parent_conversation_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "parent_revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "profile_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "version": {
-                    "const": "tobkiri.conversation-context-binding.v1"
-                  }
-                },
-                "required": [
-                  "version",
-                  "profile_id",
-                  "parent_conversation_id",
-                  "parent_revision",
-                  "context_digest"
-                ],
-                "type": "object"
-              },
-              "conversation_id": {
-                "$ref": "#/$defs/identifier"
-              },
-              "conversation_revision": {
-                "maximum": 9007199254740991,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "resolved_chat_references": {
-                "additionalProperties": false,
-                "properties": {
-                  "expires_at": {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "kind": {
-                    "const": "tobkiri.chat.reference.snapshot.v1"
-                  },
-                  "next_cursor": {
-                    "type": "null"
-                  },
-                  "profile_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                    "type": "string"
-                  },
-                  "project_revision": {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "references": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "conversation_ids": {
-                          "items": {
-                            "maxLength": 256,
-                            "minLength": 1,
-                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                            "type": "string"
-                          },
-                          "maxItems": 256,
-                          "type": "array",
-                          "uniqueItems": true
-                        },
-                        "id": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                          "type": "string"
-                        },
-                        "kind": {
-                          "enum": [
-                            "chat",
-                            "group"
-                          ]
-                        },
-                        "label": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "\\S",
-                          "type": "string"
-                        },
-                        "member_count": {
-                          "maximum": 4096,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "membership_complete": {
-                          "const": true
-                        },
-                        "snapshot_digest": {
-                          "pattern": "^sha256:[0-9a-f]{64}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "id",
-                        "label",
-                        "conversation_ids",
-                        "snapshot_digest",
-                        "member_count",
-                        "membership_complete"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 16,
-                    "type": "array"
-                  },
-                  "snapshot_time": {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "store_revision": {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "truncated": {
-                    "const": false
-                  }
-                },
-                "required": [
-                  "kind",
-                  "profile_id",
-                  "store_revision",
-                  "project_revision",
-                  "snapshot_time",
-                  "expires_at",
-                  "references",
-                  "next_cursor",
-                  "truncated"
-                ],
-                "type": "object"
-              },
-              "strategy_maximum_cost_microusd": {
-                "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
-                "maximum": 1000000,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "strategy_reference": {
-                "$ref": "#/$defs/identifier",
-                "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
-              },
-              "task_context": {
-                "additionalProperties": false,
-                "properties": {
-                  "conversation_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "generation": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "input_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "items": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "body": {
-                          "maxLength": 32000,
-                          "minLength": 1,
-                          "pattern": "\\S",
-                          "type": "string"
-                        },
-                        "id": {
-                          "$ref": "#/$defs/identifier"
-                        },
-                        "kind": {
-                          "enum": [
-                            "goal",
-                            "todo",
-                            "instruction"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "kind",
-                        "body"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 100,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "recipient_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "source_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "source_revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "version": {
-                    "const": "tobkiri.saved-task-context.v1"
-                  }
-                },
-                "required": [
-                  "version",
-                  "source_id",
-                  "conversation_id",
-                  "recipient_id",
-                  "input_id",
-                  "source_revision",
-                  "generation",
-                  "items"
-                ],
-                "type": "object"
-              },
-              "thinking_level": {
-                "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
-                "enum": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh"
-                ]
-              },
-              "tool_selection": {
-                "additionalProperties": false,
-                "allOf": [
-                  {
-                    "if": {
-                      "properties": {
-                        "mode": {
-                          "const": "none"
-                        }
-                      }
-                    },
-                    "then": {
-                      "properties": {
-                        "include": {
-                          "maxItems": 0
-                        },
-                        "must_use": {
-                          "const": false
-                        }
-                      }
-                    }
-                  }
-                ],
-                "properties": {
-                  "exclude": {
-                    "items": {
-                      "oneOf": [
-                        {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "not": {
-                            "pattern": "[^A-Za-z0-9._:/-]"
-                          },
-                          "pattern": "^[A-Za-z0-9]",
-                          "type": "string"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "id": {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "not": {
-                                "pattern": "[^A-Za-z0-9._:/-]"
-                              },
-                              "pattern": "^[A-Za-z0-9]",
-                              "type": "string"
-                            },
-                            "kind": {
-                              "enum": [
-                                "tool",
-                                "service"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "maxItems": 256,
-                    "type": "array"
-                  },
-                  "include": {
-                    "items": {
-                      "oneOf": [
-                        {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "not": {
-                            "pattern": "[^A-Za-z0-9._:/-]"
-                          },
-                          "pattern": "^[A-Za-z0-9]",
-                          "type": "string"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "id": {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "not": {
-                                "pattern": "[^A-Za-z0-9._:/-]"
-                              },
-                              "pattern": "^[A-Za-z0-9]",
-                              "type": "string"
-                            },
-                            "kind": {
-                              "enum": [
-                                "tool",
-                                "service"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "maxItems": 256,
-                    "type": "array"
-                  },
-                  "mode": {
-                    "enum": [
-                      "auto",
-                      "manual",
-                      "none"
-                    ]
-                  },
-                  "must_use": {
-                    "type": "boolean"
-                  },
-                  "scope": {
-                    "enum": [
-                      "turn",
-                      "conversation"
-                    ]
-                  }
-                },
-                "required": [
-                  "mode"
-                ],
-                "type": "object"
-              },
-              "turn_id": {
-                "$ref": "#/$defs/identifier"
-              }
-            },
-            "required": [
-              "turn_id",
-              "conversation_id",
-              "conversation_revision",
-              "content"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "request"
-        ],
-        "title": "Saved conversation initial input",
-        "type": "object"
-      },
-      "operation_id": "saved_complete",
-      "operations": [
-        {
-          "contract_id": "conversation.saved-turn.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "saved_complete",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
-          "implementation_path": "runtime/saved_conversation.py",
-          "input_schema": {
-            "$defs": {
-              "identifier": {
-                "maxLength": 256,
-                "minLength": 1,
-                "not": {
-                  "pattern": "[^A-Za-z0-9._:-]"
-                },
-                "pattern": "^[A-Za-z0-9]",
-                "type": "string"
-              },
-              "image_block": {
-                "additionalProperties": false,
-                "properties": {
-                  "image_url": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "url": {
-                        "maxLength": 1398127,
-                        "minLength": 1,
-                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url"
-                    ],
-                    "type": "object"
-                  },
-                  "type": {
-                    "const": "image_url"
-                  }
-                },
-                "required": [
-                  "type",
-                  "image_url"
-                ],
-                "type": "object"
-              },
-              "text_block": {
-                "additionalProperties": false,
-                "properties": {
-                  "text": {
-                    "maxLength": 61440,
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
-                  },
-                  "type": {
-                    "const": "text"
-                  }
-                },
-                "required": [
-                  "type",
-                  "text"
-                ],
-                "type": "object"
-              }
-            },
-            "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
-            "properties": {
-              "request": {
-                "additionalProperties": false,
-                "properties": {
-                  "action_approval_mode": {
-                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
-                    "enum": [
-                      "ask",
-                      "agent",
-                      "full"
-                    ],
-                    "type": "string"
-                  },
-                  "chat_references": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "id": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                          "type": "string"
-                        },
-                        "kind": {
-                          "enum": [
-                            "chat",
-                            "group"
-                          ]
-                        },
-                        "profile_id": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "profile_id",
-                        "id"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 16,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "content": {
-                    "oneOf": [
-                      {
-                        "maxLength": 61440,
-                        "minLength": 1,
-                        "pattern": "\\S",
-                        "type": "string"
-                      },
-                      {
-                        "items": {
-                          "$ref": "#/$defs/image_block"
-                        },
-                        "maxItems": 3,
-                        "minItems": 1,
-                        "prefixItems": [
-                          {
-                            "$ref": "#/$defs/text_block"
-                          }
-                        ],
-                        "type": "array"
-                      }
-                    ]
-                  },
-                  "context_binding": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "context_digest": {
-                        "pattern": "^sha256:[0-9a-f]{64}$",
-                        "type": "string"
-                      },
-                      "parent_conversation_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "parent_revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": 1,
-                        "type": "integer"
-                      },
-                      "profile_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "version": {
-                        "const": "tobkiri.conversation-context-binding.v1"
-                      }
-                    },
-                    "required": [
-                      "version",
-                      "profile_id",
-                      "parent_conversation_id",
-                      "parent_revision",
-                      "context_digest"
-                    ],
-                    "type": "object"
-                  },
-                  "conversation_id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "conversation_revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "resolved_chat_references": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "expires_at": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "kind": {
-                        "const": "tobkiri.chat.reference.snapshot.v1"
-                      },
-                      "next_cursor": {
-                        "type": "null"
-                      },
-                      "profile_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                        "type": "string"
-                      },
-                      "project_revision": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "references": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "conversation_ids": {
-                              "items": {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                                "type": "string"
-                              },
-                              "maxItems": 256,
-                              "type": "array",
-                              "uniqueItems": true
-                            },
-                            "id": {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-                              "type": "string"
-                            },
-                            "kind": {
-                              "enum": [
-                                "chat",
-                                "group"
-                              ]
-                            },
-                            "label": {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "pattern": "\\S",
-                              "type": "string"
-                            },
-                            "member_count": {
-                              "maximum": 4096,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "membership_complete": {
-                              "const": true
-                            },
-                            "snapshot_digest": {
-                              "pattern": "^sha256:[0-9a-f]{64}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "id",
-                            "label",
-                            "conversation_ids",
-                            "snapshot_digest",
-                            "member_count",
-                            "membership_complete"
-                          ],
-                          "type": "object"
-                        },
-                        "maxItems": 16,
-                        "type": "array"
-                      },
-                      "snapshot_time": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "store_revision": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "truncated": {
-                        "const": false
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "profile_id",
-                      "store_revision",
-                      "project_revision",
-                      "snapshot_time",
-                      "expires_at",
-                      "references",
-                      "next_cursor",
-                      "truncated"
-                    ],
-                    "type": "object"
-                  },
-                  "strategy_maximum_cost_microusd": {
-                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
-                    "maximum": 1000000,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "strategy_reference": {
-                    "$ref": "#/$defs/identifier",
-                    "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
-                  },
-                  "task_context": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "conversation_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "generation": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "input_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "items": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "body": {
-                              "maxLength": 32000,
-                              "minLength": 1,
-                              "pattern": "\\S",
-                              "type": "string"
-                            },
-                            "id": {
-                              "$ref": "#/$defs/identifier"
-                            },
-                            "kind": {
-                              "enum": [
-                                "goal",
-                                "todo",
-                                "instruction"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "kind",
-                            "body"
-                          ],
-                          "type": "object"
-                        },
-                        "maxItems": 100,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "recipient_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "source_id": {
-                        "$ref": "#/$defs/identifier"
-                      },
-                      "source_revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "version": {
-                        "const": "tobkiri.saved-task-context.v1"
-                      }
-                    },
-                    "required": [
-                      "version",
-                      "source_id",
-                      "conversation_id",
-                      "recipient_id",
-                      "input_id",
-                      "source_revision",
-                      "generation",
-                      "items"
-                    ],
-                    "type": "object"
-                  },
-                  "thinking_level": {
-                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
-                    "enum": [
-                      "none",
-                      "low",
-                      "medium",
-                      "high",
-                      "xhigh"
-                    ]
-                  },
-                  "tool_selection": {
-                    "additionalProperties": false,
-                    "allOf": [
-                      {
-                        "if": {
-                          "properties": {
-                            "mode": {
-                              "const": "none"
-                            }
-                          }
-                        },
-                        "then": {
-                          "properties": {
-                            "include": {
-                              "maxItems": 0
-                            },
-                            "must_use": {
-                              "const": false
-                            }
-                          }
-                        }
-                      }
-                    ],
-                    "properties": {
-                      "exclude": {
-                        "items": {
-                          "oneOf": [
-                            {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "not": {
-                                "pattern": "[^A-Za-z0-9._:/-]"
-                              },
-                              "pattern": "^[A-Za-z0-9]",
-                              "type": "string"
-                            },
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "id": {
-                                  "maxLength": 256,
-                                  "minLength": 1,
-                                  "not": {
-                                    "pattern": "[^A-Za-z0-9._:/-]"
-                                  },
-                                  "pattern": "^[A-Za-z0-9]",
-                                  "type": "string"
-                                },
-                                "kind": {
-                                  "enum": [
-                                    "tool",
-                                    "service"
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "kind",
-                                "id"
-                              ],
-                              "type": "object"
-                            }
-                          ]
-                        },
-                        "maxItems": 256,
-                        "type": "array"
-                      },
-                      "include": {
-                        "items": {
-                          "oneOf": [
-                            {
-                              "maxLength": 256,
-                              "minLength": 1,
-                              "not": {
-                                "pattern": "[^A-Za-z0-9._:/-]"
-                              },
-                              "pattern": "^[A-Za-z0-9]",
-                              "type": "string"
-                            },
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "id": {
-                                  "maxLength": 256,
-                                  "minLength": 1,
-                                  "not": {
-                                    "pattern": "[^A-Za-z0-9._:/-]"
-                                  },
-                                  "pattern": "^[A-Za-z0-9]",
-                                  "type": "string"
-                                },
-                                "kind": {
-                                  "enum": [
-                                    "tool",
-                                    "service"
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "kind",
-                                "id"
-                              ],
-                              "type": "object"
-                            }
-                          ]
-                        },
-                        "maxItems": 256,
-                        "type": "array"
-                      },
-                      "mode": {
-                        "enum": [
-                          "auto",
-                          "manual",
-                          "none"
-                        ]
-                      },
-                      "must_use": {
-                        "type": "boolean"
-                      },
-                      "scope": {
-                        "enum": [
-                          "turn",
-                          "conversation"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "mode"
-                    ],
-                    "type": "object"
-                  },
-                  "turn_id": {
-                    "$ref": "#/$defs/identifier"
-                  }
-                },
-                "required": [
-                  "turn_id",
-                  "conversation_id",
-                  "conversation_revision",
-                  "content"
-                ],
-                "type": "object"
-              }
-            },
-            "required": [
-              "request"
-            ],
-            "title": "Saved conversation initial input",
-            "type": "object"
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "saved_complete",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "defaultspack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "defaultspack",
-      "pack_id": "defaultspack",
-      "source": [
-        {
-          "entrypoint_id": "saved_complete",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "defaultspack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        }
-      ],
-      "variant_id": "defaultspack.conversation.saved.python"
-    },
     "mcp.connection.call.service": {
       "contract_id": "tobkiri.service.mcp.connection.v1",
       "contract_version": "1.0.0",
@@ -3584,7 +2469,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
-      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+      "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3598,7 +2483,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+          "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -3637,7 +2522,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
-      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+      "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3651,7 +2536,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+          "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -3690,7 +2575,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
-      "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+      "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
       "implementation_path": "runtime/runtime.py",
       "input_schema": {
         "type": "object"
@@ -3704,7 +2589,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:29fd535ec6ed75ac6a7752add13b2ba997024eec659d59602adad1924157f078",
+          "implementation_digest": "sha256:ac50066e6cde103f19761808588362ebf8b667f11a31b3f0cd545ae4f3d68a60",
           "implementation_path": "runtime/runtime.py",
           "input_schema": {
             "type": "object"
@@ -3743,7 +2628,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_state_store_pack.agent-state.action",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
       "implementation_path": "runtime/store.py",
       "input_schema": {
         "type": "object"
@@ -3757,7 +2642,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+          "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
           "implementation_path": "runtime/store.py",
           "input_schema": {
             "type": "object"
@@ -3796,7 +2681,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_agent_state_store_pack.agent-state.resource",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
       "implementation_path": "runtime/store.py",
       "input_schema": {
         "type": "object"
@@ -3810,7 +2695,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+          "implementation_digest": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
           "implementation_path": "runtime/store.py",
           "input_schema": {
             "type": "object"
@@ -3849,7 +2734,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -3863,7 +2748,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -3893,6 +2778,195 @@
         }
       ],
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python"
+    },
+    "rumi_ai_gateway_pack.ai-gateway.messages-generate": {
+      "contract_id": "tobkiri.service.ai.messages.generate.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "implementation_digest": "sha256:594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415",
+      "implementation_path": "runtime/messages_generate.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "role": {
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant"
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "content"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "会話メッセージ",
+            "type": "array",
+            "x-tobkiri-flow-role": "data"
+          },
+          "model_profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "モデル",
+            "type": "string",
+            "x-tobkiri-flow-role": "configuration",
+            "x-tobkiri-selector": "model-profile"
+          }
+        },
+        "required": [
+          "messages",
+          "model_profile_id"
+        ],
+        "title": "会話履歴からAIの返答を作る",
+        "type": "object"
+      },
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.messages.generate.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415",
+          "implementation_path": "runtime/messages_generate.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "messages": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "maxLength": 262144,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "system",
+                        "user",
+                        "assistant"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 200,
+                "minItems": 1,
+                "title": "会話メッセージ",
+                "type": "array",
+                "x-tobkiri-flow-role": "data"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "model-profile"
+              }
+            },
+            "required": [
+              "messages",
+              "model_profile_id"
+            ],
+            "title": "会話履歴からAIの返答を作る",
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_profile_id": {
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "status": {
+                "const": "ok",
+                "title": "状態",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "text": {
+                "maxLength": 262144,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "status",
+              "text",
+              "model_profile_id"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "model_profile_id": {
+            "title": "モデル",
+            "type": "string",
+            "x-tobkiri-flow-role": "metadata"
+          },
+          "status": {
+            "const": "ok",
+            "title": "状態",
+            "x-tobkiri-flow-role": "metadata"
+          },
+          "text": {
+            "maxLength": 262144,
+            "title": "text",
+            "type": "string",
+            "x-tobkiri-flow-role": "data"
+          }
+        },
+        "required": [
+          "status",
+          "text",
+          "model_profile_id"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_ai_gateway_pack",
+      "pack_id": "rumi_ai_gateway_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate.python"
     },
     "rumi_ai_gateway_pack.ai-gateway.route-quote": {
       "contract_id": "tobkiri.resource.ai.route.quote.v1",
@@ -4329,7 +3403,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4343,7 +3417,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4382,7 +3456,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4396,7 +3470,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+          "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4427,6 +3501,161 @@
       ],
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python"
     },
+    "rumi_ai_gateway_pack.ai-gateway.text-generate": {
+      "contract_id": "tobkiri.service.ai.text.generate.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "implementation_digest": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7",
+      "implementation_path": "runtime/text_generate.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "model_profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string",
+            "x-tobkiri-selector": "model-profile"
+          },
+          "system_prompt": {
+            "maxLength": 16384,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 262144,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_profile_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.text.generate.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7",
+          "implementation_path": "runtime/text_generate.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "system_prompt": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 262144,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "model_profile_id",
+              "text"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_id": {
+                "type": "string"
+              },
+              "model_profile_id": {
+                "type": "string"
+              },
+              "provider_instance_id": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "status": {
+                "const": "ok"
+              },
+              "text": {
+                "maxLength": 262144,
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "request_id",
+              "model_id",
+              "model_profile_id",
+              "provider_instance_id",
+              "text"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "type": "string"
+          },
+          "model_profile_id": {
+            "type": "string"
+          },
+          "provider_instance_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "status": {
+            "const": "ok"
+          },
+          "text": {
+            "maxLength": 262144,
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "request_id",
+          "model_id",
+          "model_profile_id",
+          "provider_instance_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_ai_gateway_pack",
+      "pack_id": "rumi_ai_gateway_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.text-generate.python"
+    },
     "rumi_ai_modality_pack.ai-modality.embedding": {
       "contract_id": "tobkiri.service.ai.embedding.v1",
       "contract_version": "1.0.0",
@@ -4435,7 +3664,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.embedding",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4449,7 +3678,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4488,7 +3717,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.image",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -4502,7 +3731,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -4541,9 +3770,66 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.speech",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "input"
+            ]
+          },
+          {
+            "required": [
+              "text"
+            ]
+          }
+        ],
+        "properties": {
+          "input": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "title": "読み上げる文字",
+            "type": "string"
+          },
+          "model_profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "title": "登録済みモデル",
+            "type": "string",
+            "x-tobkiri-selector": "model-profile"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
+            "maxProperties": 32,
+            "type": "object"
+          },
+          "text": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "title": "読み上げる文字（互換フィールド）",
+            "type": "string"
+          },
+          "voice": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "声のID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_profile_id"
+        ],
+        "title": "文字を読み上げる",
         "type": "object"
       },
       "operation_id": "rumi_ai_modality_pack.ai-speech",
@@ -4555,15 +3841,139 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "input"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ],
+            "properties": {
+              "input": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "読み上げる文字",
+                "type": "string"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "登録済みモデル",
+                "type": "string",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "type": "object"
+              },
+              "text": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "読み上げる文字（互換フィールド）",
+                "type": "string"
+              },
+              "voice": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "声のID",
+                "type": "string"
+              }
+            },
+            "required": [
+              "model_profile_id"
+            ],
+            "title": "文字を読み上げる",
             "type": "object"
           },
           "kind": "legacy-v3-entrypoint",
           "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway",
           "operation_id": "rumi_ai_modality_pack.ai-speech",
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64",
+                  "byte_size"
+                ],
+                "title": "音声ファイル",
+                "type": "object"
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "const": "ok",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "content"
+            ],
             "type": "object"
           },
           "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/rumi.pack.v3.json",
@@ -4571,6 +3981,73 @@
         }
       ],
       "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_size": {
+                "maximum": 1048576,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "content_id": {
+                "maxLength": 71,
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "data_base64": {
+                "maxLength": 1398104,
+                "minLength": 4,
+                "type": "string"
+              },
+              "filename": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "media_type": {
+                "enum": [
+                  "audio/mpeg",
+                  "audio/mp3",
+                  "audio/wav",
+                  "audio/x-wav",
+                  "audio/wave",
+                  "audio/mp4",
+                  "audio/m4a",
+                  "audio/aac",
+                  "audio/flac",
+                  "audio/ogg",
+                  "audio/webm",
+                  "audio/l16"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "content_id",
+              "media_type",
+              "data_base64",
+              "byte_size"
+            ],
+            "title": "音声ファイル",
+            "type": "object"
+          },
+          "provider_instance_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider_instance_id",
+          "content"
+        ],
         "type": "object"
       },
       "owner": "rumi_ai_modality_pack",
@@ -4594,9 +4071,91 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_modality_pack.ai-modality.transcribe",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "audio": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_size": {
+                "maximum": 1048576,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "content_id": {
+                "maxLength": 71,
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "data_base64": {
+                "maxLength": 1398104,
+                "minLength": 4,
+                "type": "string"
+              },
+              "filename": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "media_type": {
+                "enum": [
+                  "audio/mpeg",
+                  "audio/mp3",
+                  "audio/wav",
+                  "audio/x-wav",
+                  "audio/wave",
+                  "audio/mp4",
+                  "audio/m4a",
+                  "audio/aac",
+                  "audio/flac",
+                  "audio/ogg",
+                  "audio/webm",
+                  "audio/l16"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "content_id",
+              "media_type",
+              "data_base64"
+            ],
+            "title": "音声ファイル",
+            "type": "object"
+          },
+          "language": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "model_profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "title": "登録済みモデル",
+            "type": "string",
+            "x-tobkiri-selector": "model-profile"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
+            "maxProperties": 32,
+            "type": "object"
+          }
+        },
+        "required": [
+          "audio",
+          "model_profile_id"
+        ],
+        "title": "音声を文字にする",
         "type": "object"
       },
       "operation_id": "rumi_ai_modality_pack.ai-transcribe",
@@ -4608,15 +4167,156 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+          "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64"
+                ],
+                "title": "音声ファイル",
+                "type": "object"
+              },
+              "language": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "登録済みモデル",
+                "type": "string",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "type": "object"
+              }
+            },
+            "required": [
+              "audio",
+              "model_profile_id"
+            ],
+            "title": "音声を文字にする",
             "type": "object"
           },
           "kind": "legacy-v3-entrypoint",
           "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway",
           "operation_id": "rumi_ai_modality_pack.ai-transcribe",
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "language": {
+                "maxLength": 64,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              "segments": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "speaker": {
+                      "maxLength": 128,
+                      "type": "string"
+                    },
+                    "start_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "text": {
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "maxItems": 512,
+                "type": "array"
+              },
+              "status": {
+                "const": "ok",
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 65536,
+                "title": "認識した文字",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "text",
+              "language",
+              "segments"
+            ],
             "type": "object"
           },
           "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/rumi.pack.v3.json",
@@ -4624,6 +4324,65 @@
         }
       ],
       "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "maxLength": 64,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_instance_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "segments": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end_ms": {
+                  "maximum": 86400000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "speaker": {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                "start_ms": {
+                  "maximum": 86400000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "text": {
+                  "maxLength": 4096,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "maxItems": 512,
+            "type": "array"
+          },
+          "status": {
+            "const": "ok",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "title": "認識した文字",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider_instance_id",
+          "text",
+          "language",
+          "segments"
+        ],
         "type": "object"
       },
       "owner": "rumi_ai_modality_pack",
@@ -9592,7 +9351,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
-      "implementation_digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+      "implementation_digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
       "implementation_path": "runtime/message_host.py",
       "input_schema": {
         "type": "object"
@@ -9606,7 +9365,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+          "implementation_digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
           "implementation_path": "runtime/message_host.py",
           "input_schema": {
             "type": "object"
@@ -18720,7 +18479,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -18734,7 +18493,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18773,7 +18532,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -18787,7 +18546,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -18826,7 +18585,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "additionalProperties": false,
@@ -18984,7 +18743,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19150,7 +18909,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19315,7 +19074,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+          "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "additionalProperties": false,
@@ -19831,6 +19590,112 @@
       ],
       "variant_id": "rumi_prompt_studio_pack.prompt-studio.version.python"
     },
+    "rumi_provider_adapters_pack.provider.compatibility.audio_speech": {
+      "contract_id": "tobkiri.service.ai.provider.audio.speech.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "implementation_path": "runtime/adapter.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_adapters_pack.provider-audio-speech",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.provider.audio.speech.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "provider-audio-speech",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+          "implementation_path": "runtime/adapter.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+          "operation_id": "rumi_provider_adapters_pack.provider-audio-speech",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json",
+          "symbol": "create_audio_speech_operation"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_adapters_pack",
+      "pack_id": "rumi_provider_adapters_pack",
+      "source": [
+        {
+          "entrypoint_id": "provider-audio-speech",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json",
+          "symbol": "create_audio_speech_operation"
+        }
+      ],
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech.python"
+    },
+    "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe": {
+      "contract_id": "tobkiri.service.ai.provider.audio.transcribe.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "implementation_path": "runtime/adapter.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_adapters_pack.provider-audio-transcribe",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.provider.audio.transcribe.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "provider-audio-transcribe",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+          "implementation_path": "runtime/adapter.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+          "operation_id": "rumi_provider_adapters_pack.provider-audio-transcribe",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json",
+          "symbol": "create_audio_transcribe_operation"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_adapters_pack",
+      "pack_id": "rumi_provider_adapters_pack",
+      "source": [
+        {
+          "entrypoint_id": "provider-audio-transcribe",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json",
+          "symbol": "create_audio_transcribe_operation"
+        }
+      ],
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe.python"
+    },
     "rumi_provider_adapters_pack.provider.compatibility.embedding": {
       "contract_id": "tobkiri.service.ai.provider.embedding.v1",
       "contract_version": "1.0.0",
@@ -19839,7 +19704,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
-      "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -19853,7 +19718,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -19892,7 +19757,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
-      "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -19906,7 +19771,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -19945,7 +19810,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
-      "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -19959,7 +19824,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -19998,7 +19863,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
-      "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+      "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
       "implementation_path": "runtime/adapter.py",
       "input_schema": {
         "type": "object"
@@ -20012,7 +19877,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7d35141227276b904c64290e363a2ad68678233c7473042b5f66d3b223374fd7",
+          "implementation_digest": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
           "implementation_path": "runtime/adapter.py",
           "input_schema": {
             "type": "object"
@@ -24643,7 +24508,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
-      "implementation_digest": "sha256:bc4209910a4fb14ef836edca8bd21ccace9844deb1b345593a8cafbe9444aa9b",
+      "implementation_digest": "sha256:b60becc683d24e3fee2125b59ae11e7fd0b53aa694ed76d26e8f8992c06b2c29",
       "implementation_path": "runtime/broker.py",
       "input_schema": {
         "type": "object"
@@ -24657,7 +24522,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:bc4209910a4fb14ef836edca8bd21ccace9844deb1b345593a8cafbe9444aa9b",
+          "implementation_digest": "sha256:b60becc683d24e3fee2125b59ae11e7fd0b53aa694ed76d26e8f8992c06b2c29",
           "implementation_path": "runtime/broker.py",
           "input_schema": {
             "type": "object"
@@ -25058,7 +24923,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_digest": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
           "legacy_implementation_path": "runtime/registry.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -25117,7 +24982,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_digest": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
           "legacy_implementation_path": "runtime/registry.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -25176,7 +25041,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_digest": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
           "legacy_implementation_path": "runtime/registry.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -25350,7 +25215,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
-      "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
+      "implementation_digest": "sha256:620f3c4bcfdc56e28f43dfa236a8582f9f648b9d75e3b0f8c4cc937f7d0e165d",
       "implementation_path": "runtime/validator.py",
       "input_schema": {
         "type": "object"
@@ -25364,7 +25229,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
+          "implementation_digest": "sha256:620f3c4bcfdc56e28f43dfa236a8582f9f648b9d75e3b0f8c4cc937f7d0e165d",
           "implementation_path": "runtime/validator.py",
           "input_schema": {
             "type": "object"
@@ -32966,13 +32831,13 @@
     },
     "tobkiri.workflow.provider": {
       "contract_id": "tobkiri.workflow.v4",
-      "contract_version": "1.0.0",
+      "contract_version": "4.0.0",
       "error_schema": {
         "type": "object"
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.workflow.provider",
-      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
       "implementation_path": "runtime/provider.py",
       "input_schema": {
         "type": "object"
@@ -32980,12 +32845,12 @@
       "operations": [
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.archive",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33000,12 +32865,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.compile-preview",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33020,12 +32885,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.create",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33040,12 +32905,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.delete",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33060,12 +32925,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.get",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33080,12 +32945,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.list",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33100,12 +32965,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.publish",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33120,12 +32985,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.update",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33140,12 +33005,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "definition.validate",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33160,12 +33025,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "operation.palette",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33180,12 +33045,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.advance",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33200,12 +33065,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.cancel",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33220,12 +33085,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.create",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33240,12 +33105,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.get",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33260,12 +33125,32 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
+          "entrypoint_id": "run.observe",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+          "implementation_path": "runtime/provider.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "run.observe",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.pause",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33280,12 +33165,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.reconcile-recovery",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33300,12 +33185,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.resume",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33320,12 +33205,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.step.execute",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33340,12 +33225,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.step.resume",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33360,12 +33245,12 @@
         },
         {
           "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "1.0.0",
+          "contract_version": "4.0.0",
           "entrypoint_id": "run.step.retry",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
           "implementation_path": "runtime/provider.py",
           "input_schema": {
             "type": "object"
@@ -33470,6 +33355,12 @@
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         },
         {
+          "entrypoint_id": "run.observe",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
           "entrypoint_id": "run.pause",
           "kind": "legacy-explicit-entrypoint",
           "pack_source_id": "tobkiri_workflow_pack",
@@ -33507,6 +33398,57 @@
         }
       ],
       "variant_id": "tobkiri.workflow.provider.python"
+    },
+    "tobkiri.workflow.stop.provider": {
+      "contract_id": "tobkiri.workflow.stop.v4",
+      "contract_version": "4.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.workflow.stop.provider",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "implementation_path": "runtime/provider.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "run.stop",
+      "operations": [
+        {
+          "contract_id": "tobkiri.workflow.stop.v4",
+          "contract_version": "4.0.0",
+          "entrypoint_id": "run.stop",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+          "implementation_path": "runtime/provider.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "run.stop",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_workflow_pack",
+      "pack_id": "tobkiri_workflow_pack",
+      "source": [
+        {
+          "entrypoint_id": "run.stop",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_workflow_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.workflow.stop.provider.python"
     },
     "tobkiri_agent_control_pack.work-plan.action": {
       "contract_id": "tobkiri.action.work-plan.v1",
@@ -37148,6 +37090,1318 @@
       ],
       "variant_id": "tobkiri_conversation_lifecycle_pack.status.python"
     },
+    "tobkiri_conversation_orchestration_pack.messages": {
+      "contract_id": "tobkiri.service.conversation.messages.build.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri_conversation_orchestration_pack.messages",
+      "implementation_digest": "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+      "implementation_path": "runtime/messages.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Pure assembly, maximum 512 KiB canonical input. Retains supported images and tool transcripts; no read, generation or persistence authority.",
+        "properties": {
+          "conversation": {
+            "description": "Resolved conversation data from a separate owner read; this pure stage does not authenticate its origin.",
+            "type": "object",
+            "x-tobkiri-flow-role": "data"
+          },
+          "system_prompt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 61440,
+                    "type": "string"
+                  },
+                  "body_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "prompt_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "prompt_id",
+                  "body",
+                  "body_hash"
+                ],
+                "type": "object"
+              }
+            ],
+            "x-tobkiri-flow-role": "data"
+          }
+        },
+        "required": [
+          "conversation",
+          "system_prompt"
+        ],
+        "type": "object"
+      },
+      "operation_id": "messages_build",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.conversation.messages.build.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "messages_build",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+          "implementation_path": "runtime/messages.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "description": "Pure assembly, maximum 512 KiB canonical input. Retains supported images and tool transcripts; no read, generation or persistence authority.",
+            "properties": {
+              "conversation": {
+                "description": "Resolved conversation data from a separate owner read; this pure stage does not authenticate its origin.",
+                "type": "object",
+                "x-tobkiri-flow-role": "data"
+              },
+              "system_prompt": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "body": {
+                        "maxLength": 61440,
+                        "type": "string"
+                      },
+                      "body_hash": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "prompt_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "prompt_id",
+                      "body",
+                      "body_hash"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "conversation",
+              "system_prompt"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "messages_build",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "messages": {
+                "description": "Structured message data: exact tool transcripts and newest two inline images; older images get omission markers. Downstream nodes must accept actual content shapes.",
+                "items": {
+                  "type": "object"
+                },
+                "maxItems": 3401,
+                "type": "array",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "messages"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_conversation_orchestration_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "description": "Structured message data: exact tool transcripts and newest two inline images; older images get omission markers. Downstream nodes must accept actual content shapes.",
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 3401,
+            "type": "array",
+            "x-tobkiri-flow-role": "data"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "type": "object"
+      },
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "pack_id": "tobkiri_conversation_orchestration_pack",
+      "source": [
+        {
+          "entrypoint_id": "messages_build",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_conversation_orchestration_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri_conversation_orchestration_pack.messages.python"
+    },
+    "tobkiri_conversation_orchestration_pack.saved": {
+      "contract_id": "conversation.saved-turn.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri_conversation_orchestration_pack.saved",
+      "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+      "implementation_path": "runtime/saved_conversation.py",
+      "input_schema": {
+        "$defs": {
+          "identifier": {
+            "maxLength": 256,
+            "minLength": 1,
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            },
+            "pattern": "^[A-Za-z0-9]",
+            "type": "string"
+          },
+          "image_block": {
+            "additionalProperties": false,
+            "properties": {
+              "image_url": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "maxLength": 1398127,
+                    "minLength": 1,
+                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "const": "image_url"
+              }
+            },
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "type": "object"
+          },
+          "text_block": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 61440,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
+        "properties": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "action_approval_mode": {
+                "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                "enum": [
+                  "ask",
+                  "agent",
+                  "full"
+                ],
+                "type": "string"
+              },
+              "chat_references": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "chat",
+                        "group"
+                      ]
+                    },
+                    "profile_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "profile_id",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 16,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/image_block"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/text_block"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ]
+              },
+              "context_binding": {
+                "additionalProperties": false,
+                "properties": {
+                  "context_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "parent_conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "parent_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "profile_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "version": {
+                    "const": "tobkiri.conversation-context-binding.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "profile_id",
+                  "parent_conversation_id",
+                  "parent_revision",
+                  "context_digest"
+                ],
+                "type": "object"
+              },
+              "conversation_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "conversation_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resolved_chat_references": {
+                "additionalProperties": false,
+                "properties": {
+                  "expires_at": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "tobkiri.chat.reference.snapshot.v1"
+                  },
+                  "next_cursor": {
+                    "type": "null"
+                  },
+                  "profile_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                    "type": "string"
+                  },
+                  "project_revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "references": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "conversation_ids": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "chat",
+                            "group"
+                          ]
+                        },
+                        "label": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "\\S",
+                          "type": "string"
+                        },
+                        "member_count": {
+                          "maximum": 4096,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "membership_complete": {
+                          "const": true
+                        },
+                        "snapshot_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id",
+                        "label",
+                        "conversation_ids",
+                        "snapshot_digest",
+                        "member_count",
+                        "membership_complete"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "snapshot_time": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "store_revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "truncated": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "profile_id",
+                  "store_revision",
+                  "project_revision",
+                  "snapshot_time",
+                  "expires_at",
+                  "references",
+                  "next_cursor",
+                  "truncated"
+                ],
+                "type": "object"
+              },
+              "strategy_maximum_cost_microusd": {
+                "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "strategy_reference": {
+                "$ref": "#/$defs/identifier",
+                "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+              },
+              "task_context": {
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "generation": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "input_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "items": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "body": {
+                          "maxLength": 32000,
+                          "minLength": 1,
+                          "pattern": "\\S",
+                          "type": "string"
+                        },
+                        "id": {
+                          "$ref": "#/$defs/identifier"
+                        },
+                        "kind": {
+                          "enum": [
+                            "goal",
+                            "todo",
+                            "instruction"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "body"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "recipient_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "source_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "source_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "const": "tobkiri.saved-task-context.v1"
+                  }
+                },
+                "required": [
+                  "version",
+                  "source_id",
+                  "conversation_id",
+                  "recipient_id",
+                  "input_id",
+                  "source_revision",
+                  "generation",
+                  "items"
+                ],
+                "type": "object"
+              },
+              "thinking_level": {
+                "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ]
+              },
+              "tool_selection": {
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "none"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "include": {
+                          "maxItems": 0
+                        },
+                        "must_use": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                ],
+                "properties": {
+                  "exclude": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "include": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "mode": {
+                    "enum": [
+                      "auto",
+                      "manual",
+                      "none"
+                    ]
+                  },
+                  "must_use": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "enum": [
+                      "turn",
+                      "conversation"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
+              "turn_id": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "required": [
+              "turn_id",
+              "conversation_id",
+              "conversation_revision",
+              "content"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "Saved conversation initial input",
+        "type": "object"
+      },
+      "operation_id": "saved_complete",
+      "operations": [
+        {
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "saved_complete",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+          "implementation_path": "runtime/saved_conversation.py",
+          "input_schema": {
+            "$defs": {
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                },
+                "pattern": "^[A-Za-z0-9]",
+                "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
+              }
+            },
+            "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
+            "properties": {
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "action_approval_mode": {
+                    "description": "Captured turn preference only. Independent native Host policy is required for execution authority; omission means ask.",
+                    "enum": [
+                      "ask",
+                      "agent",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
+                  "chat_references": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "chat",
+                            "group"
+                          ]
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "profile_id",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "content": {
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "context_binding": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context_digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "parent_conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "parent_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-context-binding.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "parent_conversation_id",
+                      "parent_revision",
+                      "context_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "conversation_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "resolved_chat_references": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expires_at": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "tobkiri.chat.reference.snapshot.v1"
+                      },
+                      "next_cursor": {
+                        "type": "null"
+                      },
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "project_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "references": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "conversation_ids": {
+                              "items": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "chat",
+                                "group"
+                              ]
+                            },
+                            "label": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "pattern": "\\S",
+                              "type": "string"
+                            },
+                            "member_count": {
+                              "maximum": 4096,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "membership_complete": {
+                              "const": true
+                            },
+                            "snapshot_digest": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "label",
+                            "conversation_ids",
+                            "snapshot_digest",
+                            "member_count",
+                            "membership_complete"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
+                      },
+                      "snapshot_time": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "store_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "truncated": {
+                        "const": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "profile_id",
+                      "store_revision",
+                      "project_revision",
+                      "snapshot_time",
+                      "expires_at",
+                      "references",
+                      "next_cursor",
+                      "truncated"
+                    ],
+                    "type": "object"
+                  },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "strategy_reference": {
+                    "$ref": "#/$defs/identifier",
+                    "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+                  },
+                  "task_context": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "conversation_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "input_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "items": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "body": {
+                              "maxLength": 32000,
+                              "minLength": 1,
+                              "pattern": "\\S",
+                              "type": "string"
+                            },
+                            "id": {
+                              "$ref": "#/$defs/identifier"
+                            },
+                            "kind": {
+                              "enum": [
+                                "goal",
+                                "todo",
+                                "instruction"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "body"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 100,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "recipient_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "source_id": {
+                        "$ref": "#/$defs/identifier"
+                      },
+                      "source_revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.saved-task-context.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "source_id",
+                      "conversation_id",
+                      "recipient_id",
+                      "input_id",
+                      "source_revision",
+                      "generation",
+                      "items"
+                    ],
+                    "type": "object"
+                  },
+                  "thinking_level": {
+                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
+                  },
+                  "tool_selection": {
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "mode": {
+                              "const": "none"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "include": {
+                              "maxItems": 0
+                            },
+                            "must_use": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "exclude": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "include": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "mode": {
+                        "enum": [
+                          "auto",
+                          "manual",
+                          "none"
+                        ]
+                      },
+                      "must_use": {
+                        "type": "boolean"
+                      },
+                      "scope": {
+                        "enum": [
+                          "turn",
+                          "conversation"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
+                  },
+                  "turn_id": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                },
+                "required": [
+                  "turn_id",
+                  "conversation_id",
+                  "conversation_revision",
+                  "content"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request"
+            ],
+            "title": "Saved conversation initial input",
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "saved_complete",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_conversation_orchestration_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_conversation_orchestration_pack",
+      "pack_id": "tobkiri_conversation_orchestration_pack",
+      "source": [
+        {
+          "entrypoint_id": "saved_complete",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_conversation_orchestration_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri_conversation_orchestration_pack.saved.python"
+    },
     "tobkiri_side_chat_pack.manage": {
       "contract_id": "tobkiri.action.side-chat.v1",
       "contract_version": "1.0.0",
@@ -37705,7 +38959,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:258d566e9ee58384bd1b39f14d7b58918b045d90189ae7511425c721efece1b4",
+    "input_digest": "sha256:3782c1eed0764bf086959bf68b9b49feaa8373a79f8b96b4ca3c1250f955a68b",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -37926,7 +39180,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py"
       },
       {
-        "digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+        "digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py"
       },
@@ -37971,22 +39225,22 @@
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:e49f0a3aafee9c5a2994fabd5a026a884b3c32c779e829f43354e9ee9b487ed0",
+        "digest": "sha256:c0c2f6f97eb5251b13039af0fe0f8bc21db77f9de9ddfa79834e0834ab039bc8",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:9df8727ea08ac3315e682df2e74f11e02671937258434f53e100f31f8a3d11ce",
+        "digest": "sha256:bfecf4c59b92749b81b83cbd1c76a7cd42e5d61fed41e481ee72e4de28d31dd6",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:4136c9093a9ddcc9f701fedb3a2d52dedb7a189d8d04efa491def90d08236f2f",
+        "digest": "sha256:697137078f2cea6d8c8ae83a00fd66a82f0f70b5fac537f6d7a2418ed6f503ad",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:81e01da817a21308038cecc51562d7a57774c3dec83286fecdf754d84622e34d",
+        "digest": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/artifact-manifest.json"
       },
@@ -38281,7 +39535,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_evals_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:67bf999723ad1e618aad22cd9467ccf72280cc2bfb3aed05bd1f3ec1788daaf4",
+        "digest": "sha256:6c25ef824635f368533008c65fcb2756a7b546dd9ffcb37e58cabd17939ae9d8",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/artifact-manifest.json"
       },
@@ -38301,12 +39555,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:526f9ab9c2339980ca3eaa1aa89894006c994fa4d29b4f20ce9da9930c05f9e8",
+        "digest": "sha256:cce5cadb1bbb2ab1d03525e25b34da4dcab7ef82818dc88f27fd32ce318edb9b",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:dbde2aa5e837eea57afdea6ba1f00d9d70b5912b7e6817e793a8d303955ccb8b",
+        "digest": "sha256:1911148f09095137c1f5ca15c016af4263aa679d8f1913e0d3a3af058e3255f0",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-manifest.json"
       },
@@ -38386,7 +39640,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_authoring_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:48da10346b6bc7c04ddeb5b2b6b7d660ca54ad664a282623690606ac19275be0",
+        "digest": "sha256:50f0780c499d9377c6363b0a75673c3d2fe411ada8f01d1e55ab2d207fcebcd5",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/artifact-manifest.json"
       },
@@ -38421,7 +39675,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:51aa69e3496c6c2b19b1279c6dfc1d43c46d60a6ea1c320276a968dc845fb4ee",
+        "digest": "sha256:a73ab940d389ba2d95afa779b9ebb3df624936c5e4ed04cf1563743070e541a4",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-manifest.json"
       },
@@ -38441,7 +39695,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_sandbox_executor_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:ff9574e660b4aa4cefa72430a4bfd823d1c3f3343e0cd7fc2e4399cfd85e48ce",
+        "digest": "sha256:c75c509265083e684190bb40de243d8d150db5492b98c4444c293392d7db97e9",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/artifact-manifest.json"
       },
@@ -38456,27 +39710,27 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:a9b019d11078dd59a24662d39724bfc22982ac68e91d4779b291816dfa0da6d8",
+        "digest": "sha256:0347df5970cf67df840fb8619e365d91872d2154fdf8a72c109e7574fd74462b",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
       {
-        "digest": "sha256:e8fad0cf9f0e81c6cee75a2c40fbc6799f64b60dde00722b5931327b3cae48bc",
+        "digest": "sha256:a2d9232752aa0b7d31d829bf4e4e3aba660c12cb6cdaacc9dfc3ca6a73bd56d3",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:58a2e512d5aff399a77ee8c73c313d90359a0bc374d62adaee5fddda7b788e3a",
+        "digest": "sha256:b7d5d57cdadafcb2f0bac1b55f7c493a81bd279cb27fd545eb384cf5c144c1a9",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:5cb04f29afaafe6733c8d656947b861a8b8f21be3d1b856d83fcb748ae6ec615",
+        "digest": "sha256:f658a3405a2376c80b8280fcc9c1794ba064fafa7c0b73493c4f46bfc0eccda0",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:f02fe5107cf977fd3824c667bcd5550ab73d70e1933e8ef22dd7a0691300f139",
+        "digest": "sha256:66d8003c5fbf05d4949d0c4c29a238f88e007ca6ff3820b897d17e40b157e0df",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_modality_pack/rumi.pack.v3.json"
       },
@@ -38596,7 +39850,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:1a06006479d9df6567f3741c5482175806d8322e388afe1a2a065fb4408846b4",
+        "digest": "sha256:230fa99641f9149febf15ac85a216a651cb467fd7442fa24f3724f35aa4f4b4d",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json"
       },
@@ -38621,7 +39875,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:7b29b53fabe64ae76ebae07a546c69985aa8b06204925801cbbac4f52399e698",
+        "digest": "sha256:46608ef392510855ae4b347dd59ad3ca86186efc40681206e3b7875b797be660",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json"
       },
@@ -38771,7 +40025,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_evals_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:44d4efa2a0f0ca27f60fd1f099c7a95f744c57254ad34b356121fae7ab9f2d5e",
+        "digest": "sha256:ee5efaefbc90e344b7cdf4a3bfc7a905517b93f6c152121b7f0d3310b5df8b58",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/rumi.pack.v3.json"
       },
@@ -38791,12 +40045,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:e4a576755781a87c4c80a9171c45c3ddec9582b75a50140c71093c6f60e27674",
+        "digest": "sha256:840c83d3810a624d9367e6f4333ac5e7e184180dca77acf2065c062151216ca6",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:c69e072f0a7a200b75faecfc137fa3d45d9e2729d2e9d949562ce464263fe0a6",
+        "digest": "sha256:a34828142509fcc2d935617942734e6cc6c9029e1e9dd539ea00550c5a21022d",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json"
       },
@@ -38876,7 +40130,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_authoring_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:aa7fa95b19fd5d4434049c98e37aa30d6bb8dd5225b69aca1b3637f395797762",
+        "digest": "sha256:0dd9e2626e674159c8eb1f671731ebe2f67f2e6f56ea1f35ecdddb168b3eb57d",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/rumi.pack.v3.json"
       },
@@ -38911,7 +40165,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:230bc3aebfe7bc0afe5b98607cb9fca8fd8aab6a7329b6ccc532d98c721e6410",
+        "digest": "sha256:96d730f1221614907fae96077bca6aa4fee07f1c22e169ff42c90eb2308b3500",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
       },
@@ -38921,7 +40175,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_remote_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:9b776683423c35f6ce0c3367e93c18c5578a0d4c703189859a4e347b01b73dc8",
+        "digest": "sha256:c524ad7a0fd21822fcbd0f5f2bf75dfeddcb7ff5a23a5fb05d20640e8c190860",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/rumi.pack.v3.json"
       },
@@ -38931,12 +40185,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_sandbox_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:164e325b51f7439b8d135065456a10b1386aa6d030e539d3429b09601d008be0",
+        "digest": "sha256:9ed77eb88c2be207968e85444d54517b1d738ed177e8c875e97ca274582c30d4",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:78dde99f587cc4ddb6ad42c6eb6d0e89ab7b36541dff3ca63583e21a451d121f",
+        "digest": "sha256:32193fcca99ae3b170f89a5f58eaac5ea1812371be644b7b449e0b32b8ecb32c",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

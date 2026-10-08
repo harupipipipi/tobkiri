@@ -94,6 +94,15 @@ class AgentRuntime:
                 },
             )
             run = began["run"]
+            snapshot = run.get("agent_profile_snapshot")
+            if ("agent_profile_snapshot" in run) != ("agent_definition_revision" in run):
+                raise RuntimeError("agent definition snapshot is incomplete")
+            if "agent_profile_snapshot" in run:
+                if not isinstance(snapshot, Mapping) or snapshot.get("id") != run["agent_profile_id"]:
+                    raise RuntimeError("agent definition snapshot is invalid")
+                profile = dict(snapshot)
+            # Runs created before snapshots retain the preexisting current-profile
+            # behavior; never manufacture historical settings for them.
             if run["status"] in {"completed", "failed", "cancelled"}:
                 return {"status": run["status"], "run": run, "deduplicated": True}
             run = self._transition(run_id, "planning", 0, {})["run"]
@@ -760,7 +769,7 @@ def create_agent_job_adapter(client: Any) -> Callable[[str, Mapping[str, Any]], 
         run_id = f"job-{_short(key)}"
         runtime = _runtime(client, payload)
         if name == "cancel":
-            arguments = {"run_id": run_id, "reason": "job_cancelled"}
+            arguments: dict[str, Any] = {"run_id": run_id, "reason": "job_cancelled"}
             return _internal_control(runtime, client, "cancel", arguments)
         if name != "dispatch":
             raise ValueError(f"unknown agent job adapter operation: {name}")

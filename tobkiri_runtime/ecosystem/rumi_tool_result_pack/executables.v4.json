@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:97442a08e197d04aecc4aea55326fc476e11b3fe22067b530f9168174091afdd",
+  "catalog_digest": "sha256:50bc5dcc7fd97e234e414152a267803f99ec47def8ba0e4c656f2149a7f9c97f",
   "pack_id": "rumi_tool_result_pack",
-  "source_identity": "sha256:4fa137305cef328e27d914e8d3d1ed25c440d39c5e992d1ff156c29ed4ddc4e6",
+  "source_identity": "sha256:c5b92c10729530684ca09a16cabded0eea1d88f416dfc5faf14bb6ebd3fa48e0",
   "variants": [
     {
       "architecture": "any",
@@ -23,13 +23,100 @@
           },
           "idempotency": "none",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "executor_content_hash": {
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "executor_provider_instance_id": {
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_call_id": {
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "tool_id": {
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "value": {
+                "title": "元の結果"
+              }
+            },
+            "required": [
+              "tool_id",
+              "tool_call_id",
+              "executor_provider_instance_id",
+              "executor_content_hash",
+              "value"
+            ],
             "type": "object"
           },
           "operation_id": "rumi_tool_result_pack.tool-result-normalize",
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "title": "エラー"
+              },
+              "executor": {
+                "additionalProperties": false,
+                "properties": {
+                  "content_hash": {
+                    "type": "string"
+                  },
+                  "provider_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider_instance_id",
+                  "content_hash"
+                ],
+                "type": "object",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "is_error": {
+                "type": "boolean"
+              },
+              "result": {
+                "title": "結果"
+              },
+              "status": {
+                "enum": [
+                  "success",
+                  "error"
+                ],
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_call_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "widget": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-tobkiri-flow-role": "metadata"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool_id",
+              "status",
+              "is_error",
+              "result",
+              "error",
+              "widget",
+              "executor"
+            ],
             "type": "object"
           },
-          "revision_digest": "sha256:ecb2a872eefc9feba498285de1177833149a46e6c9d1a59320f21dc4303eece4",
+          "revision_digest": "sha256:4d956505f690274cb444551fc9b9b1fdc89712dbb18ebbe918581c9102e9d053",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

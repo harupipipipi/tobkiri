@@ -98,18 +98,18 @@
     "source_digest": "sha256:e90f9e04f5076b9e712855261fe1e824db4d28cc86073bc5a9d571cb510e9755",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:46eb68bc5dfd0ecc44e2dbf97496e2ce90e477cb21429d6663596044ba0775b1",
+    "content_root_digest": "sha256:1303974f71efd2b3a519b06ec66437b89ff4b3c5eb2b5af3f1cecdde68cb99f6",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
     "input_inventory_digest": "sha256:354585a56b7b34dfc61aa3c55bc7cc39d710c97343097e1923648be3f6d80385",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
       },
       {
         "path": "ecosystem/rumi_kanban_state_store_pack/pack.v4.json",

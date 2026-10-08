@@ -328,18 +328,18 @@
     "source_digest": "sha256:db7ee0d5aaf7978f089ae21dace73e1a289729792563a2d1415fbc21f5e68300",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1ec4567ec5e6cfa04167f813653fb4f0f06b5ff4169d901634dc66669bc65d61",
+    "content_root_digest": "sha256:bbbcc21063688fb5b7ffac4de7cec2a8013be8ea8325733c34377e8b276e85b7",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
     "input_inventory_digest": "sha256:ff4f7f4490f3ce9d764d8f5cd56a69d64397cd0a520b8cee067716802fac3b2a",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
       },
       {
         "path": "ecosystem/tobkiri_agent_control_pack/pack.v4.json",

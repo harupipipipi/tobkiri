@@ -67,9 +67,150 @@
         ],
         "schemas": {
           "input": {
+            "additionalProperties": false,
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64"
+                ],
+                "title": "音声ファイル",
+                "type": "object"
+              },
+              "language": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "登録済みモデル",
+                "type": "string",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "type": "object"
+              }
+            },
+            "required": [
+              "audio",
+              "model_profile_id"
+            ],
+            "title": "音声を文字にする",
             "type": "object"
           },
           "output": {
+            "additionalProperties": false,
+            "properties": {
+              "language": {
+                "maxLength": 64,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              "segments": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "speaker": {
+                      "maxLength": 128,
+                      "type": "string"
+                    },
+                    "start_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "text": {
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "maxItems": 512,
+                "type": "array"
+              },
+              "status": {
+                "const": "ok",
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 65536,
+                "title": "認識した文字",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "text",
+              "language",
+              "segments"
+            ],
             "type": "object"
           }
         },
@@ -92,9 +233,133 @@
         ],
         "schemas": {
           "input": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "input"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ],
+            "properties": {
+              "input": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "読み上げる文字",
+                "type": "string"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "登録済みモデル",
+                "type": "string",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "type": "object"
+              },
+              "text": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "読み上げる文字（互換フィールド）",
+                "type": "string"
+              },
+              "voice": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "声のID",
+                "type": "string"
+              }
+            },
+            "required": [
+              "model_profile_id"
+            ],
+            "title": "文字を読み上げる",
             "type": "object"
           },
           "output": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64",
+                  "byte_size"
+                ],
+                "title": "音声ファイル",
+                "type": "object"
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "const": "ok",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "content"
+            ],
             "type": "object"
           }
         },
@@ -126,12 +391,18 @@
         "id": "rumi.service.ai.provider.audio.speech.v1",
         "optional": true,
         "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
       }
     ]
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.embedding.v1",
       "id": "ai-embedding",
       "loader": "python",
@@ -139,7 +410,7 @@
       "symbol": "create_embedding_operation"
     },
     {
-      "artifact_hash": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.image.v1",
       "id": "ai-image",
       "loader": "python",
@@ -147,7 +418,7 @@
       "symbol": "create_image_operation"
     },
     {
-      "artifact_hash": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.audio.transcribe.v1",
       "id": "ai-transcribe",
       "loader": "python",
@@ -155,7 +426,7 @@
       "symbol": "create_audio_transcribe_operation"
     },
     {
-      "artifact_hash": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "artifact_hash": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "contract_id": "rumi.service.ai.audio.speech.v1",
       "id": "ai-speech",
       "loader": "python",
@@ -181,6 +452,7 @@
             "rumi.service.ai.image.v1"
           ],
           "requires": [
+            "rumi.resource.ai.model.profile.v1",
             "rumi.service.ai.provider.audio.speech.v1",
             "rumi.service.ai.provider.audio.transcribe.v1",
             "rumi.service.ai.provider.embedding.v1",
@@ -195,9 +467,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:04c491c29a78619201cdcfd81facf1c87dae15e540e88969c1116cbf9a662872",
+            "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4"
+            "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -219,7 +491,7 @@
         "pack_identity": "rumi:ecosystem/rumi_ai_modality_pack",
         "provenance": {
           "build_identity": "rumi_ai_modality_pack:1.0.0",
-          "content_hash": "sha256:81e01da817a21308038cecc51562d7a57774c3dec83286fecdf754d84622e34d",
+          "content_hash": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
           "signature": null,
           "trust_class": "local"
         },
@@ -249,7 +521,7 @@
       "owner": "rumi_ai_modality_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4"
+      "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
     }
   },
   "migration": {
@@ -296,7 +568,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_ai_modality_pack:1.0.0",
-    "content_hash": "sha256:81e01da817a21308038cecc51562d7a57774c3dec83286fecdf754d84622e34d",
+    "content_hash": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
     "signature": null,
     "trust_class": "local"
   },

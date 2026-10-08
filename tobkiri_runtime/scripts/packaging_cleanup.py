@@ -171,20 +171,32 @@ class _WindowsApi:
         directory: bool,
         delete_access: bool = True,
         share_mode: int = _WINDOWS_HANDLE_SHARE_MODE,
+        ancestor: bool = False,
     ) -> int:
-        """Open a pinned guard or mutation handle without following reparses."""
+        """Pin an ancestor or open a mutation target without delete sharing.
+
+        Ancestors need only traversal and identity rights. Requesting DELETE
+        or directory-list access on these pins can conflict with the kernel
+        destination-directory open performed during quarantine rename.
+        Mutation handles request DELETE only when delete_access is enabled;
+        ancestor pins never request DELETE or directory enumeration rights.
+        """
 
         if share_mode & _WINDOWS_FILE_SHARE_DELETE:
             raise ValueError("Windows cleanup handles must not share delete access")
 
+        if ancestor and not directory:
+            raise ValueError("Windows cleanup ancestor must be a directory")
         access = _WINDOWS_FILE_READ_ATTRIBUTES
-        if delete_access:
+        if delete_access and not ancestor:
             access |= _WINDOWS_DELETE
         flags = _WINDOWS_FILE_FLAG_OPEN_REPARSE_POINT
         if directory:
             # Root/ancestor handles are also the non-delete-sharing trust
             # boundary for relative traversal and identity checks.
-            access |= _WINDOWS_FILE_LIST_DIRECTORY | _WINDOWS_FILE_TRAVERSE
+            access |= _WINDOWS_FILE_TRAVERSE
+            if not ancestor:
+                access |= _WINDOWS_FILE_LIST_DIRECTORY
             flags |= _WINDOWS_FILE_FLAG_BACKUP_SEMANTICS
         handle = self._create_file(
             os.fspath(path),
@@ -1448,6 +1460,7 @@ def _bind_windows_handles(
                 # sharing, but do not request DELETE access on it.
                 delete_access=False,
                 share_mode=_WINDOWS_HANDLE_SHARE_MODE,
+                ancestor=True,
             )
             owned_handles.append(_WindowsHandleRecord(expected.path, handle, None))
             native_identity = api.identity(handle)

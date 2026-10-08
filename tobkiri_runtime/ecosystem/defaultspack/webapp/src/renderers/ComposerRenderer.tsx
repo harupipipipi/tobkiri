@@ -143,7 +143,7 @@ import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
 import { declarativeIconForName } from "../lib/declarativeIcons";
 import { startPinchAudioRecorder, type ActiveAudioRecorder } from "../ambient/ambientMedia";
-import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
+import composerPaletteTemplateJson from "../templates/composerPalette.template.json" with { type: "json" };
 
 export { composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
 

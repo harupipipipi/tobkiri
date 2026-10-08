@@ -8,7 +8,7 @@ import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from core_runtime.bootstrap.saved_bridge import READINESS, REQUIRED_TARGETS, SavedBridgeCallbacks
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity
 from tobkiri_host.continuation_envelope import seal_continuation_intent
@@ -553,7 +553,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     definitions = ProfileDefinitionStore(user_data)
     profile = deepcopy(definitions.get_profile("defaults").profile)
     runtime = Path(__file__).resolve().parents[1]
-    saved_function = "defaultspack.conversation.saved"
+    saved_function = "tobkiri_conversation_orchestration_pack.saved"
     # This isolated negative fixture controls its own saved edges. Ordinary
     # Defaults now has coordinator edges, verified separately below.
     profile["requested_edges"] = [

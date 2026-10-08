@@ -1,6 +1,6 @@
 {
   "pack_id": "defaultspack",
-  "display_name": "Tobkiri Defaults v4",
+  "display_name": "Tobkiri Harness v4",
   "description": "Installs the explicit defaults-basepack, shell.tauri.default, defaultspack, and rumi-file-inspect Profile v4 composition. Approval and activation require exact Authority Kernel records.",
   "target_pack_id": "defaultspack",
   "version": "4.0.0",

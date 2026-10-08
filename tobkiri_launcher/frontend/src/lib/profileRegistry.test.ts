@@ -154,3 +154,17 @@ test('mutation responses retain the tombstone only as changed history, never as 
   assert.equal(parsed.changed_profile?.tombstone, true);
   assert.equal(parsed.action, 'delete');
 });
+
+test('registry preserves the active source definition separately from its resolved execution revision', () => {
+  const source = registry([profileRecord('defaults', digest('a'))]);
+  assert.equal(parseNamedProfileRegistry({...source, active_profile_definition_revision: digest('b')}).active_profile_definition_revision, digest('b'));
+  assert.throws(() => parseNamedProfileRegistry({...source, active_profile_definition_revision: 'invalid'}));
+});
+
+test('composition updates carry choices and freshness fences without client authority', () => {
+  const payload = {profile_id: 'editing', display_name: 'Editing', expected_profile_revision: digest('a'), expected_store_generation: 1,
+    composition: {pack_ids: ['one'], profile_catalog_digest: digest('b'), bundle_lock_digest: digest('c')}};
+  assert.deepEqual(validateNamedProfileMutation('update', payload), payload);
+  assert.throws(() => validateNamedProfileMutation('update', {...payload, composition: {...payload.composition, approved: true}}));
+  assert.throws(() => validateNamedProfileMutation('update', {...payload, composition: {...payload.composition, pack_ids: ['one', 'one']}}));
+});

@@ -108,6 +108,8 @@ class _Client:
                 self.execute_callback()
             if self.failure:
                 raise self.failure
+            if hasattr(self, "result_override"):
+                return self.result_override
             return {"result": {"value": payload["arguments"]["value"], "token": "private"}}
         assert contract == broker.NORMALIZE
         assert operation == "rumi_tool_result_pack.tool-result-normalize"
@@ -330,3 +332,107 @@ def test_invalid_or_unavailable_tool_never_publishes_execution_progress(tool_hos
         invoke(payload)
     assert all(call[0] not in {broker.ACTION, broker.EXECUTE, broker.NORMALIZE}
                for call in client.calls)
+
+
+@pytest.mark.parametrize("schema,raw,expected", [
+    ({"type": "string"}, {"result": "five"}, "five"),
+    ({"type": "object"}, {"result": {"value": 5}}, {"value": 5}),
+    ({"type": "object", "properties": {"token": {"type": "string"}}},
+     {"result": {"token": 123}}, {"token": "[REDACTED]"}),
+])
+def test_declared_result_schema_validates_normalized_redacted_value(tool_host, schema, raw, expected):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": schema, "result_schema_format": "normalized-result.v1"})
+    client.result_override = raw
+    result = invoke()
+    assert result["result"] == expected
+    assert [call[0] for call in client.calls] == [
+        broker.DEFINITION, broker.VALIDATE, broker.VALIDATE,
+        broker.EXECUTE, broker.NORMALIZE, broker.VALIDATE,
+    ]
+    assert client.calls[-1][2]["arguments"] == expected
+
+
+@pytest.mark.parametrize("schema,raw", [
+    ({"type": "string"}, {"result": {"value": 5}}),
+    ({"type": "object", "properties": {"token": {"type": "integer"}}}, {"result": {"token": 123}}),
+    ({"type": "string"}, {"result": None, "is_error": True}),
+])
+def test_invalid_or_error_result_never_published_as_a_typed_success(tool_host, schema, raw):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": schema, "result_schema_format": "normalized-result.v1"})
+    client.result_override = raw
+    with pytest.raises(ValueError, match="result does not match"):
+        invoke()
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_unsupported_result_schema_fails_before_executor_effects(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"$ref": "https://example.invalid/schema"}, "result_schema_format": "normalized-result.v1"})
+    with pytest.raises(ValueError, match="unsupported"):
+        invoke()
+    assert all(call[0] != broker.EXECUTE for call in client.calls)
+
+
+def test_result_schema_change_invalidates_saved_tool_definition_hash(tool_host):
+    invoke, client, _, _ = tool_host
+    old_hash = client.definition["definition_hash"]
+    client.definition = _definition({**client.definition, "result_schema": {"type": "object"}, "result_schema_format": "normalized-result.v1"})
+    with pytest.raises(PermissionError, match="definition changed"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": 3},
+                "expected_definition_hash": old_hash})
+    assert len(client.calls) == 1
+
+
+
+def test_legacy_advisory_result_schema_is_not_reinterpreted_after_execution(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"type": "string"}})
+    result = invoke()
+    assert isinstance(result["result"], dict)
+    assert [call[0] for call in client.calls] == [broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE]
+
+
+def test_schema_valid_error_remains_explicitly_an_error_result(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"type": "string"},
+                                     "result_schema_format": "normalized-result.v1"})
+    client.result_override = {"result": "invalid expression", "is_error": True}
+    result = invoke()
+    assert result["is_error"] is True and result["status"] == "error"
+    assert result["result"] == "invalid expression"
+
+
+def test_advisory_definition_hash_matches_pre_typed_result_fixture():
+    definition = _definition({'tool_id': 'compat.test', 'authority': 'service.invoke',
+                              'execution': {'kind': 'local', 'contract_id': 'example.operation.v1'},
+                              'result_schema': {'type': 'object'}})
+    # Independently captured from previous checkpoint implementation at 3fbe19d38.
+    assert definition['definition_hash'] == '8e0bf57766274892316d09195fb5b0208339489adc6c2ffd60a629326cdc3d83'
+    assert 'result_schema_format' not in definition
+
+
+def test_unknown_result_format_is_rejected_before_executor(tool_host):
+    invoke, client, _, _ = tool_host
+    with pytest.raises(ValueError, match='format is unsupported'):
+        _definition({**client.definition, 'result_schema_format': 'unknown.v1'})
+    client.definition['result_schema_format'] = 'unknown.v1'
+    with pytest.raises(ValueError, match='format is unsupported'):
+        invoke()
+    assert all(call[0] != broker.EXECUTE for call in client.calls)
+
+
+def test_invalid_typed_result_never_publishes_completion_or_replays(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({
+        **client.definition, "result_schema": {"type": "string"},
+        "result_schema_format": "normalized-result.v1",
+    })
+    client.result_override = {"result": {"value": 5}}
+    with pytest.raises(ValueError, match="result does not match"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1",
+                "arguments": {"value": 3}, "progress_id": "stage"})
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+    events = [call[2].get("event") for call in client.calls if call[0] == broker.ACTION]
+    assert not any(event and event["type"] == "tool_completed" for event in events)

@@ -9,7 +9,7 @@ from core_runtime.workspace_mount_effect import ProjectMountPersistenceUncertain
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
 from tobkiri_host.artifact_materialization import MaterializedArtifactFile
 from tobkiri_host.backends import BackendStatus, REQUIRED_PRODUCTION_GATES
@@ -34,6 +34,29 @@ from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
 from core_runtime.captured_wake_v4 import CapturedWakePortV4
 from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+
+from .invocation_evidence import BoundInvocationEvidence, EvidenceResolver
+
+if TYPE_CHECKING:
+    from .workflow_v4.attempt_port import WorkflowAttemptPortV4
+
+
+@dataclass(frozen=True)
+class HostInvocationEvidenceReferenceV4:
+    """An issuer-local evidence locator, never a grant or asserted provenance."""
+
+    kind: str
+    reference: str
+
+
+@dataclass(frozen=True)
+class HostInvocationEvidenceContributionV4:
+    """A read-only resolver supplied by one verified captured Host issuer."""
+
+    kind: str
+    issuer_principal_id: str
+    resolve: EvidenceResolver
+    data_fields: tuple[str, ...] = ()
 
 
 class HostProviderInvocationContextV4(Protocol):
@@ -75,6 +98,33 @@ class HostProviderInvocationContextV4(Protocol):
         include_credentials: bool = True,
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
+
+    def dispatch_bounded(
+        self,
+        *,
+        allowed_contract_ids: frozenset[str],
+        consumer_pack_id: str,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        idempotency_key: str,
+        timeout_ms: int | None,
+        expected_payload_digest: str,
+        evidence_ref: HostInvocationEvidenceReferenceV4 | None = None,
+    ) -> Mapping[str, Any]:
+        """Dispatch one durable typed attempt through the real Broker.
+
+        Only Host-owned consumers may reach this narrow API: the durable
+        attempt idempotency key, the caller's bounded timeout (never wider
+        than the envelope deadline) and the digest of the pinned resolved
+        input all reach the real ``RequestBroker``.  Implementations that do
+        not opt in stay fail-closed.
+        """
+        raise PermissionError("bounded workflow dispatch is unavailable")
+
+    def invocation_evidence(self, kind: str) -> BoundInvocationEvidence:
+        """Read exact one-hop owner evidence carried outside request JSON."""
+        raise PermissionError("invocation evidence is unavailable")
 
     def assert_current(self) -> None:
         """Reject cancelled, expired or stale captured invocations."""
@@ -159,6 +209,10 @@ class HostProviderCaptureContextV4:
     action_approval_policy_capabilities_port: Callable[..., Mapping[str, Any]] | None = None
     # Host-private inheritance; no selected mode or authority is parsed from Pack payloads.
     selected_tool_policy_port: Callable[[Any], Any] | None = None
+    # Target operations selected by this Function's own outgoing Plan edges.
+    # This is read-only capture evidence, not a new grant or caller override.
+    outbound_catalog_bindings: tuple[ResolvedOperationBinding, ...] | None = None
+    workflow_attempt_port: WorkflowAttemptPortV4 | None = None
 
 
 @dataclass(frozen=True)
@@ -167,6 +221,7 @@ class CapturedHostProviderV4:
 
     contributions: tuple[HostProviderContributionV4, ...]
     close: Callable[[], None]
+    evidence_contributions: tuple[HostInvocationEvidenceContributionV4, ...] = ()
 
 
 class HostProviderFactoryV4(Protocol):

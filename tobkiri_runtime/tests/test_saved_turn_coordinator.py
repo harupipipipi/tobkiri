@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
-from ecosystem.defaultspack.runtime import saved_conversation as application
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as application
 from ecosystem.rumi_prompt_studio_pack.runtime.service import PromptStudioService
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime

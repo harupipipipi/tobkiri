@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:e635e5f50fdbec073c24c5bd2be0f3b14a2e2120c65d2631000985c77fe5bb4a",
+  "catalog_digest": "sha256:0452d397d41c646865e9faa5cc5489edb2b0d2ca8df87a7ce0bac42ce32cb289",
   "pack_id": "rumi_ai_modality_pack",
-  "source_identity": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4",
+  "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_modality_pack.ai-modality.embedding",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_modality_pack.ai-modality.image",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_modality_pack.ai-modality.speech",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -91,13 +91,162 @@
           },
           "idempotency": "none",
           "input_schema": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "input"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ],
+            "properties": {
+              "input": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "properties": {
+                  "speed": {
+                    "maximum": 4,
+                    "minimum": 1,
+                    "pattern": "^(?:0\\.[0-9]+|[1-3](?:\\.[0-9]+)?|4(?:\\.0+)?)$",
+                    "title": "読み上げ速度",
+                    "type": [
+                      "string",
+                      "integer"
+                    ],
+                    "x-tobkiri-flow-role": "configuration"
+                  }
+                },
+                "title": "詳細設定",
+                "type": "object",
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "text": {
+                "maxLength": 8192,
+                "minLength": 1,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "voice": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "声",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration"
+              }
+            },
+            "required": [
+              "model_profile_id"
+            ],
+            "title": "文字を読み上げる",
             "type": "object"
           },
           "operation_id": "rumi_ai_modality_pack.ai-speech",
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64",
+                  "byte_size"
+                ],
+                "title": "sound",
+                "type": "object",
+                "x-tobkiri-flow-role": "data",
+                "x-tobkiri-value-type": "tobkiri.value.sound.v1"
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "title": "接続ID",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "status": {
+                "const": "ok",
+                "title": "状態",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "content"
+            ],
             "type": "object"
           },
-          "revision_digest": "sha256:ee2fe18ae7876df3b2dd53ef2ff0f6e5ceb3348cacf1d70394db8682487490c7",
+          "revision_digest": "sha256:6dac4dbb3ae65b790ff6adb7ba355ebcebcc4b891359b54f3a32ff7329a228e1",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -112,7 +261,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_modality_pack.ai-modality.transcribe",
-      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "implementation_digest": "sha256:e0caddbe456d2b59ba71c50fb7a86c5e7c40fda0d63e165847ab527c52f41f59",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -125,13 +274,171 @@
           },
           "idempotency": "none",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "properties": {
+                  "byte_size": {
+                    "maximum": 1048576,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "content_id": {
+                    "maxLength": 71,
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "data_base64": {
+                    "maxLength": 1398104,
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "filename": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "audio/mpeg",
+                      "audio/mp3",
+                      "audio/wav",
+                      "audio/x-wav",
+                      "audio/wave",
+                      "audio/mp4",
+                      "audio/m4a",
+                      "audio/aac",
+                      "audio/flac",
+                      "audio/ogg",
+                      "audio/webm",
+                      "audio/l16"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content_id",
+                  "media_type",
+                  "data_base64",
+                  "byte_size"
+                ],
+                "title": "sound",
+                "type": "object",
+                "x-tobkiri-flow-role": "data",
+                "x-tobkiri-value-type": "tobkiri.value.sound.v1"
+              },
+              "language": {
+                "maxLength": 64,
+                "minLength": 1,
+                "title": "言語",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxProperties": 32,
+                "title": "詳細設定",
+                "type": "object",
+                "x-tobkiri-flow-role": "configuration"
+              }
+            },
+            "required": [
+              "audio",
+              "model_profile_id"
+            ],
+            "title": "音声を文字にする",
             "type": "object"
           },
           "operation_id": "rumi_ai_modality_pack.ai-transcribe",
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "language": {
+                "maxLength": 64,
+                "title": "言語",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "provider_instance_id": {
+                "maxLength": 512,
+                "minLength": 1,
+                "title": "接続ID",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "segments": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "speaker": {
+                      "maxLength": 128,
+                      "type": "string"
+                    },
+                    "start_ms": {
+                      "maximum": 86400000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "text": {
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "maxItems": 512,
+                "title": "区間",
+                "type": "array",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "status": {
+                "const": "ok",
+                "title": "状態",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "text": {
+                "maxLength": 65536,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "status",
+              "provider_instance_id",
+              "text",
+              "language",
+              "segments"
+            ],
             "type": "object"
           },
-          "revision_digest": "sha256:9af22695e671d346b5be8177457a1c99d6e8d21ea49cd87595fe24bc41b772d4",
+          "revision_digest": "sha256:f9aa4d75acc78dca4de89c12775d2508227c4f9d4a11cf9bb4fe2daa65cb3a22",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

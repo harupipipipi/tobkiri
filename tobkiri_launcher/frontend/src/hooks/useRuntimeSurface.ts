@@ -9,6 +9,7 @@ import {
   type RuntimeSurfaceErrorCode,
   type RuntimeSurfaceId,
 } from '@/src/lib/runtimeSurface';
+import {PanelSessionUnavailableError} from '@/src/lib/apiTransport';
 import {registerRuntimeSurfaceRefresher} from '@/src/lib/runtimeSurfaceRefresh';
 
 export type {RuntimeSurfaceClient} from '@/src/lib/runtimeSurface';
@@ -108,7 +109,7 @@ export function useRuntimeSurface<T>(
       setState((current) => ({
         ...current,
         status: statusForError(code),
-        error: {code, message: runtimeSurfaceErrorMessage(code)},
+        error: {code, message: error instanceof PanelSessionUnavailableError ? error.message : runtimeSurfaceErrorMessage(code)},
         stale: Boolean(current.data),
         canMutate: false,
       }));

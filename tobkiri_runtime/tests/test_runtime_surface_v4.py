@@ -1201,9 +1201,13 @@ def test_read_fence_cancels_waiter_and_service_remains_restartable(active_runtim
         release.wait()
         return active_runtime
 
+    # This test isolates cancellation/reuse, not cold catalog I/O latency.
+    # Keep the real catalog and unchanged read deadline, but prepare it before
+    # competing fixture builds can consume that lifecycle deadline.
+    catalog = BundledCatalog.load(_bundle_root())
     service = RuntimeSurfaceService(
         snapshot_loader=blocked_snapshot,
-        catalog_loader=lambda: BundledCatalog.load(_bundle_root()),
+        catalog_loader=lambda: catalog,
         read_timeout_seconds=2.0,
     )
     with ThreadPoolExecutor(max_workers=1) as executor:

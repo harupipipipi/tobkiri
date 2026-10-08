@@ -16,26 +16,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core_runtime.pack_sdk import (
+from core_runtime.pack_authoring import (  # noqa: E402
+    PackAuthoringError,
+    build_authored_pack,
+)
+from core_runtime.pack_sdk import (  # noqa: E402
     PackSdkGenerator,
     ensure_scaffold_refresh_safe,
     refresh_scaffold_artifacts,
     scaffold_pack,
     validate_pack_manifest,
 )
-from core_runtime.pack_signature import (
+from core_runtime.pack_signature import (  # noqa: E402
     SIGNED_MANIFEST_RELATIVE,
     build_signed_manifest,
     sign_manifest,
     verify_signed_pack,
 )
-from core_runtime.pack_templates import (
+from core_runtime.pack_templates import (  # noqa: E402
     COMPONENT_KINDS,
     PROFILES,
     scaffold_component,
     validate_template_components,
 )
-from scripts.offline_legacy_projection import (
+from scripts.offline_legacy_projection import (  # noqa: E402
     generate_legacy_ecosystem_projection,
 )
 
@@ -90,6 +94,32 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--check", action="store_true")
     generate.add_argument("--schema", action="append", type=Path)
     generate.set_defaults(handler=_generate)
+
+    build = subcommands.add_parser(
+        "build",
+        help=(
+            "Compile an authored pack-source.v1.json Pack source into the "
+            "canonical Pack v4 artifacts under an explicit output directory."
+        ),
+    )
+    build.add_argument("pack_root", type=Path, help="Authored Pack source root.")
+    build.add_argument(
+        "output",
+        type=Path,
+        help=(
+            "Output directory for the compiled Pack; its name must equal "
+            "pack_id and it must not already exist."
+        ),
+    )
+    build.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Verify the staged build against an existing output tree "
+            "without writing."
+        ),
+    )
+    build.set_defaults(handler=_build)
 
     validate = subcommands.add_parser("validate")
     validate.add_argument("manifest", type=Path)
@@ -238,6 +268,15 @@ def _sync_client_bindings(output: Path, *, check: bool) -> None:
             os.replace(temporary_path, target)
         finally:
             temporary_path.unlink(missing_ok=True)
+
+
+def _build(args: argparse.Namespace) -> dict[str, object]:
+    try:
+        return build_authored_pack(
+            args.pack_root, args.output, check=bool(args.check)
+        )
+    except PackAuthoringError as exc:
+        raise SystemExit(f"tobkiri-pack build failed: {exc}") from exc
 
 
 def _validate(args: argparse.Namespace) -> dict[str, object]:

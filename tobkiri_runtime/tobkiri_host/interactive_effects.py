@@ -53,6 +53,8 @@ class _PreparedExecutionGuardKwargs(TypedDict, total=False):
     nested_cancellation_proof: NestedCancellationProof | None
 
 
+_PENDING_EFFECT_KIND = "host-interactive-effect.v1"
+
 class PendingEffectError(RuntimeError):
     """Fail-closed public error for unavailable PendingEffect state."""
 
@@ -202,6 +204,7 @@ class _PendingEffect:
         """Serialize the complete encrypted-at-rest Host snapshot."""
 
         return {
+            "kind": _PENDING_EFFECT_KIND,
             "effect_id": self.effect_id,
             "approval_request_id": self.approval_request_id,
             "state": self.state.value,
@@ -227,6 +230,8 @@ class _PendingEffect:
         """Load and validate one decrypted Host snapshot."""
 
         try:
+            if "kind" in value and value["kind"] != _PENDING_EFFECT_KIND:
+                raise ValueError("record belongs to another owner")
             state = PendingEffectState(str(value["state"]))
             metadata = value.get("presentation_metadata", {})
             scope = value["effect_scope"]
@@ -377,6 +382,22 @@ class PendingEffectController:
         self._dispatch_grace_seconds = float(dispatch_grace_seconds)
         self._clock = clock
 
+    def _owned_records(self):
+        """Scan authenticated shared storage only for this record owner.
+
+        Missing kinds are legacy effect records. Other nonempty kinds belong
+        to separate Host owners and confer no effect authority here. Storage
+        authentication happens before this boundary; its failures propagate.
+        """
+        for revision, payload in self._persistence.list_host_pending_effects():
+            if "kind" in payload:
+                kind = payload["kind"]
+                if not isinstance(kind, str) or not kind or len(kind) > 128:
+                    raise PendingEffectError("pending effect record kind is invalid")
+                if kind != _PENDING_EFFECT_KIND:
+                    continue
+            yield revision, payload
+
     def prepare(
         self,
         *,
@@ -513,7 +534,7 @@ class PendingEffectController:
         )
         matches: list[PendingEffectStatus] = []
         try:
-            for revision, payload in self._persistence.list_host_pending_effects():
+            for revision, payload in self._owned_records():
                 record = _PendingEffect.from_dict(payload)
                 if (
                     record.correlation_id == correlation_id
@@ -1055,7 +1076,7 @@ class PendingEffectController:
         """Apply conservative crash semantics to every encrypted effect record."""
 
         recovered: list[PendingEffectStatus] = []
-        for revision, payload in self._persistence.list_host_pending_effects():
+        for revision, payload in self._owned_records():
             record = _PendingEffect.from_dict(payload)
             if record.state in _TERMINAL_STATES:
                 recovered.append(_status(record, revision))

@@ -707,3 +707,28 @@ def test_explicit_function_digest_requires_one_runtime_executable_artifact(
 
     with pytest.raises(PackV4MigrationError, match="implementation artifact"):
         _render_record(record)
+
+
+def test_operation_specific_schemas_preserve_contract_defaults_and_effects(tmp_path, monkeypatch):
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    contract = record['provided_contracts'][0]
+    special = {'type': 'object', 'properties': {'text': {'type': 'string'}}, 'required': ['text']}
+    contract['operations'][0]['schemas'] = {'input': special}
+    rendered = _render_record(record)
+    verify_rendered_artifacts(rendered)
+    document = json.loads(rendered['contracts.v4.json'])['contracts'][0]
+    prepare, execute = document['operations']
+    assert prepare['input_schema_digest'] != execute['input_schema_digest']
+    assert document['schema_catalog'][prepare['input_schema_digest']] == special
+    assert document['schema_catalog'][execute['input_schema_digest']] == contract['schemas']['input']
+    assert prepare['effect_ceiling'] == ['capability:shell.inspect']
+    assert execute['effect_ceiling'] == ['capability:shell.execute']
+    assert prepare['output_schema_digest'] == execute['output_schema_digest']
+
+
+@pytest.mark.parametrize('overrides', [None, {'grant': {}}, {'input': 'string'}, {'input': {'type': 'not-a-type'}}])
+def test_invalid_operation_schema_overrides_are_rejected(tmp_path, monkeypatch, overrides):
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    record['provided_contracts'][0]['operations'][0]['schemas'] = overrides
+    with pytest.raises(PackV4MigrationError, match='schema'):
+        _render_record(record)

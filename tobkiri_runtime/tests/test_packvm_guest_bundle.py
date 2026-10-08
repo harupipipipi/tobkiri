@@ -33,8 +33,12 @@ MEMBERS = {
     "tobkiri_protocol/saved_context.py",
     "tobkiri_protocol/saved_task_context.py",
     "tobkiri_protocol/conversation_context.py",
+    "tobkiri_protocol/conversation_lifecycle.py",
+    "tobkiri_protocol/flow_values.py",
+    "tobkiri_protocol/saved_messages.py",
     "tobkiri_protocol/saved_conversation.py",
     "tobkiri_protocol/saved_tools.py",
+    "tobkiri_protocol/turn_progress_v1.py",
 }
 
 
@@ -87,7 +91,17 @@ from tobkiri_host.continuation_envelope import seal_continuation_intent
 from tobkiri_host.continuation_session import ContinuationSession
 from tobkiri_host.saved_guest_dispatch import SavedGuestTurns
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_messages import build_saved_model_messages
+assert build_saved_model_messages({"messages": [], "current_node_id": None}) == []
 from tobkiri_protocol.canonical import canonical_json
+from tobkiri_protocol.flow_values import SOUND_TYPE, sound_schema, validate_sound
+import base64, hashlib
+audio = b"guest-sound"
+value = {"content_id": "sha256:" + hashlib.sha256(audio).hexdigest(),
+         "media_type": "audio/mpeg", "byte_size": len(audio),
+         "data_base64": base64.b64encode(audio).decode("ascii")}
+validate_sound(value)
+assert sound_schema()["x-tobkiri-value-type"] == SOUND_TYPE
 identity = ChainIdentity('domain', 'request', 'sha256:' + 'a' * 64, 60.0)
 assert ContinuationSession.__module__ == 'tobkiri_host.continuation_session'
 assert SavedGuestTurns.__module__ == 'tobkiri_host.saved_guest_dispatch'

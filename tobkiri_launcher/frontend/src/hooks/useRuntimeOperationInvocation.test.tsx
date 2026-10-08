@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
-import {act} from 'react';
+import {act, useEffect} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import test from 'node:test';
 
+import {
+  ProfileSelectionProvider,
+  useProfileSelection,
+} from '@/src/lib/profileSelection';
 import {
   useRuntimeOperationInvocation,
   type RuntimeOperationInvoker,
@@ -194,6 +198,49 @@ test('runtime invocation treats a lost response as unknown and rejects a replace
     await act(async () => { invokeButton.click(); await Promise.resolve(); });
     assert.equal(calls, 1);
     assert.equal(container.querySelector('[data-state="state"]')?.textContent, 'unknown');
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+    });
+  }
+});
+
+function SelectionWriter({profileId}: {profileId: string | null}) {
+  const {selectProfile} = useProfileSelection();
+  useEffect(() => {
+    selectProfile(profileId);
+  }, [profileId, selectProfile]);
+  return null;
+}
+
+test('runtime invocation fails closed when the inspected Profile differs', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  let calls = 0;
+  const invoker: RuntimeOperationInvoker = async () => {
+    calls += 1;
+  };
+
+  try {
+    await act(async () => {
+      root.render(
+        <ProfileSelectionProvider>
+          <SelectionWriter profileId="profile-b" />
+          <Probe currentOperation={operation('operation-locked')} invoker={invoker} />
+        </ProfileSelectionProvider>,
+      );
+    });
+    const invokeButton = container.querySelector<HTMLButtonElement>('button');
+    assert.ok(invokeButton);
+    await act(async () => { invokeButton.click(); await Promise.resolve(); });
+    assert.equal(calls, 0);
+    assert.equal(container.querySelector('[data-state="state"]')?.textContent, 'failed');
+    assert.equal(container.querySelector('[data-state="error"]')?.textContent, 'FAILED');
+    assert.equal(invokeButton.disabled, false);
   } finally {
     act(() => root.unmount());
     dom.window.close();

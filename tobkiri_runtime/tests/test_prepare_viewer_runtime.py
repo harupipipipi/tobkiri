@@ -538,3 +538,33 @@ def test_prepare_release_removes_read_only_dev_uv_before_verified_stage(tmp_path
     assert not destination.exists()
     assert len(calls) == 2
     assert "prepare_tauri_resources.py" in str(calls[1][3])
+
+
+
+def test_windows_npm_uses_exact_cmd_shim_and_explicit_environment(monkeypatch):
+    module = _load_module()
+    captured = {}
+    module_os = SimpleNamespace(name="nt", environ={}, fspath=os.fspath, defpath=os.defpath)
+    monkeypatch.setattr(module, "os", module_os)
+    def which(name, *, path):
+        assert name == "npm.cmd"
+        assert path == "explicit-tools"
+        return r"C:\Program Files\nodejs\npm.cmd"
+    monkeypatch.setattr(module.shutil, "which", which)
+    def run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return subprocess.CompletedProcess(command, 0)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.run_command(["npm", "exec", "--prefix", "frontend", "--", "tauri", "build"], env={"PATH": "explicit-tools"})
+    assert captured["command"] == [r"C:\Program Files\nodejs\npm.cmd", "exec", "--prefix", "frontend", "--", "tauri", "build"]
+    assert captured.get("shell", False) is False
+    assert captured["env"] == {"PATH": "explicit-tools", "PYTHONDONTWRITEBYTECODE": "1"}
+
+
+def test_windows_missing_npm_does_not_fall_back_to_a_shell(monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "os", SimpleNamespace(name="nt", environ={}, fspath=os.fspath, defpath=os.defpath))
+    monkeypatch.setattr(module.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("must not launch a fallback"))
+    with pytest.raises(RuntimeError, match="npm.cmd was not found"):
+        module.run_command(["npm", "--version"], env={"PATH": "empty"})

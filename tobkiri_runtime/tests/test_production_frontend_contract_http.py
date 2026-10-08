@@ -236,8 +236,8 @@ class _PresentationPackVmBackend(_ShellPolicyPackVmBackend):
 class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
     """Explicit guest adapter; Host callbacks and conversation owner stay real."""
 
-    _PACK_ID = "defaultspack"
-    _FUNCTION_ID = "defaultspack.conversation.saved"
+    _PACK_ID = "tobkiri_conversation_orchestration_pack"
+    _FUNCTION_ID = "tobkiri_conversation_orchestration_pack.saved"
     _CONTRACT_ID = "conversation.saved-turn.v1"
     _OPERATION_ID = "saved_complete"
 
@@ -250,7 +250,7 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
     """Use the real saved ledgers; replace only the sandbox process transport."""
 
     def invoke(self, request: object) -> ProviderOutcome:
-        from ecosystem.defaultspack.runtime import saved_conversation
+        from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation
         from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
         from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, INVOKE_RESULT
         from tobkiri_host.saved_host_exchange import SavedHostExchange
@@ -362,28 +362,41 @@ def _request(
     request_headers = dict(headers or {})
     if encoded is not None:
         request_headers.setdefault("Content-Type", "application/json")
-    connection.request(method, path, body=encoded, headers=request_headers)
-    response = connection.getresponse()
-    payload = json.loads(response.read().decode("utf-8"))
-    response_headers = response.getheaders()
-    connection.close()
-    return response.status, payload, response_headers
+    try:
+        connection.request(method, path, body=encoded, headers=request_headers)
+        response = connection.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        response_headers = response.getheaders()
+        return response.status, payload, response_headers
+    finally:
+        connection.close()
 
 
 def _bootstrap_code_after_refresh(server: PackAPIServer) -> str:
-    # A stale capture rejects the first authenticated bootstrap while it
-    # refreshes the Host contract. Launcher retries after that response.
-    for _ in range(2):
+    # Recovery now answers before recapture completes. Preserve the former
+    # two-request maximum total budget, without increasing socket timeouts.
+    deadline = time.monotonic() + 2 * EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
+    rejected = 0
+    while time.monotonic() < deadline:
         status, bootstrap, _headers = _request(
             server,
             "POST",
             "/api/panel/auth/bootstrap",
             body={},
             headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+            timeout_seconds=min(
+                EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS,
+                max(0.1, deadline - time.monotonic()),
+            ),
         )
         if status == 200:
             return str(bootstrap["data"]["code"])
-        assert status == 401 and bootstrap["error"] == "Unauthorized", bootstrap
+        if status == 401 and bootstrap["error"] == "Unauthorized":
+            rejected += 1
+            assert rejected < 2, bootstrap
+        else:
+            assert status == 503 and bootstrap["error"] == "Panel recovery in progress", bootstrap
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
     raise AssertionError("Panel bootstrap remained unauthorized after Host refresh")
 
 
@@ -1752,7 +1765,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
     from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
     from tobkiri_protocol.saved_context import PROMPT_TARGET
@@ -2327,7 +2340,7 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
 ) -> None:
     """Exercise owned context rejection through real HTTP, Broker and stores."""
     from core_runtime.bootstrap.saved_bridge import READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
 
@@ -2418,7 +2431,7 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
 def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) -> None:
     """Real HTTP/Host/Broker cancellation; the AI and guest remain explicit adapters."""
     from core_runtime.bootstrap.saved_bridge import READINESS
-    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
     from tobkiri_host.operation_cancellation import OwnedCancellationBinding
@@ -3450,9 +3463,11 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     assert payload["data"]["code"] == "invalid_contract_payload"
 
 
+@pytest.mark.parametrize("provider_in_requirements", [False, True])
 def test_model_profile_save_http_rejects_authority_and_stale_revision(
     production_server,
     tmp_path: Path,
+    provider_in_requirements: bool,
 ) -> None:
     """Save a selectable model through the signed Defaults edge and real owner."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -3527,6 +3542,34 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
     status, result, _ = post(payload)
     assert status != 200, result
     assert registry.path.read_bytes() == before
+
+    # Repeated creation must preserve fields absent from the selector projection.
+    rich = {
+        **stored,
+        "requirements": {"tool_calling": True},
+        "parameters": {"temperature": 0.3},
+        "credential_handle": "opaque:model-binding",
+        "metadata": {**stored["metadata"], "purpose": "daily coding"},
+    }
+    if provider_in_requirements:
+        rich["metadata"].pop("provider_connection_id")
+        rich["requirements"]["preferred_provider_instance_id"] = "provider.fixture"
+    registry.save(rich, expected_revision=1)
+    before = registry.path.read_bytes()
+    status, result, _ = post({**payload, "expected_revision": 2})
+    assert status == 200, result
+    assert registry.path.read_bytes() == before
+    assert result["data"]["registry_revision"] == 2
+    assert result["data"]["profiles"][0]["provider_id"] == "provider.fixture"
+    assert "opaque:model-binding" not in str(result)
+    assert "temperature" not in str(result)
+
+    registry.save({**rich, "enabled": False}, expected_revision=2)
+    before = registry.path.read_bytes()
+    status, result, _ = post({**payload, "expected_revision": 3})
+    assert status != 200, result
+    assert registry.path.read_bytes() == before
+    assert registry.get("daily")["enabled"] is False
 
 
 def test_model_search_map_route_and_profile_edges_are_exact() -> None:
@@ -3779,6 +3822,7 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
 def test_model_search_projects_float_metadata_into_canonical_json(
     production_server,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Catalog float metadata must survive durable canonical JSON journaling.
 
@@ -3789,6 +3833,29 @@ def test_model_search_projects_float_metadata_into_canonical_json(
     brokered result is journaled.
     """
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog as catalog_module
+
+    # This regression tests local metadata projection, not live inventory.
+    # Capture imports the owner by digest, so seed its persisted fixture rather
+    # than patching an unrelated module's private cache or touching the network.
+    model = catalog_module._normalize_openrouter_model({
+        "id": "fixture/unrelated-model", "name": "Unrelated inventory fixture",
+        "context_length": 8192,
+        "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+    })
+    assert model is not None
+    now = int(time.time())
+    catalog_module._save_openrouter_inventory_cache({
+        "version": 1, "saved_at": now, "expires_at": now + 3600,
+        "models": [model],
+    })
+    public_requests = []
+
+    def reject_public_inventory_request(*args, **kwargs):
+        public_requests.append(args)
+        raise AssertionError("local metadata regression must not access public inventory")
+
+    monkeypatch.setattr(catalog_module.urllib.request, "urlopen", reject_public_inventory_request)
 
     registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
     registry.save(
@@ -3829,6 +3896,8 @@ def test_model_search_projects_float_metadata_into_canonical_json(
         "top_p": "0.95",
         "attempts": 2,
     }
+
+    assert public_requests == []
 
 
 def test_model_search_rejects_unauthorized_and_malformed_payloads(
@@ -4152,10 +4221,11 @@ def test_command_state_and_datasource_queries_reach_exact_canonical_owners(
         assert datasource_result["data"]["revision"]
 
 
-def test_provider_configuration_http_requires_approval_and_saves_once(
+def _exercise_provider_configuration_http(
     production_server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *, audio: bool = False,
 ) -> None:
     """HTTP/Broker/approval/credential and registry owners; no network or real key."""
     from core_runtime.authority.ui_operator import sign_ui_operator
@@ -4228,6 +4298,8 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
             "key_value": secret,
         },
     }
+    if audio:
+        request["request"]["capabilities"] = ["ai.generate", "ai.stream", "ai.audio.transcribe", "ai.audio.speech"]
     path = "/api/ai/provider-key"
 
     # A separately denied secret-use request never stores either configuration
@@ -4330,6 +4402,9 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     status, approval = post("/api/interactive-approval/v1/get", {"request_id": approval_id})
     assert status == 200, approval
     data = approval["data"]
+    if audio:
+        assert "ai.audio.transcribe" in json.dumps(data)
+        assert "ai.audio.speech" in json.dumps(data)
     status, approved = post(
         "/api/interactive-approval/v1/approve",
         {
@@ -4357,12 +4432,27 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in registry.path.read_text()
     stored = root / "credentials/material-store/credentials.store.json"
     assert secret not in stored.read_text()
-    assert len(json.loads(stored.read_text())["credentials"]) == 1
+    credentials = json.loads(stored.read_text())["credentials"]
+    assert len(credentials) == 1
+    scopes = next(iter(credentials.values()))["scopes"]
+    assert set(scopes) == ({"ai.generate", "ai.stream", "ai.audio.transcribe", "ai.audio.speech"} if audio else {"ai.generate", "ai.stream"})
     assert secret not in json.dumps(authority.audit_events(), default=str)
     assert len(provider_owners) == 3
     assert len({item[1:3] for item in provider_owners}) == 1
     # The originating UI owner survives the approved coordinator resume.
     assert provider_owners[-1][1] != provider_owners[-1][3]
+
+
+def test_provider_configuration_http_requires_approval_and_saves_once(
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch)
+
+
+def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact_scopes(
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch, audio=True)
 
 
 @pytest.mark.parametrize("text_blocks", [False, True])
@@ -5166,10 +5256,15 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
         )
         return status_code, payload
 
-    # Use the production optional-Pack lifecycle fixture.  Picking the first
-    # optional catalog row is not sufficient: declarative content Packs are
-    # intentionally installable but have no runtime Function to enable.
-    target_pack = "tobkiri_workflow_pack"
+    # Workflow is a required Defaults provider now. Preserve that protection
+    # and use the same optional executable fixture as test_pack_control_v4.
+    # Declarative-only Packs do not cover runtime Function capture/restart.
+    workflow_row = next(
+        item for item in catalog["data"]["packs"]
+        if item["pack_id"] == "tobkiri_workflow_pack"
+    )
+    assert workflow_row["required"] is True
+    target_pack = "rumi_model_evals_pack"
     target_row = next(item for item in catalog["data"]["packs"] if item["pack_id"] == target_pack)
     assert target_row["required"] is False
     assert post("/api/pack-control/install", {"pack_id": target_pack})[0] == 200
@@ -5594,7 +5689,7 @@ def test_pack_enable_defers_capture_until_launcher_contract_renewal(
         )
         return current_request_id, status, payload
 
-    pack_id = "tobkiri_workflow_pack"
+    pack_id = "rumi_model_evals_pack"
     _, status, installed = post("/api/pack-control/install", {"pack_id": pack_id})
     assert status == 200, installed
     _, status, candidate = post(
@@ -5622,10 +5717,12 @@ def test_pack_enable_defers_capture_until_launcher_contract_renewal(
     )
     assert verified_session is not None
     refresh_attempts = 0
+    refresh_attempted = threading.Event()
 
     def fail_refresh(_session: object | None = None) -> None:
         nonlocal refresh_attempts
         refresh_attempts += 1
+        refresh_attempted.set()
         raise refresh_error("stale Host contract")
 
     monkeypatch.setattr(handler, "_runtime_refresh", staticmethod(fail_refresh))
@@ -5660,6 +5757,7 @@ def test_pack_enable_defers_capture_until_launcher_contract_renewal(
         headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
     )
     assert bootstrap_status == 401
+    assert refresh_attempted.wait(5)
     assert refresh_attempts == 1
 
     journal = server._operation_journal
@@ -7055,3 +7153,55 @@ def test_operation_status_read_releases_waiter_when_verification_exceeds_bound(
     # operation outcome instead of being stranded by the released flight.
     assert leader_status == 404, leader_payload
     assert leader_payload["data"]["code"] == "OPERATION_NOT_FOUND"
+
+
+def test_actual_defaults_ui_catalog_admits_workflow_authoring(production_server):
+    """Use the real Pack catalog/grants, not a fabricated invokable projection."""
+    server, session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    status, response, _ = _request(
+        server, "GET", _contract("GET", "/api/ui/catalog"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, response
+    dynamic = response["data"]["dynamic_host"]
+    assert dynamic["activation_id"] == session.activation_id
+    workflow_pack = next(item for item in response["data"]["packs"] if item["pack_id"] == "tobkiri_workflow_pack")
+    contributions = {
+        item["operation_id"]: item
+        for item in dynamic["contributions"]
+        if item.get("owner_pack_id") == "tobkiri_workflow_pack"
+        and item.get("kind") == "action"
+    }
+    for operation in ("definition.list", "operation.palette"):
+        assert operation in contributions, {
+            "expected": operation,
+            "actual": sorted(contributions),
+            "diagnostics": dynamic.get("diagnostics"),
+            "quarantined": dynamic.get("quarantined_pack_ids"),
+            "workflow_pack": {key: workflow_pack.get(key) for key in ("required", "enabled", "approved", "operations")},
+        }
+        item = contributions[operation]
+        assert item["action_contract"] == "tobkiri.workflow.v4"
+        assert item["function_id"] == "tobkiri.workflow.provider"
+        assert item["resolved_activation_id"] == session.activation_id
+        assert item["owner_pack_hash"] == workflow_pack["pack_artifact_digest"]
+        assert item["owner_pack_hash"] != workflow_pack["artifact_digest"]
+        invoke_status, result, _ = _request(
+            server, "POST", _contract("POST", "/api/ui/capability/invoke"),
+            body={
+                "request_id": str(uuid.uuid4()), "expires_at": time.time() + 30,
+                "profile_id": dynamic["profile_id"],
+                "profile_revision": dynamic["profile_revision"],
+                "activation_id": dynamic["activation_id"],
+                "plan_hash": dynamic["plan_hash"], "catalog_hash": dynamic["catalog_hash"],
+                "contribution_id": item["contribution_id"],
+                "owner_pack_id": item["owner_pack_id"],
+                "contract_id": item["action_contract"], "payload": {},
+            },
+            headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                     "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert invoke_status == 200, result
+        key = "definitions" if operation == "definition.list" else "operations"
+        assert isinstance(result["data"][key], list)

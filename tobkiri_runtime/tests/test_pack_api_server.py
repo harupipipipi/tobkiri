@@ -2445,6 +2445,7 @@ def test_authenticated_bootstrap_refreshes_stale_capture_without_issuing_old_cod
     current = _Dispatch()
     current.activation_id = "activation:successor"
     refreshes: list[object] = []
+    refresh_done = threading.Event()
     server._runtime_capture_factory = _test_runtime_capture_inputs
     monkeypatch.setattr(di_container_module, "get_container", object)
     monkeypatch.setattr(
@@ -2455,12 +2456,15 @@ def test_authenticated_bootstrap_refreshes_stale_capture_without_issuing_old_cod
         raise RuntimeError("execution identity changed")
 
     def refresh(session: object) -> None:
-        refreshes.append(session)
-        if refresh_fails:
-            raise RuntimeError("Host contract identity mismatch")
-        server._refresh_runtime_capture(
-            current, lifecycle_generation=server._lifecycle_generation
-        )
+        try:
+            refreshes.append(session)
+            if refresh_fails:
+                raise RuntimeError("Host contract identity mismatch")
+            server._refresh_runtime_capture(
+                current, lifecycle_generation=server._lifecycle_generation
+            )
+        finally:
+            refresh_done.set()
 
     monkeypatch.setattr(stale, "assert_current", reject_stale)
     assert server.handler_class is not None
@@ -2472,6 +2476,8 @@ def test_authenticated_bootstrap_refreshes_stale_capture_without_issuing_old_cod
         )
         assert status == 401
         assert payload["data"] is None
+        if expected_refreshes:
+            assert refresh_done.wait(5)
         assert refreshes == expected_refreshes
     if not refresh_fails:
         cookie, _, _ = _panel_session(server)

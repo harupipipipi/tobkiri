@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import contextvars
 import re
 import secrets
 import time
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from core_runtime.workflow_v4.attempt_binding import authority_query
 
+from tobkiri_protocol.data_codec import CodecError
+from .data_codec import compiled_digest, document_digest, outcome_digest as digest_outcome
+from tobkiri_protocol.errors import CanonicalizationError
+
+from .binding import (
+    DISPLAY_PROJECTION,
+    PORT_BINDING_FORMAT,
+    contains_step_reference,
+    contains_template,
+    is_input_template,
+    is_step_reference,
+    parse_step_reference,
+    project_display_schema,
+    project_ports,
+    resolve_templates,
+    step_references,
+)
 from .models import (
     ApprovalState,
     DefinitionState,
@@ -18,6 +36,7 @@ from .models import (
     OperationBinding,
     RunState,
     StepAttemptState,
+    WorkflowCancellationUnconfirmed,
     WorkflowConflict,
     WorkflowDenied,
     WorkflowValidationError,
@@ -31,9 +50,10 @@ from .protocols import (
     InputValidator,
 )
 from .store import WorkflowStoreV4
+from .run_ownership import assert_run_owner, validate_owner_scope_digest
+from .value_binding import value_binding_errors
 
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
-_TEMPLATE = re.compile(r"^\$\{inputs\.([a-z][a-z0-9_.-]*)\}$")
 _ALLOWED_WHEN = re.compile(
     r"^(?:true|false|inputs\.[a-z][a-z0-9_.-]*\s*(?:==|!=)\s*"
     r"(?:true|false|null|-?[0-9]+|'[^']{0,256}'))$"
@@ -52,7 +72,10 @@ class WorkflowEngineV4:
         invoker: ContractInvocationProvider,
         validator: InputValidator,
         clock: Callable[[], float] = time.time,
+        owner_scope_digest: str | None = None,
     ) -> None:
+        validate_owner_scope_digest(owner_scope_digest)
+        self._owner_scope_digest = owner_scope_digest
         self.store = store
         self._catalog = catalog
         self._authority = authority
@@ -60,33 +83,96 @@ class WorkflowEngineV4:
         self._validator = validator
         self._clock = clock
 
+    def _owned_run(self, run_id: str) -> dict[str, Any]:
+        """Authenticate immutable run ownership before any lifecycle mutation."""
+        run = self.store.get_run(run_id)
+        assert_run_owner(run, self._owner_scope_digest)
+        return run
+
     def operation_palette(self) -> dict[str, Any]:
-        """Project the editor palette from the exact active Contract catalog."""
+        """Project the editor palette from the exact active Contract catalog.
+
+        Captured input/output schema documents may be attached as a bounded
+        ``display-reduced`` projection for the editor's typed-port precheck.
+        The projection is display metadata only: it never joins the persisted
+        catalog digest, never verifies against the schema digests, and the
+        runtime resolved-input schema validation remains authoritative.
+        """
 
         snapshot = self._catalog.snapshot()
         bindings = self._catalog_bindings(snapshot)
-        operations = [
-            {
-                "contract_id": item.contract_id,
-                "contract_revision_digest": item.contract_revision_digest,
-                "operation_id": item.operation_id,
-                "function_principal_id": item.function_principal_id,
-                "provider_id": item.provider_id,
-                "input_schema_digest": item.input_schema_digest,
-                "effect_ceiling": list(item.effect_ceiling),
-            }
-            for item in sorted(bindings.values(), key=lambda value: value.key)
-        ]
+        schemas = snapshot.get("schemas")
+        schemas = schemas if isinstance(schemas, Mapping) else {}
+        output_digests: dict[tuple[str, str, str, str], str] = {}
+        declared = snapshot.get("operation_output_schemas")
+        if isinstance(declared, list):
+            for entry in declared:
+                if not isinstance(entry, Mapping):
+                    continue
+                key = (
+                    str(entry.get("contract_id") or ""),
+                    str(entry.get("contract_revision_digest") or ""),
+                    str(entry.get("operation_id") or ""),
+                    str(entry.get("function_principal_id") or ""),
+                )
+                digest_value = entry.get("output_schema_digest")
+                if isinstance(digest_value, str):
+                    output_digests[key] = digest_value
+        operations = []
+        for item in sorted(bindings.values(), key=lambda value: value.key):
+            output_digest = output_digests.get(item.key)
+            input_schema = project_display_schema(
+                schemas.get(item.input_schema_digest)
+            )
+            output_schema = project_display_schema(schemas.get(output_digest))
+            operations.append(
+                {
+                    "contract_id": item.contract_id,
+                    "contract_revision_digest": item.contract_revision_digest,
+                    "operation_id": item.operation_id,
+                    "function_principal_id": item.function_principal_id,
+                    "provider_id": item.provider_id,
+                    "input_schema_digest": item.input_schema_digest,
+                    "effect_ceiling": list(item.effect_ceiling),
+                    "output_schema_digest": output_digest,
+                    "projection": DISPLAY_PROJECTION,
+                    "schemas": {
+                        "input": input_schema,
+                        "output": output_schema,
+                    },
+                    "input_ports": project_ports(
+                        schemas.get(item.input_schema_digest)
+                    ),
+                    "output_ports": project_ports(schemas.get(output_digest)),
+                }
+            )
         return {
             "catalog_digest": str(snapshot["catalog_digest"]),
             "security_epoch": int(snapshot["security_epoch"]),
             "operations": operations,
+            "port_binding": {
+                "reference_format": PORT_BINDING_FORMAT,
+                "whole_value_reference_format": "${steps.<step_id>.output}",
+                "json_pointer_reference_format": "${steps.<step_id>.output@<json_pointer>}",
+                "requires_depends_on": True,
+            },
         }
 
     def validate_definition(self, document: Mapping[str, Any]) -> dict[str, Any]:
         """Validate a Definition without reserving authority or performing I/O."""
 
         errors: list[str] = []
+        try:
+            document_digest(document)
+        except (CanonicalizationError, CodecError):
+            return {
+                "valid": False,
+                "errors": [
+                    "workflow document must use bounded canonical JSON metadata "
+                    "and JSON data inputs: finite numbers, safe integers, valid "
+                    "Unicode, bounded size, nesting and node count"
+                ],
+            }
         if document.get("workflow_api_version") != "io.tobkiri.workflow.v4":
             errors.append("workflow_api_version must be io.tobkiri.workflow.v4")
         steps = document.get("steps")
@@ -111,6 +197,12 @@ class WorkflowEngineV4:
                 errors.append(f"steps[{index}].id is invalid or duplicated")
                 continue
             ids.add(step_id)
+            label = raw_step.get("label")
+            if label is not None and (
+                not isinstance(label, str) or not 1 <= len(label) <= 128
+            ):
+                errors.append(f"steps[{index}].label must be 1-128 characters")
+                continue
             request = raw_step.get("request")
             if not isinstance(request, Mapping):
                 errors.append(f"steps[{index}].request must be an object")
@@ -126,9 +218,11 @@ class WorkflowEngineV4:
                 errors.append(f"steps[{index}] is not an exact active catalog operation")
             else:
                 input_value = request.get("input", {})
-                if not isinstance(input_value, Mapping):
-                    errors.append(f"steps[{index}].request.input must be an object")
-                elif not self._contains_template(input_value):
+                if not isinstance(input_value, Mapping) and not (
+                    is_input_template(input_value) or is_step_reference(input_value)
+                ):
+                    errors.append(f"steps[{index}].request.input must be an object or whole-value binding")
+                elif not contains_template(input_value):
                     errors.extend(
                         f"steps[{index}].request.input: {error}"
                         for error in self._validator.validate(
@@ -163,6 +257,31 @@ class WorkflowEngineV4:
                 errors.append(f"step {step_id} has invalid dependencies")
         if not errors and self._has_cycle(dependencies):
             errors.append("workflow step dependencies contain a cycle")
+        for index, raw_step in enumerate(steps):
+            if not isinstance(raw_step, Mapping):
+                continue
+            request = raw_step.get("request")
+            if not isinstance(request, Mapping):
+                continue
+            input_value = request.get("input", {})
+            if not isinstance(input_value, Mapping) and not (
+                is_input_template(input_value) or is_step_reference(input_value)
+            ):
+                continue
+            declared = dependencies.get(str(raw_step.get("id") or ""), [])
+            for text in step_references(input_value):
+                try:
+                    ref_step, _path = parse_step_reference(text, ids)
+                except WorkflowValidationError as exc:
+                    errors.append(f"steps[{index}].request.input: {exc}")
+                    continue
+                if ref_step not in declared:
+                    errors.append(
+                        f"steps[{index}] references {ref_step} output without "
+                        "declaring it in depends_on"
+                    )
+        if not errors:
+            errors.extend(value_binding_errors(steps, self._catalog.snapshot()))
         return {"valid": not errors, "errors": errors}
 
     def compile_preview(self, document: Mapping[str, Any]) -> dict[str, Any]:
@@ -201,7 +320,7 @@ class WorkflowEngineV4:
             "max_concurrency": int(document.get("max_concurrency", 1)),
             "steps": compiled_steps,
         }
-        return {**compiled, "compile_digest": digest(compiled)}
+        return {**compiled, "compile_digest": compiled_digest(compiled)}
 
     def start_run(
         self,
@@ -210,10 +329,17 @@ class WorkflowEngineV4:
         inputs: Mapping[str, Any],
         occurrence_id: str | None = None,
         run_id: str | None = None,
+        revision_digest: str | None = None,
     ) -> dict[str, Any]:
         """Create a queued Run pinned to Definition, activation, and catalog."""
 
         definition = self.store.get_definition(definition_id)
+        if revision_digest is not None and (
+            not isinstance(revision_digest, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", revision_digest) is None
+            or definition["revision_digest"] != revision_digest
+        ):
+            raise WorkflowConflict("requested Workflow revision does not match the published definition")
         if definition["state"] != DefinitionState.PUBLISHED.value:
             raise WorkflowConflict("workflow definition is not published")
         compiled = require_mapping(definition.get("compiled"), "compiled definition")
@@ -235,12 +361,13 @@ class WorkflowEngineV4:
             activation=activation_record,
             inputs=inputs,
             occurrence_id=occurrence_id,
+            owner_scope_digest=self._owner_scope_digest,
         )
 
     def execute_step(self, run_id: str, step_id: str) -> dict[str, Any]:
         """Execute or resume one StepAttempt through reserve/commit authority."""
 
-        run = self.store.get_run(run_id)
+        run = self._owned_run(run_id)
         if RunState(run["state"]) in {RunState.QUEUED, RunState.PAUSED}:
             run = self.store.transition_run(
                 run_id,
@@ -269,6 +396,8 @@ class WorkflowEngineV4:
         attempts = [item for item in run_attempts if item["step_id"] == step_id]
         if attempts and attempts[-1]["state"] == StepAttemptState.WAITING_APPROVAL.value:
             return self._resume_waiting(run, step, attempts[-1])
+        if attempts and attempts[-1]["state"] != StepAttemptState.FAILED.value:
+            raise WorkflowConflict("only a failed workflow step can start another attempt")
         if attempts and attempts[-1]["state"] == StepAttemptState.FAILED.value:
             retry_not_before_ms = int(attempts[-1].get("retry_not_before_ms", 0))
             if int(self._clock() * 1000) < retry_not_before_ms:
@@ -276,12 +405,29 @@ class WorkflowEngineV4:
         attempt_number = len(attempts) + 1
         if attempt_number > int(step["retry"]["max_attempts"]):
             raise WorkflowConflict("workflow step retry limit is exhausted")
-        request = self._materialize_request(run, step, attempt_number)
+        try:
+            request, output_bindings = self._materialize_request(
+                run,
+                step,
+                attempt_number,
+                step_ids={item["step_id"] for item in compiled["steps"]},
+                run_attempts=run_attempts,
+            )
+        except WorkflowValidationError:
+            # This immutable run's resolved input cannot satisfy its Contract.
+            # Do not leave the UI showing a running step with no runnable attempt.
+            self._run_transition_preserving_cancel(
+                run_id, expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
+                target=RunState.FAILED,
+            )
+            raise
         attempt = self.store.create_attempt(
             run_id=run_id,
             step_id=step_id,
             attempt_number=attempt_number,
             request=request,
+            output_bindings=output_bindings,
+            owner_scope_digest=self._owner_scope_digest,
         )
         if not self._evaluate_when(str(step["when"]), run["inputs"]):
             attempt = self.store.transition_attempt(
@@ -291,14 +437,29 @@ class WorkflowEngineV4:
                 updates={"skipped": True, "condition": step["when"]},
             )
             if self._all_steps_succeeded(run_id, step_count=None):
-                self.store.transition_run(
+                self._run_transition_preserving_cancel(
                     run_id,
-                    expected={RunState.RUNNING},
+                    expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
                     target=RunState.SUCCEEDED,
+                    keep_states={RunState.SUCCEEDED},
                 )
             return attempt
-        reservation = self._authority.reserve(self._authority_request(run, attempt))
-        self._validate_reservation(run, attempt, reservation)
+        try:
+            reservation = self._authority.reserve(self._authority_request(run, attempt))
+            self._validate_reservation(run, attempt, reservation)
+        except Exception:
+            current = self.store.get_attempt(attempt["attempt_id"])
+            if current["state"] == StepAttemptState.PENDING.value:
+                self.store.transition_attempt(
+                    attempt["attempt_id"], expected={StepAttemptState.PENDING},
+                    target=StepAttemptState.FAILED,
+                    updates={"error_code": "authority_reservation_failed"},
+                )
+                self._run_transition_preserving_cancel(
+                    run_id, expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
+                    target=RunState.FAILED,
+                )
+            raise
         if reservation.state is ApprovalState.WAITING_APPROVAL:
             self.store.checkpoint(
                 attempt["attempt_id"],
@@ -308,12 +469,16 @@ class WorkflowEngineV4:
                 attempt["attempt_id"],
                 expected={StepAttemptState.PENDING},
                 target=StepAttemptState.WAITING_APPROVAL,
-                updates={"authority_reservation_id": reservation.reservation_id},
+                updates={
+                    "authority_reservation_id": reservation.reservation_id,
+                    "approval_request_id": reservation.approval_request_id,
+                },
             )
-            self.store.transition_run(
+            self._run_transition_preserving_cancel(
                 run_id,
                 expected={RunState.RUNNING},
                 target=RunState.WAITING_APPROVAL,
+                keep_states={RunState.WAITING_APPROVAL},
             )
             return attempt
         if reservation.state not in {ApprovalState.RESERVED, ApprovalState.APPROVED}:
@@ -323,7 +488,7 @@ class WorkflowEngineV4:
     def advance_run(self, run_id: str) -> dict[str, Any]:
         """Execute dependency-ready steps with bounded real concurrency."""
 
-        run = self.store.get_run(run_id)
+        run = self._owned_run(run_id)
         if RunState(run["state"]) is RunState.QUEUED:
             run = self.store.transition_run(
                 run_id, expected={RunState.QUEUED}, target=RunState.RUNNING
@@ -349,7 +514,7 @@ class WorkflowEngineV4:
             if waiting is None:
                 raise WorkflowConflict("workflow approval checkpoint is unavailable")
             result = self.execute_step(run_id, waiting["step_id"])
-            return {"run": self.store.get_run(run_id), "attempts": [result]}
+            return {"run": self._owned_run(run_id), "attempts": [result]}
         succeeded = {
             item["step_id"]
             for item in attempts
@@ -371,7 +536,7 @@ class WorkflowEngineV4:
                 continue
             ready.append(step_id)
         if not ready:
-            return {"run": self.store.get_run(run_id), "attempts": []}
+            return {"run": self._owned_run(run_id), "attempts": []}
         concurrency = min(int(compiled["max_concurrency"]), len(ready))
         with ThreadPoolExecutor(
             max_workers=concurrency, thread_name_prefix="workflow-v4"
@@ -381,11 +546,12 @@ class WorkflowEngineV4:
                 for item in ready
             ]
             results = [future.result() for future in futures]
-        return {"run": self.store.get_run(run_id), "attempts": results}
+        return {"run": self._owned_run(run_id), "attempts": results}
 
     def pause_run(self, run_id: str) -> dict[str, Any]:
         """Pause a running Run between effects."""
 
+        self._owned_run(run_id)
         if any(
             item["state"] in {StepAttemptState.DISPATCHING.value, StepAttemptState.RUNNING.value}
             for item in self.store.list_attempts(run_id)
@@ -398,14 +564,24 @@ class WorkflowEngineV4:
     def resume_run(self, run_id: str) -> dict[str, Any]:
         """Resume a paused Run; authority is re-evaluated per next attempt."""
 
+        self._owned_run(run_id)
         return self.store.transition_run(
             run_id, expected={RunState.PAUSED}, target=RunState.RUNNING
         )
 
     def cancel_run(self, run_id: str) -> dict[str, Any]:
-        """Fence reservations and propagate cancel to in-flight requests."""
+        """Fence reservations and propagate cancel to in-flight requests.
 
-        self.store.get_run(run_id)
+        The durable stop intent is committed first: ``create_attempt``
+        refuses every new attempt after this point, so the drain list read
+        below cannot miss an attempt admitted after Stop began.
+        """
+
+        self._owned_run(run_id)
+        self.store.request_cancel(
+            run_id, owner_scope_digest=self._owner_scope_digest,
+        )
+        unconfirmed: WorkflowCancellationUnconfirmed | None = None
         for attempt in self.store.list_attempts(run_id):
             state = StepAttemptState(attempt["state"])
             if state in {
@@ -416,30 +592,139 @@ class WorkflowEngineV4:
             }:
                 reservation_id = attempt.get("authority_reservation_id")
                 if reservation_id:
-                    self._authority.revoke(reservation_id, reason="workflow_cancelled")
-                self._invoker.cancel(attempt["request"]["request_id"])
-                self.store.transition_attempt(
-                    attempt["attempt_id"],
-                    expected={state},
-                    target=StepAttemptState.CANCELLED,
-                )
-        return self.store.transition_run(
-            run_id,
-            expected={
-                RunState.QUEUED,
-                RunState.RUNNING,
-                RunState.PAUSED,
-                RunState.WAITING_APPROVAL,
-            },
-            target=RunState.CANCELLED,
+                    try:
+                        self._authority.revoke(
+                            reservation_id, reason="workflow_cancelled"
+                        )
+                    except Exception:
+                        # Fencing is best-effort; the durable attempt
+                        # transition below is the authoritative record.
+                        pass
+                try:
+                    self._request_attempt_stop(
+                        attempt["attempt_id"], str(attempt["request"]["request_id"]),
+                    )
+                    self._cancel_attempt_preserving_truth(
+                        attempt["attempt_id"], state,
+                        str(attempt["request"]["request_id"]),
+                    )
+                except WorkflowCancellationUnconfirmed as error:
+                    # Still signal other tracked attempts. Preserve this
+                    # attempt's uncertainty for its executor or recovery.
+                    unconfirmed = error
+        if any(item["state"] == StepAttemptState.AMBIGUOUS_EFFECT.value
+               for item in self.store.list_attempts(run_id)):
+            return self._run_transition_preserving_cancel(
+                run_id, expected={RunState.RUNNING, RunState.WAITING_APPROVAL, RunState.PAUSED},
+                target=RunState.NEEDS_RECONCILIATION,
+            )
+        if unconfirmed is not None:
+            raise unconfirmed
+        try:
+            return self.store.transition_run(
+                run_id,
+                expected={
+                    RunState.QUEUED,
+                    RunState.RUNNING,
+                    RunState.PAUSED,
+                    RunState.WAITING_APPROVAL,
+                },
+                target=RunState.CANCELLED,
+            )
+        except WorkflowConflict:
+            current = self._owned_run(run_id)
+            if RunState(current["state"]) in {
+                RunState.CANCELLED,
+                RunState.SUCCEEDED,
+                RunState.FAILED,
+                RunState.TIMED_OUT,
+                RunState.NEEDS_RECONCILIATION,
+            }:
+                # The run committed a coherent state during the drain; the
+                # cancel arrived too late to rewrite it, and that truth
+                # stands instead of a conflict.
+                return current
+            raise
+
+    def _request_attempt_stop(self, attempt_id: str, request_id: str) -> None:
+        """Require live drain or sealed proof that no dispatch was admitted."""
+        try:
+            self._invoker.cancel(request_id)
+        except WorkflowCancellationUnconfirmed:
+            current = self.store.get_attempt(attempt_id)
+            run = self._owned_run(str(current["run_id"]))
+            if current["request"].get("request_id") != request_id:
+                raise WorkflowDenied("cancellation request identity changed")
+            state = StepAttemptState(current["state"])
+            if state in {
+                StepAttemptState.SUCCEEDED, StepAttemptState.FAILED,
+                StepAttemptState.CANCELLED, StepAttemptState.TIMED_OUT,
+                StepAttemptState.AMBIGUOUS_EFFECT,
+            }:
+                return
+            if run.get("cancel_requested") and (
+                state in {StepAttemptState.PENDING, StepAttemptState.WAITING_APPROVAL}
+                or current.get("dispatch_admission") == "not_admitted"
+            ):
+                return
+            raise
+
+    def _cancel_attempt_preserving_truth(
+        self,
+        attempt_id: str,
+        expected_state: StepAttemptState,
+        request_id: str,
+    ) -> None:
+        """Record the cancel, keeping a concurrently committed outcome.
+
+        A stale ``active_for``/read is never proof of drain: when the
+        durable transition conflicts because execute committed a terminal
+        outcome first, that truth stands and the run still cancels.  A
+        still in-flight state is signalled once more and retried exactly
+        once before failing loud.
+        """
+
+        try:
+            self.store.transition_attempt(
+                attempt_id,
+                expected={expected_state},
+                target=StepAttemptState.CANCELLED,
+            )
+            return
+        except WorkflowConflict:
+            pass
+        current = self.store.get_attempt(attempt_id)
+        current_state = StepAttemptState(current["state"])
+        if current_state is StepAttemptState.CANCELLED or current_state in {
+            StepAttemptState.SUCCEEDED,
+            StepAttemptState.FAILED,
+            StepAttemptState.TIMED_OUT,
+            StepAttemptState.AMBIGUOUS_EFFECT,
+        }:
+            # Already cancelled, or the committed outcome is the truth.
+            return
+        self._request_attempt_stop(attempt_id, request_id)
+        self.store.transition_attempt(
+            attempt_id,
+            expected={current_state},
+            target=StepAttemptState.CANCELLED,
         )
 
     def reconcile_recovery(self, run_id: str) -> dict[str, Any]:
         """Mark crash-surviving in-flight effects ambiguous, never auto-retry."""
 
+        self._owned_run(run_id)
         changed = False
+        interrupted = False
         for attempt in self.store.list_attempts(run_id):
             state = StepAttemptState(attempt["state"])
+            if state is StepAttemptState.PENDING:
+                self.store.transition_attempt(
+                    attempt["attempt_id"], expected={state},
+                    target=StepAttemptState.FAILED,
+                    updates={"error_code": "interrupted_before_dispatch"},
+                )
+                interrupted = True
             if state in {StepAttemptState.DISPATCHING, StepAttemptState.RUNNING}:
                 self.store.transition_attempt(
                     attempt["attempt_id"],
@@ -448,10 +733,15 @@ class WorkflowEngineV4:
                 )
                 changed = True
         if not changed:
-            return self.store.get_run(run_id)
-        return self.store.transition_run(
+            if interrupted:
+                return self._run_transition_preserving_cancel(
+                    run_id, expected={RunState.RUNNING, RunState.WAITING_APPROVAL, RunState.PAUSED},
+                    target=RunState.FAILED,
+                )
+            return self._owned_run(run_id)
+        return self._run_transition_preserving_cancel(
             run_id,
-            expected={RunState.RUNNING},
+            expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
             target=RunState.NEEDS_RECONCILIATION,
         )
 
@@ -473,16 +763,27 @@ class WorkflowEngineV4:
                 expected={StepAttemptState.WAITING_APPROVAL},
                 target=StepAttemptState.TIMED_OUT,
             )
-            return self.store.transition_run(
+            return self._run_transition_preserving_cancel(
                 run["run_id"],
-                expected={RunState.WAITING_APPROVAL},
+                expected={RunState.WAITING_APPROVAL, RunState.RUNNING},
                 target=RunState.TIMED_OUT,
             )
-        self.store.transition_run(
-            run["run_id"],
-            expected={RunState.WAITING_APPROVAL},
-            target=RunState.RUNNING,
+        # The run only returns to RUNNING when no other attempt still
+        # waits for approval; otherwise the UI must keep the approval
+        # checkpoint for the remaining waiters instead of ending up
+        # RUNNING with nothing ready.
+        other_waiting = any(
+            item["attempt_id"] != attempt["attempt_id"]
+            and item["state"] == StepAttemptState.WAITING_APPROVAL.value
+            for item in self.store.list_attempts(run["run_id"])
         )
+        if not other_waiting:
+            self._run_transition_preserving_cancel(
+                run["run_id"],
+                expected={RunState.WAITING_APPROVAL},
+                target=RunState.RUNNING,
+                keep_states={RunState.RUNNING},
+            )
         attempt = self.store.transition_attempt(
             attempt["attempt_id"],
             expected={StepAttemptState.WAITING_APPROVAL},
@@ -521,9 +822,9 @@ class WorkflowEngineV4:
                 target=StepAttemptState.FAILED,
                 updates={"error_code": "authority_commit_denied"},
             )
-            self.store.transition_run(
+            self._run_transition_preserving_cancel(
                 run["run_id"],
-                expected={RunState.RUNNING},
+                expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
                 target=RunState.FAILED,
             )
             if isinstance(exc, WorkflowDenied):
@@ -541,11 +842,15 @@ class WorkflowEngineV4:
             target=StepAttemptState.RUNNING,
         )
         try:
-            outcome = self._invoker.invoke(attempt["request"], authority=authority)
+            outcome = self._invoker.invoke(
+                attempt["request"],
+                authority=authority,
+                dispatch_fence=self._attempt_dispatch_fence(attempt["attempt_id"]),
+            )
         except Exception:
             outcome = InvocationOutcome(error_code="provider_interrupted", ambiguous_effect=True)
         try:
-            outcome_digest = digest(
+            outcome_digest = digest_outcome(
                 {
                     "output": outcome.output,
                     "error_code": outcome.error_code,
@@ -558,6 +863,11 @@ class WorkflowEngineV4:
                 error_code="invalid_provider_outcome", ambiguous_effect=True
             )
             outcome_digest = digest({"error_code": outcome.error_code, "ambiguous_effect": True})
+        current = self.store.get_attempt(attempt["attempt_id"])
+        if StepAttemptState(current["state"]) is StepAttemptState.CANCELLED:
+            return self._record_cancelled_dispatch_outcome(
+                run, attempt, outcome, outcome_digest, reservation_id
+            )
         if outcome.ambiguous_effect:
             try:
                 self._authority.finish(
@@ -567,15 +877,18 @@ class WorkflowEngineV4:
                 )
             except Exception:
                 pass
-            self.store.transition_attempt(
+            committed = self._attempt_transition_preserving_cancel(
                 attempt["attempt_id"],
-                expected={StepAttemptState.RUNNING},
                 target=StepAttemptState.AMBIGUOUS_EFFECT,
                 updates={"outcome_digest": outcome_digest},
             )
-            return self.store.transition_run(
+            if committed is None:
+                return self._record_cancelled_dispatch_outcome(
+                    run, attempt, outcome, outcome_digest, reservation_id
+                )
+            return self._run_transition_preserving_cancel(
                 run["run_id"],
-                expected={RunState.RUNNING},
+                expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
                 target=RunState.NEEDS_RECONCILIATION,
             )
         if outcome.timed_out:
@@ -595,21 +908,23 @@ class WorkflowEngineV4:
                 reservation_id, outcome_digest=outcome_digest, state=finish_state
             )
         except Exception as exc:
-            self.store.transition_attempt(
+            committed = self._attempt_transition_preserving_cancel(
                 attempt["attempt_id"],
-                expected={StepAttemptState.RUNNING},
                 target=StepAttemptState.AMBIGUOUS_EFFECT,
                 updates={"outcome_digest": outcome_digest},
             )
-            self.store.transition_run(
+            if committed is None:
+                return self._record_cancelled_dispatch_outcome(
+                    run, attempt, outcome, outcome_digest, reservation_id
+                )
+            self._run_transition_preserving_cancel(
                 run["run_id"],
-                expected={RunState.RUNNING},
+                expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
                 target=RunState.NEEDS_RECONCILIATION,
             )
             raise WorkflowDenied("authority outcome commit failed closed") from exc
-        result = self.store.transition_attempt(
+        result = self._attempt_transition_preserving_cancel(
             attempt["attempt_id"],
-            expected={StepAttemptState.RUNNING},
             target=target,
             updates={
                 "outcome": dict(outcome.output or {}),
@@ -622,24 +937,172 @@ class WorkflowEngineV4:
                 ),
             },
         )
+        if result is None:
+            return self._record_cancelled_dispatch_outcome(
+                run, attempt, outcome, outcome_digest, reservation_id
+            )
         if target is StepAttemptState.SUCCEEDED:
             if self._all_steps_succeeded(run["run_id"], step_count=None):
-                try:
-                    self.store.transition_run(
-                        run["run_id"],
-                        expected={RunState.RUNNING},
-                        target=RunState.SUCCEEDED,
-                    )
-                except WorkflowConflict:
-                    if self.store.get_run(run["run_id"])["state"] != RunState.SUCCEEDED.value:
-                        raise
+                self._run_transition_preserving_cancel(
+                    run["run_id"],
+                    expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
+                    target=RunState.SUCCEEDED,
+                    keep_states={RunState.SUCCEEDED},
+                )
             return result
         if target is StepAttemptState.FAILED and int(attempt["attempt_number"]) < int(
             step["retry"]["max_attempts"]
         ):
             return result
-        self.store.transition_run(run["run_id"], expected={RunState.RUNNING}, target=run_target)
+        self._run_transition_preserving_cancel(
+            run["run_id"],
+            expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
+            target=run_target,
+        )
         return result
+
+    def _attempt_transition_preserving_cancel(
+        self,
+        attempt_id: str,
+        *,
+        target: StepAttemptState,
+        updates: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Commit the terminal attempt transition, or defer to the cancel.
+
+        ``None`` means a concurrent ``cancel_run`` committed CANCELLED in
+        the window between the post-invoke read and this transition; the
+        caller must then take ``_record_cancelled_dispatch_outcome`` so the
+        outcome is preserved as evidence instead of lost to a conflict.
+        """
+
+        try:
+            return self.store.transition_attempt(
+                attempt_id,
+                expected={StepAttemptState.RUNNING},
+                target=target,
+                updates=dict(updates),
+            )
+        except WorkflowConflict:
+            current = self.store.get_attempt(attempt_id)
+            if StepAttemptState(current["state"]) is StepAttemptState.CANCELLED:
+                return None
+            raise
+
+    def _run_transition_preserving_cancel(
+        self,
+        run_id: str,
+        *,
+        expected: frozenset[RunState] | set[RunState],
+        target: RunState,
+        keep_states: set[RunState] | None = None,
+    ) -> dict[str, Any]:
+        """Transition the run, keeping a concurrently committed state.
+
+        A committed cancel (or a reconciliation another finalizer already
+        wrote) is itself a truthful record — an attempt outcome committed
+        earlier stays as evidence, so losing this race keeps that state
+        instead of surfacing a conflict.
+        """
+
+        keep = {RunState.CANCELLED, RunState.NEEDS_RECONCILIATION} | (
+            keep_states or set()
+        )
+        try:
+            return self.store.transition_run(
+                run_id, expected=set(expected), target=target
+            )
+        except WorkflowConflict:
+            current = self._owned_run(run_id)
+            if (RunState(current["state"]) is RunState.CANCELLED
+                    and target is RunState.NEEDS_RECONCILIATION):
+                try:
+                    return self.store.transition_run(
+                        run_id, expected={RunState.CANCELLED}, target=target,
+                    )
+                except WorkflowConflict:
+                    observed = self._owned_run(run_id)
+                    if RunState(observed["state"]) is RunState.NEEDS_RECONCILIATION:
+                        return observed
+                    raise
+            if RunState(current["state"]) in keep:
+                return current
+            raise
+
+    def _attempt_dispatch_fence(self, attempt_id: str) -> Callable[[str], None]:
+        """Build the durable cancellation fence for one dispatching attempt.
+
+        The fence re-reads the committed attempt row after the invoker has
+        registered its tracked child but before Broker dispatch.  Either
+        stop then finds the tracked child, or this durable guard prevents
+        dispatch — ``active_for == False`` is never treated as proof that
+        an in-flight attempt was drained.
+        """
+
+        def fence(request_id: str) -> None:
+            self.store.admit_dispatch(attempt_id, request_id)
+
+        return fence
+
+    def _record_cancelled_dispatch_outcome(
+        self,
+        run: Mapping[str, Any],
+        attempt: Mapping[str, Any],
+        outcome: InvocationOutcome,
+        outcome_digest: str,
+        reservation_id: str,
+    ) -> dict[str, Any]:
+        """Reconcile a dispatch that lost the durable race to cancellation.
+
+        A pre-dispatch fence outcome records no effect and the committed
+        cancel stays truthful.  A dispatched outcome may have committed a
+        real effect before or while stop drained the tracked child, so the
+        honest record keeps the cancel, attaches the outcome evidence, and
+        escalates the run to reconciliation instead of pretending nothing
+        happened.
+        """
+
+        if not outcome.dispatched:
+            self.store.transition_attempt(
+                attempt["attempt_id"],
+                expected={StepAttemptState.CANCELLED},
+                target=StepAttemptState.CANCELLED,
+                updates={
+                    "error_code": outcome.error_code,
+                    "outcome_digest": outcome_digest,
+                },
+            )
+            return self._owned_run(run["run_id"])
+        self.store.transition_attempt(
+            attempt["attempt_id"],
+            expected={StepAttemptState.CANCELLED},
+            target=StepAttemptState.CANCELLED,
+            updates={
+                "outcome": dict(outcome.output or {}),
+                "error_code": outcome.error_code or "cancelled_with_effect",
+                "outcome_digest": outcome_digest,
+            },
+        )
+        try:
+            self._authority.finish(
+                reservation_id,
+                outcome_digest=outcome_digest,
+                state="ambiguous_effect",
+            )
+        except Exception:
+            pass
+        # Several cancelled in-flight outcomes can race to reconcile; the
+        # first keeps reconciliation and later writers preserve it rather
+        # than conflict.
+        return self._run_transition_preserving_cancel(
+            run["run_id"],
+            expected={
+                RunState.CANCELLED,
+                RunState.RUNNING,
+                RunState.WAITING_APPROVAL,
+            },
+            target=RunState.NEEDS_RECONCILIATION,
+        )
 
     def _fail_approval(
         self,
@@ -654,7 +1117,7 @@ class WorkflowEngineV4:
             target=StepAttemptState.FAILED,
             updates={"error_code": f"approval_{state.value}"},
         )
-        self.store.transition_run(
+        self._run_transition_preserving_cancel(
             run["run_id"],
             expected={RunState.RUNNING, RunState.WAITING_APPROVAL},
             target=RunState.FAILED,
@@ -690,8 +1153,14 @@ class WorkflowEngineV4:
         return authority_query(run, attempt)
 
     def _materialize_request(
-        self, run: Mapping[str, Any], step: Mapping[str, Any], attempt_number: int
-    ) -> dict[str, Any]:
+        self,
+        run: Mapping[str, Any],
+        step: Mapping[str, Any],
+        attempt_number: int,
+        *,
+        step_ids: set[str],
+        run_attempts: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, Any], list[Mapping[str, Any]]]:
         bindings = self._catalog_bindings(self._catalog.snapshot())
         source = step["contract_request"]
         key = (
@@ -703,7 +1172,33 @@ class WorkflowEngineV4:
         binding = bindings.get(key)
         if binding is None:
             raise WorkflowDenied("compiled Contract operation is no longer active")
-        input_value = self._resolve_templates(source.get("input", {}), run["inputs"])
+        source_input = source.get("input", {})
+        provenance: list[Mapping[str, Any]] = []
+        if contains_step_reference(source_input):
+            prior = [
+                item for item in run_attempts if item["step_id"] == step["step_id"]
+            ]
+            first_request = prior[0].get("request") if prior else None
+            pinned = (
+                first_request.get("input")
+                if isinstance(first_request, Mapping)
+                else None
+            )
+            if isinstance(pinned, Mapping):
+                # A resolved request is immutable across retries: reuse the
+                # first attempt's pinned input and recorded bindings verbatim.
+                input_value = dict(pinned)
+                provenance = list(prior[0].get("output_bindings") or [])
+            else:
+                input_value = self._resolve_bound_input(
+                    run, source_input, step_ids, run_attempts, provenance
+                )
+        else:
+            input_value = self._resolve_bound_input(
+                run, source_input, step_ids, run_attempts, provenance
+            )
+        if not isinstance(input_value, Mapping):
+            raise WorkflowValidationError("resolved Contract input must be an object")
         errors = self._validator.validate(binding.input_schema_digest, input_value)
         if errors:
             raise WorkflowValidationError("; ".join(errors))
@@ -734,7 +1229,54 @@ class WorkflowEngineV4:
                 }
             ),
             "call_chain": [run["definition_id"], step["step_id"], request_id],
-        }
+        }, provenance
+
+    def _resolve_bound_input(
+        self,
+        run: Mapping[str, Any],
+        source_input: Any,
+        step_ids: set[str],
+        run_attempts: Sequence[Mapping[str, Any]],
+        provenance: list[Mapping[str, Any]],
+    ) -> Any:
+        """Resolve input templates plus same-run committed step outputs."""
+
+        committed = (
+            self._committed_step_outputs(run_attempts)
+            if contains_step_reference(source_input)
+            else {}
+        )
+        return resolve_templates(
+            source_input,
+            inputs=run["inputs"],
+            step_ids=step_ids,
+            committed=committed,
+            provenance=provenance,
+        )
+
+    def _committed_step_outputs(
+        self, run_attempts: Sequence[Mapping[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """Select the latest succeeded, non-skipped, committed output per step.
+
+        Attempt history is ordered by step and attempt number, so the last
+        eligible record wins.  Skipped, failed, timed-out, ambiguous, and
+        otherwise uncommitted attempts never publish an output.
+        """
+
+        committed: dict[str, dict[str, Any]] = {}
+        for item in run_attempts:
+            if item["state"] != StepAttemptState.SUCCEEDED.value or item.get("skipped"):
+                continue
+            outcome = item.get("outcome")
+            if not isinstance(outcome, Mapping):
+                continue
+            committed[item["step_id"]] = {
+                "attempt_id": item["attempt_id"],
+                "output": outcome,
+                "output_digest": item.get("outcome_digest") or "",
+            }
+        return committed
 
     def _checkpoint_payload(
         self,
@@ -778,32 +1320,6 @@ class WorkflowEngineV4:
                 raise WorkflowValidationError("Contract catalog has duplicate operation identity")
             result[item.key] = item
         return result
-
-    def _resolve_templates(self, value: Any, inputs: Mapping[str, Any]) -> Any:
-        if isinstance(value, str):
-            match = _TEMPLATE.fullmatch(value)
-            if not match:
-                return value
-            current: Any = inputs
-            for part in match.group(1).split("."):
-                if not isinstance(current, Mapping) or part not in current:
-                    raise WorkflowValidationError("workflow input template is unresolved")
-                current = current[part]
-            return current
-        if isinstance(value, Mapping):
-            return {key: self._resolve_templates(item, inputs) for key, item in value.items()}
-        if isinstance(value, list):
-            return [self._resolve_templates(item, inputs) for item in value]
-        return value
-
-    def _contains_template(self, value: Any) -> bool:
-        if isinstance(value, str):
-            return bool(_TEMPLATE.fullmatch(value))
-        if isinstance(value, Mapping):
-            return any(self._contains_template(item) for item in value.values())
-        if isinstance(value, list):
-            return any(self._contains_template(item) for item in value)
-        return False
 
     def _evaluate_when(self, expression: str, inputs: Mapping[str, Any]) -> bool:
         """Evaluate the validated I/O-free condition subset."""
@@ -859,7 +1375,7 @@ class WorkflowEngineV4:
 
     def _all_steps_succeeded(self, run_id: str, step_count: int | None) -> bool:
         del step_count
-        run = self.store.get_run(run_id)
+        run = self._owned_run(run_id)
         definition = self.store.get_revision(run["revision_digest"])
         compiled_steps = definition["compiled"]["steps"]
         attempts = self.store.list_attempts(run_id)

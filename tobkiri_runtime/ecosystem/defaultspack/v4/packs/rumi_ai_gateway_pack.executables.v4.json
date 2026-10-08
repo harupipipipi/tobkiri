@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:ac5c4df8db26688df65deae0cb867a52e44d2e0307585a130d725fc44516b76b",
+  "source_identity": "sha256:c0db560f9d567000169d6a5b86b27822b2b6501c3c8b9c42b61c083f7aceff3b",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -32,6 +32,109 @@
           },
           "effect_class": "privileged",
           "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "implementation_path": "runtime/messages_generate.py",
+      "implementation_digest": "sha256:594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.messages.generate.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:187ac636eeed4ac1d67ded080ea3746f3d1b5bcff46c03665107ba6f743496f9",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "messages": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "maxLength": 262144,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "system",
+                        "user",
+                        "assistant"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 200,
+                "minItems": 1,
+                "title": "会話メッセージ",
+                "type": "array",
+                "x-tobkiri-flow-role": "data"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "model-profile"
+              }
+            },
+            "required": [
+              "messages",
+              "model_profile_id"
+            ],
+            "title": "会話履歴からAIの返答を作る",
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_profile_id": {
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "status": {
+                "const": "ok",
+                "title": "状態",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "text": {
+                "maxLength": 262144,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "status",
+              "text",
+              "model_profile_id"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
@@ -263,7 +366,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -297,7 +400,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:f6df57361d2bdf3f81be6f477cf7f34934b40b0712edad37fb688430868042fe",
+      "implementation_digest": "sha256:5b4d14fecd57d131562a0dd8ea86fa31ac9e5ed76381822a1d17982f49acaaf6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -326,8 +429,113 @@
           "idempotency": "none"
         }
       ]
+    },
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.text-generate.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "implementation_path": "runtime/text_generate.py",
+      "implementation_digest": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.text.generate.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:de81bff11bae7f4a55b6e0c39bc1e142100f6456201cc745533b9d0dbd25e3b8",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration",
+                "x-tobkiri-selector": "model-profile"
+              },
+              "system_prompt": {
+                "maxLength": 16384,
+                "title": "AIへの指示",
+                "type": "string",
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "text": {
+                "maxLength": 262144,
+                "minLength": 1,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "model_profile_id",
+              "text"
+            ],
+            "title": "AIの返答を作る",
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "model_id": {
+                "title": "モデルID",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "model_profile_id": {
+                "title": "モデル",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "provider_instance_id": {
+                "title": "接続ID",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "request_id": {
+                "title": "実行ID",
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "status": {
+                "const": "ok",
+                "title": "状態",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "text": {
+                "maxLength": 262144,
+                "title": "text",
+                "type": "string",
+                "x-tobkiri-flow-role": "data"
+              }
+            },
+            "required": [
+              "model_id",
+              "model_profile_id",
+              "provider_instance_id",
+              "request_id",
+              "status",
+              "text"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
     }
   ],
-  "materialization_catalog_digest": "sha256:b1285e6a84955bc5939da75a0552c9684dd1735f5571152e8faf0c4f63205808",
-  "catalog_digest": "sha256:c01be2fcf4a17c2b0c047aa1e3c351ac21e0fd851b0cb34420b044256453b993"
+  "materialization_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+  "catalog_digest": "sha256:a5dba19d95f2cf164238bf78e08352ef33ff31ee11ae2da15d2fd6e5a18254a2"
 }

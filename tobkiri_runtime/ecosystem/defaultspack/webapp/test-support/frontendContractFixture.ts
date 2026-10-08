@@ -1,4 +1,4 @@
-import frontendContractMap from "../../defaultspack/frontend_contract_map.v4.json";
+import frontendContractMap from "../../defaultspack/frontend_contract_map.v4.json" with { type: "json" };
 import { DEFAULTSPACK_CONTRACT_ENDPOINT } from "../src/lib/api";
 
 type FixtureTarget = {

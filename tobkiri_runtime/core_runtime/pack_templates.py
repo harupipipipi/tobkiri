@@ -548,22 +548,41 @@ def run(context: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _readme(pack_id: str, display_name: str, profile: str) -> str:
+    contents = (
+        "This minimal scaffold contains the four Pack v4 metadata documents, "
+        "this README, and scaffold-source.v1.json. It contains no Tool, Skill, "
+        "Activity, runtime handler, or executable Function."
+        if profile == "minimal" else
+        "This scaffold includes example Activity, Skill, Tool, and function "
+        "source files. They are authoring examples, not registered executable "
+        "Functions. The generated executable catalog is empty."
+    )
     return f"""# {display_name}
 
 Generated Tobkiri Pack `{pack_id}` using the `{profile}` profile.
 
-The scaffold grants no authority. Its Tool is read-only, network- and
-filesystem-denied, and the Pack remains untrusted until reviewed and signed.
+{contents}
+
+All scaffold profiles start as `declarative_only`, with no declared Functions
+or capabilities. Generating or signing these files does not register an
+executable operation, install the Pack, or activate it in Defaults.
 
 ## Workflow
 
-1. Replace the example Activity, Skill, Tool, and function with domain logic.
-2. Keep instruction-only behavior in `SKILL.md`; use a Tool only for an API,
-   binary, stream, or custom execution boundary.
-3. Validate manifests, test functions, inspect the exact permission request,
-   then review and sign the Pack.
-4. Never put secrets in the Pack or widen permissions as a side effect of a
-   Skill.
+1. Inspect `scaffold-source.v1.json` and the four generated v4 documents.
+   Keep generated artifacts consistent with source; do not hand-edit digests.
+2. Add and test domain logic separately. Example source files alone are not
+   executable v4 registrations. Declare exact public Contracts, Operations,
+   Functions, and implementation bindings before expecting execution.
+3. Use public Contracts to communicate with another Pack, rather than importing
+   its private files. Do not edit the bundled catalog to install an external Pack.
+4. Review the current Tobkiri `docs/pack-development-guide.md` for the distinction
+   between offline metadata checks, publisher signing, Host admission, and
+   Profile activation. A passing metadata check is not runtime acceptance.
+5. Never put secrets in the Pack or widen permissions as a side effect of a Skill.
+
+`refresh_scaffold_artifacts` regenerates this inert scaffold's artifacts; it
+is not a compiler for newly added executable Functions.
 """
 
 

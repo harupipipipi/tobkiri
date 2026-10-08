@@ -56,6 +56,27 @@ the defaults Profile, lock, plan, or the active Launcher map directly.
 
 ## Authority and recovery invariants
 
+Production Run creation also seals an immutable `owner_scope_digest` derived
+from the authenticated Host presentation principal and stable journal session,
+Profile, ActivationRecord, plan, and SecurityEpoch. It is never accepted from
+the Run payload or inferred from a later caller. Fresh request leases and
+different Workflow operation principals do not change this owner.
+
+Every production Run mutation checks this binding before changing state.
+Stop and attempt admission additionally check it inside their durable write
+transactions. A rejected foreign-session Stop cannot leave a cancellation
+flag behind. Read-only inspection remains available under its normal captured
+Contract authority.
+
+Historical Runs without this binding are not silently adopted. A new login,
+expired session, Host restart that loses session continuity, or a changed
+capture can also make the original owner unavailable. Such mutations return
+`WORKFLOW_RUN_OWNER_UNAVAILABLE`; inspect the retained outcomes before starting
+a replacement, and never repeat effects that still need reconciliation.
+Restoring ownership across those boundaries requires a future explicit Host
+recovery ceremony. An offline/test engine without an owner may operate only on
+unowned Runs; captured production factories always supply an owner.
+
 Each attempt reserves authority bound to workflow ID, published revision
 digest, run, step, attempt number, exact request/effect digests, call chain,
 idempotency key, Function principal, ActivationRecord, and SecurityEpoch.
@@ -74,3 +95,40 @@ concurrency setting. A Scheduler Pack should call `run.create` with an
 occurrence ID after the Host wake kernel admits delivery. The store claims
 `occurrence ID + workflow revision digest` atomically, preventing duplicate
 starts without importing Scheduler domain logic into the Runtime TCB.
+
+### Attempt journal capacity
+
+The Host-private encrypted attempt journal currently has a 32 MiB plaintext
+limit and retains completed request/snapshot data and permanent replay fences.
+New attempt and approval admissions reserve the remaining serialized space
+needed by every active row's legitimate terminal transitions. Capacity refusal
+therefore happens before new work is dispatched rather than preventing a
+newly admitted operation's outcome from being recorded.
+
+This does not remove lifetime exhaustion or repair an older journal that was
+already admitted without sufficient headroom. Full-history compaction or a
+versioned segmented store remains separate work; never delete replay fences,
+replace executable snapshots with empty records, or silently reset the journal
+to make room. The allowance relies on the current one-shot Workflow/native
+approval state machines and must be reviewed when adding new transitions or
+policy-derived approval modes.
+
+## Step-output binding
+
+Inside `request.input`, a whole-string reference binds a prior step's
+committed output: `${steps.<step_id>.output.<dotted-path>}`. References parse
+against the exact declared step IDs of the Definition (ambiguous or unknown
+references are rejected, never guessed) and require an explicit `depends_on`
+entry for the referenced step. At materialization the engine resolves each
+reference against the referenced step's latest succeeded, non-skipped,
+committed attempt in the same Run only; skipped, failed, uncommitted, or
+absent paths fail closed before authority is reserved. The materialized
+input is validated against the operation's captured input schema, and the
+resolved request is pinned: approval resume and retries reuse the first
+attempt's stored resolution verbatim.
+
+`operation.palette` may attach bounded `display-reduced` schema projections
+and `input_ports`/`output_ports` derived from the captured canonical
+operation schemas. They are display metadata only: they sit outside the
+persisted catalog digest, cannot be verified against the schema digests, and
+never weaken the authoritative resolved-input schema validation.

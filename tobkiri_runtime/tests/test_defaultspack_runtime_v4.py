@@ -339,7 +339,7 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_turn_runtime_pack.turn-runtime.lifecycle",
         "rumi_turn_runtime_pack.turn-runtime.events",
         "rumi_conversation_store_pack.conversation-store.resource",
-        "defaultspack.conversation.saved",
+        "tobkiri_conversation_orchestration_pack.saved",
         "rumi_conversation_store_pack.conversation-store.resource",
         "rumi_conversation_store_pack.conversation-store.message-manage",
         "rumi_ai_gateway_pack.ai-gateway.generate",

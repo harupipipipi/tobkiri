@@ -7,7 +7,7 @@ import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from core_runtime.bootstrap.saved_bridge import READINESS
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 from tests.test_saved_bridge_callbacks import _frame, _setup
 from tobkiri_protocol.saved_context import PROMPT_TARGET

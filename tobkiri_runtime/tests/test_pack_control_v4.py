@@ -702,40 +702,41 @@ def test_committed_baseline_defaultspack_requires_a_live_grant_to_invoke(
     )
 
 
+@pytest.mark.parametrize("required_pack", [REQUIRED_PACK, "tobkiri_workflow_pack"])
 def test_required_pack_rejects_disable_and_revoke_before_side_effects(
-    captured_session,
+    captured_session, required_pack: str,
 ) -> None:
     """A bundled Profile Pack cannot be disabled or partially revoked."""
 
     session, _state_path, user_data = captured_session
-    initial = _invoke(session, "pack.status", {"pack_id": REQUIRED_PACK})
+    initial = _invoke(session, "pack.status", {"pack_id": required_pack})
     assert initial["required"] is True
     candidate = _invoke(
         session,
         "approval.candidate",
-        {"pack_id": REQUIRED_PACK},
+        {"pack_id": required_pack},
     )
     _invoke(
         session,
         "approval.approve",
-        {"pack_id": REQUIRED_PACK, "candidate_id": candidate["candidate_id"]},
+        {"pack_id": required_pack, "candidate_id": candidate["candidate_id"]},
     )
     approval_path = (
-        user_data / "pack_control" / "approvals" / "defaults" / f"{REQUIRED_PACK}.json"
+        user_data / "pack_control" / "approvals" / "defaults" / f"{required_pack}.json"
     )
     approval_before = approval_path.read_bytes()
     activation_before = capture_default_profile().activation["activation_id"]
 
     with pytest.raises(PackControlDenied, match="required Pack cannot be disabled"):
-        _invoke(session, "pack.disable", {"pack_id": REQUIRED_PACK})
+        _invoke(session, "pack.disable", {"pack_id": required_pack})
     with pytest.raises(
         PackControlDenied, match="required Pack approval cannot be revoked"
     ):
-        _invoke(session, "approval.revoke", {"pack_id": REQUIRED_PACK})
+        _invoke(session, "approval.revoke", {"pack_id": required_pack})
 
     assert approval_path.read_bytes() == approval_before
     assert capture_default_profile().activation["activation_id"] == activation_before
-    status = _invoke(session, "pack.status", {"pack_id": REQUIRED_PACK})
+    status = _invoke(session, "pack.status", {"pack_id": required_pack})
     assert status["approved"] is True
     assert status["enabled"] is True
 

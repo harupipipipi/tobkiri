@@ -729,7 +729,10 @@ class SecureDirectory:
         with self._windows_parent(relative, create=True) as (parent, name):
             destination = parent / name
             before = self._windows_stat_entry(parent, name, required=False)
-            temporary = parent / (f".{name}.{os.getpid()}.{secrets.token_hex(16)}.tmp")
+            # Keep the sibling name bounded: repeating the destination and PID
+            # can exceed MAX_PATH even when the final destination fits. The
+            # 128-bit nonce and CREATE_NEW retain collision safety.
+            temporary = parent / (f".{secrets.token_hex(16)}.tmp")
             try:
                 descriptor, temporary_id = _windows_open_file_descriptor(
                     temporary,

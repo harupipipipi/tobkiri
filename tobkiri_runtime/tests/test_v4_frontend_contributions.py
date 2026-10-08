@@ -46,6 +46,7 @@ def _pack(
     input_view: object = _NO_INPUT,
     pack_kind: str = "normal_sandbox",
     descriptor_kind: str = "ui.contribution",
+    extra_fields: dict[str, object] | None = None,
 ) -> tuple[Path, str]:
     scaffold_pack(root, pack_id=PACK_ID, display_name="QA frontend route")
     descriptor = root / DESCRIPTOR
@@ -63,6 +64,8 @@ def _pack(
     }
     if input_view is not _NO_INPUT:
         payload["view"]["input"] = input_view
+    if extra_fields is not None:
+        payload.update(extra_fields)
     if mode == "isolated":
         payload["isolated"] = {
             "path": f"/isolated/packs/{PACK_ID}/index.html", "rpc_contracts": [],
@@ -476,3 +479,21 @@ def test_production_ui_catalog_presents_selected_pack_route(
     assert [item["route"] for item in result["contributions"]] == ["/chat", "/qa-route"]
     assert result["catalog_hash"] == canonical_digest({"contributions": []})
     assert result["diagnostics"] == []
+
+
+@pytest.mark.parametrize('extra_fields', [
+    {'action_contract': 'tobkiri.action.network.request.v1'},
+    {'data_source_contract': 'tobkiri.resource.network.fetch.v1'},
+    {'module': {'path': 'https://example.invalid/extension.js', 'export': 'default'}},
+    {'isolated': {'path': '/isolated/packs/qa.frontend.route/index.html',
+                  'rpc_contracts': ['tobkiri.action.network.request.v1']}},
+])
+def test_external_display_pack_cannot_smuggle_active_frontend_capabilities(
+    tmp_path: Path, monkeypatch, extra_fields,
+) -> None:
+    root, digest = _pack(tmp_path / PACK_ID, extra_fields=extra_fields)
+    _admit_fixture(monkeypatch, root)
+    projected, diagnostics, quarantined = _project(digest)
+    assert projected == []
+    assert quarantined == [PACK_ID]
+    assert diagnostics[0]['code'] == 'v4_frontend_pack_quarantined'

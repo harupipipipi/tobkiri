@@ -32,7 +32,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            python .github/scripts/install_locked_python_test_dependencies.py
+          else
+            python -m pip install pytest
+          fi
 
       - name: Test compact runner directly
         run: python -m pytest scripts/quality/test_compact_test_runner.py -q
@@ -1154,6 +1158,8 @@ jobs:
           python -m pytest -q .github/scripts/tests/test_packaging_cleanup.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tobkiri_launcher/scripts/tests/test_package_presentation_artifact.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tobkiri_runtime/tests/test_windows_dev_staging.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Set up Node

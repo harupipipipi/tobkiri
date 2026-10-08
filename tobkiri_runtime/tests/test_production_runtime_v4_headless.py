@@ -152,39 +152,41 @@ def test_headless_activation_compiles_exact_plan_and_reads_after_restart(
     restarted = activation_store.load_active_snapshot()
     bindings = restarted.resolved.plan["bindings"]
     shell = _shell_artifact(catalog)
-    shell_principals = {
-        function.function_id: FunctionPrincipal(
-            shell.digest,
-            function.implementation_digest,
-            function.function_id,
-            operation.revision_digest,
-            operation.operation_id,
+    # A Function can declare several operation principals. Model the exact
+    # admission for every operation rather than silently keeping the last one.
+    caller_principals = {
+        (function["id"], operation_id): FunctionPrincipal(
+            manifest["pack"]["artifact_digest"],
+            function["implementation_digest"],
+            function["id"],
+            function["contract_revision_digest"],
+            operation_id,
         )
-        for function in shell.functions
-        for operation in function.operations
+        for manifest in catalog.packs.values()
+        for function in manifest["functions"]
+        for operation_id in function["operations"]
     }
     binding_by_operation = {
         (binding["contract_id"], binding["operation_id"]): binding
-        for binding in bindings
-    }
-    provider_principals = {
-        binding["function_principal"]["function_id"]: _principal(binding)
         for binding in bindings
     }
     scope = AuthorityScope(
         capability="operation.invoke",
         semantics_digest="sha256:" + "7" * 64,
     )
-    caller_principals = {**shell_principals, **provider_principals}
     ceilings = {}
-    for edge in catalog.profiles["defaults"]["requested_edges"]:
+    for edge in restarted.resolved.profile["requested_edges"]:
         target = _principal(
             binding_by_operation[(edge["contract_id"], edge["operation_id"])]
         )
-        caller = caller_principals[edge["caller_function_id"]]
-        ceilings[(caller.principal_id, target.principal_id)] = AuthorityCeilings(
-            scope, scope, scope
-        )
+        for (function_id, _operation_id), caller in caller_principals.items():
+            if function_id != edge["caller_function_id"]:
+                continue
+            ceilings[(
+                "defaults", "activation:headless-v4",
+                caller.principal_id, target.principal_id,
+                edge["contract_id"], edge["operation_id"],
+            )] = AuthorityCeilings(scope, scope, scope)
     effective = {
         item["identity"]: item["artifact_digest"]
         for item in restarted.resolved.lock["effective_set"]

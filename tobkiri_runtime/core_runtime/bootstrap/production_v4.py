@@ -11,7 +11,7 @@ import stat
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -86,6 +86,7 @@ from tobkiri_host.workspace_mutation import (
     WorkspaceMutationCoordinator,
 )
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.data_codec import digest_payload
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.saved_conversation import (
@@ -170,6 +171,16 @@ from ..panel_auth import (
     PanelAuthManager,
     get_panel_auth_manager,
 )
+from ..host_provider_backend_v4 import HostInvocationEvidenceReferenceV4
+from ..invocation_evidence import (
+    BoundInvocationEvidence, EvidenceBinding, InvocationEvidenceRegistry,
+)
+from ..workflow_v4.attempt_port import (
+    LateBoundWorkflowAttemptPortV4, WorkflowAttemptServiceConfigV4,
+    create_workflow_attempt_service_v4,
+)
+from ..workflow_v4.production_capture import capture_workflow_port_assembly_v4
+from ..workflow_v4.evidence import EVIDENCE_KIND as WORKFLOW_EVIDENCE_KIND
 
 
 def _allow_unsigned_development_shell(catalog: Any) -> bool:
@@ -757,6 +768,58 @@ def _authority_ceilings_for_edge(
         runtime_safety=axis_scope("runtime_safety"),
         profile_admin=axis_scope("profile_admin"),
     )
+
+
+def _manifest_caller_principals(
+    catalog: Any,
+    admitted_pack_ids: set[str],
+    *,
+    expected_artifact_digests: Mapping[str, str] | None = None,
+) -> dict[str, tuple[FunctionPrincipal, ...]]:
+    """Index Function principals declared by admitted Pack manifests.
+
+    A Profile edge is caller-Function-scoped while Authority is exercised by
+    exact per-Operation principals.  Functions whose Pack is admitted but
+    which are never bound as an edge target (a provider left with only
+    outgoing edges after its callers were removed, or a Pack that only
+    contributes callers) are not materialized for dispatch; their identity
+    still comes from the verified manifest declarations, so a signed plan
+    edge keeps an exact, finite set of caller principals.  Manifests outside
+    the admitted set are never consulted: an unknown caller Function keeps
+    failing closed instead of being masked by the bundle catalog.
+    """
+
+    principals: dict[str, list[FunctionPrincipal]] = {}
+    for pack_id in sorted(admitted_pack_ids):
+        manifest = catalog.packs.get(pack_id)
+        if not isinstance(manifest, Mapping):
+            continue
+        artifact_digest = str(manifest["pack"]["artifact_digest"])
+        if expected_artifact_digests is not None and expected_artifact_digests.get(pack_id) != artifact_digest:
+            raise AuthorityDenied("caller manifest differs from the admitted ProfileLock artifact")
+        functions = manifest.get("functions")
+        if not isinstance(functions, list):
+            continue
+        for function in functions:
+            function_id = str(function.get("id") or "")
+            operations = function.get("operations")
+            if not function_id or not isinstance(operations, list):
+                raise AuthorityDenied("admitted Pack Function declaration is invalid")
+            for operation_id in operations:
+                principal = FunctionPrincipal(
+                    artifact_digest,
+                    str(function["implementation_digest"]),
+                    function_id,
+                    str(function["contract_revision_digest"]),
+                    str(operation_id),
+                )
+                bucket = principals.setdefault(function_id, [])
+                if any((item.parent_artifact_digest, item.function_implementation_digest, item.contract_revision_digest) !=
+                       (principal.parent_artifact_digest, principal.function_implementation_digest, principal.contract_revision_digest) for item in bucket):
+                    raise AuthorityDenied("caller Function has ambiguous artifact ownership")
+                if principal not in bucket:
+                    bucket.append(principal)
+    return {key: tuple(value) for key, value in principals.items()}
 
 
 def _execution_domain(
@@ -1627,6 +1690,41 @@ def capture_production_dispatch(
             existing.append(principal)
         principals_by_function[principal.function_id] = tuple(existing)
 
+    # A signed edge names only the caller Function; every admitted Operation
+    # of that Function is one exact caller principal.  Functions that never
+    # appear as a binding target still have digest-pinned declarations in the
+    # admitted manifests, which keep their outgoing Profile edges deniable but
+    # representable.  A caller Function with no admitted declaration at all
+    # stays denied rather than masked or selected arbitrarily.
+    admitted_pack_ids = {
+        str(item["identity"]) for item in lock["effective_set"]
+    }
+    admitted_pack_ids.update(
+        str(item["pack_id"]) for item in plan["bindings"]
+    )
+    admitted_pack_ids.add(shell_id)
+    manifest_callers = _manifest_caller_principals(
+        catalog, admitted_pack_ids,
+        expected_artifact_digests={str(item["identity"]): str(item["artifact_digest"]) for item in lock["effective_set"]},
+    )
+    edge_caller_function_ids = {
+        str(edge["caller_function_id"]) for edge in profile["requested_edges"]
+    }
+    for function_id in sorted(edge_caller_function_ids):
+        existing = list(principals_by_function.get(function_id, ()))
+        by_operation = {item.operation_id: item for item in existing}
+        for declared in manifest_callers.get(function_id, ()):
+            previous = by_operation.get(declared.operation_id)
+            if previous is None:
+                existing.append(declared)
+                continue
+            if previous != declared:
+                raise AuthorityDenied(
+                    "Profile edge caller declaration conflicts with the "
+                    "signed ResolvedPlan"
+                )
+        principals_by_function[function_id] = tuple(existing)
+
     # Dispatch must follow the persisted immutable Profile, including exact
     # operation edges contributed by an enabled/approved optional Pack.
     edges = profile["requested_edges"]
@@ -1667,9 +1765,11 @@ def capture_production_dispatch(
             raise AuthorityDenied("Profile edge is absent from the signed ResolvedPlan")
         seen_binding_edges.add(binding_key)
         callers = principals_by_function.get(binding_key[0], ())
-        if len(callers) != 1:
-            raise AuthorityDenied("Profile edge caller does not identify one principal")
-        caller = callers[0]
+        if not callers:
+            raise AuthorityDenied(
+                "Profile edge caller Function is not declared by the "
+                "admitted inventory"
+            )
         target = FunctionPrincipal.from_dict(binding["function_principal"])
         if str(edge["target_provider_id"]) != target.function_id:
             raise AuthorityDenied("Profile edge target differs from its ResolvedPlan binding")
@@ -1678,28 +1778,29 @@ def capture_production_dispatch(
             raise AuthorityDenied("ResolvedPlan requested scope binding changed")
         authority_mode = _requested_edge_authority_mode(edge, binding)
         axis_ceilings = _authority_ceilings_for_edge(edge, target)
-        authority_key = (
-            profile_id,
-            activation_id,
-            caller.principal_id,
-            target.principal_id,
-            str(edge["contract_id"]),
-            str(edge["operation_id"]),
-        )
-        if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
-            raise AuthorityDenied("Profile edge authority is duplicated")
-        ceilings[authority_key] = axis_ceilings
-        edge_specs.append(
-            (
-                edge,
-                binding,
-                caller,
-                target,
-                axis_ceilings,
-                authority_key,
-                authority_mode,
+        for caller in callers:
+            authority_key = (
+                profile_id,
+                activation_id,
+                caller.principal_id,
+                target.principal_id,
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
             )
-        )
+            if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
+                raise AuthorityDenied("Profile edge authority is duplicated")
+            ceilings[authority_key] = axis_ceilings
+            edge_specs.append(
+                (
+                    edge,
+                    binding,
+                    caller,
+                    target,
+                    axis_ceilings,
+                    authority_key,
+                    authority_mode,
+                )
+            )
     if set(binding_by_edge) != seen_binding_edges:
         raise AuthorityDenied("ResolvedPlan contains an edge outside the active Profile")
 
@@ -1737,6 +1838,12 @@ def capture_production_dispatch(
         supporting_artifacts=(shell,),
         verified_effective_artifacts=effective,
         authority_ceilings=ceilings,
+        caller_function_declarations={
+            function_id: tuple(
+                principal.to_dict() for principal in declared
+            )
+            for function_id, declared in manifest_callers.items()
+        },
     )
     resolved_binding_by_edge: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
     for binding in plan["bindings"]:
@@ -2605,6 +2712,8 @@ def capture_production_dispatch(
     cancellation_roles: dict[str, tuple[str, str, str]] = {}
     local_model_bindings: dict[str, LocalModelInvocationBinding] = {}
     close_callbacks.append(cancellation_handles.close)
+    invocation_evidence_registry = InvocationEvidenceRegistry()
+    close_callbacks.append(invocation_evidence_registry.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
         if credential_store_factory is not None
@@ -2722,12 +2831,15 @@ def capture_production_dispatch(
             )
         return resolved_session_id
 
-    def release_nested_session(session_id: str, resolved_session_id: str) -> None:
+    def release_nested_session(
+        session_id: str, resolved_session_id: str, *, release_parent: bool = True,
+    ) -> None:
         """Release one stable nested-session user without racing a peer call."""
 
         with caller_session_bindings_lock:
             release_presentation_owner(resolved_session_id)
-            parent_invocation_scopes.release(resolved_session_id)
+            if release_parent:
+                parent_invocation_scopes.release(resolved_session_id)
             remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
@@ -2792,6 +2904,9 @@ def capture_production_dispatch(
             payload: Mapping[str, Any],
             *,
             version_range: str | None = None,
+            idempotency_key: str | None = None,
+            timeout_ms: int | None = None,
+            expected_payload_digest: str | None = None,
         ) -> Mapping[str, Any]:
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
@@ -2855,6 +2970,9 @@ def capture_production_dispatch(
                         self._presentation_owner[0],
                         self._presentation_owner[1],
                     ),
+                    idempotency_key=idempotency_key,
+                    timeout_ms=timeout_ms,
+                    expected_payload_digest=expected_payload_digest,
                 )
                 scope.assert_current()
                 return result
@@ -3023,6 +3141,122 @@ def capture_production_dispatch(
             self._client_binding = binding
             return self._client
 
+        def dispatch_bounded(
+            self,
+            *,
+            allowed_contract_ids: frozenset[str],
+            consumer_pack_id: str,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, Any],
+            idempotency_key: str,
+            timeout_ms: int | None,
+            expected_payload_digest: str,
+            evidence_ref: HostInvocationEvidenceReferenceV4 | None = None,
+        ) -> Mapping[str, Any]:
+            """Dispatch one durable typed attempt through the real Broker.
+
+            Only Host-owned consumers reach this path.  The durable
+            idempotency key, the caller's bounded timeout (which can only
+            tighten the envelope deadline) and the digest of the pinned
+            resolved input all reach the real ``RequestBroker``; credential
+            transport stays disabled and declared-contract restrictions are
+            identical to ``contract_client``.  No arbitrary frame override
+            is accepted.
+            """
+            expected_pack_id = pack_by_principal.get(
+                self._envelope.target_principal.value
+            )
+            if expected_pack_id != consumer_pack_id:
+                raise AuthorityDenied("Host Provider consumer identity is invalid")
+            if contract_id not in allowed_contract_ids:
+                raise AuthorityDenied("Host Provider contract is not declared")
+            if type(idempotency_key) is not str or not idempotency_key:
+                raise AuthorityDenied("Host Provider idempotency key is invalid")
+            if timeout_ms is not None and (
+                type(timeout_ms) is not int or timeout_ms <= 0
+            ):
+                raise AuthorityDenied("Host Provider timeout bound is invalid")
+            if (
+                type(expected_payload_digest) is not str
+                or not expected_payload_digest
+            ):
+                raise AuthorityDenied("Host Provider payload digest is invalid")
+            session = _InvocationSession(
+                self._envelope,
+                presentation_owner=(
+                    self._presentation_owner_principal_id,
+                    self._presentation_owner_session_id,
+                ),
+            )
+            evidence_scope: AbstractContextManager[None] = nullcontext()
+            if evidence_ref is not None:
+                if not isinstance(evidence_ref, HostInvocationEvidenceReferenceV4):
+                    raise AuthorityDenied("Host evidence reference is invalid")
+                issuer = principal_by_id.get(self._envelope.target_principal.value)
+                if issuer is None:
+                    raise AuthorityDenied("Host evidence issuer is unavailable")
+                target = resolved_binding_by_edge.get(
+                    (issuer.function_id, contract_id, operation_id)
+                )
+                if target is None:
+                    raise AuthorityDenied("Host evidence target is not a selected edge")
+                evidence_scope = invocation_evidence_registry.dispatch(
+                    kind=evidence_ref.kind,
+                    reference=evidence_ref.reference,
+                    binding=self._evidence_binding(
+                        issuer_principal=self._envelope.target_principal.value,
+                        target_principal=target.principal_ref.value,
+                        contract_id=contract_id,
+                        contract_version=target.operation.contract_version,
+                        operation_id=operation_id,
+                        payload_digest=expected_payload_digest,
+                        idempotency_key=idempotency_key,
+                    ),
+                    guard=self.assert_current,
+                )
+            with evidence_scope:
+                return session.invoke(
+                    contract_id, operation_id, dict(payload),
+                    idempotency_key=idempotency_key, timeout_ms=timeout_ms,
+                    expected_payload_digest=expected_payload_digest,
+                )
+
+        def _evidence_binding(
+            self, *, issuer_principal: str, target_principal: str,
+            contract_id: str, contract_version: str, operation_id: str, payload_digest: str,
+            idempotency_key: str,
+        ) -> EvidenceBinding:
+            context = self._envelope.context
+            return EvidenceBinding(
+                issuer_principal=issuer_principal, target_principal=target_principal,
+                contract_id=contract_id, contract_version=contract_version,
+                operation_id=operation_id,
+                payload_digest=payload_digest, idempotency_key=idempotency_key,
+                profile_id=context.profile_id, plan_digest=context.plan_digest,
+                activation_id=context.activation_id,
+                activation_digest=context.activation_digest,
+                security_epoch=context.security_epoch,
+                presentation_owner_principal=self.presentation_owner_principal_id,
+                presentation_owner_session=self.presentation_owner_session_id,
+            )
+
+        def invocation_evidence(self, kind: str) -> BoundInvocationEvidence:
+            self.assert_current()
+            envelope = self._envelope
+            return invocation_evidence_registry.receive(
+                kind=kind, receiver=envelope, guard=self.assert_current,
+                binding=self._evidence_binding(
+                    issuer_principal=envelope.context.caller_principal.value,
+                    target_principal=envelope.target_principal.value,
+                    contract_id=envelope.contract_id,
+                    contract_version=envelope.contract_version,
+                    operation_id=envelope.operation_id,
+                    payload_digest=digest_payload(dict(envelope.payload)),
+                    idempotency_key=envelope.idempotency_key or "",
+                ),
+            )
+
         def assert_current(self) -> None:
             """Fence durable coordination with actual lease and preserved ancestry."""
             with _capture_guard_traversal(assert_current_capture):
@@ -3098,6 +3332,7 @@ def capture_production_dispatch(
         capabilities_port: Callable[..., Mapping[str, Any]] | None = None,
         selected_tool_policy_port: Callable[[Any], Any] | None = None,
         action_approval_policy_port: Any | None = None,
+        workflow_port: LateBoundWorkflowAttemptPortV4 | None = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -3125,6 +3360,11 @@ def capture_production_dispatch(
             action_approval_policy_capabilities_port=capabilities_port,
             selected_tool_policy_port=selected_tool_policy_port,
             action_approval_policy_port=action_approval_policy_port,
+            workflow_attempt_port=workflow_port,
+            outbound_catalog_bindings=tuple(
+                binding for key, binding in resolved_binding_by_edge.items()
+                if key[0] in {item.function.function_id for item in provider_bindings}
+            ),
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -3175,6 +3415,13 @@ def capture_production_dispatch(
                 cancellation_roles[binding.principal_ref.value] = (
                     binding.artifact.pack_id, cancellation_group, role,
                 )
+
+    workflow_assembly = capture_workflow_port_assembly_v4(
+        tuple(loaded_host_factories), captured_edges,
+    )
+    workflow_attempt_port = (
+        LateBoundWorkflowAttemptPortV4() if workflow_assembly is not None else None
+    )
 
     interactive_effect_coordinator = _interactive_effect_coordinator_factory(
         tuple(loaded_host_factories)
@@ -3232,6 +3479,8 @@ def capture_production_dispatch(
                     and factory is interactive_effect_coordinator[2]
                     else None
                 ),
+                workflow_port=(workflow_attempt_port if workflow_assembly is not None
+                               and workflow_assembly.supplies(factory) else None),
                 wake_port=wake_port,
                 saved_tool_port=(saved_tool_consent_port if
                     factory.function_id == LOCAL_EXECUTOR_FUNCTION else None),
@@ -3267,6 +3516,27 @@ def capture_production_dispatch(
         if {item.key for item in captured_provider.contributions} != expected_keys:
             captured_provider.close()
             raise AuthorityDenied("Host Provider hook contribution set is incomplete")
+        try:
+            verified_issuers = {item.principal_ref.value for item in captured_bindings}
+            declarations = []
+            for evidence in captured_provider.evidence_contributions:
+                if evidence.issuer_principal_id not in verified_issuers:
+                    raise AuthorityDenied("Host evidence issuer is not a verified contribution")
+                declarations.append((
+                    evidence.issuer_principal_id, evidence.kind, evidence.resolve,
+                    evidence.data_fields,
+                ))
+            invocation_evidence_registry.register_many(tuple(declarations))
+        except BaseException:
+            # No dispatch exists yet. Revoke evidence before closing stores,
+            # including factories captured earlier in this failed bootstrap.
+            invocation_evidence_registry.close()
+            for close in (*close_callbacks, captured_provider.close):
+                try:
+                    close()
+                except Exception:
+                    pass  # Keep the original invalid-capture error primary.
+            raise
         host_contributions_by_backend.setdefault(backend_id, []).extend(
             captured_provider.contributions
         )
@@ -3652,6 +3922,119 @@ def capture_production_dispatch(
                     "captured optional Pack approval changed",
                     code="digest_mismatch",
                 )
+
+    if workflow_attempt_port is not None and workflow_assembly is not None:
+        workflow_binding = workflow_assembly.binding
+        workflow_principal = workflow_binding.principal_ref
+
+        def workflow_session_id(invocation: Any, reservation_id: str) -> str:
+            # Stable across approval resume, unique across concurrent attempts.
+            # Both owner and reservation identity are verified Host inputs.
+            return "session.workflow-attempt." + canonical_digest({
+                "owner_principal": invocation.presentation_owner_principal_id,
+                "owner_session": invocation.presentation_owner_session_id,
+                "profile_id": profile_id,
+                "activation_id": activation_id,
+                "reservation_id": reservation_id,
+            }).removeprefix("sha256:")
+
+        def context_for_workflow_attempt(
+            route: Any, invocation: Any, reservation_id: str,
+        ) -> RequestContext:
+            invocation.assert_current()
+            if route.caller_principal != workflow_principal:
+                raise AuthorityDenied("Workflow caller binding changed")
+            session_id = workflow_session_id(invocation, reservation_id)
+            owner = (invocation.presentation_owner_principal_id,
+                     invocation.presentation_owner_session_id)
+            resolved_session_id = bind_nested_session(
+                session_id, workflow_principal.value, owner,
+            )
+            try:
+                context = context_for(
+                    route.binding.operation.contract_id,
+                    route.binding.operation.operation_id,
+                    session_id,
+                )
+                if context.caller_principal != workflow_principal or (
+                    context.target_domain_id != authority_target_domain(route.binding)
+                ):
+                    raise AuthorityDenied("Workflow child context binding changed")
+                return context
+            finally:
+                release_nested_session(session_id, resolved_session_id, release_parent=False)
+
+        @contextmanager
+        def workflow_execution_scope(context: RequestContext, invocation: Any) -> Iterator[None]:
+            invocation.assert_current()
+            parent = capture_invocation_scope(invocation.envelope)
+            session_id = workflow_session_id(invocation, context.request_id)
+            resolved_session_id = bind_nested_session(
+                session_id, workflow_principal.value,
+                (invocation.presentation_owner_principal_id,
+                 invocation.presentation_owner_session_id),
+                parent_invocation=parent,
+            )
+            try:
+                if resolved_session_id != context.caller_session_id:
+                    raise AuthorityDenied("Workflow execution session changed")
+                parent.assert_current()
+                yield
+                parent.assert_current()
+            finally:
+                release_nested_session(session_id, resolved_session_id)
+
+        def workflow_evidence_scope(route: Any, invocation: Any, request: Mapping[str, Any]) -> Any:
+            invocation.assert_current()
+            context = invocation.envelope.context
+            if (invocation.envelope.contract_id, invocation.envelope.operation_id,
+                    invocation.envelope.target_principal.value) not in workflow_assembly.admitted_invocations:
+                raise AuthorityDenied("Workflow evidence parent is outside captured admission")
+            return invocation_evidence_registry.dispatch(
+                kind=WORKFLOW_EVIDENCE_KIND,
+                reference=str(request["request_id"]),
+                binding=EvidenceBinding(
+                    issuer_principal=workflow_principal.value,
+                    target_principal=route.binding.principal_ref.value,
+                    contract_id=route.binding.operation.contract_id,
+                    contract_version=route.binding.operation.contract_version,
+                    operation_id=route.binding.operation.operation_id,
+                    payload_digest=digest_payload(request["input"]),
+                    idempotency_key=str(request["idempotency_key"]),
+                    profile_id=context.profile_id,
+                    plan_digest=context.plan_digest,
+                    activation_id=context.activation_id,
+                    activation_digest=context.activation_digest,
+                    security_epoch=context.security_epoch,
+                    presentation_owner_principal=invocation.presentation_owner_principal_id,
+                    presentation_owner_session=invocation.presentation_owner_session_id,
+                ),
+                guard=invocation.assert_current,
+            )
+
+        workflow_attempt_port.bind(create_workflow_attempt_service_v4(
+            WorkflowAttemptServiceConfigV4(
+                broker=broker, authority=authority_control, approvals=authority_control,
+                routes=workflow_assembly.routes,
+                context_for_attempt=context_for_workflow_attempt,
+                execution_scope=workflow_execution_scope,
+                presentation_owner_scope=pending_effect_owner_scope,
+                assert_current_capture=assert_current_capture,
+                state_path=host_provider_state_root / profile_id / "workflow-attempts-v4.sqlite3",
+                coordinator_principal=workflow_principal,
+                coordinator_publisher_lineage=workflow_binding.artifact.publisher_lineage,
+                profile_id=profile_id, activation_id=activation_id,
+                activation_digest=activation_digest,
+                plan_digest=str(plan["plan_digest"]),
+                security_epoch=int(active.activation["security_epoch"]),
+                admitted_invocations=tuple(
+                    (contract, operation, OpaqueAuthorityRef(principal))
+                    for contract, operation, principal in workflow_assembly.admitted_invocations
+                ),
+                stop_principals=workflow_assembly.stop_principals,
+                evidence_scope=workflow_evidence_scope,
+            )
+        ))
 
     if interactive_effect_port is not None and interactive_effect_coordinator is not None:
         coordinator_binding = interactive_effect_coordinator[1][0]

@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:7e77c82ae89ef19ed84fea6335b9734f135c8467f5436ca6d1e32253390d803f",
+  "artifact_set_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
   "artifacts": [
     {
-      "digest": "sha256:7a3aab29c2895b00f933277ffff079efddeec84ecd1b99ce6fe436333c78ac3b",
+      "digest": "sha256:241673034e5b71ba8db7248cb87a19c816432a1104f1667dfcc7969798006fbc",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:845285341a6a2e746f05253fdd1fabbba66fcb4f19aff2d556fb984de734f0cb",
+      "digest": "sha256:8bda30921326ed7f54d6670a10c20fb0d8eefafac791a364d96e145349fd6053",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:449c71687649d01d15f8dbce1cce3e25bd70c3bb0ff81485a09d359b616d7205",
+      "digest": "sha256:8fc266af48c3783a98c5758fd27d0343917d3e1fef7da771b8c51edbfd7db8ba",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -67,7 +67,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+      "digest": "sha256:38e2f7c41236532d93612bf2570f49b79a0053c51aa3133f6966e8ca0860a08c",
       "path": "tools/calculator/manifest.json",
       "role": "runtime"
     },
@@ -220,8 +220,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:0deaee00d636b60b173385d40deec18851316c91369eb66c9aacb3b24fb7a9af"
+    "signed_digest": "sha256:0d2ba1401cc33776462bf634b33c176fc9f260100b5515835639941a3a739aea"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3"
+  "source_identity": "sha256:89b8c6a4a74a7b9e42730a86584efdcb915680f66543f6697eab16cf623972b0"
 }

@@ -14,6 +14,7 @@ from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 from core_runtime.interactive_effect_coordinator import (
     INTERACTIVE_EFFECT_SPECS,
+    InteractiveEffectUnavailable,
     _execute_payload,
 )
 
@@ -318,3 +319,90 @@ def test_configuration_rejects_invalid_public_setup_metadata(
     with pytest.raises(ValueError):
         prepare_configuration(registry, {**_request(), **change})
     assert not registry.path.exists()
+
+
+def test_audio_scopes_are_explicit_frozen_and_shown_in_approval(tmp_path: Path) -> None:
+    from core_runtime.interactive_effect_coordinator import _presentation_metadata
+    from tobkiri_protocol.canonical import canonical_digest
+
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    request = {**_request(), "capabilities": ["ai.generate", "ai.audio.transcribe"]}
+    before = registry.snapshot()
+    plan = prepare_configuration(registry, request)
+    assert plan["credential_scopes"] == ["ai.audio.transcribe", "ai.generate"]
+    assert registry.snapshot() == before
+    payload = _execute_payload(INTERACTIVE_EFFECT_SPECS["provider_configure"], request, plan)
+    metadata = _presentation_metadata(
+        INTERACTIVE_EFFECT_SPECS["provider_configure"],
+        SimpleNamespace(request_digest=canonical_digest(payload), normalized_payload=payload),
+    )
+    assert "ai.audio.transcribe" in metadata["detail"]
+    assert "ai.generate" in metadata["detail"]
+    assert request["key_value"] not in str(metadata)
+    with pytest.raises(InteractiveEffectUnavailable):
+        _execute_payload(INTERACTIVE_EFFECT_SPECS["provider_configure"], request,
+                         {**plan, "credential_scopes": ["ai.audio.speech"]})
+
+
+@pytest.mark.parametrize("capabilities", [[], ["*"], ["ai.generate", "ai.generate"],
+                                          [True], [None], "ai.audio.speech"])
+def test_invalid_configuration_scopes_never_produce_a_plan(
+    tmp_path: Path, capabilities: Any,
+) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    with pytest.raises(ValueError):
+        prepare_configuration(registry, {**_request(), "capabilities": capabilities})
+    assert registry.snapshot()["revision"] == 0
+
+
+def test_omitted_capabilities_keep_existing_text_only_credential_behavior(tmp_path: Path) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    request = _request()
+    plan = prepare_configuration(registry, request)
+    assert "credential_scopes" not in plan
+    captured: list[dict[str, Any]] = []
+    client = _Client(tmp_path)
+    invoke = client.invoke
+
+    def capture(contract: str, operation: str, payload: dict[str, Any]) -> Any:
+        captured.append(payload)
+        return invoke(contract, operation, payload)
+
+    client.invoke = capture  # type: ignore[method-assign]
+    execute_configuration(registry, client, {"request": request, "plan": plan},
+                          consumer_pack_id="fixture.consumer")
+    assert captured[0]["scopes"] == ["ai.generate", "ai.stream"]
+
+
+def test_audio_scope_prepare_cannot_upgrade_a_previous_approval(tmp_path: Path) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    original = _request()
+    plan = prepare_configuration(registry, original)
+    client = _Client(tmp_path)
+    with pytest.raises(PermissionError):
+        execute_configuration(registry, client,
+                              {"request": {**original, "capabilities": ["ai.audio.speech"]}, "plan": plan},
+                              consumer_pack_id="fixture.consumer")
+    assert client.calls == []
+
+
+def test_audio_configuration_preserves_frozen_public_identity(tmp_path: Path) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = {**_request(), "display_name": "仕事用 API", "catalog_provider_id": "openai",
+               "capabilities": ["ai.generate", "ai.audio.transcribe"]}
+    plan = prepare_configuration(registry, request)
+    assert plan["credential_scopes"] == ["ai.audio.transcribe", "ai.generate"]
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_configuration(
+            registry, client,
+            {"request": {**request, "capabilities": ["ai.audio.speech"]}, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert client.calls == []
+    execute_configuration(registry, client, {"request": request, "plan": plan},
+                          consumer_pack_id="fixture.consumer")
+    saved = registry.snapshot()["providers"][0]
+    assert saved["display_name"] == request["display_name"]
+    assert saved["metadata"] == {"catalog_provider_id": "openai"}
+    assert request["key_value"] not in registry.path.read_text()

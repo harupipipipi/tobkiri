@@ -276,6 +276,19 @@ def host_profile_catalog(
         for item in definitions.list_profiles()
         if _is_resolvable_profile_definition(item.profile)
     }
+    # Admission supplies inventory, not selection or invocation authority.
+    # Named Profiles must resolve the same verified external artifacts as the
+    # bootstrap ceremony; never infer artifacts from arbitrary draft references.
+    from ..external_pack_catalog_v4 import load_admitted_pack_catalog
+    from ..pack_control_v4 import catalog_with_admitted_pack_closure
+
+    with runtime_user_data_scope(user_data):
+        admitted_ids = sorted(
+            pack_id for pack_id, record in load_admitted_pack_catalog().items()
+            if record.get("authority") == "host-signed-external-normal-v4"
+        )
+        if admitted_ids:
+            bundled, _ = catalog_with_admitted_pack_closure(bundled, admitted_ids)
     return runtime.catalog_with_profiles(bundled, profiles)
 
 

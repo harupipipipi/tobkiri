@@ -41,6 +41,18 @@ def test_launcher_route_scan_targets_the_current_ci_build() -> None:
     assert f'--panel-root "{output}"' in job
 
 
+def test_full_root_suite_installs_locked_runtime_dependencies() -> None:
+    """The full suite imports real provider adapters and their Host dependencies."""
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    job = _job_blocks(workflow)["root-python-tests"]
+    install = job.split("- name: Install dependencies", 1)[1].split(
+        "- name: Test compact runner directly", 1
+    )[0]
+    assert 'if [ "${{ matrix.python-version }}" = "3.11" ]; then' in install
+    assert f"python {LOCKED_INSTALLER}" in install
+    assert "-- pytest tests/ -v" in job
+
+
 def test_recovery_regressions_run_without_contract_marker_filtering() -> None:
     """Keep the Profile/Host recovery suite explicit and preserve failure logs."""
     workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")

@@ -1079,7 +1079,7 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
 ) -> None:
     """Real codecs, ledgers, HMAC/Ed25519 and owner; injected VM/AI and readiness."""
     import time
-    from ecosystem.defaultspack.runtime import saved_conversation as saved
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.saved_guest_dispatch import SavedGuestTurns
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
-import {MemoryRouter} from 'react-router';
+import {MemoryRouter, useLocation} from 'react-router';
 
 import {
   copyTextToClipboard,
@@ -14,9 +14,16 @@ import type {NamedProfileRegistry} from '@/src/lib/api';
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
 import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {getRuntimeDispatchStatus, setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
+import {ToastContainer} from '@/src/components/ui/ToastContainer';
 import {useAppStore} from '@/src/store';
 
+function DashboardLocationProbe() {
+  const location = useLocation();
+  return <output data-testid="dashboard-location">{location.pathname}{location.search}{location.hash}</output>;
+}
+
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
 const dashboardRequestPath = `/api/contracts/defaultspack/${encodeURIComponent('GET /api/home/dashboard')}`;
 
 function profileRecord(profileId: string, displayName: string, revision: string) {
@@ -223,6 +230,74 @@ test('copyTextToClipboard copies the complete runtime error message', async () =
 test('copyTextToClipboard returns false when the clipboard is unavailable', async () => {
   const success = await copyTextToClipboard('message', undefined);
   assert.equal(success, false);
+});
+
+test('Home retries Profile failures automatically while retaining manual refresh', async (context) => {
+  const previous = Object.getOwnPropertyDescriptors(globalThis);
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createDashboardDom();
+  let requests = 0;
+  let failing = true;
+  const notices: string[] = [];
+  try {
+    context.mock.timers.enable({apis: ['setTimeout']});
+    globalThis.fetch = (async (input, init) => {
+      assert.equal(new URL(String(input), 'http://localhost').pathname, '/api/v4/profiles');
+      assert.equal(init?.method ?? 'GET', 'GET');
+      requests += 1;
+      return failing
+        ? new Response(JSON.stringify({success: false, error: 'Catalog temporarily unavailable'}), {
+          status: 503, headers: {'Content-Type': 'application/json'},
+        })
+        : jsonResponse(profileRegistry());
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: false,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      toasts: [],
+      addToast: (message, type) => {
+        notices.push(message);
+        previousState.addToast(message, type);
+      },
+    });
+    await act(async () => root.render(<MemoryRouter><Dashboard /><ToastContainer /></MemoryRouter>));
+    assert.equal(requests, 1);
+    assert.equal(notices.length, 1);
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /Catalog temporarily unavailable/);
+    assert.ok(container.querySelector('button[aria-label="Refresh Home and Profiles"]'));
+    assert.ok([...container.querySelectorAll('button')].some((button) => button.textContent === 'Retry'));
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled);
+
+    await act(async () => context.mock.timers.tick(3_000));
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /Catalog temporarily unavailable/, 'Inline error retains manual retry after the toast leaves');
+    await act(async () => context.mock.timers.tick(2_000));
+    assert.equal(requests, 2, 'Read is retried automatically');
+    assert.equal(notices.length, 1, 'The same failure does not repeat its notification');
+
+    failing = false;
+    await act(async () => context.mock.timers.tick(10_000));
+    assert.equal(requests, 3);
+    assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+
+    failing = true;
+    await act(async () => context.mock.timers.tick(30_000));
+    assert.equal(notices.length, 2, 'A new failure after recovery is announced');
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2, 'Last accepted cards stay visible');
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled, 'Stale catalog cannot authorize writes');
+  } finally {
+    await act(async () => root.unmount());
+    context.mock.timers.reset();
+    dom.window.close();
+    for (const key of ['fetch', 'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'IS_REACT_ACT_ENVIRONMENT']) {
+      if (previous[key]) Object.defineProperty(globalThis, key, previous[key]);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    useAppStore.setState(previousState, true);
+  }
 });
 
 test('duplicate Profile IDs are deterministic and never privilege Defaults', () => {
@@ -476,16 +551,16 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         assert.ok(container.querySelector('[data-profile-card="defaults"][data-profile-status="ready"]'));
         assert.ok(container.querySelector('[data-profile-card="research"][data-profile-status="error"]'));
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="View Pack closure for Defaults Profile"]')?.getAttribute('href'),
+          container.querySelector<HTMLAnchorElement>('a[aria-label="View included Packs for Defaults Profile"]')?.getAttribute('href'),
           '/profile?profile_id=defaults#profile-closure',
         );
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="Browse and review Research Profile"]')?.getAttribute('href'),
-          '/profile?profile_id=research',
+          container.querySelector<HTMLAnchorElement>('a[aria-label="Edit Packs for Research Profile"]')?.getAttribute('href'),
+          '/profile?profile_id=research#profile-packs',
         );
 
         await act(async () => { buttonByLabel(container, 'Open actions for Defaults Profile').click(); });
-        assert.ok(menuItemByText('Edit'));
+        assert.ok(menuItemByText('Rename'));
         assert.ok(menuItemByText('Active'));
         assert.ok(menuItemByText('Duplicate'));
         const defaultsDelete = menuItemByText('Delete') as HTMLButtonElement;
@@ -587,8 +662,8 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
         'New custom profile 2',
       ]) {
         assert.ok(buttonByLabel(container, `Launch ${displayName}`).disabled, displayName);
-        assert.ok(linkByLabel(container, `Browse and review ${displayName}`));
-        assert.ok(linkByLabel(container, `View Pack closure for ${displayName}`));
+        assert.ok(linkByLabel(container, `Edit Packs for ${displayName}`));
+        assert.ok(linkByLabel(container, `View included Packs for ${displayName}`));
       }
 
       await act(async () => {
@@ -767,7 +842,7 @@ test('Home requires an explicit source Profile and does not use registry order f
     const {dom, container, root} = createDashboardDom();
     try {
       await act(async () => {
-        root.render(<MemoryRouter><Dashboard /></MemoryRouter>);
+        root.render(<MemoryRouter><Dashboard /><DashboardLocationProbe /></MemoryRouter>);
       });
       await settle();
       await act(async () => {
@@ -816,6 +891,8 @@ test('Home requires an explicit source Profile and does not use registry order f
         `text=${container.textContent} requests=${JSON.stringify(requests)}`,
       );
       assert.equal(container.querySelector('#add-profile-form'), null);
+      assert.equal(container.querySelector('[data-testid="dashboard-location"]')?.textContent,
+        '/profile?profile_id=new-profile#profile-packs');
     } finally {
       await act(async () => root.unmount());
       dom.window.close();
@@ -881,7 +958,7 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
         buttonByLabel(container, 'Open actions for Research Profile').click();
       });
       await act(async () => {
-        menuItemByText('Edit').click();
+        menuItemByText('Rename').click();
       });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
@@ -902,8 +979,8 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
       assert.match(container.textContent ?? '', /revision conflict/);
       assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
       assert.equal(
-        linkByLabel(container, 'Browse and review Research Profile').getAttribute('href'),
-        '/profile?profile_id=research',
+        linkByLabel(container, 'Edit Packs for Research Profile').getAttribute('href'),
+        '/profile?profile_id=research#profile-packs',
       );
       await act(async () => {
         buttonByLabel(container, 'Open actions for Research Profile').click();
@@ -967,7 +1044,7 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
       });
       await settle();
       await act(async () => { buttonByLabel(container, 'Open actions for Research Profile').click(); });
-      await act(async () => { menuItemByText('Edit').click(); });
+      await act(async () => { menuItemByText('Rename').click(); });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
       assert.ok(nameInput);

@@ -373,16 +373,19 @@ def test_signed_declarative_input_pack_reaches_production_selected_closure(
             edge["caller_function_id"], edge["contract_id"], edge["operation_id"],
         )]
         caller_candidates = principals_by_function[edge["caller_function_id"]]
-        assert len(caller_candidates) == 1
+        assert caller_candidates
         target = FunctionPrincipal.from_dict(binding["function_principal"])
         scope = AuthorityScope(
             capability="operation.invoke", semantics_digest=target.contract_revision_digest,
         )
-        ceilings[(
-            active.resolved.profile["profile_id"], active.activation["activation_id"],
-            caller_candidates[0].principal_id, target.principal_id,
-            edge["contract_id"], edge["operation_id"],
-        )] = AuthorityCeilings(scope, scope, scope)
+        # A Function may provide several exact operation principals (Workflow
+        # does). Preserve each finite caller identity rather than assuming one.
+        for caller in caller_candidates:
+            ceilings[(
+                active.resolved.profile["profile_id"], active.activation["activation_id"],
+                caller.principal_id, target.principal_id,
+                edge["contract_id"], edge["operation_id"],
+            )] = AuthorityCeilings(scope, scope, scope)
     effective = {
         item["identity"]: item["artifact_digest"]
         for item in active.resolved.lock["effective_set"]
@@ -448,7 +451,12 @@ def test_signed_external_pack_install_approve_enable_creates_profile_revision(
     assert external["approved"] is False
     assert external["enabled"] is False
 
-    assert _invoke(session, "pack.install", {"pack_id": PACK_ID})["installed"]
+    from core_runtime.authority.v4 import AuthorityStore
+
+    with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
+        grants_before_install = authority.list_grants()
+        assert _invoke(session, "pack.install", {"pack_id": PACK_ID})["installed"]
+        assert authority.list_grants() == grants_before_install
     assert _invoke(session, "pack.status", {"pack_id": PACK_ID})["enabled"] is False
     candidate = _invoke(session, "approval.candidate", {"pack_id": PACK_ID})
     approved = _invoke(

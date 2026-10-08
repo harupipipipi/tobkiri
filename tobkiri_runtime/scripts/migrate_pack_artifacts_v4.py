@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from jsonschema import Draft202012Validator, SchemaError
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -655,6 +657,22 @@ def _contract_document(
     )
     operations = []
     for item in source["operations"]:
+        overrides = item.get("schemas", {})
+        if (not isinstance(overrides, Mapping)
+                or set(overrides) - {"input", "output", "error"}
+                or any(not isinstance(value, Mapping) for value in overrides.values())):
+            raise PackV4MigrationError("Operation schema overrides are invalid")
+        try:
+            for schema in overrides.values():
+                Draft202012Validator.check_schema(schema)
+        except SchemaError as exc:
+            raise PackV4MigrationError("Operation schema override is not a valid JSON Schema") from exc
+        operation_schemas = {
+            "input": overrides.get("input", input_schema),
+            "output": overrides.get("output", output_schema),
+            "error": overrides.get("error", error_schema),
+        }
+        schema_catalog.update({_digest(value): value for value in operation_schemas.values()})
         operation_effects = item.get("effect_ceiling", effects)
         if (
             not isinstance(operation_effects, list)
@@ -670,9 +688,9 @@ def _contract_document(
         operations.append(
             {
                 "operation_id": item["id"],
-                "input_schema_digest": _digest(input_schema),
-                "output_schema_digest": _digest(output_schema),
-                "error_schema_digest": _digest(error_schema),
+                "input_schema_digest": _digest(operation_schemas["input"]),
+                "output_schema_digest": _digest(operation_schemas["output"]),
+                "error_schema_digest": _digest(operation_schemas["error"]),
                 "effect_ceiling": operation_effects,
                 "scope_semantics": (
                     "host_broker"

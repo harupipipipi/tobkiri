@@ -20,7 +20,7 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 
 
 class ModelRegistryConflict(RuntimeError):
-    """Raised when a mutation is based on a stale store revision."""
+    """Raised when a revision or existing profile conflicts with a mutation."""
 
 
 class ModelRegistry:
@@ -80,6 +80,54 @@ class ModelRegistry:
             "store_revision": state["revision"],
         }
 
+    def create(
+        self,
+        record: Mapping[str, Any],
+        *,
+        expected_revision: int,
+    ) -> dict[str, Any]:
+        """Create a route, or confirm its identity without replacing configuration.
+
+        This narrow operation accepts only selector fields. Full configuration
+        changes remain explicit ``save`` operations. Disabled or incompatible
+        IDs are reserved, including records omitted from the selector list.
+        """
+        if set(record) - {
+            "model_profile_id", "model_id", "display_name", "metadata"
+        }:
+            raise ValueError("model route creation fields are invalid")
+        metadata = record.get("metadata")
+        if not isinstance(metadata, Mapping) or set(metadata) != {
+            "provider_connection_id"
+        }:
+            raise ValueError("model route provider connection is invalid")
+        provider_id = _identifier(metadata["provider_connection_id"])
+        normalized = _profile_record(record)
+        with NamedLock(self.lock_root, "model-registry"):
+            state = self._read()
+            self._assert_revision(state, expected_revision)
+            profile_id = normalized["model_profile_id"]
+            current = state["profiles"].get(profile_id)
+            if current is not None:
+                current_provider = current.get("metadata", {}).get(
+                    "provider_connection_id"
+                ) or current.get("requirements", {}).get(
+                    "preferred_provider_instance_id"
+                )
+                if current.get("enabled") is not True or any(
+                    current.get(key) != normalized[key]
+                    for key in ("model_id", "display_name")
+                ) or current_provider != provider_id:
+                    raise ModelRegistryConflict("model profile ID is already reserved")
+                return {
+                    "action": "saved",
+                    "profile": dict(current),
+                    "store_revision": state["revision"],
+                }
+            if profile_id in state["aliases"]:
+                raise ModelRegistryConflict("model profile ID is already reserved")
+            return self._save_record(state, normalized)
+
     def save(
         self,
         record: Mapping[str, Any],
@@ -101,29 +149,27 @@ class ModelRegistry:
                     "profile": dict(current),
                     "store_revision": state["revision"],
                 }
-            now = _now()
-            normalized["created_at"] = str(
-                (current or {}).get("created_at") or now
-            )
-            normalized["updated_at"] = now
-            normalized["record_revision"] = int(
-                (current or {}).get("record_revision") or 0
-            ) + 1
-            normalized["record_hash"] = _hash(
-                {
-                    key: value
-                    for key, value in normalized.items()
-                    if key != "record_hash"
-                }
-            )
-            state["profiles"][profile_id] = normalized
-            state["revision"] += 1
-            self._write(state)
-            return {
-                "action": "saved",
-                "profile": dict(normalized),
-                "store_revision": state["revision"],
-            }
+            return self._save_record(state, normalized)
+
+    def _save_record(
+        self, state: dict[str, Any], normalized: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Write one normalized record while the caller holds the owner lock."""
+        profile_id = normalized["model_profile_id"]
+        current = state["profiles"].get(profile_id) or {}
+        now = _now()
+        normalized["created_at"] = str(current.get("created_at") or now)
+        normalized["updated_at"] = now
+        normalized["record_revision"] = int(current.get("record_revision") or 0) + 1
+        normalized["record_hash"] = _hash(normalized)
+        state["profiles"][profile_id] = normalized
+        state["revision"] += 1
+        self._write(state)
+        return {
+            "action": "saved",
+            "profile": dict(normalized),
+            "store_revision": state["revision"],
+        }
 
     def delete(
         self,
@@ -284,6 +330,9 @@ class ModelRegistry:
 
 
 def _profile_record(value: Mapping[str, Any]) -> dict[str, Any]:
+    enabled = value.get("enabled", True)
+    if type(enabled) is not bool:
+        raise ValueError("model profile enabled must be a boolean")
     profile_id = _identifier(
         value.get("model_profile_id") or value.get("profile_id") or value.get("id")
     )
@@ -302,7 +351,7 @@ def _profile_record(value: Mapping[str, Any]) -> dict[str, Any]:
         "requirements": _safe_requirements(requirements),
         "credential_handle": credential_handle,
         "parameters": _safe_scalars(value.get("parameters")),
-        "enabled": bool(value.get("enabled", True)),
+        "enabled": enabled,
         "metadata": _safe_scalars(value.get("metadata")),
     }
 
@@ -331,11 +380,19 @@ def _safe_requirements(value: Mapping[str, Any]) -> dict[str, Any]:
 def _safe_scalars(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return {}
-    blocked = {"secret", "token", "password", "api_key", "authorization"}
+    blocked = {"secret", "password", "api_key", "authorization"}
+    # A language-model token budget is not an authentication token. Do not
+    # silently drop max_tokens, max_output_tokens, token_healing, eos_token,
+    # or future provider parameters merely because their name contains token.
+    credential_tokens = {
+        "token", "accesstoken", "refreshtoken", "idtoken", "authtoken",
+        "apitoken", "bearertoken", "clienttoken", "hftoken", "huggingfacetoken",
+    }
     return {
         str(key): item
         for key, item in value.items()
         if not any(marker in str(key).lower() for marker in blocked)
+        and str(key).lower().replace("_", "").replace("-", "") not in credential_tokens
         and _json_safe(item)
     }
 
@@ -370,13 +427,21 @@ def _hash(value: Any) -> str:
 def _atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
-    temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    os.chmod(temporary, 0o600)
-    temporary.replace(path)
+    # Do not repeat the destination stem: a valid Windows final path can
+    # otherwise acquire an over-MAX_PATH sibling during migration backup.
+    temporary = path.parent / f".{uuid.uuid4().hex}.tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _now() -> str:

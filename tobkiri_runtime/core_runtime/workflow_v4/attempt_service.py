@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import fields, replace
+import math
 import secrets
 import threading
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityScope
+from core_runtime.workflow_v4.attempt_capacity import valid_outcome_digest
 from core_runtime.workflow_v4.attempt_port import (
     CapturedWorkflowAttemptRouteV4,
     WorkflowAttemptDeclarationV4,
     WorkflowAttemptServiceConfigV4,
 )
-from core_runtime.workflow_v4.attempt_store import WorkflowAttemptStoreV4, attempt_identity
+from core_runtime.workflow_v4.attempt_store import (
+    WorkflowAttemptReservationMissing, WorkflowAttemptStoreV4, attempt_identity,
+)
 from core_runtime.workflow_v4.models import (
     ApprovalState,
     AuthorityReservation,
     DispatchAuthority,
     InvocationOutcome,
+    WorkflowCancellationUnconfirmed,
     WorkflowDenied,
     digest,
 )
+from .data_codec import request_digest
 from tobkiri_host.broker import PreparedInvocationSnapshot
 from tobkiri_host.interactive_effects import PendingEffectController, PendingEffectState
 from tobkiri_host.models import InvocationFrame, RequestContext
@@ -55,13 +62,21 @@ class HostWorkflowAttemptServiceV4:
         ):
             raise WorkflowDenied("Workflow attempt routes are invalid")
         self._store = WorkflowAttemptStoreV4(config.state_path)
+
+        def pending_clock() -> float:
+            # Finite binary64 timestamps have a bounded JSON representation.
+            now = float(config.clock())
+            if not math.isfinite(now):
+                raise WorkflowDenied("Workflow attempt clock is unavailable")
+            return now
+
         self._controller = PendingEffectController(
             persistence=self._store,
             approvals=config.approvals,
             coordinator_principal=config.coordinator_principal,
             coordinator_publisher_lineage=config.coordinator_publisher_lineage,
             presentation_owner_scope=config.presentation_owner_scope,
-            clock=config.clock,
+            clock=pending_clock,
         )
         self._tokens: dict[str, tuple[str, object]] = {}
         self._active: dict[str, threading.Event] = {}
@@ -73,15 +88,27 @@ class HostWorkflowAttemptServiceV4:
                 self._store.cas(record["reservation_id"], revision, record)
         self._controller.recover()
 
-    def _guard(self, invocation: HostProviderInvocationContextV4) -> None:
+    def _guard(
+        self, invocation: HostProviderInvocationContextV4, *, allow_stop: bool = False
+    ) -> None:
         self._config.assert_current_capture()
         invocation.assert_current()
         envelope = invocation.envelope
         context = envelope.context
+        execute = (
+            (envelope.contract_id, envelope.operation_id, envelope.target_principal)
+            in self._config.admitted_invocations
+            and envelope.contract_id == WorkflowAttemptDeclarationV4().contract_id
+            and envelope.operation_id in WorkflowAttemptDeclarationV4().operation_ids
+        )
+        stop = (
+            allow_stop
+            and envelope.target_principal in self._config.stop_principals
+            and envelope.contract_id == "tobkiri.workflow.stop.v4"
+            and envelope.operation_id == "run.stop"
+        )
         if (
-            envelope.target_principal != self._config.coordinator_principal
-            or envelope.contract_id != WorkflowAttemptDeclarationV4().contract_id
-            or envelope.operation_id not in WorkflowAttemptDeclarationV4().operation_ids
+            not (execute or stop)
             or context.profile_id != self._config.profile_id
             or context.activation_id != self._config.activation_id
             or context.activation_digest != self._config.activation_digest
@@ -103,13 +130,13 @@ class HostWorkflowAttemptServiceV4:
             "security_epoch": self._config.security_epoch,
             "principal_id": invocation.presentation_owner_principal_id,
             "session_id": invocation.presentation_owner_session_id,
-            "caller_session_id": invocation.envelope.context.caller_session_id,
         }
 
     def _owned(
-        self, invocation: HostProviderInvocationContextV4, reservation_id: str
+        self, invocation: HostProviderInvocationContextV4, reservation_id: str,
+        *, allow_stop: bool = False,
     ) -> tuple[int, dict[str, Any]]:
-        self._guard(invocation)
+        self._guard(invocation, allow_stop=allow_stop)
         revision, record = self._store.get(reservation_id)
         if record["owner"] != self._owner(invocation):
             raise WorkflowDenied("Workflow attempt reservation is unavailable")
@@ -144,7 +171,7 @@ class HostWorkflowAttemptServiceV4:
         route: CapturedWorkflowAttemptRouteV4,
         request_id: str,
     ) -> RequestContext:
-        context = self._config.context_for_attempt(route, invocation)
+        context = self._config.context_for_attempt(route, invocation, request_id)
         if (
             context.caller_principal != self._config.coordinator_principal
             or context.profile_id != self._config.profile_id
@@ -185,13 +212,17 @@ class HostWorkflowAttemptServiceV4:
             raise WorkflowDenied("Workflow attempt exceeds its signed ceiling")
         return scope
 
-    def _reservation(self, record: Mapping[str, Any], state: ApprovalState) -> AuthorityReservation:
+    def _reservation(
+        self, record: Mapping[str, Any], state: ApprovalState,
+        *, approval_request_id: str | None = None,
+    ) -> AuthorityReservation:
         return AuthorityReservation(
             reservation_id=record["reservation_id"],
             state=state,
             request_digest=record["request_digest"],
             security_epoch=self._config.security_epoch,
             expires_at=record["expires_at"],
+            approval_request_id=approval_request_id,
         )
 
     def reserve(
@@ -204,7 +235,7 @@ class HostWorkflowAttemptServiceV4:
         self._guard(invocation)
         request = attempt["request"]
         if (
-            digest(request) != attempt["request_digest"]
+            request_digest(request) != attempt["request_digest"]
             or run["activation_id"] != self._config.activation_id
             or run["activation_digest"] != self._config.activation_digest
             or run["security_epoch"] != self._config.security_epoch
@@ -216,7 +247,7 @@ class HostWorkflowAttemptServiceV4:
         prepared = self._config.broker.prepare(
             InvocationFrame(
                 contract_id=route.binding.operation.contract_id,
-                version_range=route.binding.operation.contract_version,
+                version_range="==" + route.binding.operation.contract_version,
                 operation_id=route.binding.operation.operation_id,
                 payload=request["input"],
                 timeout_ms=request["timeout_ms"],
@@ -319,7 +350,13 @@ class HostWorkflowAttemptServiceV4:
                 PendingEffectState.APPROVED: ApprovalState.APPROVED,
                 PendingEffectState.CANCELLED: ApprovalState.DENIED,
             }.get(observed.state, ApprovalState.REVOKED)
-            return self._reservation(record, state)
+            return self._reservation(
+                record, state,
+                approval_request_id=(
+                    observed.approval_request_id
+                    if state is ApprovalState.WAITING_APPROVAL else None
+                ),
+            )
         return self._reservation(record, ApprovalState.REVOKED)
 
     def commit(
@@ -354,6 +391,7 @@ class HostWorkflowAttemptServiceV4:
         request: Mapping[str, Any],
         *,
         authority: DispatchAuthority,
+        dispatch_fence: Callable[[str], None] | None = None,
     ) -> InvocationOutcome:
         """Run the original snapshot through the real evidence-bound Broker."""
         _, record = self._owned(invocation, authority.reservation_id)
@@ -362,7 +400,7 @@ class HostWorkflowAttemptServiceV4:
         if (
             token != (authority.reservation_id, invocation.envelope)
             or record["state"] != "claimed"
-            or digest(request) != record["request_digest"]
+            or request_digest(request) != record["request_digest"]
             or authority.request_digest != record["request_digest"]
             or authority.security_epoch != self._config.security_epoch
         ):
@@ -375,6 +413,8 @@ class HostWorkflowAttemptServiceV4:
         scope = self._scope(route, context, snapshot.request_digest, record["owner_id"])
         if scope.to_dict() != record["effect_scope"]:
             raise WorkflowDenied("Workflow effect ceiling changed")
+        # Dispatch only the authenticated durable request after comparison.
+        request = record["request"]
         signal = invocation.envelope.cancellation_requested
         stopped = threading.Event()
 
@@ -396,16 +436,43 @@ class HostWorkflowAttemptServiceV4:
             current["state"] = "dispatched"
             self._store.cas(authority.reservation_id, revision, current)
 
-        watcher = threading.Thread(target=monitor, daemon=True, name="workflow-attempt-fence")
-        with self._lock:
-            self._active[authority.reservation_id] = signal
-        watcher.start()
+        # Registration precedes durable admission. Stop must either find this
+        # exact tracked child or win the admission fence before Broker dispatch.
         try:
+            tracked_scope = invocation.cancellation.track(str(request["request_id"]))
+            tracked_scope.__enter__()
+        except Exception:
+            return InvocationOutcome(
+                error_code="cancellation_scope_unavailable", dispatched=False
+            )
+        watcher = threading.Thread(target=monitor, daemon=True, name="workflow-attempt-fence")
+        watcher_started = False
+        dispatched = False
+        try:
+            if dispatch_fence is not None:
+                try:
+                    dispatch_fence(str(request["request_id"]))
+                except WorkflowDenied:
+                    return InvocationOutcome(error_code="dispatch_fenced", dispatched=False)
+                except Exception:
+                    return InvocationOutcome(error_code="dispatch_fence_error", dispatched=False)
+            with self._lock:
+                self._active[authority.reservation_id] = signal
+            watcher.start()
+            watcher_started = True
             # The deadline is capped by the fresh live parent. The prepared
             # snapshot contains no old parent lease or cancellation authority.
             remaining = invocation.envelope.deadline_monotonic - self._config.monotonic_clock()
             deadline = min(record["expires_at"], self._config.clock() + remaining)
-            with self._config.execution_scope(context, invocation):
+            evidence_scope = (
+                self._config.evidence_scope(route, invocation, request)
+                if self._config.evidence_scope is not None else nullcontext()
+            )
+            with self._config.execution_scope(context, invocation), evidence_scope:
+                # From this point an exception cannot establish that no effect
+                # occurred. Preserve ambiguity even if a concurrent revoke
+                # already changed the durable reservation state.
+                dispatched = True
                 result = self._config.broker.invoke_prepared(
                     snapshot,
                     context,
@@ -425,16 +492,18 @@ class HostWorkflowAttemptServiceV4:
                 )
             return InvocationOutcome(output=result)
         except Exception:
-            _, current = self._store.get(authority.reservation_id)
             return InvocationOutcome(
                 error_code="workflow_broker_execution_failed",
-                ambiguous_effect=current["state"] == "dispatched",
+                ambiguous_effect=dispatched,
+                dispatched=dispatched,
             )
         finally:
             stopped.set()
-            watcher.join(timeout=0.1)
+            if watcher_started:
+                watcher.join(timeout=0.1)
             with self._lock:
                 self._active.pop(authority.reservation_id, None)
+            tracked_scope.__exit__(None, None, None)
 
     def finish(
         self,
@@ -446,7 +515,10 @@ class HostWorkflowAttemptServiceV4:
     ) -> None:
         """Retain exact terminal evidence; any after-dispatch uncertainty stays fenced."""
         revision, record = self._owned(invocation, reservation_id)
-        if record["state"] not in {"claimed", "dispatched"}:
+        if (
+            record["state"] not in {"claimed", "dispatched"}
+            or not valid_outcome_digest(outcome_digest)
+        ):
             raise WorkflowDenied("Workflow attempt cannot be finished")
         if state == "ambiguous_effect":
             final = "ambiguous"
@@ -471,7 +543,7 @@ class HostWorkflowAttemptServiceV4:
     ) -> None:
         """Revoke only this exact presentation owner's unused reservation."""
         del reason
-        revision, record = self._owned(invocation, reservation_id)
+        revision, record = self._owned(invocation, reservation_id, allow_stop=True)
         if record["state"] in {"succeeded", "failed", "ambiguous", "cancelled", "stale"}:
             return
         record["state"] = (
@@ -486,9 +558,32 @@ class HostWorkflowAttemptServiceV4:
                 active.set()
 
     def cancel(self, invocation: HostProviderInvocationContextV4, request_id: str) -> None:
-        """Fence an owned request without cancelling another Profile or session."""
-        self.revoke(
-            invocation,
-            attempt_identity(self._config.profile_id, request_id),
-            reason="Workflow cancellation",
-        )
+        """Fence the owned reservation and require an actual Host drain proof."""
+        try:
+            self.revoke(
+                invocation,
+                attempt_identity(self._config.profile_id, request_id),
+                reason="Workflow cancellation",
+            )
+        except WorkflowAttemptReservationMissing as error:
+            # Public PENDING state precedes the private reservation. Only the
+            # engine's sealed no-dispatch proof may settle this race. Ownership,
+            # stale-capture and stop-principal denials must still propagate.
+            raise WorkflowCancellationUnconfirmed(
+                "Workflow reservation has no cancellation proof yet"
+            ) from error
+        try:
+            binding = invocation.cancellation
+            if not binding.active_for(request_id):
+                raise WorkflowCancellationUnconfirmed("no live handle proves this request drained")
+            if not binding.can_request(request_id):
+                raise WorkflowDenied("request is not stoppable by this owner")
+            observation = binding.request(request_id)
+        except (WorkflowCancellationUnconfirmed, WorkflowDenied):
+            raise
+        except Exception as error:
+            raise WorkflowCancellationUnconfirmed("cancellation proof is unavailable") from error
+        if invocation.envelope.target_principal not in self._config.stop_principals:
+            raise WorkflowCancellationUnconfirmed("cancellation signal is not drain confirmation")
+        if not observation.wait_for_verified_drain(invocation.envelope.deadline_monotonic):
+            raise WorkflowCancellationUnconfirmed("cancelled request has not verifiably drained")

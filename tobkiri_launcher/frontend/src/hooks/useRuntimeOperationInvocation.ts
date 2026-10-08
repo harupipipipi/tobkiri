@@ -20,6 +20,10 @@ import {
 } from '@/src/lib/mutationJournal';
 import {refreshMountedRuntimeSurfaces} from '@/src/lib/runtimeSurfaceRefresh';
 import {
+  isProfileMutationBlocked,
+  useProfileSelection,
+} from '@/src/lib/profileSelection';
+import {
   reconcileMutationStatus,
   type OperationStatus,
 } from '@/src/lib/operationStatus';
@@ -86,6 +90,7 @@ export function useRuntimeOperationInvocation(
 ) {
   const [state, setState] = useState<RuntimeInvocationState>('idle');
   const [error, setError] = useState<RuntimeInvocationError | null>(null);
+  const {selectedProfileId} = useProfileSelection();
   const identity = envelope && operation
     ? runtimeOperationIdentity(envelope, operation)
     : null;
@@ -223,6 +228,20 @@ export function useRuntimeOperationInvocation(
 
   const invoke = useCallback(async (payload: Record<string, unknown>): Promise<void> => {
     if (!envelope || !operation || active.current || state === 'unknown') return;
+    if (isProfileMutationBlocked(selectedProfileId, envelope.profile_id)) {
+      // Every operation invocation binds to the envelope's active execution
+      // Profile. While a different Profile is selected for inspection the
+      // write must fail closed here, not mutate the wrong Profile silently.
+      setState('failed');
+      setError({
+        code: 'FAILED',
+        message:
+          `Profile-scoped write locked: the inspected Profile "${selectedProfileId}" is not ` +
+          `the active execution Profile "${envelope.profile_id}". Activate it on the Profile ` +
+          'page before invoking.',
+      });
+      return;
+    }
     const invocationToken = nextToken.current + 1;
     nextToken.current = invocationToken;
     const invocationIdentity = runtimeOperationIdentity(envelope, operation);
@@ -315,7 +334,7 @@ export function useRuntimeOperationInvocation(
         }
       }
     }
-  }, [envelope, operation, invokeOperation, reconcileRecord, state]);
+  }, [envelope, operation, invokeOperation, reconcileRecord, selectedProfileId, state]);
 
   return {
     state,

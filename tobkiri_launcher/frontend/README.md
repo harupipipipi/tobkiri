@@ -34,8 +34,24 @@ npm install
 npm run dev
 ```
 
-http://localhost:3000 でアクセスできます。
+http://localhost:3000/panel/ でアクセスできます。
 バックエンド API（http://localhost:8765）へのリクエストは Vite proxy で自動転送されます。
+
+### Home の更新と通知
+
+Home の Profile 一覧は、表示中に30秒間隔で自動更新されます。
+画面への復帰やネットワークの再接続時にも取得し、失敗時は5秒から最大60秒まで
+間隔を延ばして再試行します。非表示・オフライン時は定期取得を停止します。
+Profile の変更中は一覧の取得を止め、変更前の応答が結果を上書きしないようにします。
+この再試行は読み取り専用で、Profile の作成・削除・有効化を再実行しません。
+
+通知は画面上部に表示され、約3秒で上へ消えます。同じ取得エラーが続いている間は
+通知を繰り返しません。未解決 Profile のエラーは Launch の×印で示し、
+隣の「Copy error」ボタンで詳細を取得できます。
+Home に実行基盤の統計は表示せず、統計用の概要 API も取得しません。
+
+サイドバーの Graph、Flow などを表示するには、Settings の「Show Devtools」を
+オンにします。この表示設定はブラウザ・Launcher ごとに保存されます。
 
 ### ビルド
 
@@ -80,3 +96,30 @@ src/
 - `basepack` を flow メタデータとして保持
 
 `rumi_graph` はランタイム互換を壊さないための editor 向けメタデータです。既存ランタイムが読める `steps` も同時に出力しつつ、viewer ではポート/接続情報を復元できます。
+
+### Profile configuration and personal settings
+
+Home’s **Edit Packs** opens the selected execution Profile at
+`/panel/profile?profile_id=<id>#profile-packs`. **Rename** only changes its display
+name. Add and Duplicate open the new Profile’s Pack selection. The personal name
+and avatar form is separate at `/panel/account` (**Your profile**).
+
+Pack choices come from the Host’s verified artifact catalog, independently of
+which Profile is running. **Save Pack selection** appends a definition revision;
+it does not activate a Profile or grant permission. Review, approval, and
+activation follow using the saved definition. Dependencies remain included when
+another selected Pack requires them. Unsaved choices survive in-app navigation;
+a changed source revision requires discarding the stale draft before another save.
+
+The composition editor requires the matching Host endpoints:
+`GET /api/v4/profiles/catalog` and the `composition` payload on
+`POST /api/v4/profiles/update`. An older backend cannot save compositions; the
+editor reports the unavailable catalog instead of presenting a working selector.
+The registry also publishes `active_profile_definition_revision` so newly saved
+changes are not mistaken for the configuration that is currently running.
+
+Activation waits for the Host to publish its next runtime capture. Desktop
+Launcher renews the panel session through its native bridge when that capture
+changes. A browser-only preview cannot mint that credential: if its session
+expires, reopen the panel through Launcher. The UI preserves unresolved request
+identities and explains reconnection instead of replaying an uncertain write.

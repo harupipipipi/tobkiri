@@ -443,3 +443,26 @@ def test_stream_completion_and_event_tool_intents_share_canonical_normalization(
     assert result["events"][0]["tool_intent"] == expected
     assert len([call for call in client.calls if call[0] == STREAM_PROVIDER_CONTRACT]) == 1
     assert result["delivery_mode"] == "incremental"
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('reference', ['model_profile_id', 'model_reference'])
+@pytest.mark.parametrize('enabled', [False, 'false', None])
+def test_disabled_saved_profile_never_reaches_provider_or_legacy_fallback(
+    streaming, reference, enabled,
+) -> None:
+    class DisabledProfileClient(FakeContractClient):
+        def invoke(self, contract_id, *args, **kwargs):
+            result = super().invoke(contract_id, *args, **kwargs)
+            if contract_id == MODEL_PROFILE_CONTRACT:
+                result['profile']['enabled'] = enabled
+            return result
+
+    client = DisabledProfileClient()
+    factory = create_stream_operation if streaming else create_generate_operation
+    with pytest.raises(GlobalContractInvocationError) as denied:
+        factory(client)('stream' if streaming else 'generate',
+                        {reference: 'saved-default', 'messages': []})
+    assert denied.value.code == 'unresolved_profile'
+    assert not any(call[0] in {GENERATE_PROVIDER_CONTRACT, STREAM_PROVIDER_CONTRACT}
+                   for call in client.calls)

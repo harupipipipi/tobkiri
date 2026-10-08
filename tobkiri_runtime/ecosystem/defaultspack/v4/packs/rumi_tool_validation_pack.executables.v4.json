@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_validation_pack",
-  "source_identity": "sha256:227fe1a234e7d523d8a158334cc5bc47fb21a10968236c621a395512419a3cc3",
+  "source_identity": "sha256:ecdc53ee2e70a5fdd64c34481c1a32146eb72071afe89a577f0e1443ba2d0273",
   "variants": [
     {
       "variant_id": "rumi_tool_validation_pack.tool-validation.arguments.python",
       "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
       "implementation_path": "runtime/validator.py",
-      "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
+      "implementation_digest": "sha256:620f3c4bcfdc56e28f43dfa236a8582f9f648b9d75e3b0f8c4cc937f7d0e165d",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,12 +19,70 @@
         {
           "contract_id": "tobkiri.service.tool.arguments.validate.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:66d9f4c2832315ec15d0eec37ed1cb7e77b212ba21bbaf883d6eacbbd838435a",
+          "revision_digest": "sha256:2a557f2eed95894d8ebcdb4223265c7f087a88f298290ff31952cede9584c588",
           "operation_id": "rumi_tool_validation_pack.tool-arguments-validate",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "title": "検証する値"
+              },
+              "schema": {
+                "title": "検証するスキーマ",
+                "type": "object",
+                "x-tobkiri-flow-role": "configuration"
+              }
+            },
+            "required": [
+              "schema",
+              "arguments"
+            ],
             "type": "object"
           },
           "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "title": "検証後の値"
+              },
+              "coerced": {
+                "const": false,
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "errors": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "valid": {
+                "title": "適合",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "valid",
+              "arguments",
+              "errors",
+              "coerced"
+            ],
             "type": "object"
           },
           "error_schema": {
@@ -38,6 +96,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:0048f62059ed6d4068e4b4ee739219d573a4ea3ca17c61e8d75ddc80143038b4",
-  "catalog_digest": "sha256:4d563d3c3cfb67cf152b3b8caf1db9d20229d2927a9585ec7cc7a131ba65edfc"
+  "materialization_catalog_digest": "sha256:aec9830cc0bfef2c30844d5ca1acca8dc0fa6f32df941778051db2bd5ffdf3e5",
+  "catalog_digest": "sha256:2c69288826c68ddb3e28ccdcfbfb2da2e1168dad45aba2fa1bd9379b0bc789df"
 }

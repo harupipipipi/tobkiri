@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
-import os
-from pathlib import Path
-import secrets
 import sqlite3
 import threading
 import time
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from typing import Any
 
-from tobkiri_protocol.canonical import canonical_json
+from tobkiri_protocol.data_codec import CodecError, decode_record, encode_record
+
+from .data_codec import definition_digest, record_paths, request_digest
+from tobkiri_protocol.platform_paths import canonical_platform_path
 
 from .models import (
     ATTEMPT_TRANSITIONS,
-    DefinitionState,
     RUN_TRANSITIONS,
+    DefinitionState,
     RunState,
     StepAttemptState,
     WorkflowConflict,
@@ -27,6 +26,9 @@ from .models import (
     digest,
     etag,
 )
+
+from .run_ownership import assert_run_owner, validate_owner_scope_digest
+
 
 _SCHEMA_VERSION = 1
 
@@ -41,7 +43,7 @@ class WorkflowStoreV4:
         clock: Callable[[], float] = time.time,
         seal_key: bytes | None = None,
     ) -> None:
-        self.path = path.resolve()
+        self.path = canonical_platform_path(path)
         self._clock = clock
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,22 +59,9 @@ class WorkflowStoreV4:
         self._initialize()
 
     def _load_or_create_key(self, path: Path) -> bytes:
-        if path.is_symlink():
-            raise WorkflowDenied("workflow seal key cannot be a symbolic link")
-        if path.exists():
-            if path.stat().st_mode & 0o077:
-                raise WorkflowDenied("workflow seal key permissions are too broad")
-            value = path.read_bytes()
-            if len(value) != 32:
-                raise WorkflowDenied("workflow seal key is invalid")
-            return value
-        value = secrets.token_bytes(32)
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        try:
-            os.write(descriptor, value)
-        finally:
-            os.close(descriptor)
-        return value
+        from .seal_key import load_or_create_workflow_key
+
+        return load_or_create_workflow_key(path, database_path=self.path)
 
     def _initialize(self) -> None:
         with self._connection:
@@ -155,30 +144,35 @@ class WorkflowStoreV4:
 
         self._connection.close()
 
-    def _encode(self, value: Mapping[str, Any]) -> tuple[str, str]:
-        raw = canonical_json(value)
-        return raw.decode("utf-8"), hmac.new(self._seal_key, raw, hashlib.sha256).hexdigest()
+    def _encode(self, value: Mapping[str, Any], *, kind: str) -> tuple[str, str]:
+        try:
+            record = dict(value)
+            raw, seal = encode_record(
+                record, value_paths=record_paths(record, kind), seal_key=self._seal_key,
+            )
+            return raw.decode("utf-8"), seal
+        except CodecError as error:
+            raise WorkflowDenied("workflow state data is invalid") from error
 
     def _now_ms(self) -> int:
         """Return an exact integer timestamp suitable for canonical JSON."""
 
         return int(self._clock() * 1000)
 
-    def _decode(self, payload: str, seal: str) -> dict[str, Any]:
-        raw = payload.encode("utf-8")
-        expected = hmac.new(self._seal_key, raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, seal):
-            raise WorkflowDenied("workflow state authentication failed")
-        value = json.loads(payload)
-        if not isinstance(value, dict):
-            raise WorkflowDenied("workflow state is not an object")
-        return value
+    def _decode(self, payload: str, seal: str, *, kind: str) -> dict[str, Any]:
+        try:
+            return decode_record(
+                payload, seal, seal_key=self._seal_key,
+                value_paths=lambda record: record_paths(record, kind),
+            )
+        except CodecError as error:
+            raise WorkflowDenied("workflow state authentication or data is invalid") from error
 
     def create_definition(self, definition_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
         """Create revision 1 of a draft Definition."""
 
         now = self._now_ms()
-        revision_digest = digest(
+        revision_digest = definition_digest(
             {"definition_id": definition_id, "revision": 1, "document": document}
         )
         record = {
@@ -191,7 +185,7 @@ class WorkflowStoreV4:
             "created_at": now,
             "updated_at": now,
         }
-        payload, seal = self._encode(record)
+        payload, seal = self._encode(record, kind="definition")
         try:
             with self._lock, self._connection:
                 self._connection.execute(
@@ -224,7 +218,7 @@ class WorkflowStoreV4:
             ).fetchone()
         if row is None:
             raise WorkflowNotFound("workflow definition is unavailable")
-        return self._decode(row["payload"], row["seal"])
+        return self._decode(row["payload"], row["seal"], kind="definition")
 
     def get_revision(self, revision_digest: str) -> dict[str, Any]:
         """Load one immutable Definition revision by digest."""
@@ -236,7 +230,7 @@ class WorkflowStoreV4:
             ).fetchone()
         if row is None:
             raise WorkflowNotFound("workflow revision is unavailable")
-        return self._decode(row["payload"], row["seal"])
+        return self._decode(row["payload"], row["seal"], kind="definition")
 
     def list_definitions(self) -> list[dict[str, Any]]:
         """List authenticated current Definition revisions."""
@@ -245,7 +239,7 @@ class WorkflowStoreV4:
             rows = self._connection.execute(
                 "SELECT payload, seal FROM workflow_definitions ORDER BY definition_id"
             ).fetchall()
-        return [self._decode(row["payload"], row["seal"]) for row in rows]
+        return [self._decode(row["payload"], row["seal"], kind="definition") for row in rows]
 
     def update_definition(
         self,
@@ -264,7 +258,7 @@ class WorkflowStoreV4:
                 raise WorkflowConflict("only a draft definition can be updated")
             revision = int(current["revision"]) + 1
             now = self._now_ms()
-            revision_digest = digest(
+            revision_digest = definition_digest(
                 {
                     "definition_id": definition_id,
                     "revision": revision,
@@ -279,7 +273,7 @@ class WorkflowStoreV4:
                 "document": dict(document),
                 "updated_at": now,
             }
-            payload, seal = self._encode(record)
+            payload, seal = self._encode(record, kind="definition")
             changed = self._connection.execute(
                 "UPDATE workflow_definitions SET revision=?, payload=?, seal=?, updated_at=?"
                 " WHERE definition_id=? AND revision=? AND state='draft'",
@@ -323,7 +317,7 @@ class WorkflowStoreV4:
             record["etag"] = etag(
                 definition_id, int(record["revision"]), record["revision_digest"] + target.value
             )
-            payload, seal = self._encode(record)
+            payload, seal = self._encode(record, kind="definition")
             changed = self._connection.execute(
                 "UPDATE workflow_definitions SET state=?, payload=?, seal=?, updated_at=?"
                 " WHERE definition_id=? AND revision=? AND state=?",
@@ -370,9 +364,11 @@ class WorkflowStoreV4:
         activation: Mapping[str, Any],
         inputs: Mapping[str, Any],
         occurrence_id: str | None,
+        owner_scope_digest: str | None = None,
     ) -> dict[str, Any]:
         """Create a Run pinned to published revision and ActivationRecord."""
 
+        validate_owner_scope_digest(owner_scope_digest)
         if definition.get("state") != DefinitionState.PUBLISHED.value:
             raise WorkflowConflict("only a published definition can start")
         claim_key = None
@@ -399,27 +395,43 @@ class WorkflowStoreV4:
             "created_at": now,
             "updated_at": now,
         }
-        payload, seal = self._encode(record)
+        if owner_scope_digest is not None:
+            record["owner_scope_digest"] = owner_scope_digest
+        payload, seal = self._encode(record, kind="run")
         try:
-            with self._lock, self._connection:
-                if claim_key:
+            with self._lock:
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    # Recheck the published owner record under the same write
+                    # transaction as the run/occurrence claim. An archived or
+                    # replaced snapshot cannot start after a stale preflight.
+                    current = self.get_definition(str(definition["definition_id"]))
+                    if (current.get("state") != DefinitionState.PUBLISHED.value
+                            or definition_digest(current) != definition_digest(definition)):
+                        raise WorkflowConflict("published Workflow changed before run creation")
+                    if claim_key:
+                        self._connection.execute(
+                            "INSERT INTO workflow_occurrences VALUES(?,?,?)",
+                            (claim_key, run_id, now),
+                        )
                     self._connection.execute(
-                        "INSERT INTO workflow_occurrences VALUES(?,?,?)",
-                        (claim_key, run_id, now),
+                        "INSERT INTO workflow_runs VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            run_id,
+                            record["definition_id"],
+                            record["revision_digest"],
+                            record["state"],
+                            1,
+                            payload,
+                            seal,
+                            now,
+                        ),
                     )
-                self._connection.execute(
-                    "INSERT INTO workflow_runs VALUES(?,?,?,?,?,?,?,?)",
-                    (
-                        run_id,
-                        record["definition_id"],
-                        record["revision_digest"],
-                        record["state"],
-                        1,
-                        payload,
-                        seal,
-                        now,
-                    ),
-                )
+                    self._connection.execute("COMMIT")
+                except BaseException:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
         except sqlite3.IntegrityError as exc:
             raise WorkflowConflict("workflow run or occurrence was already claimed") from exc
         return record
@@ -433,7 +445,69 @@ class WorkflowStoreV4:
             ).fetchone()
         if row is None:
             raise WorkflowNotFound("workflow run is unavailable")
-        return self._decode(row["payload"], row["seal"])
+        return self._decode(row["payload"], row["seal"], kind="run")
+
+    def request_cancel(
+        self, run_id: str, *, owner_scope_digest: str | None = None,
+    ) -> dict[str, Any]:
+        """Record the durable stop intent on the Run, before any drain.
+
+        ``cancel_requested`` is a sealed payload flag committed by a
+        compare-and-swap update inside ``BEGIN IMMEDIATE``, so it is atomic
+        against other connections: any attempt committed before it lands is
+        guaranteed to appear in the cancel path's drain list, and every
+        later ``create_attempt`` is refused by the admission predicate.
+        Terminal or already-requested runs return their record unchanged.
+        """
+
+        terminal = {
+            RunState.SUCCEEDED,
+            RunState.FAILED,
+            RunState.CANCELLED,
+            RunState.TIMED_OUT,
+            RunState.NEEDS_RECONCILIATION,
+        }
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                current = self.get_run(run_id)
+                assert_run_owner(current, owner_scope_digest)
+                if (
+                    RunState(current["state"]) in terminal
+                    or current.get("cancel_requested")
+                ):
+                    self._connection.execute("COMMIT")
+                    return current
+                record = {
+                    **current,
+                    "cancel_requested": True,
+                    "version": int(current["version"]) + 1,
+                    "updated_at": self._now_ms(),
+                }
+                payload, seal = self._encode(record, kind="run")
+                changed = self._connection.execute(
+                    "UPDATE workflow_runs SET version=?, payload=?, seal=?, updated_at=?"
+                    " WHERE run_id=? AND state=? AND version=?",
+                    (
+                        record["version"],
+                        payload,
+                        seal,
+                        record["updated_at"],
+                        run_id,
+                        current["state"],
+                        current["version"],
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise WorkflowConflict(
+                        "workflow run cancel intent lost a race"
+                    )
+                self._connection.execute("COMMIT")
+            except BaseException:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+        return record
 
     def transition_run(
         self,
@@ -445,6 +519,8 @@ class WorkflowStoreV4:
     ) -> dict[str, Any]:
         """Transition a Run with state and version compare-and-swap."""
 
+        if "owner_scope_digest" in (updates or {}):
+            raise WorkflowDenied("Workflow run ownership is immutable")
         with self._lock, self._connection:
             current = self.get_run(run_id)
             current_state = RunState(current["state"])
@@ -459,7 +535,7 @@ class WorkflowStoreV4:
                 "version": int(current["version"]) + 1,
                 "updated_at": self._now_ms(),
             }
-            payload, seal = self._encode(record)
+            payload, seal = self._encode(record, kind="run")
             changed = self._connection.execute(
                 "UPDATE workflow_runs SET state=?, version=?, payload=?, seal=?, updated_at=?"
                 " WHERE run_id=? AND state=? AND version=?",
@@ -479,9 +555,21 @@ class WorkflowStoreV4:
         return record
 
     def create_attempt(
-        self, *, run_id: str, step_id: str, attempt_number: int, request: Mapping[str, Any]
+        self,
+        *,
+        run_id: str,
+        step_id: str,
+        attempt_number: int,
+        request: Mapping[str, Any],
+        output_bindings: Sequence[Mapping[str, Any]] | None = None,
+        owner_scope_digest: str | None = None,
     ) -> dict[str, Any]:
-        """Create an attempt with its exact Contract Request digest."""
+        """Create an attempt with its exact Contract Request digest.
+
+        ``output_bindings`` records which same-run committed step outputs the
+        resolved request input bound to; it is provenance only and never joins
+        the request digest.
+        """
 
         attempt_id = f"{run_id}:{step_id}:{attempt_number}"
         now = self._now_ms()
@@ -490,33 +578,107 @@ class WorkflowStoreV4:
             "run_id": run_id,
             "step_id": step_id,
             "attempt_number": attempt_number,
+            "dispatch_admission": "not_admitted",
             "state": StepAttemptState.PENDING.value,
             "version": 1,
             "request": dict(request),
-            "request_digest": digest(request),
+            "request_digest": request_digest(request),
             "created_at": now,
             "updated_at": now,
         }
-        payload, seal = self._encode(record)
+        if output_bindings:
+            record["output_bindings"] = [dict(item) for item in output_bindings]
+        payload, seal = self._encode(record, kind="attempt")
         try:
-            with self._lock, self._connection:
-                self._connection.execute(
-                    "INSERT INTO workflow_attempts VALUES(?,?,?,?,?,?,?,?,?)",
-                    (
-                        attempt_id,
-                        run_id,
-                        step_id,
-                        attempt_number,
-                        record["state"],
-                        1,
-                        payload,
-                        seal,
-                        now,
-                    ),
-                )
+            with self._lock:
+                # BEGIN IMMEDIATE so the run-state predicate and the insert
+                # are atomic against other connections: under WAL a deferred
+                # reader would not stop a concurrent cancel committing the
+                # stop intent between the check and the write.
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    run = self.get_run(run_id)
+                    assert_run_owner(run, owner_scope_digest)
+                    if run.get("cancel_requested") or RunState(
+                        run["state"]
+                    ) is RunState.CANCELLED:
+                        raise WorkflowDenied(
+                            "workflow run is cancelling; new attempts are fenced"
+                        )
+                    previous = [
+                        item for item in self.list_attempts(run_id)
+                        if item["step_id"] == step_id
+                    ]
+                    if attempt_number != len(previous) + 1 or (
+                        previous
+                        and previous[-1]["state"] != StepAttemptState.FAILED.value
+                    ):
+                        raise WorkflowConflict(
+                            "workflow attempt is not the next failed-step retry"
+                        )
+                    self._connection.execute(
+                        "INSERT INTO workflow_attempts VALUES(?,?,?,?,?,?,?,?,?)",
+                        (
+                            attempt_id,
+                            run_id,
+                            step_id,
+                            attempt_number,
+                            record["state"],
+                            1,
+                            payload,
+                            seal,
+                            now,
+                        ),
+                    )
+                    self._connection.execute("COMMIT")
+                except BaseException:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
         except sqlite3.IntegrityError as exc:
             raise WorkflowConflict("workflow attempt is a replay") from exc
         return record
+
+    def admit_dispatch(self, attempt_id: str, request_id: str) -> None:
+        """Atomically fence Stop and record admission before the Broker call.
+
+        Only new attempts carry not_admitted proof. Legacy absence and a
+        repeated admission are uncertain, never interpreted as undispatched.
+        """
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                current = self.get_attempt(attempt_id)
+                run = self.get_run(str(current["run_id"]))
+                if (
+                    current["request"].get("request_id") != request_id
+                    or current["state"] != StepAttemptState.RUNNING.value
+                    or current.get("dispatch_admission") != "not_admitted"
+                    or run.get("cancel_requested")
+                    or RunState(run["state"]) not in {
+                        RunState.RUNNING, RunState.WAITING_APPROVAL,
+                    }
+                ):
+                    raise WorkflowDenied("durable dispatch admission is fenced")
+                record = {
+                    **current, "dispatch_admission": "admitted",
+                    "version": int(current["version"]) + 1,
+                    "updated_at": self._now_ms(),
+                }
+                payload, seal = self._encode(record, kind="attempt")
+                changed = self._connection.execute(
+                    "UPDATE workflow_attempts SET version=?, payload=?, seal=?, updated_at=?"
+                    " WHERE attempt_id=? AND state=? AND version=?",
+                    (record["version"], payload, seal, record["updated_at"],
+                     attempt_id, current["state"], current["version"]),
+                ).rowcount
+                if changed != 1:
+                    raise WorkflowConflict("dispatch admission lost a race")
+                self._connection.execute("COMMIT")
+            except BaseException:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
 
     def get_attempt(self, attempt_id: str) -> dict[str, Any]:
         """Load and authenticate one StepAttempt."""
@@ -528,7 +690,22 @@ class WorkflowStoreV4:
             ).fetchone()
         if row is None:
             raise WorkflowNotFound("workflow attempt is unavailable")
-        return self._decode(row["payload"], row["seal"])
+        return self._decode(row["payload"], row["seal"], kind="attempt")
+
+    def get_attempt_for_request(self, request_id: str) -> dict[str, Any]:
+        """Resolve one exact durable request, then authenticate its full record."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT payload, seal FROM workflow_attempts "
+                "WHERE json_extract(payload, '$.request.request_id')=? LIMIT 2",
+                (request_id,),
+            ).fetchall()
+        if len(rows) != 1:
+            raise WorkflowNotFound("workflow request has no unique attempt")
+        record = self._decode(rows[0]["payload"], rows[0]["seal"], kind="attempt")
+        if record.get("request", {}).get("request_id") != request_id:
+            raise WorkflowConflict("workflow request identity differs")
+        return record
 
     def list_attempts(self, run_id: str) -> list[dict[str, Any]]:
         """List a Run's authenticated attempt history."""
@@ -539,7 +716,7 @@ class WorkflowStoreV4:
                 " ORDER BY step_id, attempt_number",
                 (run_id,),
             ).fetchall()
-        return [self._decode(row["payload"], row["seal"]) for row in rows]
+        return [self._decode(row["payload"], row["seal"], kind="attempt") for row in rows]
 
     def transition_attempt(
         self,
@@ -565,7 +742,14 @@ class WorkflowStoreV4:
                 "version": int(current["version"]) + 1,
                 "updated_at": self._now_ms(),
             }
-            payload, seal = self._encode(record)
+            if (current_state is StepAttemptState.PENDING
+                    and target is StepAttemptState.DISPATCHING
+                    and "dispatch_admission" not in current):
+                # Legacy pending/waiting attempts have never reached dispatch.
+                # Initialize only at their state/version-fenced boundary;
+                # never backfill a legacy RUNNING or DISPATCHING record.
+                record["dispatch_admission"] = "not_admitted"
+            payload, seal = self._encode(record, kind="attempt")
             changed = self._connection.execute(
                 "UPDATE workflow_attempts SET state=?, version=?, payload=?, seal=?,"
                 " updated_at=? WHERE attempt_id=? AND state=? AND version=?",
@@ -606,7 +790,7 @@ class WorkflowStoreV4:
                 **dict(payload),
                 "created_at": self._now_ms(),
             }
-            encoded, seal = self._encode(record)
+            encoded, seal = self._encode(record, kind="checkpoint")
             self._connection.execute(
                 "INSERT INTO workflow_checkpoints VALUES(?,?,?,?,?,?,?)",
                 (
@@ -630,4 +814,4 @@ class WorkflowStoreV4:
                 " ORDER BY sequence DESC LIMIT 1",
                 (attempt_id,),
             ).fetchone()
-        return self._decode(row["payload"], row["seal"]) if row else None
+        return self._decode(row["payload"], row["seal"], kind="checkpoint") if row else None

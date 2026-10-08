@@ -102,23 +102,24 @@ def test_tool_descriptors_are_verified_as_data_sidecars(tmp_path: Path) -> None:
 
 
 def test_saved_turn_code_and_registered_variant_share_the_sealed_identity() -> None:
-    pack = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
-    executables = json.loads((DEFAULTSPACK_ROOT / "executables.v4.json").read_text(encoding="utf-8"))
+    pack_root = DEFAULTSPACK_ROOT.parent / "tobkiri_conversation_orchestration_pack"
+    pack = json.loads((pack_root / "pack.v4.json").read_text(encoding="utf-8"))
+    executables = json.loads((pack_root / "executables.v4.json").read_text(encoding="utf-8"))
     path = "runtime/saved_conversation.py"
     artifacts = [item for item in pack["artifacts"] if item["path"] == path]
     assert len(artifacts) == 1
     assert artifacts[0]["kind"] == "executable"
     assert artifacts[0]["digest"] == "sha256:" + hashlib.sha256(
-        (DEFAULTSPACK_ROOT / path).read_bytes()
+        (pack_root / path).read_bytes()
     ).hexdigest()
     variants = [item for item in executables["variants"] if item["implementation_path"] == path]
     assert len(variants) == 1
-    assert variants[0]["function_id"] == "defaultspack.conversation.saved"
+    assert variants[0]["function_id"] == "tobkiri_conversation_orchestration_pack.saved"
     assert variants[0]["implementation_digest"] == artifacts[0]["digest"]
     assert variants[0]["execution_kind"] == "pack_vm"
     functions = [item for item in pack["functions"] if "saved_complete" in item["operations"]]
     assert len(functions) == 1
-    assert functions[0]["id"] == "defaultspack.conversation.saved"
+    assert functions[0]["id"] == "tobkiri_conversation_orchestration_pack.saved"
     assert functions[0]["operations"] == ["saved_complete"]
     assert functions[0]["implementation_digest"] == artifacts[0]["digest"]
 

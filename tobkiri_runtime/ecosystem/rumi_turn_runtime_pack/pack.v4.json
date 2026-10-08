@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e8b386a32387096bf0fb8e39d079b4992f978903e72ecb9e94758c379fa466e3",
+      "digest": "sha256:0c9090d5641c8c5620fea2232d4a1e957614cdcaeeba98875307e6c76157f16e",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/delivery.py"
     },
     {
-      "digest": "sha256:5789127328e8faa57a767ed611bab890f96e57dd64b9b54b40ac048c91f4a904",
+      "digest": "sha256:3e434ae352fad5b4defeafeaf44a28ca8e4e86c7bcd339c42fb4f03f2ea028bb",
       "kind": "executable",
       "path": "runtime/durable.py"
     },
@@ -253,9 +253,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:3b8a7619de64ff57e409c5e44fe0888379a2cfe58a3567a9c97a6dee3fa83d96",
-    "contract_catalog_digest": "sha256:71ab89c9d1c291b45178a5fc764750febe78e10aa92073acffc12511bd9a1371",
-    "source_identity": "sha256:279df7c453431b38d98654f09a47bafbbf351aeb9f1b7bdd4f27c401030fc4c3"
+    "artifact_set_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+    "contract_catalog_digest": "sha256:01909bdd0377a798a7cd525c7d19eb44b2398bfdb54bbc2bafd4c7116914cff2",
+    "source_identity": "sha256:3de631bbcabab5ad4b9dcd2b13b3df51dd17cde591e14650453a4ffbdac3393d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -393,7 +393,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:3b8a7619de64ff57e409c5e44fe0888379a2cfe58a3567a9c97a6dee3fa83d96",
+    "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -403,7 +403,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:279df7c453431b38d98654f09a47bafbbf351aeb9f1b7bdd4f27c401030fc4c3",
+        "digest": "sha256:3de631bbcabab5ad4b9dcd2b13b3df51dd17cde591e14650453a4ffbdac3393d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -414,7 +414,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:279df7c453431b38d98654f09a47bafbbf351aeb9f1b7bdd4f27c401030fc4c3",
+    "source_digest": "sha256:3de631bbcabab5ad4b9dcd2b13b3df51dd17cde591e14650453a4ffbdac3393d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
   },
@@ -610,8 +610,8 @@
       "allowed_ports": []
     },
     "pack_dependencies": {
-      "defaultspack": ">=4.0.0,<5.0.0",
-      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0"
+      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+      "tobkiri_conversation_orchestration_pack": ">=1.0.0,<2.0.0"
     },
     "secrets": [],
     "workspace_boundary": "host_brokered"

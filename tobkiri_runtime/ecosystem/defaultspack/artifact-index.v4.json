@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:d05dc44621730a38eb42b5e76d1272b89765b7e1ca74f8084f95f9ef26b58a10",
+  "artifact_set_digest": "sha256:4cf9ef12683e61e8490b418a2a60bf955f45d0820112ead821b49f2cbbccf7ce",
   "artifacts": [
     {
-      "digest": "sha256:4ad26561875b0f13577dd0f9b9ae360aeff3a4ae6ae48398046be2d759a5f459",
+      "digest": "sha256:03e81eec51cac0b5532c803e4996ff3daeddc64c97b5fc44ba16baaa5bf0c3cc",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -17,7 +17,7 @@
       "role": "asset"
     },
     {
-      "digest": "sha256:d5714005b16a5f652ef7dcae72da883625410d8e324c82a6d78524499f2e0c24",
+      "digest": "sha256:92e68f44b161058ef26b212ccc2c8122d81b264270d6b4c06ef257828ce7db6f",
       "path": "defaultspack/http_surface_presentation.py",
       "role": "runtime"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:144d2774c319c9a6d873d76f1c3652ea8667c9ffcb852735fe75646297044d0b",
+      "digest": "sha256:4b8760c9bf55c70594b04f9ec839a1d9c6ed12c6297c58210d9f005e110a1de2",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:7ad99f8dd9d3c2b4011523108b0cc325626077aca25504f88f4bc5ed8e231c15",
+      "digest": "sha256:910011b2b99323d26172043029cfdecdba89ab0806635646c65405935e7ac3c6",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -79,11 +79,6 @@
     {
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "path": "runtime/conversation.py",
-      "role": "runtime"
-    },
-    {
-      "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
-      "path": "runtime/saved_conversation.py",
       "role": "runtime"
     },
     {
@@ -680,8 +675,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:0f20df21edd088fbbc5b8522b917ebb548b2bd6ae26cf41f747b8cfce7066663"
+    "signed_digest": "sha256:ebc02502aef4b80e14a1ec6ad360a9a9b9a6bf61f1df944feba815b3ebf94304"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:a4bca2fac4768d9ffe87916c9e58db0d9f5c14d76df033fd0fff856761c6e9b0"
+  "source_identity": "sha256:8c89274ec95f80120cd1f5e279ccaa7090d6a0f2f7c5963f04cb6a841b139681"
 }

@@ -215,6 +215,7 @@
         {
           "allowed_payload_keys": [
             "definition_id",
+            "revision_digest",
             "inputs",
             "occurrence_id",
             "run_id"
@@ -240,6 +241,23 @@
           "contribution_id": "workflow.run.get",
           "function_id": "tobkiri.workflow.provider",
           "operation_id": "run.get",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.observe",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.observe",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.observe",
           "provider_id": "tobkiri.workflow.provider"
         }
       ]
@@ -346,6 +364,23 @@
           "function_id": "tobkiri.workflow.provider",
           "operation_id": "run.step.retry",
           "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.stop",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.stop.v4",
+          "contribution_id": "workflow.stop.run.stop",
+          "function_id": "tobkiri.workflow.stop.provider",
+          "operation_id": "run.stop",
+          "provider_id": "tobkiri.workflow.stop.provider"
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:539cea884ae0e80cd7e8330101ecb32bd6014bf06dab15d30a0be1e717a9d8b6",
+      "digest": "sha256:5007336117a26f4f8882bd10db218091f17cb089153a82fd7f48b9513921301c",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,17 +11,17 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "kind": "executable",
       "path": "runtime/process.py"
     },
     {
-      "digest": "sha256:e35a376f5bb191e8524da6e1e261c2d0e288eb14cc00b64639198a398e241d6a",
+      "digest": "sha256:990f3c9f639a388c4d2bbc4e6f3f26d632afffd953245918def8b35c7e892a79",
       "kind": "executable",
       "path": "runtime/registry.py"
     },
     {
-      "digest": "sha256:8276438b203636f1f8d724cd97d4320b55e3a32f1368c7daf4325e25a17c6844",
+      "digest": "sha256:3ae2c9fb828b7c1bce3d714f2c34580a00970032c546844a8ac05c95a95b0ddc",
       "kind": "executable",
       "path": "runtime/service.py"
     }
@@ -55,7 +55,7 @@
     {
       "contract_revision_digest": "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052",
       "id": "rumi_model_registry_pack.model-registry.manage",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_model_registry_pack.model-profile-manage"
@@ -65,7 +65,7 @@
     {
       "contract_revision_digest": "sha256:b7e14ee169e31ca35d182ae238a5d001fd81bd36276393c4755c80b424f1d62d",
       "id": "rumi_model_registry_pack.model-registry.migrate",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_model_registry_pack.model-registry-migrate"
@@ -75,7 +75,7 @@
     {
       "contract_revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
       "id": "rumi_model_registry_pack.model-registry.profile",
-      "implementation_digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5",
+      "implementation_digest": "sha256:e0f48289cb9380eda771178d23dcf5796c50cab7e329a2d9301bd1046a90af78",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_model_registry_pack.model-profile-resource",
@@ -86,9 +86,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:c0871302d1956e4251aada96eeed3d12bf5e19f0499a7d26309987c7657b7173",
-    "contract_catalog_digest": "sha256:1beda92c5349aa759d889724febbefd17e434bb2f30d85f64e7f96f77b894a99",
-    "source_identity": "sha256:39fa5eca4dcd22f0980d14a504e9b8f62d1020efd47bc32b7c8494da4838da30"
+    "artifact_set_digest": "sha256:7223413e05f87a7091e773e493aaf05086e5065f9d669190a00890183ee42d3b",
+    "contract_catalog_digest": "sha256:7f88e256c6f4ae325a30512b964b3d94d150e9bf869c0710356b13e7cbd81dc2",
+    "source_identity": "sha256:8e5eed06ecc61b5378d99701d5d6f0aba10c3a04902c5c5d25d822851665b89a"
   },
   "migration": {
     "compatibility": "read_only",
@@ -157,7 +157,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c0871302d1956e4251aada96eeed3d12bf5e19f0499a7d26309987c7657b7173",
+    "artifact_digest": "sha256:7223413e05f87a7091e773e493aaf05086e5065f9d669190a00890183ee42d3b",
     "display_name": "Rumi Model Registry",
     "id": "rumi_model_registry_pack",
     "kind": "host_extension",
@@ -167,7 +167,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:39fa5eca4dcd22f0980d14a504e9b8f62d1020efd47bc32b7c8494da4838da30",
+        "digest": "sha256:8e5eed06ecc61b5378d99701d5d6f0aba10c3a04902c5c5d25d822851665b89a",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -178,7 +178,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:39fa5eca4dcd22f0980d14a504e9b8f62d1020efd47bc32b7c8494da4838da30",
+    "source_digest": "sha256:8e5eed06ecc61b5378d99701d5d6f0aba10c3a04902c5c5d25d822851665b89a",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_model_registry_pack"
   },

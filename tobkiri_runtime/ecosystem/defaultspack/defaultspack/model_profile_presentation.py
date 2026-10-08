@@ -49,7 +49,7 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
         raise ValueError("model configuration name is invalid")
     return {
-        "operation": "save",
+        "operation": "create",
         "expected_revision": revision,
         "provider_registry_revision": provider_registry_revision,
         "record": {

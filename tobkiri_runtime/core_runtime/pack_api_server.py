@@ -48,6 +48,7 @@ from .global_contracts.http_contract_dispatch import (
     resolve_contract_route,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.data_codec import digest_record
 from tobkiri_host.acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from tobkiri_host.backends import ExecutionBackend
 from .host_contract import (
@@ -121,10 +122,16 @@ class HTTPRuntimeErrorCode(str, Enum):
     UNSUPPORTED_PLATFORM = "UNSUPPORTED_PLATFORM"
     INVALID_REQUEST = "INVALID_REQUEST"
     SAVED_TURN_NOT_STARTED = "SAVED_TURN_NOT_STARTED"
+    WORKFLOW_RUN_OWNER_UNAVAILABLE = "WORKFLOW_RUN_OWNER_UNAVAILABLE"
     API_FAILURE = "API_FAILURE"
 
 
 _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
+    HTTPRuntimeErrorCode.WORKFLOW_RUN_OWNER_UNAVAILABLE.value: (
+        "The Workflow run owner cannot be verified. Return to its original "
+        "signed-in window if available. Otherwise inspect its recorded outcomes "
+        "before creating a new run; do not repeat unreconciled effects."
+    ),
     HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value: (
         "The saved conversation changed or lacks a required model; execution did not start"
     ),
@@ -144,6 +151,7 @@ _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
 }
 
 _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
+    HTTPRuntimeErrorCode.WORKFLOW_RUN_OWNER_UNAVAILABLE.value: 403,
     HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value: 409,
     HTTPRuntimeErrorCode.INVALID_REQUEST.value: 400,
     HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: 409,
@@ -1349,15 +1357,22 @@ class PackAPIHandler(
                     503,
                 )
                 return True
-            request_digest = canonical_digest(
-                {
-                    "method": resolved.method,
-                    "path": resolved.path,
-                    "contract_id": target.contract_id,
-                    "operation_id": target.operation_id,
-                    "payload": payload,
-                }
-            )
+            try:
+                request_digest = digest_record(
+                    {
+                        "method": resolved.method,
+                        "path": resolved.path,
+                        "contract_id": target.contract_id,
+                        "operation_id": target.operation_id,
+                        "payload": payload,
+                    },
+                    value_paths=(("payload",),),
+                )
+            except ValueError:
+                self._send_response(
+                    APIResponse(False, error="Contract payload is invalid"), 400,
+                )
+                return True
             try:
                 operation_record = operation_journal.lookup_operation(
                     request_id=request_id,
@@ -2210,6 +2225,10 @@ class PackAPIHandler(
                 refresh_lock is None or refresh_lock.acquire(blocking=False)
             ):
                 try:
+                    # Flush the complete recovery response before expensive
+                    # recapture. This admitted request still owns the work,
+                    # so normal request/capture drain fences remain in force.
+                    self._send_response(APIResponse(False, error="Unauthorized"), 401)
                     self._runtime_refresh(None)
                 except Exception as error:
                     self._defer_response_log(
@@ -2221,6 +2240,7 @@ class PackAPIHandler(
                 finally:
                     if refresh_lock is not None:
                         refresh_lock.release()
+                return
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
         self._send_response(
@@ -2620,10 +2640,17 @@ class PackAPIHandler(
         store = self._profile_registry_store()
         state = store.snapshot()
         repair_legacy_active_profile_pointer()
-        active = ActiveProfileStore(runtime_user_data_root()).load(verify_snapshot=True)
+        active_store = ActiveProfileStore(runtime_user_data_root())
+        active = active_store.load(verify_snapshot=True)
+        definition_revision = None
+        if active is not None:
+            snapshot = active_store.verify_activation_snapshot(active)
+            envelope = snapshot.get("envelope", snapshot)
+            definition_revision = envelope["plan"]["profile_definition_digest"]
         return {
             "profile_registry_api_version": "io.tobkiri.profile-registry.v4",
             "generation": int(state["generation"]),
+            "active_profile_definition_revision": definition_revision,
             "active_profile_id": active.profile_id if active is not None else None,
             "active_profile_revision": (active.profile_revision if active is not None else None),
             "profiles": store.list_profile_payloads(),
@@ -2634,7 +2661,13 @@ class PackAPIHandler(
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
         try:
-            self._send_mapping_result(self._profile_registry_payload())
+            if path == "/api/v4/profiles/catalog":
+                from .bootstrap.profile_capture import host_profile_catalog
+                from .profile_composition_v4 import project_composition_catalog
+
+                self._send_mapping_result(project_composition_catalog(host_profile_catalog()))
+            else:
+                self._send_mapping_result(self._profile_registry_payload())
         except Exception:
             logger.exception("Named Profile registry read failed")
             self._send_mapping_result(
@@ -2663,6 +2696,7 @@ class PackAPIHandler(
                 {
                     "profile_id",
                     "display_name",
+                    "composition",
                     "expected_profile_revision",
                     "expected_store_generation",
                 }
@@ -2717,12 +2751,30 @@ class PackAPIHandler(
                     expected_store_generation=expected_generation,
                 )
             elif action == "update":
-                changed = store.update_profile(
-                    profile_id,
-                    patch={"display_name": display_name or profile_id},
-                    expected_profile_revision=expected_revision,
-                    expected_store_generation=expected_generation,
-                )
+                if "composition" in body:
+                    from .bootstrap.profile_capture import host_profile_catalog
+                    from .profile_composition_v4 import build_profile_composition
+
+                    if type(generation) is not int or generation < 0 or not expected_revision:
+                        raise ValueError("Profile composition requires exact revision fences")
+                    successor = build_profile_composition(
+                        host_profile_catalog(), profile_id, expected_revision,
+                        body["composition"],
+                    )
+                    changed = store.update_profile(
+                        profile_id,
+                        profile=successor,
+                        display_name=display_name,
+                        expected_profile_revision=expected_revision,
+                        expected_store_generation=expected_generation,
+                    )
+                else:
+                    changed = store.update_profile(
+                        profile_id,
+                        patch={"display_name": display_name or profile_id},
+                        expected_profile_revision=expected_revision,
+                        expected_store_generation=expected_generation,
+                    )
             elif action == "duplicate":
                 changed = store.duplicate_profile(
                     profile_id,
@@ -3003,7 +3055,7 @@ class PackAPIHandler(
         if path == "/api/setup/migration/status":
             self._send_mapping_result(self._setup_get_migration_status())
             return
-        if path == "/api/v4/profiles":
+        if path in {"/api/v4/profiles", "/api/v4/profiles/catalog"}:
             from .bootstrap.profile_capture import profile_capture_scope
 
             # Authentication and the registry projection both fence the same

@@ -31,7 +31,7 @@ _MANAGE_OPERATION = "rumi_model_registry_pack.model-profile-manage"
 _PROVIDER_REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
 _PROVIDER_REGISTRY_OPERATION = "rumi_provider_registry_pack.provider-registry-resource"
 _MIGRATE_OPERATION = "rumi_model_registry_pack.model-registry-migrate"
-_MANAGE_SERVICE_OPERATIONS = frozenset({"save", "delete", "alias.set"})
+_MANAGE_SERVICE_OPERATIONS = frozenset({"create", "save", "delete", "alias.set"})
 _MIGRATE_SERVICE_OPERATIONS = frozenset({"migration.apply", "migration.rollback"})
 _PROFILE_SERVICE_OPERATIONS = frozenset({"list", "get", "resolve", "policy.resolve"})
 
@@ -98,6 +98,11 @@ class ModelRegistryHostFactoryV4:
                     "expected_revision",
                     "provider_registry_revision",
                 },
+                "create": {
+                    "record",
+                    "expected_revision",
+                    "provider_registry_revision",
+                },
                 "delete": {"model_profile_id", "expected_revision"},
                 "alias.set": {"alias", "target_profile_id", "expected_revision"},
                 "migration.apply": {"profiles", "aliases", "expected_source_hash"},
@@ -110,7 +115,7 @@ class ModelRegistryHostFactoryV4:
                 if type(revision) is not int or revision < 0:
                     raise PermissionError("model registry revision is invalid")
             invocation.assert_current()
-            if operation == "save":
+            if operation in {"create", "save"}:
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
                     consumer_pack_id=_PACK_ID,
@@ -138,6 +143,29 @@ class ModelRegistryHostFactoryV4:
                 provider_snapshot=provider_snapshot,
             )
             invocation.assert_current()
+            if operation == "create":
+                # The Host journals this result before the HTTP presentation.
+                # Keep full parameters (which may include floats) and opaque
+                # credential handles inside the owner, out of that journal.
+                profile = result["profile"]
+                return {
+                    "action": result["action"],
+                    "store_revision": result["store_revision"],
+                    "profile": {
+                        **{
+                            key: profile[key]
+                            for key in (
+                                "model_profile_id", "model_id", "display_name",
+                                "enabled",
+                            )
+                        },
+                        "metadata": {
+                            "provider_connection_id": payload["record"]["metadata"][
+                                "provider_connection_id"
+                            ],
+                        },
+                    },
+                }
             return result
 
         return CapturedHostProviderV4(

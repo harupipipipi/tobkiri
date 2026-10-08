@@ -76,11 +76,12 @@ class ModelRegistryService:
             if value is None:
                 raise KeyError("model profile or alias is unknown")
             return value
-        if operation == "save":
+        if operation in {"create", "save"}:
             record = data.get("record")
             if not isinstance(record, Mapping):
                 record = data
-            return registry.save(
+            mutate = registry.create if operation == "create" else registry.save
+            return mutate(
                 record,
                 expected_revision=int(data.get("expected_revision") or 0),
             )

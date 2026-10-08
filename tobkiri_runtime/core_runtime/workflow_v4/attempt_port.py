@@ -146,6 +146,7 @@ class WorkflowAttemptPortV4(Protocol):
         request: Mapping[str, Any],
         *,
         authority: DispatchAuthority,
+        dispatch_fence: Callable[[str], None] | None = None,
     ) -> InvocationOutcome:
         """Dispatch the frozen snapshot through the ordinary Broker."""
 
@@ -227,9 +228,12 @@ class LateBoundWorkflowAttemptPortV4:
         request: Mapping[str, Any],
         *,
         authority: DispatchAuthority,
+        dispatch_fence: Callable[[str], None] | None = None,
     ) -> InvocationOutcome:
         """Invoke through the bound service; no callback shortcut exists."""
-        return self._current().invoke(invocation, request, authority=authority)
+        return self._current().invoke(
+            invocation, request, authority=authority, dispatch_fence=dispatch_fence
+        )
 
     def cancel(self, invocation: HostProviderInvocationContextV4, request_id: str) -> None:
         """Cancel through the bound service."""
@@ -245,7 +249,7 @@ class WorkflowAttemptServiceConfigV4:
     approvals: InteractiveApprovalPort
     routes: tuple[CapturedWorkflowAttemptRouteV4, ...]
     context_for_attempt: Callable[
-        [CapturedWorkflowAttemptRouteV4, HostProviderInvocationContextV4],
+        [CapturedWorkflowAttemptRouteV4, HostProviderInvocationContextV4, str],
         RequestContext,
     ]
     execution_scope: Callable[
@@ -261,6 +265,16 @@ class WorkflowAttemptServiceConfigV4:
     activation_digest: str
     plan_digest: str
     security_epoch: int
+    # Exact verified lifecycle envelopes admitted by this private captured port.
+    # The canonical coordinator remains the sealed child dispatch caller.
+    admitted_invocations: tuple[tuple[str, str, OpaqueAuthorityRef], ...] = ()
+    # Only verified stop Function principals may confirm cross-invocation drain.
+    stop_principals: tuple[OpaqueAuthorityRef, ...] = ()
+    # Host-owned evidence scope; the request comes from the sealed journal.
+    evidence_scope: Callable[
+        [CapturedWorkflowAttemptRouteV4, HostProviderInvocationContextV4, Mapping[str, Any]],
+        ContextManager[None],
+    ] | None = None
     clock: Callable[[], float] = time.time
     monotonic_clock: Callable[[], float] = time.monotonic
 

@@ -131,7 +131,6 @@ def test_v4_defaultspack_catalog_pins_the_real_conversation_implementation():
     assert [item["id"] for item in pack["functions"]] == [
         "defaultspack.application-presentation",
         "defaultspack.conversation",
-        "defaultspack.conversation.saved",
     ]
     variant = next(
         item

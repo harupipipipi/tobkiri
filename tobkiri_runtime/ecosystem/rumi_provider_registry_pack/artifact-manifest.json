@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/configuration.py",
-      "sha256": "sha256:4ab28a0058a1dc01ed27352527f88fec0eca87f43a90c5244fe680276b03f5e3"
+      "sha256": "sha256:402eb98f0c2e306096eccef156a66b09f614c6d652e3368e95f080f653143019"
     },
     {
       "path": "runtime/__init__.py",
@@ -17,10 +17,6 @@
       "sha256": "sha256:0dad88a9dacf779d6de5c3db705fb9c3512c4705f373e260a9bd1f8ee8ce16ed"
     },
     {
-      "path": "runtime/configuration.py",
-      "sha256": "sha256:4ab28a0058a1dc01ed27352527f88fec0eca87f43a90c5244fe680276b03f5e3"
-    },
-    {
       "path": "runtime/connection_adapters.py",
       "sha256": "sha256:5f770146d5294ec2edd4c0316f419916b9e62676e8fe8fa117358ddba9fe8ce7"
     },
@@ -30,7 +26,7 @@
     },
     {
       "path": "runtime/registry.py",
-      "sha256": "sha256:fc319eb9492a4e1c4ac1f7e175c38a478abab35b4998bc54043c36506cdf1571"
+      "sha256": "sha256:1126c8d5664feac7e2b2ab98950a9b9166bb5475b65314b82c6810686ab86bd2"
     },
     {
       "path": "runtime/service.py",

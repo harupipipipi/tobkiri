@@ -380,6 +380,11 @@ def _invoke(
             f"no selected provider for {provider_contract}",
         )
     health = _health(client, streaming=streaming)
+    exact_binding = bool(
+        requirement.preferred_model_id
+        and requirement.preferred_provider_instance_id
+        and not request.get("allow_failover")
+    )
     candidates, excluded = _catalog_candidates(
         client,
         provider_metadata,
@@ -388,11 +393,7 @@ def _invoke(
         streaming=streaming,
         explicit_pricing=request.get("_resolved_model_pricing"),
         explicit_connection=request.get("_resolved_provider_connection"),
-    )
-    exact_binding = bool(
-        requirement.preferred_model_id
-        and requirement.preferred_provider_instance_id
-        and not request.get("allow_failover")
+        exact_binding=exact_binding,
     )
     if exact_binding and requirement.preferred_model_id:
         candidates = [
@@ -803,6 +804,12 @@ def _resolve_model_reference(
             "unresolved_profile",
             "model profile owner returned an invalid record",
         )
+    if profile.get("enabled", True) is not True:
+        # A resolved disabled profile must not fall back to treating its alias
+        # as a raw model ID. Keep this outside the legacy lookup fallback.
+        raise GlobalContractInvocationError(
+            "unresolved_profile", "model profile is disabled"
+        )
     request["model_profile_id"] = str(
         resolved.get("resolved_profile_id") or identifier
     )
@@ -958,6 +965,7 @@ def _catalog_candidates(
     streaming: bool,
     explicit_pricing: Any = None,
     explicit_connection: Any = None,
+    exact_binding: bool = False,
 ) -> tuple[list[Candidate], list[dict[str, str]]]:
     catalog_models: list[dict[str, Any]] = []
     catalog_inventory: dict[str, dict[str, dict[str, Any]]] = {}
@@ -968,6 +976,21 @@ def _catalog_candidates(
             requirement.capabilities or requirement.tool_calling or requirement.thinking
         ),
     )
+    if exact_binding and explicit_connection is None:
+        # A pinned legacy qualified model cannot fail over to other owners.
+        # Scope discovery to its existing owner/model convention instead of
+        # fetching unrelated remote inventories before a local invocation.
+        model_id = str(requirement.preferred_model_id or "").strip()
+        provider_id, separator, provider_model_id = model_id.partition("/")
+        if (
+            separator and provider_id and provider_model_id
+            and not any(character.isspace() for character in provider_id)
+            and all(character.isprintable() for character in model_id)
+        ):
+            catalog_payload = {
+                "provider_id": provider_id,
+                "model_id": provider_model_id,
+            }
     catalog_providers = (
         ()
         if explicit_connection is not None and not catalog_payload

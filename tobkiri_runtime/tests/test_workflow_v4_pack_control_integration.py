@@ -2,29 +2,34 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import copy
 import shutil
+from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from core_runtime.authority.v4 import AuthorityStore, DomainBoundary
 from core_runtime.bootstrap.production_v4 import capture_production_dispatch
+from core_runtime.bootstrap.profile_capture import (
+    capture_default_profile,
+    capture_profile,
+    host_profile_catalog,
+    prepare_default_profile_confirmation,
+    prepare_profile_confirmation,
+)
 from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
 from core_runtime.host_provider_hooks_v4 import load_host_provider_factory
 from core_runtime.pack_catalog_backend_v4 import PackControlBackendV4
-from core_runtime.bootstrap.profile_capture import (
-    capture_default_profile,
-    prepare_default_profile_confirmation,
-)
 from core_runtime.pack_control_v4 import (
     CONTROL_PRESENTATION_CONTRACT,
     PACK_CONTROL_CONTRACT,
     capture_pack_control_session,
 )
-from tobkiri_host.errors import ResolutionError
+from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+from tobkiri_host.errors import BackendUnavailableError, ResolutionError
 from tobkiri_host.models import OpaqueAuthorityRef
-from tobkiri_host.errors import BackendUnavailableError
 
 
 def _bundle_root() -> Path:
@@ -76,15 +81,110 @@ def _invoke(session, contract: str, operation: str, payload: dict | None = None)
     )
 
 
+# Short canonical id: authority record ids embed the profile id verbatim.
+FIXTURE_PROFILE_ID = "wfopt"
+
+
+def _is_workflow_edge(edge: Mapping[str, object]) -> bool:
+    """True when a requested edge touches any Workflow contract or principal."""
+
+    fields = (
+        edge.get("caller_function_id"),
+        edge.get("target_provider_id"),
+        edge.get("contract_id"),
+        edge.get("operation_id"),
+    )
+    return any(
+        isinstance(value, str)
+        and ("tobkiri.workflow" in value or PACK_ID in value)
+        for value in fields
+    )
+
+
+def _capture_workflow_optional_fixture(user_data: Path) -> None:
+    """Create and activate a named Profile fixture that lacks Workflow.
+
+    The fixture is the normal generated Defaults definition with the Workflow
+    Pack and any Workflow caller edges removed, captured through the standard
+    named-Profile activation path — so the initial-absence assumption is an
+    explicit fixture property rather than a distribution default that may
+    change when the bundled intent gains the pack.
+    """
+
+    host_profile_catalog()
+    definitions = ProfileDefinitionStore(user_data)
+    defaults = definitions.get_profile("defaults")
+    assert defaults is not None
+    fixture = copy.deepcopy(dict(defaults.profile))
+    fixture["packs"] = [
+        pack for pack in fixture["packs"] if pack.get("pack_id") != PACK_ID
+    ]
+    fixture["requested_edges"] = [
+        edge
+        for edge in fixture.get("requested_edges", [])
+        if not _is_workflow_edge(edge)
+    ]
+    assert PACK_ID not in {pack["pack_id"] for pack in fixture["packs"]}
+    definitions.create_profile(
+        fixture,
+        profile_id=FIXTURE_PROFILE_ID,
+        display_name="Workflow optional proof",
+    )
+    active = capture_profile(
+        FIXTURE_PROFILE_ID,
+        confirmation=prepare_profile_confirmation(FIXTURE_PROFILE_ID),
+    )
+    activated_packs = {
+        item["pack_id"] for item in active.resolved.profile["packs"]
+    }
+    assert PACK_ID not in activated_packs
+
+
+def test_default_profile_workflow_membership_only_via_reviewed_activation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Defaults carries Workflow only when its activated plan binds it.
+
+    The activated profile's declared pack set and the reviewed plan's
+    operation bindings move together: the pack can never reach the runtime
+    surface unless the normal reviewed activation already carried it, and a
+    declared pack never lacks its bindings — membership is never implicit.
+    """
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation()
+    )
+    declared = {
+        item["pack_id"] for item in active.resolved.profile["packs"]
+    }
+    bound = {
+        binding["pack_id"]
+        for binding in active.resolved.plan.get("bindings", ())
+    }
+    assert (PACK_ID in declared) == (PACK_ID in bound)
+
+
 def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Install, approval, enable, and Profile ceremony select exact v4 bindings."""
+    """Install, approval, enable, and Profile ceremony select exact v4 bindings.
 
-    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
-    capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    session = _capture_control_session()
+    Fixture assumption: the active Profile is the explicit
+    ``workflow-optional-proof`` fixture — the generated Defaults definition
+    minus the Workflow Pack — so the test never depends on whether the
+    bundled default intent carries the pack.
+    """
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    _capture_workflow_optional_fixture(user_data)
+    session = _capture_control_session(
+        active=capture_profile(FIXTURE_PROFILE_ID),
+        active_profile_loader=lambda: capture_profile(FIXTURE_PROFILE_ID),
+    )
 
     catalog = _invoke(session, PACK_CONTROL_CONTRACT, "catalog.read")
     workflow = next(item for item in catalog["packs"] if item["pack_id"] == PACK_ID)
@@ -107,6 +207,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
     assert enabled["enabled"] is True
 
     profile = _invoke(session, CONTROL_PRESENTATION_CONTRACT, "profile.read")
+    assert "data" in profile, profile
     desired = [
         item["pack_id"]
         for item in profile["data"]["profile_document"]["packs"]
@@ -118,7 +219,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
         CONTROL_PRESENTATION_CONTRACT,
         "profile.change.resolve",
         {
-            "profile_id": "defaults",
+            "profile_id": FIXTURE_PROFILE_ID,
             "expected_profile_revision": profile["profile_revision"],
             "expected_plan_digest": profile["plan_digest"],
             "desired_pack_ids": desired,
@@ -131,9 +232,13 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
         item for item in review["resolved_plan"]["bindings"] if item["pack_id"] == PACK_ID
     ]
     assert workflow_bindings
-    assert {item["contract_id"] for item in workflow_bindings} == {"tobkiri.workflow.v4"}
+    assert {item["contract_id"] for item in workflow_bindings} == {
+        "tobkiri.workflow.v4",
+        "tobkiri.workflow.stop.v4",
+    }
     assert {item["function_principal"]["function_id"] for item in workflow_bindings} == {
-        "tobkiri.workflow.provider"
+        "tobkiri.workflow.provider",
+        "tobkiri.workflow.stop.provider",
     }
 
     reviewed = _invoke(
@@ -173,7 +278,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
     # Rebuild the production runtime from only the durable activation and
     # exercise the exact operation route.  This is the packaged restart path
     # that previously reapplied a hidden v1-only compatibility constraint.
-    restarted_active = capture_default_profile()
+    restarted_active = capture_profile(FIXTURE_PROFILE_ID)
     authority = AuthorityStore(tmp_path / "user-data" / "authority" / "v4.sqlite3")
     restarted = _capture_defaultspack_dispatch(
         restarted_active,
@@ -245,91 +350,25 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
             "operation.palette",
             {"_session_id": "workflow-operation"},
         )
-        step_target = next(
-            item
-            for item in palette["operations"]
-            if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
-        )
-        document = {
-            "workflow_api_version": "io.tobkiri.workflow.v4",
-            "name": "Restart-persistent skipped step",
-            "max_concurrency": 1,
-            "steps": [
-                {
-                    "id": "skip",
-                    "when": "false",
-                    "request": {
-                        "contract_id": step_target["contract_id"],
-                        "contract_revision_digest": step_target["contract_revision_digest"],
-                        "operation_id": step_target["operation_id"],
-                        "function_principal_id": step_target["function_principal_id"],
-                        "input": {"messages": "${inputs.messages}"},
-                    },
-                    "retry": {"max_attempts": 1, "backoff_ms": 0},
-                }
-            ],
-        }
-        created = restarted.invoke(
-            "tobkiri.workflow.v4",
-            "definition.create",
-            {
-                "_session_id": "workflow-operation",
-                "definition_id": "workflow.restart-proof",
-                "document": document,
-            },
-        )
-        restarted.invoke(
-            "tobkiri.workflow.v4",
-            "definition.publish",
-            {
-                "_session_id": "workflow-operation",
-                "definition_id": "workflow.restart-proof",
-                "if_match": created["etag"],
-            },
-        )
-        run = restarted.invoke(
-            "tobkiri.workflow.v4",
-            "run.create",
-            {
-                "_session_id": "workflow-operation",
-                "definition_id": "workflow.restart-proof",
-                "run_id": "workflow-run-restart-proof",
-                "inputs": {"messages": [{"role": "user"}]},
-            },
-        )
-        assert run["state"] == "queued"
-        attempt = restarted.invoke(
-            "tobkiri.workflow.v4",
-            "run.step.execute",
-            {
-                "_session_id": "workflow-operation",
-                "run_id": run["run_id"],
-                "step_id": "skip",
-            },
-        )
-        assert attempt["state"] == "succeeded"
-        assert attempt["skipped"] is True
+        # Installing a Workflow editor does not authorize invoking every
+        # unrelated operation in its Profile. This optional fixture has no
+        # outgoing Workflow edges; only an explicit successor can add them.
+        assert palette["operations"] == []
     finally:
         restarted.close()
 
     restarted_again = _capture_defaultspack_dispatch(
-        capture_default_profile(),
+        capture_profile(FIXTURE_PROFILE_ID),
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=AuthorityStore(tmp_path / "user-data" / "authority" / "v4.sqlite3"),
     )
     try:
-        persisted = restarted_again.invoke(
+        palette = restarted_again.invoke(
             "tobkiri.workflow.v4",
-            "run.get",
-            {
-                "_session_id": "workflow-operation-restart",
-                "run_id": "workflow-run-restart-proof",
-            },
+            "operation.palette",
+            {"_session_id": "workflow-operation-restart"},
         )
-        assert persisted["run"]["state"] == "succeeded"
-        assert len(persisted["attempts"]) == 1
-        assert persisted["attempts"][0]["state"] == "succeeded"
-        assert persisted["attempts"][0]["skipped"] is True
+        assert palette["operations"] == []
     finally:
         restarted_again.close()

@@ -1,17 +1,27 @@
 {
   "files": {
     "core_runtime/workflow_v4/__init__.py": "sha256:da40d71dce8a893305036c767481cd60fad1675fe2ca91e603ec899d8e77d16e",
-    "core_runtime/workflow_v4/attempt_adapter.py": "sha256:e4adc1736522fc97f05211d4839556b71ed76a0bcf45c9c8263c7f525753e53d",
-    "core_runtime/workflow_v4/attempt_binding.py": "sha256:c97d1969d4b4f88f2183bd5f459ec5a8a5e1d0049cca23312567c4d8bfc6d9ad",
-    "core_runtime/workflow_v4/attempt_port.py": "sha256:56e5259b9fbabc4ecec31f518bd62a5330e9ff71420f993047eb3bcfa36a0875",
-    "core_runtime/workflow_v4/attempt_service.py": "sha256:d2948dbdc7d2569bcec681db376e10be65bc4729a84e693b3a6ac11edabb0688",
-    "core_runtime/workflow_v4/attempt_store.py": "sha256:2ed3677317fbb6ed45386b3b2785e6a7a76d75b04e306ad036e2eb1c3bd20650",
-    "core_runtime/workflow_v4/engine.py": "sha256:f4b54e9c6792360ec69a8d6872bb967a72cb425c6fcd374f726d9d546e5f5089",
-    "core_runtime/workflow_v4/integration.py": "sha256:830b504b708e55da19683430f436eb0c6e572e3cbece47f59cc85f79ad515ffa",
-    "core_runtime/workflow_v4/models.py": "sha256:b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684",
-    "core_runtime/workflow_v4/protocols.py": "sha256:1c775cd87cbe80f5090204d639a7ece2c2a557d6cad2c975b91d7947fe254219",
-    "core_runtime/workflow_v4/provider.py": "sha256:569c73c554d42405da5cf5f5c224b0ead282590fb4d870064b63b2d4b7286a58",
-    "core_runtime/workflow_v4/store.py": "sha256:fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea"
+    "core_runtime/workflow_v4/attempt_adapter.py": "sha256:a7088d58e95d94d6cfced3351a2be6d6da3efb659bfcc38fe369ddf2ddcdd026",
+    "core_runtime/workflow_v4/attempt_binding.py": "sha256:234fb14016c8b8487a9fdc29eccd5ba5a4b7a479ea06c690710d881a1ef16fe3",
+    "core_runtime/workflow_v4/attempt_capacity.py": "sha256:1032c352db62f57d2d483e40cd0ad8098982dd81affbb536fd2001d21a2f3ae7",
+    "core_runtime/workflow_v4/attempt_port.py": "sha256:9010ba9b55e007276f23ef11d99caa51a277646cc227d5a6f840011bfd9d5c8f",
+    "core_runtime/workflow_v4/attempt_service.py": "sha256:acaab2417b47f38f4b48153f5d0270bc07b14a4f30e1e8b0a846e6bd44fc9db2",
+    "core_runtime/workflow_v4/attempt_store.py": "sha256:44218440f3589a1b7eb64a608ceb9adbb3a8588a00593902a6b744c6dc844f9b",
+    "core_runtime/workflow_v4/binding.py": "sha256:348ea1a72dce29e9533fcb8bc89906a1ad45ce4e9456efe2311d47402a58931d",
+    "core_runtime/workflow_v4/data_codec.py": "sha256:7e613d8f9b62eff5760a603920d4849778266ad1174916ba078e844deebc3ac2",
+    "core_runtime/workflow_v4/engine.py": "sha256:b200ac90e47ce5fa0717640b8c24195d19a3a631351e2f37bf795ceb4249a7d7",
+    "core_runtime/workflow_v4/evidence.py": "sha256:47286c43299cd9aa2adc6dbd5a4f51b2ddfd10365691330f9adef6083eab4755",
+    "core_runtime/workflow_v4/host_adapters.py": "sha256:40f94744d8ca6a465670a1d9f1af7b641e696df97ab15801d0b1ea6813ed3bb0",
+    "core_runtime/workflow_v4/integration.py": "sha256:eef46051781bee9a92b7e49e946680cbe6b4f4cae1800eb8dc0c3c93df797f5d",
+    "core_runtime/workflow_v4/models.py": "sha256:d48adcc1c345f8df2ca3d9d03d3fef825371e313e2bb7615ecfb0593dd62cd8b",
+    "core_runtime/workflow_v4/observation.py": "sha256:6450e8714ec7882e74823be8c8bf574efe784ecdd3f8406e961b994fc786647f",
+    "core_runtime/workflow_v4/production_capture.py": "sha256:6c1ccfe08905dd9fe2e21ce5a64edd428bd60fef29c3fb0d0bb8e7ffca3cae0d",
+    "core_runtime/workflow_v4/protocols.py": "sha256:aa43d981217744706ad90db98180b502bf0adb0b4ee7793db9565a95c9a412f8",
+    "core_runtime/workflow_v4/provider.py": "sha256:ff32ab8592acce8b3b6c9aab1d04bb3e97d25f6b0667d2b03d554bfe8686546f",
+    "core_runtime/workflow_v4/run_ownership.py": "sha256:c8d3eabf9087bec9bfee60e982853b5a0dd7c446399cfc34a2bedb676c5fed06",
+    "core_runtime/workflow_v4/seal_key.py": "sha256:a6ed35c67806873209e1d66ff454e23e6aa578208bb1382a035c1370ab8459ec",
+    "core_runtime/workflow_v4/store.py": "sha256:1181ab5f6975af843d82dd624d5dabc49514d0aa9d916bf968815ce7586417ef",
+    "core_runtime/workflow_v4/value_binding.py": "sha256:df98152bef48cd8164857b4e0e9eabf078f71afa5ed2cee7fa66682d677bc064"
   },
   "schema": "io.tobkiri.workflow-backend-integrity.v4"
 }
