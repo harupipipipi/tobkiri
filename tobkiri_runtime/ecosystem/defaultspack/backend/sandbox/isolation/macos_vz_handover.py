@@ -618,7 +618,7 @@ def _retained_identity(path: Path, *, directory: bool) -> dict[str, int | str]:
 
 def _retained_file(path: Path) -> dict[str, Any]:
     before = _retained_identity(path, directory=False)
-    if before["size"] > 16 * 1024:
+    if int(before["size"]) > 16 * 1024:
         raise ValueError("Host handover retained allocation exceeds its byte limit")
     digest = hashlib.sha256()
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
