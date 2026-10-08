@@ -74,3 +74,6 @@ class CapturedDirectoryPicker:
         """Retire all selections together with their captured Provider."""
         self._closed = True
         self._selections.close()
+        cancel = getattr(self._port, "cancel_pending", None)
+        if callable(cancel):
+            cancel()

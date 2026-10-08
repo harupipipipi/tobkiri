@@ -207,8 +207,17 @@ def test_legacy_path_is_wrapped_for_multiple_selection(transport):
         ]
 
 
-@pytest.mark.parametrize("paths", [[], None, "/native/project", ["/native/ok", "relative"],
-                                  ["/native/ok", 123], ["/native/ok", "/bad\x7f"]])
+@pytest.mark.parametrize(
+    "paths",
+    [
+        [],
+        None,
+        "/native/project",
+        ["/native/ok", "relative"],
+        ["/native/ok", 123],
+        ["/native/ok", "/bad\x7f"],
+    ],
+)
 def test_malformed_array_fails_without_partial_results(transport, paths):
     contract, state = transport
     state.payload["paths"] = paths
@@ -230,3 +239,26 @@ def test_cancelled_selection_with_paths_is_rejected(transport):
     state.payload.update(cancelled=True, paths=["/native/project"])
     with bind_host_contract(contract), pytest.raises(RuntimeError):
         launcher.pick_project_directories(BINDING)
+
+
+def test_retiring_port_cancels_only_its_pending_nonce_and_drops_late_result(monkeypatch):
+    port = launcher.LauncherDirectoryPickerPort(BINDING)
+    observed = []
+
+    def pick(binding, *, _request_nonce):
+        assert binding == BINDING
+        assert len(_request_nonce) >= 32
+        observed.append(_request_nonce)
+        port.cancel_pending()
+        return [launcher.Path("/late/result")]
+
+    monkeypatch.setattr(launcher, "pick_project_directories", pick)
+    monkeypatch.setattr(
+        launcher,
+        "_cancel_project_directory_pick",
+        lambda binding, nonce: observed.append((binding, nonce)),
+    )
+    assert port.pick_directories() is None
+    assert observed[1] == (BINDING, observed[0])
+    assert port.pick_directories() is None
+    assert len(observed) == 2

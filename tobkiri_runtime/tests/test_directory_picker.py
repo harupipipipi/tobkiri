@@ -126,3 +126,20 @@ def test_cancellation_does_not_issue_ticket_and_closed_picker_never_opens():
     with pytest.raises(NotImplementedError):
         picker.acquire({}, **kwargs)
     assert len(calls) == 1
+
+
+def test_close_retires_owned_native_prompt_without_selecting_or_issuing_ticket():
+    class Port:
+        calls = []
+
+        def pick_directory(self):
+            self.calls.append("opened")
+            return None
+
+        def cancel_pending(self):
+            self.calls.append("retired")
+
+    port = Port()
+    picker = CapturedDirectoryPicker(port, DirectorySelections())
+    picker.close()
+    assert port.calls == ["retired"]

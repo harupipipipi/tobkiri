@@ -16,6 +16,7 @@ mod host_audit;
 mod browser_access;
 mod browser_access_lifecycle;
 mod host_broker;
+mod project_directory_picker;
 mod host_broker_types;
 mod host_contract;
 mod host_contract_contributions;

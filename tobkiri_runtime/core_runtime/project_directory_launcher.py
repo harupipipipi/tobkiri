@@ -9,6 +9,7 @@ import secrets
 import urllib.parse
 import urllib.request
 from typing import Any
+from threading import Lock
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -34,7 +35,13 @@ def _decode(value: str) -> bytes:
 
 
 def _verify(
-    response: dict[str, Any], public_key: str, instance: str, nonce: str, status: int
+    response: dict[str, Any],
+    public_key: str,
+    instance: str,
+    nonce: str,
+    status: int,
+    *,
+    path: str = _PATH,
 ) -> dict[str, Any]:
     att = response.get("_launcher_attestation")
     if not isinstance(att, dict) or (
@@ -44,7 +51,7 @@ def _verify(
         or att.get("instance_nonce") != instance
         or att.get("request_nonce") != nonce
         or att.get("method") != "POST"
-        or att.get("path") != _PATH
+        or att.get("path") != path
         or type(att.get("status")) is not int
         or att["status"] != status
     ):
@@ -54,8 +61,7 @@ def _verify(
     if not secrets.compare_digest(digest, att["payload_sha256"]):
         raise ValueError("invalid digest")
     signed = (
-        "tobkiri-launcher-response-v1\n"
-        f"{instance}\n{nonce}\nPOST\n{_PATH}\n{status}\n{digest}"
+        f"tobkiri-launcher-response-v1\n{instance}\n{nonce}\nPOST\n{path}\n{status}\n{digest}"
     ).encode("utf-8")
     Ed25519PublicKey.from_public_bytes(_decode(public_key)).verify(
         _decode(att["signature"]), signed
@@ -68,6 +74,8 @@ def _verify(
 
 def pick_project_directories(
     binding: ExecutionProfileIdentity,
+    *,
+    _request_nonce: str | None = None,
 ) -> list[Path] | None:
     """Ask the identity-matched Launcher to pick existing directories.
 
@@ -107,7 +115,7 @@ def pick_project_directories(
             raise ValueError("invalid broker URL")
         # Validate the pin before sending private material to the broker.
         Ed25519PublicKey.from_public_bytes(_decode(key))
-        nonce = secrets.token_urlsafe(32)
+        nonce = _request_nonce or secrets.token_urlsafe(32)
         request = urllib.request.Request(
             f"http://127.0.0.1:{port}{_PATH}",
             data=json.dumps(binding.as_mapping()).encode("utf-8"),
@@ -120,9 +128,7 @@ def pick_project_directories(
             },
             method="POST",
         )
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({}), _NoRedirect()
-        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         with opener.open(request, timeout=300) as response:
             status = response.status
             data = response.read(_LIMIT + 1)
@@ -130,10 +136,7 @@ def pick_project_directories(
             raise ValueError("invalid response")
         decoded = json.loads(data.decode("utf-8"))
         verified = _verify(decoded, key, instance, nonce, status)
-        if (
-            verified.get("ok") is not True
-            or verified.get("identity") != binding.as_mapping()
-        ):
+        if verified.get("ok") is not True or verified.get("identity") != binding.as_mapping():
             raise ValueError("invalid selection identity")
         if verified.get("cancelled") is True:
             if verified.get("paths") is not None or verified.get("path") is not None:
@@ -174,11 +177,87 @@ class LauncherDirectoryPickerPort:
 
     def __init__(self, identity: ExecutionProfileIdentity) -> None:
         self._identity = identity
+        self._lock = Lock()
+        self._pending_nonce: str | None = None
+        self._closed = False
 
     def pick_directories(self) -> list[Path] | None:
         """Return all selections from the trusted Launcher OS picker."""
-        return pick_project_directories(self._identity)
+        nonce = secrets.token_urlsafe(32)
+        with self._lock:
+            if self._closed:
+                return None
+            self._pending_nonce = nonce
+        try:
+            roots = pick_project_directories(self._identity, _request_nonce=nonce)
+            with self._lock:
+                return None if self._closed else roots
+        finally:
+            with self._lock:
+                if self._pending_nonce == nonce:
+                    self._pending_nonce = None
 
     def pick_directory(self) -> Path | None:
         """Return only the result of the trusted Launcher OS picker."""
-        return pick_project_directory(self._identity)
+        roots = self.pick_directories()
+        return roots[0] if roots else None
+
+    def cancel_pending(self) -> None:
+        """Retire only this adapter's outstanding native dialog, never another UI."""
+        with self._lock:
+            self._closed = True
+            nonce = self._pending_nonce
+        if nonce is not None:
+            _cancel_project_directory_pick(self._identity, nonce)
+
+
+def _cancel_project_directory_pick(binding: ExecutionProfileIdentity, pick_nonce: str) -> None:
+    """Send a bounded authenticated cancellation for a retired captured picker."""
+    path = "/api/host/project-directory/cancel"
+    try:
+        # A retired execution's credentials may have rotated. The new Host
+        # connection can only cancel a matching old dialog; it cannot select.
+        values = capture_host_contract()["values"]
+        url = values["viewer_broker_url"]
+        parsed = urllib.parse.urlsplit(url)
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname != "127.0.0.1"
+            or parsed.port is None
+            or not 1 <= parsed.port <= 65535
+            or url not in {f"http://127.0.0.1:{parsed.port}", f"http://127.0.0.1:{parsed.port}/"}
+        ):
+            return
+        Ed25519PublicKey.from_public_bytes(_decode(values["viewer_broker_attestation_public_key"]))
+        nonce = secrets.token_urlsafe(32)
+        token = values["viewer_broker_token"]
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{parsed.port}{path}",
+            data=json.dumps({**binding.as_mapping(), "request_nonce": pick_nonce}).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+                "X-Rumi-Viewer-Broker-Token": token,
+                "X-Rumi-Launcher-Response-Nonce": nonce,
+            },
+            method="POST",
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+        with opener.open(request, timeout=2) as response:
+            if response.status != 200:
+                return
+            raw = response.read(_LIMIT + 1)
+        if len(raw) > _LIMIT:
+            return
+        _verify(
+            json.loads(raw),
+            values["viewer_broker_attestation_public_key"],
+            values["viewer_broker_instance_nonce"],
+            nonce,
+            200,
+            path=path,
+        )
+    except Exception:
+        # Selection is already retired. Failure cannot authorize a late result;
+        # the owned native deadline still closes that exact panel.
+        return
