@@ -101,13 +101,7 @@ struct HostBrokerShared {
     browser_access_opener: Arc<dyn Fn(&str, u16) -> Result<(), String> + Send + Sync>,
     project_directory_picker:
         Arc<dyn Fn(Arc<AtomicBool>) -> Result<Option<Vec<PathBuf>>, String> + Send + Sync>,
-    project_directory_active: Mutex<
-        Option<(
-            String,
-            crate::host_contract::ExecutionProfileIdentity,
-            Arc<AtomicBool>,
-        )>,
-    >,
+    project_directory_requests: Mutex<crate::project_directory_requests::DirectoryRequests>,
     project_directory_lock: Mutex<()>,
     authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
@@ -219,7 +213,7 @@ impl HostBrokerRuntime {
                     browser_access_opener,
                     project_directory_picker,
                     project_directory_lock: Mutex::new(()),
-                    project_directory_active: Mutex::new(None),
+                    project_directory_requests: Mutex::new(Default::default()),
                     authority_approval_window_opener,
                 }),
             });
@@ -283,7 +277,7 @@ impl HostBrokerRuntime {
                     browser_access_opener,
                     project_directory_picker,
                     project_directory_lock: Mutex::new(()),
-                    project_directory_active: Mutex::new(None),
+                    project_directory_requests: Mutex::new(Default::default()),
                     authority_approval_window_opener,
                     attestation,
                 }),
@@ -806,25 +800,16 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                     .unwrap_or_default();
                 let cancelled = Arc::new(AtomicBool::new(false));
                 let owner = identity.clone().unwrap();
-                let Ok(mut active) = shared.project_directory_active.lock() else {
+                let Ok(mut requests) = shared.project_directory_requests.lock() else {
                     return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}});
                 };
-                if active
-                    .as_ref()
-                    .map(|(retired_nonce, retired_owner, flag)| {
-                        retired_nonce == &nonce
-                            && retired_owner == &owner
-                            && flag.load(Ordering::Acquire)
-                    })
-                    .unwrap_or(false)
-                {
+                if !requests.begin(nonce, owner, cancelled.clone(), Instant::now()) {
                     return json!({"ok":true,"identity":identity,"cancelled":true,"paths":null});
                 }
-                *active = Some((nonce, owner, cancelled.clone()));
-                drop(active);
+                drop(requests);
                 let selected = (shared.project_directory_picker)(cancelled.clone());
-                if let Ok(mut active) = shared.project_directory_active.lock() {
-                    *active = None;
+                if let Ok(mut requests) = shared.project_directory_requests.lock() {
+                    requests.finish(Instant::now());
                 }
                 if cancelled.load(Ordering::Acquire) {
                     return json!({"ok":true,"identity":identity,"cancelled":true,"paths":null});
@@ -869,6 +854,9 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                     .to_string();
                 if payload.as_object().map(|value| value.len()) != Some(5)
                     || !(32..=256).contains(&nonce.len())
+                    || !nonce
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
                 {
                     return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_INVALID"}});
                 }
@@ -877,28 +865,14 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                     crate::host_contract::ExecutionProfileIdentity,
                 >(payload)
                 .ok();
-                let Ok(mut active) = shared.project_directory_active.lock() else {
+                let Some(owner) = identity else {
+                    return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_INVALID"}});
+                };
+                let Ok(mut requests) = shared.project_directory_requests.lock() else {
                     return json!({"ok":false,"error":{"code":"PROJECT_DIRECTORY_FAILED"}});
                 };
-                // Keep a single cancellation marker if retirement wins the
-                // race before the pick request reaches this broker.
-                if active.is_none() {
-                    if let Some(owner) = identity.clone() {
-                        *active = Some((nonce.clone(), owner, Arc::new(AtomicBool::new(true))));
-                    }
-                }
-                let matched = active
-                    .as_ref()
-                    .map(|(owner_nonce, owner, flag)| {
-                        if nonce == *owner_nonce && Some(owner) == identity.as_ref() {
-                            flag.store(true, Ordering::Release);
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .unwrap_or(false);
-                json!({"ok":true,"cancelled":matched})
+                requests.retire(nonce, owner, Instant::now());
+                json!({"ok":true,"cancelled":true})
             })
         }
         ("POST", "/api/host/browser-access/open") => {
@@ -3851,7 +3825,7 @@ mod tests {
             browser_access_opener: Arc::new(|_, _| Ok(())),
             project_directory_picker: Arc::new(|_| Ok(None)),
             project_directory_lock: Mutex::new(()),
-            project_directory_active: Mutex::new(None),
+            project_directory_requests: Mutex::new(Default::default()),
             authority_approval_window_opener: Arc::new(|_| Ok(())),
             attestation: BrokerAttestationIdentity::generate(),
         }
@@ -3994,6 +3968,9 @@ mod tests {
         let missing = temp_dir.join("missing");
         shared.project_directory_picker =
             Arc::new(move |_| Ok(Some(vec![first.clone(), missing.clone()])));
+        request
+            .headers
+            .insert(RESPONSE_NONCE_HEADER.into(), "second-folder-request".into());
         let response = route_request(&request, &Arc::new(shared)).1;
         assert_eq!(response["error"]["code"], "PROJECT_DIRECTORY_FAILED");
         assert!(response.get("paths").is_none());
@@ -4076,7 +4053,7 @@ mod tests {
         let mut wrong_body = serde_json::to_value(&identity).unwrap();
         wrong_body["request_nonce"] = json!("x".repeat(43));
         cancel.body = serde_json::to_vec(&wrong_body).unwrap();
-        assert_eq!(route_request(&cancel, &shared).1["cancelled"], false);
+        assert_eq!(route_request(&cancel, &shared).1["cancelled"], true);
         let _ = fs::remove_dir_all(temp_dir);
     }
 
