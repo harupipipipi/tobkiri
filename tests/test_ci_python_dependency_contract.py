@@ -53,6 +53,40 @@ def test_full_root_suite_installs_locked_runtime_dependencies() -> None:
     assert "-- pytest tests/ -v" in job
 
 
+def test_package_shards_preserve_coverage_and_timeout_evidence() -> None:
+    """Split independent suites without dropping tests or expanding job limits."""
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    job = _job_blocks(workflow)["tobkiri-package-pytest"]
+    assert 'python-version: ["3.10", "3.11", "3.13"]' in job
+    assert "shard: [capture-control, migration-providers]" in job
+    assert "fail-fast: false" in job
+    assert "timeout-minutes: 15" in job
+    first = job.split("capture-control)", 1)[1].split(";;", 1)[0]
+    second = job.split("migration-providers)", 1)[1].split(";;", 1)[0]
+    common_second, extra = second.split('if [ "${{ matrix.python-version }}" = "3.11" ]; then', 1)
+    def names(value: str) -> list[str]:
+        return re.findall(r"tests/(test_[a-z0-9_]+\.py)", value)
+
+    common = names(first) + names(common_second)
+    assert len(common) == len(set(common)) == 12
+    assert set(common) == {
+        "test_external_profile_catalog.py", "test_external_dispatch_cold_capture.py",
+        "test_host_policy_lock.py", "test_native_pack_onboarding.py",
+        "test_runtime_version_resolution.py", "test_pack_control_v4.py",
+        "test_complete_v4_migration_gate.py", "test_defaultspack_extension_registry.py",
+        "test_defaultspack_provider_foundation.py", "test_defaultspack_provider_program.py",
+        "test_defaultspack_opencode_zen_provider.py", "test_defaultspack_agent_run_store.py",
+    }
+    assert names(extra) == ["test_agent_engine_tools.py", "test_company_contract_facade.py"]
+    assert '-- pytest "${tests[@]}" -v --durations=25' in job
+    assert "--timeout-seconds 720" in job
+    assert "Unknown package test shard" in job
+    assert "always() && steps.package_pytest.outcome != 'skipped'" in job
+    assert "continue-on-error" not in job
+    assert "-py${{ matrix.python-version }}-${{ matrix.shard }}.log" in job
+    assert "name: package-pytest-${{ matrix.python-version }}-${{ matrix.shard }}-" in job
+
+
 def test_recovery_regressions_run_without_contract_marker_filtering() -> None:
     """Keep the Profile/Host recovery suite explicit and preserve failure logs."""
     workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")

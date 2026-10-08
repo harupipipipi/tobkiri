@@ -2776,12 +2776,20 @@ def capture_production_dispatch(
     def pending_effect_owner_scope(
         context: RequestContext, principal_id: str, session_id: str,
     ) -> Iterator[None]:
-        """Restore only the owner persisted by the Host pending-effect controller."""
-        retain_presentation_owner(context.caller_session_id, (principal_id, session_id))
-        try:
-            yield
-        finally:
-            release_presentation_owner(context.caller_session_id)
+        """Restore the durable owner with a fresh prepared-dispatch capture scope."""
+        from .profile_capture import profile_capture_scope
+
+        # A detached approved dispatch has no caller ContextVar scope. A
+        # synchronous one may still carry its caller's earlier snapshot. Give
+        # both one fresh operation scope while every live guard still runs.
+        with profile_capture_scope(fresh=True):
+            retain_presentation_owner(
+                context.caller_session_id, (principal_id, session_id)
+            )
+            try:
+                yield
+            finally:
+                release_presentation_owner(context.caller_session_id)
 
     from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
 

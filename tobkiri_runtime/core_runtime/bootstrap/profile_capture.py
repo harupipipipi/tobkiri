@@ -78,16 +78,18 @@ def runtime_user_data_scope(root: Path) -> Iterator[None]:
 
 
 @contextmanager
-def profile_capture_scope() -> Iterator[None]:
+def profile_capture_scope(*, fresh: bool = False) -> Iterator[None]:
     """Bound repeated capture reads to one explicit operation scope.
 
     The scope is intentionally opt-in and context-local.  It never becomes a
     process-wide cache: callers open a new scope for each operation, and
-    mutation code invalidates it before recapturing state.
+    mutation code invalidates it before recapturing state. A freshly resumed
+    prepared effect must use ``fresh=True`` so it cannot inherit a snapshot
+    captured before approval or from its caller operation.
     """
 
     existing = _PROFILE_CAPTURE_SCOPE.get()
-    if existing is not None:
+    if existing is not None and not fresh:
         yield
         return
     token = _PROFILE_CAPTURE_SCOPE.set({})

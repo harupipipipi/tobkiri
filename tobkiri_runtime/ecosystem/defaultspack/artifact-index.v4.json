@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:4cf9ef12683e61e8490b418a2a60bf955f45d0820112ead821b49f2cbbccf7ce",
+  "artifact_set_digest": "sha256:ffee7236a93e7b97714aa371eae75cb05599442605dbb4f0569107c0be2ba453",
   "artifacts": [
     {
-      "digest": "sha256:03e81eec51cac0b5532c803e4996ff3daeddc64c97b5fc44ba16baaa5bf0c3cc",
+      "digest": "sha256:302fd70024469f6d03ad2a5a9154a71e5401898351917b740c1dcb8bdfc3e0e2",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -32,7 +32,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
+      "digest": "sha256:4dd3907319cd1c0102522b90aa6a4f19e1230e3b45cdc6b2ed3ea295f53b4dd7",
       "path": "defaultspack/model_access_presentation.py",
       "role": "runtime"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:4b8760c9bf55c70594b04f9ec839a1d9c6ed12c6297c58210d9f005e110a1de2",
+      "digest": "sha256:709947a2cf41d0f834fc7a70ecae3b905dd7ccbdebb885990aa4b644fe0340a7",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:910011b2b99323d26172043029cfdecdba89ab0806635646c65405935e7ac3c6",
+      "digest": "sha256:fc32d4cb06a6b3f9610b9876c06a5aeb54d3758c515a4b7fedce8a8e89dcb122",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -675,8 +675,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:ebc02502aef4b80e14a1ec6ad360a9a9b9a6bf61f1df944feba815b3ebf94304"
+    "signed_digest": "sha256:07c36c1308956fe5fa78850c9a440a81e64ddc183b25095abd0bd0d0202e9c92"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:8c89274ec95f80120cd1f5e279ccaa7090d6a0f2f7c5963f04cb6a841b139681"
+  "source_identity": "sha256:c4066569863dcba8a5ce798b995c79d693d347953bcb47635ae4a29b051c84f7"
 }

@@ -21,6 +21,8 @@ from tobkiri_protocol.conversation_lifecycle import (
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 from tobkiri_protocol.saved_messages import SavedMessageContextError, build_saved_model_messages
 
+pytestmark = pytest.mark.contract
+
 
 def test_host_workspace_capability_survives_shared_assembly_but_not_wire_copy():
     source = {**conversation(), "messages": [], "current_node_id": None}

@@ -489,6 +489,7 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
+          python -B scripts/generate_model_catalog_runtime.py --check
           python -B scripts/migrate_pack_artifacts_v4.py --check
           python -B scripts/generate_executable_source_registry_v1.py --check
           python -B scripts/generate_executable_catalogs_v4.py --check
@@ -715,6 +716,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.13"]
+        shard: [capture-control, migration-providers]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -740,25 +742,47 @@ jobs:
       - name: Run package pytest
         id: package_pytest
         working-directory: tobkiri_runtime
+        shell: bash
         run: |
-          if [ "${{ matrix.python-version }}" = "3.11" ]; then
-            python ../scripts/quality/compact_test_runner.py \
-              --log-dir "$RUNNER_TEMP" \
-              --log-file "package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log" \
-              -- pytest tests/test_external_profile_catalog.py tests/test_external_dispatch_cold_capture.py tests/test_host_policy_lock.py tests/test_native_pack_onboarding.py tests/test_runtime_version_resolution.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_agent_engine_tools.py tests/test_company_contract_facade.py -v
-          else
-            python ../scripts/quality/compact_test_runner.py \
-              --log-dir "$RUNNER_TEMP" \
-              --log-file "package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log" \
-              -- pytest tests/test_external_profile_catalog.py tests/test_external_dispatch_cold_capture.py tests/test_host_policy_lock.py tests/test_native_pack_onboarding.py tests/test_runtime_version_resolution.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v
-          fi
+          case "${{ matrix.shard }}" in
+            capture-control)
+              tests=(
+                tests/test_external_profile_catalog.py
+                tests/test_external_dispatch_cold_capture.py
+                tests/test_host_policy_lock.py
+                tests/test_native_pack_onboarding.py
+                tests/test_runtime_version_resolution.py
+                tests/test_pack_control_v4.py
+              )
+              ;;
+            migration-providers)
+              tests=(
+                tests/test_complete_v4_migration_gate.py
+                tests/test_defaultspack_extension_registry.py
+                tests/test_defaultspack_provider_foundation.py
+                tests/test_defaultspack_provider_program.py
+                tests/test_defaultspack_opencode_zen_provider.py
+                tests/test_defaultspack_agent_run_store.py
+              )
+              if [ "${{ matrix.python-version }}" = "3.11" ]; then
+                tests+=(tests/test_agent_engine_tools.py tests/test_company_contract_facade.py)
+              fi
+              ;;
+            *) echo "Unknown package test shard" >&2; exit 2 ;;
+          esac
+          python ../scripts/quality/compact_test_runner.py \
+            --timeout-seconds 720 \
+            --log-dir "$RUNNER_TEMP" \
+            --log-file "package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}-${{ matrix.shard }}.log" \
+            -- pytest "${tests[@]}" -v --durations=25
 
       - name: Upload package pytest log
-        if: failure() && steps.package_pytest.outcome == 'failure'
+        if: ${{ always() && steps.package_pytest.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
+        timeout-minutes: 1
         with:
-          name: package-pytest-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/package-pytest-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}-py${{ matrix.python-version }}.log
+          name: package-pytest-${{ matrix.python-version }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-pytest-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}-py${{ matrix.python-version }}-${{ matrix.shard }}.log
           if-no-files-found: ignore
           retention-days: 7
 

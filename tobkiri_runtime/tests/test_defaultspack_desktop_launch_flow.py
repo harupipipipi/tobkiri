@@ -505,5 +505,17 @@ def test_saved_conversation_is_owned_by_independent_pack() -> None:
                for item in intent["packs"])
     incoming = [item for item in intent["requested_edges"]
                 if item["target_provider_id"] == "tobkiri_conversation_orchestration_pack.saved"]
-    assert len(incoming) == 1
-    assert incoming[0]["caller_function_id"] == "rumi_turn_runtime_pack.turn-runtime.saved"
+    # Both direct and scheduled turns enter through the turn owner. Defaults
+    # must not regain an executable saved-turn provider or a direct edge.
+    assert len(incoming) == 2
+    assert {item["caller_function_id"] for item in incoming} == {
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.chat-saved-job-adapter",
+    }
+    for edge in incoming:
+        assert edge["contract_id"] == "conversation.saved-turn.v1"
+        assert edge["operation_id"] == "saved_complete"
+        assert edge["requested_scope_template"]["dimensions"] == {
+            "contract": ["conversation.saved-turn.v1"],
+            "operation": ["saved_complete"],
+        }

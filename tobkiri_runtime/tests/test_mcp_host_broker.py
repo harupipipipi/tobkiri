@@ -177,8 +177,33 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
     mcp_session,
     connection_request,
     tmp_path,
+    monkeypatch,
 ):
+    from core_runtime.bootstrap import profile_capture
+    from tobkiri_host.broker import RequestBroker
+
     session, authority = mcp_session
+    caller_scopes = []
+    prepared_scopes = []
+    original_invoke = RequestBroker.invoke
+    original_prepared = RequestBroker.invoke_prepared
+
+    def observe_invoke(broker, frame, *args, **kwargs):
+        if (
+            frame.contract_id == _EFFECT
+            and frame.operation_id == "interactive_effect.manage"
+            and frame.payload.get("phase") == "resume"
+        ):
+            caller_scopes.append(profile_capture._PROFILE_CAPTURE_SCOPE.get())
+        return original_invoke(broker, frame, *args, **kwargs)
+
+    def observe_prepared(broker, snapshot, *args, **kwargs):
+        if snapshot.operation_id == CONNECT:
+            prepared_scopes.append(profile_capture._PROFILE_CAPTURE_SCOPE.get())
+        return original_prepared(broker, snapshot, *args, **kwargs)
+
+    monkeypatch.setattr(RequestBroker, "invoke", observe_invoke)
+    monkeypatch.setattr(RequestBroker, "invoke_prepared", observe_prepared)
 
     def invoke(contract, operation, payload, *, owner="mcp-owner-session"):
         return session.invoke(contract, operation, {**payload, "_session_id": owner})
@@ -223,6 +248,10 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
     if resumed["state"] != "succeeded":
         resumed = _await_effect_state(invoke, pending["effect_id"], "succeeded")
     assert resumed["state"] == "succeeded"
+    assert len(prepared_scopes) == 1 and prepared_scopes[0] is not None
+    assert caller_scopes and all(scope is not None for scope in caller_scopes)
+    assert all(prepared_scopes[0] is not scope for scope in caller_scopes)
+    assert profile_capture._PROFILE_CAPTURE_SCOPE.get() is None
     connections = invoke(CONTRACT_ID, LIST, {})["connections"]
     assert len(connections) == 1 and connections[0]["status"] == "connected"
     assert invoke(CONTRACT_ID, LIST, {}, owner="foreign-session") == {"connections": []}

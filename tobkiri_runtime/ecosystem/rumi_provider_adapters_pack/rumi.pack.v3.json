@@ -181,7 +181,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.generate.v1",
       "id": "provider-generate",
       "loader": "python",
@@ -189,7 +189,7 @@
       "symbol": "create_generate_operation"
     },
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.stream.v1",
       "id": "provider-stream",
       "loader": "python",
@@ -197,7 +197,7 @@
       "symbol": "create_stream_operation"
     },
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.embedding.v1",
       "id": "provider-embedding",
       "loader": "python",
@@ -205,7 +205,7 @@
       "symbol": "create_embedding_operation"
     },
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.image.v1",
       "id": "provider-image",
       "loader": "python",
@@ -213,7 +213,7 @@
       "symbol": "create_image_operation"
     },
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.audio.speech.v1",
       "id": "provider-audio-speech",
       "loader": "python",
@@ -221,7 +221,7 @@
       "symbol": "create_audio_speech_operation"
     },
     {
-      "artifact_hash": "sha256:445e11b516d777ee4618dc7ab4f46b198ae077167cf0dc2dbede51767c4abb0a",
+      "artifact_hash": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
       "contract_id": "rumi.service.ai.provider.audio.transcribe.v1",
       "id": "provider-audio-transcribe",
       "loader": "python",
@@ -255,9 +255,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:f25eaa58d40a26e486272ac13bf7706b45afddc11f53b69216c32b97b91f36d9",
+            "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:9195b817987ebc16765019cc3d291c40a638eda7840456710449f9549a538b68"
+            "source_identity": "sha256:8b4e953d9dad0d0e36b699379c622c0fb5fe6e8537e273fa6deac5348d59e15f"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -277,7 +277,7 @@
         "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
         "provenance": {
           "build_identity": "rumi_provider_adapters_pack:1.0.0",
-          "content_hash": "sha256:cce5cadb1bbb2ab1d03525e25b34da4dcab7ef82818dc88f27fd32ce318edb9b",
+          "content_hash": "sha256:c665e3dc47f0a0da0c56b4837abfde4994d6c7b858ff6337674f772487bcd483",
           "signature": null,
           "trust_class": "local"
         },
@@ -316,7 +316,7 @@
       "owner": "rumi_provider_adapters_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:9195b817987ebc16765019cc3d291c40a638eda7840456710449f9549a538b68"
+      "source_identity": "sha256:8b4e953d9dad0d0e36b699379c622c0fb5fe6e8537e273fa6deac5348d59e15f"
     }
   },
   "migration": {
@@ -361,7 +361,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_provider_adapters_pack:1.0.0",
-    "content_hash": "sha256:cce5cadb1bbb2ab1d03525e25b34da4dcab7ef82818dc88f27fd32ce318edb9b",
+    "content_hash": "sha256:c665e3dc47f0a0da0c56b4837abfde4994d6c7b858ff6337674f772487bcd483",
     "signature": null,
     "trust_class": "local"
   },

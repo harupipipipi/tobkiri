@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
+from tobkiri_protocol.provider_compiler.model_access import (
     effective_model_access,
 )
-from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
+from tobkiri_protocol.provider_compiler.native_filters import (
     CAPABILITY_REVISION, is_official_openrouter,
 )
 

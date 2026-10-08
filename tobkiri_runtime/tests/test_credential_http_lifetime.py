@@ -125,6 +125,13 @@ def test_host_credential_lease_interrupts_actual_tls_io_without_replay(
     tls, certificate = tls_server
     entered, release = threading.Event(), threading.Event()
     received: list[str | None] = []
+    lifetimes: list[transport.HttpRequestLifetime] = []
+    lifetime_type = transport.HttpRequestLifetime
+
+    def capture_lifetime(**kwargs) -> transport.HttpRequestLifetime:
+        lifetime = lifetime_type(**kwargs)
+        lifetimes.append(lifetime)
+        return lifetime
 
     def stall(handler: BaseHTTPRequestHandler) -> None:
         received.append(handler.headers.get("Authorization"))
@@ -140,23 +147,41 @@ def test_host_credential_lease_interrupts_actual_tls_io_without_replay(
     # Only this test CA is added. Hostname and certificate checks remain enabled.
     context = ssl.create_default_context(cafile=str(certificate))
     monkeypatch.setattr(ssl, "create_default_context", lambda **_kwargs: context)
+    monkeypatch.setattr(transport, "HttpRequestLifetime", capture_lifetime)
     _pin_test_network(monkeypatch)
     with _server(stall, tls) as origin:
         owner, arguments = _https_transport(
             tmp_path, secret="http-lifetime-canary", endpoint_origin=origin,
         )
+        # Advance only this transport's injected clock after real TLS reaches
+        # the intended blocking phase. Authority/storage startup speed must not
+        # decide whether a deadline test reaches the socket at all. The real
+        # socket timeout is longer than done.wait(), so only the owned lifetime
+        # watchdog can interrupt this stalled response within the assertion.
+        now = [time.monotonic()]
+        owner._monotonic_clock = lambda: now[0]
         owner._envelope = replace(
-            owner._envelope,
-            deadline_monotonic=time.monotonic() + (0.5 if ending == "deadline" else 4),
+            owner._envelope, deadline_monotonic=now[0] + 4,
         )
         audits = []
         owner._audit_sink = audits.append
         worker, done, errors = _call(lambda: owner.post_json(**arguments))
         try:
-            assert entered.wait(2)
+            assert entered.wait(2), f"TLS did not reach {phase}: {errors!r}"
+            assert not done.is_set()
+            assert len(lifetimes) == 1
+            assert lifetimes[0]._deadline == owner._envelope.deadline_monotonic
             if ending == "cancel":
                 owner._envelope.cancellation_requested.set()
+            else:
+                now[0] = owner._envelope.deadline_monotonic
             assert done.wait(2)
+            assert owner._envelope.cancellation_requested.is_set() == (
+                ending == "cancel"
+            )
+            expected = InterruptedError if ending == "cancel" else TimeoutError
+            with pytest.raises(expected):
+                lifetimes[0].check()
             assert len(errors) == 1
             assert isinstance(errors[0], transport.CredentialTransportDenied)
             assert "http-lifetime-canary" not in str(errors[0])

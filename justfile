@@ -82,6 +82,7 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/generate_definitions_component.py --check
     node tobkiri_launcher/frontend/scripts/generate-frontend-contract-map.mjs --check
     node tobkiri_launcher/frontend/scripts/generate-defaults-setup-contract.mjs --check
+    {{python}} -B tobkiri_runtime/scripts/generate_model_catalog_runtime.py --check
     {{python}} -B tobkiri_runtime/scripts/migrate_pack_artifacts_v4.py --check
     {{python}} -B tobkiri_runtime/scripts/migrate_manifest_authority.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check

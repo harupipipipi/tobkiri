@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -12,10 +13,27 @@ import urllib.error
 import urllib.request
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Mapping
+from types import ModuleType
 
-from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
-    CAPABILITY_REVISION, discovery_url,
-)
+
+def _load_native_filter_contract() -> ModuleType:
+    """Load only the generated companion sealed into this same Pack artifact."""
+    source = Path(__file__).with_name("native_filters.py")
+    if source.is_symlink() or not source.is_file():
+        raise ImportError("sealed model filter contract is missing or linked")
+    spec = importlib.util.spec_from_file_location(
+        "_tobkiri_catalog_native_filters", source,
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError("sealed model filter contract cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_native_filters = _load_native_filter_contract()
+CAPABILITY_REVISION = _native_filters.CAPABILITY_REVISION
+discovery_url = _native_filters.discovery_url
 
 if TYPE_CHECKING:
     from core_runtime.host_provider_backend_v4 import (
@@ -130,7 +148,7 @@ def tobkiri_packvm_invoke(
 ) -> dict[str, Any]:
     """Execute only the sealed Catalog PackVM ABI operations.
 
-    This module intentionally depends only on the standard library. The
+    This module needs only stdlib and its sealed, generated filter companion. The
     PackVM sandbox supplies no network and this entrypoint neither imports a
     Host provider nor selects any non-catalog capability.
     """
