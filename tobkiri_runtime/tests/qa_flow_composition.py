@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from core_runtime.native_pack_onboarding import preview_signed_pack, commit_signed_pack
 from core_runtime.pack_authoring import build_authored_pack
 from core_runtime.pack_signature import build_signed_manifest, sign_manifest
+from scripts.build_packvm_guest_bundle import build_guest_bundle
 from tests.test_production_frontend_contract_http import _ShellPolicyPackVmBackend
 from ecosystem.defaultspack.backend.sandbox.isolation.resources import packvm_guest_runner as runner
 from tobkiri_host.effects import ProviderOutcome
@@ -23,6 +24,7 @@ from tobkiri_host.errors import BackendUnavailableError
 from tobkiri_host.models import OpaqueAuthorityRef
 from tobkiri_host.models import RuntimeEvidence
 
+ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures/flow_composition"
 PACKS = {"qa.flow.source": "emit", "qa.flow.transform": "map", "qa.flow.sink": "collect"}
 
@@ -62,6 +64,8 @@ class CompositionChildBackend(_ShellPolicyPackVmBackend):
         super().__init__()
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
+        self.guest_archive = self.root / "runner.pyz"
+        self.guest_archive.write_bytes(build_guest_bundle(ROOT))
         self.targets = {}
         self.calls = []
 
@@ -96,7 +100,7 @@ class CompositionChildBackend(_ShellPolicyPackVmBackend):
         if path is None:
             raise BackendUnavailableError("QA invocation does not match materialization")
         child = subprocess.run(
-            [sys.executable, "-I", "-S", runner.__file__, "--execute", str(path)],
+            [sys.executable, "-I", "-S", str(self.guest_archive), "--execute", str(path)],
             input=json.dumps({"contract_id": request.contract_id, "operation_id": request.operation_id,
                               "payload": dict(request.payload)}),
             text=True, capture_output=True, timeout=10, check=True,

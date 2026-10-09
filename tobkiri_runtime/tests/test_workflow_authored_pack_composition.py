@@ -49,7 +49,8 @@ def test_three_independent_authored_packs_execute_under_named_profile(tmp_path, 
     profile["requested_edges"] = [
         item for item in profile["requested_edges"]
         if item["caller_function_id"] != "tobkiri.workflow.provider"
-    ] + [_edge("tobkiri.workflow.provider", pack + ".provide", pack + ".v1", op)
+    ] + [_edge("tobkiri.workflow.provider", pack + ".provide", pack + ".v1", op,
+               mode="interactive_only")
          for pack, op in PACKS.items()]
     for operation in ("run.pause", "run.cancel"):
         if not any(item["caller_function_id"] == "shell.tauri.default"

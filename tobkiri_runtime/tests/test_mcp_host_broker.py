@@ -20,6 +20,7 @@ from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountSto
 from tests.test_mcp_connection_owner import connection_request as connection_request
 from tests.test_production_frontend_contract_http import _ShellPolicyPackVmBackend
 from ecosystem.defaultspack.backend.sandbox.isolation.resources import packvm_guest_runner as runner
+from scripts.build_packvm_guest_bundle import build_guest_bundle
 from tobkiri_host.effects import ProviderOutcome
 from tobkiri_host.errors import ProviderExecutionError, ResolutionError
 
@@ -69,6 +70,8 @@ class _McpGatewayBackend(_ShellPolicyPackVmBackend):
     def __init__(self, root):
         super().__init__()
         self._staged = root / "gateway.py"
+        self._archive = root / "runner.pyz"
+        self._archive.write_bytes(build_guest_bundle(_RUNTIME_ROOT))
         self._bridge = None
         self._execute_abi = self._child
 
@@ -89,7 +92,7 @@ class _McpGatewayBackend(_ShellPolicyPackVmBackend):
 
     def _child(self, operation_id, payload):
         child = subprocess.run(
-            [sys.executable, "-I", "-S", runner.__file__, "--execute", str(self._staged)],
+            [sys.executable, "-I", "-S", str(self._archive), "--execute", str(self._staged)],
             input=json.dumps({"contract_id": self._CONTRACT_ID,
                               "operation_id": operation_id, "payload": payload}),
             text=True, capture_output=True, timeout=5, check=True,

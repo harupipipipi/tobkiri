@@ -38,6 +38,10 @@ packvm-numeric-test:
         tests/test_packvm_data_wire.py \
         tests/test_packvm_numeric_archive.py \
         tests/test_packvm_guest_bundle.py \
+        tests/test_artifact_materialization.py \
+        tests/test_mcp_host_broker.py \
+        tests/test_workflow_authored_pack_composition.py \
+        tests/test_packvm_lima_provisioning.py::test_guest_runner_executes_only_the_explicit_staged_python_abi \
         tests/test_packvm_core_boundaries.py \
         tests/test_bounded_child_io.py \
         tests/test_macos_vz_supervisor.py \
