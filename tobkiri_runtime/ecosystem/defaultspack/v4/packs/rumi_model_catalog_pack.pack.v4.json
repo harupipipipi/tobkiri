@@ -1,0 +1,1037 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a",
+      "kind": "sidecar",
+      "path": "catalog/licenses/models.dev-MIT.txt"
+    },
+    {
+      "digest": "sha256:4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28",
+      "kind": "sidecar",
+      "path": "catalog/provider-setup.json"
+    },
+    {
+      "digest": "sha256:6ede086528a4eca1dfadcdaf802904ce4a444313b41de6025eba4ab1ba3cd937",
+      "kind": "sidecar",
+      "path": "catalog/providers/anthropic/manifest.json"
+    },
+    {
+      "digest": "sha256:b836e07d34dc8ed8b5e642a303c64ea7bcaee7cb964346e92f34c244cf45e027",
+      "kind": "sidecar",
+      "path": "catalog/providers/cerebras/manifest.json"
+    },
+    {
+      "digest": "sha256:a2b8b9448a9c7b11a1bd2657e4aa8555c23811af8b320b9b18bb437cbf5c911b",
+      "kind": "sidecar",
+      "path": "catalog/providers/cerebras/models.json"
+    },
+    {
+      "digest": "sha256:84d2a65bc44399ff52c97944678d0301d7cf026478635d238fe627f79042cefd",
+      "kind": "sidecar",
+      "path": "catalog/providers/deepseek/manifest.json"
+    },
+    {
+      "digest": "sha256:1ec6e92252742664d8b4fb88fc73bd1ffe177f65cfc3238f7c0b9b903074c153",
+      "kind": "sidecar",
+      "path": "catalog/providers/gemini/manifest.json"
+    },
+    {
+      "digest": "sha256:d886cb688aec57177fc2b78d56fb0746694425d83b4255b7e2cd5157f96828e8",
+      "kind": "sidecar",
+      "path": "catalog/providers/gitlawb-opengateway/manifest.json"
+    },
+    {
+      "digest": "sha256:f96d2af4b842ea4e779c7ef82d04df7e53d94fb554d147c797c2c5192aefc360",
+      "kind": "sidecar",
+      "path": "catalog/providers/gitlawb-opengateway/models.json"
+    },
+    {
+      "digest": "sha256:da6904c28a4d58c453fed5058cf8c5ac3ea0f2b14baa2b39a6985adddcc63572",
+      "kind": "sidecar",
+      "path": "catalog/providers/groq/manifest.json"
+    },
+    {
+      "digest": "sha256:1ba7a951904c571b94e62f163feb0e3e1257b65fb1effdabfb4ce997fe7f9c46",
+      "kind": "sidecar",
+      "path": "catalog/providers/groq/models.json"
+    },
+    {
+      "digest": "sha256:995c59ae4f96072ce0abdd17c4e25a77d4aea1ba7e640ecbdaa8911b0a9f207b",
+      "kind": "sidecar",
+      "path": "catalog/providers/human-operator/manifest.json"
+    },
+    {
+      "digest": "sha256:959cecc2b4516f6e0e7831d868959b9e37d0ea589d7c62cc30b92eceec855f9e",
+      "kind": "sidecar",
+      "path": "catalog/providers/human-operator/models.json"
+    },
+    {
+      "digest": "sha256:ac58f75026b528175018f83c4f00836005f0268b8f67aa81249e42aa25de4a2f",
+      "kind": "sidecar",
+      "path": "catalog/providers/lmstudio/manifest.json"
+    },
+    {
+      "digest": "sha256:cc971e3d4aa8ebb511e81b9bd415641107750ae412eceafad65aaf9ba2501e1f",
+      "kind": "sidecar",
+      "path": "catalog/providers/moonshotai/manifest.json"
+    },
+    {
+      "digest": "sha256:f5cb53c01a51a0c389618b96b514280340bcec2f4b4990d34362bbe7e2370f12",
+      "kind": "sidecar",
+      "path": "catalog/providers/moonshotai/models.json"
+    },
+    {
+      "digest": "sha256:1e0b4dd2b736595543afaebef7398e7ea76ec278d217546b9852656132022012",
+      "kind": "sidecar",
+      "path": "catalog/providers/nvidia/manifest.json"
+    },
+    {
+      "digest": "sha256:40eda35f50702edf58b15d9ddf1a0ccfea9ea010174a7232f17f411ba64dbe52",
+      "kind": "sidecar",
+      "path": "catalog/providers/nvidia/models.json"
+    },
+    {
+      "digest": "sha256:0d7c2c906f76bb1921a771f09ba50b99417061468caa28c0a14af3a8d4c5e9be",
+      "kind": "sidecar",
+      "path": "catalog/providers/ollama/manifest.json"
+    },
+    {
+      "digest": "sha256:c9e199c0aa507f6acc4fe2a2717c3fb64b5a00e5299049cdb1e586baee84da44",
+      "kind": "sidecar",
+      "path": "catalog/providers/openai/manifest.json"
+    },
+    {
+      "digest": "sha256:dfb6838d4215276cbfa83db34237f38c31c2409b466ef5fef1bbd9f36d3ec79c",
+      "kind": "sidecar",
+      "path": "catalog/providers/opencode-go/manifest.json"
+    },
+    {
+      "digest": "sha256:2763509afe6a9f1f1ef833decee9ea00f256c7738e5a9a2816192f4b94e6fdbf",
+      "kind": "sidecar",
+      "path": "catalog/providers/opencode-go/models.json"
+    },
+    {
+      "digest": "sha256:5a22c0ed6a731425ffac24e8c50b2b274f7983ce595737dbcfde1aba656f57f3",
+      "kind": "sidecar",
+      "path": "catalog/providers/opencode-zen/manifest.json"
+    },
+    {
+      "digest": "sha256:98517f767cb48ad2b720fe7a2f13573ebaa7e31e4aa97c4d55acf64557d52ecf",
+      "kind": "sidecar",
+      "path": "catalog/providers/opencode-zen/models.json"
+    },
+    {
+      "digest": "sha256:b80c94f4e0db83d337a44e7d9db40fff6cb17d24878de4c71ab7894b9a59bdb6",
+      "kind": "sidecar",
+      "path": "catalog/providers/openrouter/manifest.json"
+    },
+    {
+      "digest": "sha256:14e6415e6fbbd92716d1a6af13b9ab9990583482d236ad64212e2a94bde651e6",
+      "kind": "sidecar",
+      "path": "catalog/providers/openrouter/models.json"
+    },
+    {
+      "digest": "sha256:0ee75a53eb5c663d3550b8804a8c7669ef04056e19ed6cac7d0b22f153238053",
+      "kind": "sidecar",
+      "path": "catalog/providers/vercel-ai-gateway/manifest.json"
+    },
+    {
+      "digest": "sha256:4c7d834959c3167b29fc0cbc2191c5e1d85136ad795dc2631dabf5552c9bab18",
+      "kind": "sidecar",
+      "path": "catalog/providers/vercel-ai-gateway/models.json"
+    },
+    {
+      "digest": "sha256:506e222191b68abca068910d7c75ef954312a940332419de7dc50cf36f647923",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-mimo-cn/manifest.json"
+    },
+    {
+      "digest": "sha256:caf222015c66c444f5a1e7c9f1ef1efed7ece8c9f2573886bb8eeee2b76ed88f",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-mimo-cn/models.json"
+    },
+    {
+      "digest": "sha256:005490e13bfa7ac2c0bf92e277fd7f1c1e5cbb6d9db7a7b761888e6e4aeefa71",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-mimo-global/manifest.json"
+    },
+    {
+      "digest": "sha256:8bf6a14caf9571711e8235e4f8ac74332194026c58e2da3c3676d3c31c31bc52",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-mimo-global/models.json"
+    },
+    {
+      "digest": "sha256:b49dd5227ab08ef6184e26050c64436be55c88f32019c97137b043a2ccd2e228",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-mimo/manifest.json"
+    },
+    {
+      "digest": "sha256:66bf8336d4099c71014e83e9564810c126219c691d96d6db0a34b939e5277c6d",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-ams/manifest.json"
+    },
+    {
+      "digest": "sha256:718c90eddb63dd987ecad5c40c4575e587abe60f7b153e28eb8504a502dd5e0f",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-ams/models.json"
+    },
+    {
+      "digest": "sha256:5850821692bf7aedef3cd011271ecee87579e196ebd25083ec6b3632ddd50c80",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-cn/manifest.json"
+    },
+    {
+      "digest": "sha256:7d47b0776c03942a9c45a6edccb34d869a8a000913c56d81ba6c350659d16bfe",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-cn/models.json"
+    },
+    {
+      "digest": "sha256:bcf19bd3662cbdc6949fe18df00fdd419dbf0d46e49b1d7679bbb6b88ca5116d",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-sgp/manifest.json"
+    },
+    {
+      "digest": "sha256:97b1d3b1d9d33a70517a6e75a25baa1689ad0d1cc916d6e3905a639ed4edc0d1",
+      "kind": "sidecar",
+      "path": "catalog/providers/xiaomi-token-plan-sgp/models.json"
+    },
+    {
+      "digest": "sha256:27618eb92d79c2c4021bf6a384f5e79265bd2368092ddacba5942e14bde6c883",
+      "kind": "sidecar",
+      "path": "catalog/setup/ai21.json"
+    },
+    {
+      "digest": "sha256:26d1676f1be75eb7915c76bf3e7b87872d215359a6a27da425b30c8d8b984128",
+      "kind": "sidecar",
+      "path": "catalog/setup/alibaba-dashscope.json"
+    },
+    {
+      "digest": "sha256:8a37ebff109e356e329452c94c81f15ba5abcad9a3ac17b316578885ecd8b282",
+      "kind": "sidecar",
+      "path": "catalog/setup/anthropic.json"
+    },
+    {
+      "digest": "sha256:15c35937eb1199ce3dfbd33e3c8b42c7a4197ff20b9356acef225228ce2e00ec",
+      "kind": "sidecar",
+      "path": "catalog/setup/avian.json"
+    },
+    {
+      "digest": "sha256:bd66545da11d09d1f8386d843ee3d4b0b43b1513df815e47d6befe86ba3fc84b",
+      "kind": "sidecar",
+      "path": "catalog/setup/cerebras.json"
+    },
+    {
+      "digest": "sha256:0409de2757ed98c0384d80e9967a51500a3355b36e8b0e86cf86e37438494292",
+      "kind": "sidecar",
+      "path": "catalog/setup/deepinfra.json"
+    },
+    {
+      "digest": "sha256:5a5df0ee1866b9824a7ac7de06c5cdb087a2c92206cc1ef949da29b9e0a1159e",
+      "kind": "sidecar",
+      "path": "catalog/setup/deepseek.json"
+    },
+    {
+      "digest": "sha256:bd21f034d16a2d6bdd5fb0454c8470bcc7095e88e7cc8d02141de80142a7d4a4",
+      "kind": "sidecar",
+      "path": "catalog/setup/fireworks.json"
+    },
+    {
+      "digest": "sha256:c0362abff662fbb35ba87622f704bc4f591acf51a415c09f70e6b32ab32b2497",
+      "kind": "sidecar",
+      "path": "catalog/setup/friendli.json"
+    },
+    {
+      "digest": "sha256:4f1a2b4123d2abe3a5d50caa139a2e5ba1825aa8f956832a38982eb8a0a95dae",
+      "kind": "sidecar",
+      "path": "catalog/setup/gitlawb-opengateway.json"
+    },
+    {
+      "digest": "sha256:e0a43f7370f4288d01cacac5e0529cbeb232ca19398741cd3201fb7f7477735a",
+      "kind": "sidecar",
+      "path": "catalog/setup/glm.json"
+    },
+    {
+      "digest": "sha256:c03909e391d7507878ba2f3c87da6e79905849521a48184bdc9bd4689d0fb7d8",
+      "kind": "sidecar",
+      "path": "catalog/setup/google.json"
+    },
+    {
+      "digest": "sha256:50399d4547c1d189db40b7735f6c8b53d07581c1724c14939848ccb554109816",
+      "kind": "sidecar",
+      "path": "catalog/setup/groq.json"
+    },
+    {
+      "digest": "sha256:c14fd5212e9953af0e3eb36356e6079966ce9ddb981dcabfaa2340831bb4ddae",
+      "kind": "sidecar",
+      "path": "catalog/setup/huggingface-inference.json"
+    },
+    {
+      "digest": "sha256:14cef275f8d685806fd0a846e8cc116251bda4e6c9fd8b089b0c09e455ee173a",
+      "kind": "sidecar",
+      "path": "catalog/setup/hyperbolic.json"
+    },
+    {
+      "digest": "sha256:392b4bb3f45a16c5598f5c99e33043ba45d414015bca44229a8ddea433b9b137",
+      "kind": "sidecar",
+      "path": "catalog/setup/inference-net.json"
+    },
+    {
+      "digest": "sha256:6a09d17c920eca0f1fcf600aba23b14d4f1f9797d662bdea7056984b1f0b8e24",
+      "kind": "sidecar",
+      "path": "catalog/setup/longcat.json"
+    },
+    {
+      "digest": "sha256:e6db9748c946d7ca238a0ae118f66b35ae472e67fb5a7c1bbb3896b0ab218949",
+      "kind": "sidecar",
+      "path": "catalog/setup/mistral.json"
+    },
+    {
+      "digest": "sha256:11b676ddd13fc10132fd64f58b7c0ad901f8fa5774e87ab26151c56922cb286d",
+      "kind": "sidecar",
+      "path": "catalog/setup/moonshotai.json"
+    },
+    {
+      "digest": "sha256:2d2594f22d7b80f332199ef616fec43d898eb18a3256e85cdd7d74fc1257c3a7",
+      "kind": "sidecar",
+      "path": "catalog/setup/nebius.json"
+    },
+    {
+      "digest": "sha256:d378b7aecdbf1acdc43a2329afe1c0b6a66c5f04e1f79fc195116ed7cfe09ef7",
+      "kind": "sidecar",
+      "path": "catalog/setup/novita.json"
+    },
+    {
+      "digest": "sha256:b96a8912fc8ba67b5129b0ac1f631b97633d2fd9d52a60c502da8ec7219e4fdf",
+      "kind": "sidecar",
+      "path": "catalog/setup/nvidia.json"
+    },
+    {
+      "digest": "sha256:207feff6d39255b835bb6c676cb5baf97d536ebf629db6551741bbd2ef3d0550",
+      "kind": "sidecar",
+      "path": "catalog/setup/openai.json"
+    },
+    {
+      "digest": "sha256:71ddaad1b3e6308b4bb0a64d9e707d2e1c6f2b53dd2a68fc3a2428150b56f358",
+      "kind": "sidecar",
+      "path": "catalog/setup/opencode-go.json"
+    },
+    {
+      "digest": "sha256:ce1705e8852770197c504f7ea25d095771b62f1e47b9b1f68909981041333750",
+      "kind": "sidecar",
+      "path": "catalog/setup/opencode-zen.json"
+    },
+    {
+      "digest": "sha256:ecb0a93610dc339dcfb955f9903382ec6bcecbebd016860e594e53fe5ed2e93d",
+      "kind": "sidecar",
+      "path": "catalog/setup/openrouter.json"
+    },
+    {
+      "digest": "sha256:9145bbbd5c758b4cea0ce5f0bf4e63fac0d61e639d68b5d4292b13d771eda6cf",
+      "kind": "sidecar",
+      "path": "catalog/setup/perplexity.json"
+    },
+    {
+      "digest": "sha256:030df65458b22ce03d557051b84f9d86ab57c902fbc8a2fcfff38452c07070c2",
+      "kind": "sidecar",
+      "path": "catalog/setup/sambanova.json"
+    },
+    {
+      "digest": "sha256:4958ef55183b959fe7a25e2e2639ba767b6aa971633f3e383ca26b82f4c86274",
+      "kind": "sidecar",
+      "path": "catalog/setup/siliconflow.json"
+    },
+    {
+      "digest": "sha256:ba96cdfcbd1e0487546bd78e2d36270340c70138c4dc00b9bd858fd54962a909",
+      "kind": "sidecar",
+      "path": "catalog/setup/together.json"
+    },
+    {
+      "digest": "sha256:593e4041977bd2d05b651fb11b534d8a32c4c1e7cbc682ddf220a7fd0d909598",
+      "kind": "sidecar",
+      "path": "catalog/setup/upstage.json"
+    },
+    {
+      "digest": "sha256:58e691c3077e6d19a5db1aabccd78b189fc277587b8da9172f1cfe7b511645e0",
+      "kind": "sidecar",
+      "path": "catalog/setup/vercel-ai-gateway.json"
+    },
+    {
+      "digest": "sha256:ccc894a373ad4d140ad5d20ce500582ba39ba5241f4d5164b32bbdbdecc3f7c3",
+      "kind": "sidecar",
+      "path": "catalog/setup/xai.json"
+    },
+    {
+      "digest": "sha256:7f4c9d4640b713a815ccff873bc0a308c33cba940639c196ce83b5896f8f394e",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-mimo-global.json"
+    },
+    {
+      "digest": "sha256:6b49d988dc77c647fb80bb7ecac7c23552746155bdd9cef4648b161a9c4da048",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-ams.json"
+    },
+    {
+      "digest": "sha256:b0362359e77b4246eb3929a94f11718b19327d56f14e01c6c202ed3ad14d390f",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-cn.json"
+    },
+    {
+      "digest": "sha256:9bca93ed4c9146d82e244fd9731889586f295953704fe6fafcf15e44fe06b7b6",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-sgp.json"
+    },
+    {
+      "digest": "sha256:7d7ac18d44b2c9380c003f9a0aecd0cf15e0f8855bb4c350f09ba81566b0a25d",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:56b53893a9c3ff199071ce1b2e9869fad48e80fac80e53b2f06189ae46d9adb7",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/anthropic/manifest.json"
+    },
+    {
+      "digest": "sha256:620b9da99053a2b092f4f82d8bcbe4f9f3ad6c4197fe556fef112f7b4dea2251",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/anthropic/models/claude-opus-4-0.json"
+    },
+    {
+      "digest": "sha256:4cdb321ab5e4c9cfb56b3cccdffe35452618788335c15d42fc6873e05e950fdd",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/anthropic/models/claude-opus-4-6.json"
+    },
+    {
+      "digest": "sha256:f5c21bf2af4379726eed2ed0760d2f90a222e6d53e0c505fbfefad4aefcb7741",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/anthropic/models/claude-sonnet-4-0.json"
+    },
+    {
+      "digest": "sha256:8e6747d0de97e2add77f95e1a429a37fef8e1facfaa3aca54bc04950ff2569d6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/anthropic/models/claude-sonnet-4-6.json"
+    },
+    {
+      "digest": "sha256:f8effafa349aef0acd5537bd7bbad6335b5285aefeed4093e8e2b1f8d4db8692",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/cerebras/manifest.json"
+    },
+    {
+      "digest": "sha256:c6eb6b63807e99cdee758202ada5272a17362beba494b029874b311ecd73a88f",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/cerebras/models/gpt-oss-120b.json"
+    },
+    {
+      "digest": "sha256:22e9fa3f107e2665c80dbe02efc7182da3bd4c264306545ccc2e26f6b87c0f00",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/cerebras/models/llama3-1-8b.json"
+    },
+    {
+      "digest": "sha256:901a5d2e3680bda800b431413924bab2971f7681240558b88be790b681355c45",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/cerebras/models/qwen-3-235b-a22b-instruct-2507.json"
+    },
+    {
+      "digest": "sha256:327625fcbc95fa822c96faa844d67b5bc27742cd241a3a62a8fe87a63c8699d7",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/cerebras/models/zai-glm-4-7.json"
+    },
+    {
+      "digest": "sha256:68e38865aa6d068511ad21d9ca8e4736b8876d30db97fae9d7ce256772e256c6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/deepseek/manifest.json"
+    },
+    {
+      "digest": "sha256:d8f9906c87eafa64b7f00f935390b986485359200845116721600159c5ef6bbb",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/deepseek/models/deepseek-chat.json"
+    },
+    {
+      "digest": "sha256:c580834ebb5f6f5556a010af3f1b1b6abf00038c48195ddeca702bc5de828ac4",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/genspark/manifest.json"
+    },
+    {
+      "digest": "sha256:d58d643ed3d3b2f737750b7408f17c28cba0cf69c72fd73b4e3b21d4e09af622",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/genspark/models/gpt-4o.json"
+    },
+    {
+      "digest": "sha256:8cedafc50b9aef7036019943653c5e7ff580c3774d3bc48fb55020a23e0b0177",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/genspark/models/gpt-5-mini.json"
+    },
+    {
+      "digest": "sha256:2c3ce6b93e4ed3e97def4ab666083ec2d70c66ec8ae394c469576d6a8d152042",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/manifest.json"
+    },
+    {
+      "digest": "sha256:c26771651f9bbc9b51d26feb67b41ceb6abeb80984eab9199127a2d0136b103d",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/models/mimo-v2-5-pro.json"
+    },
+    {
+      "digest": "sha256:caeb53f9224661402e9dacbea8f6844bd01233e377e347d78438329df4fb5762",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/models/mimo-v2-5.json"
+    },
+    {
+      "digest": "sha256:0ef85edb13ded43c215411cb8332c0c6439ba42820faae79978617aa23ef19d9",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/models/mimo-v2-flash.json"
+    },
+    {
+      "digest": "sha256:14181c1e358e7e53bfc3af409a3526ffdc0162246f5fcd33814b856bf24b6ee6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/models/mimo-v2-omni.json"
+    },
+    {
+      "digest": "sha256:25edb11ee53a13141f0d41be37c013cb6f2a37986928d007cf642543145546a1",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/gitlawb-opengateway/models/mimo-v2-pro.json"
+    },
+    {
+      "digest": "sha256:b8ad298bff021d4228ce92d71a32e47d61b99d4f4ce9350e682dba77fb8a3dd1",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/glm/manifest.json"
+    },
+    {
+      "digest": "sha256:1a1a6c35ef1d0ff31366e4ab70a9e39074c0be4f18f9ea7a997c6348221c8b75",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/glm/models/glm-4.5.json"
+    },
+    {
+      "digest": "sha256:df38ac316f0589b409da5d5ac42ad93529df94f39b33ed8ffda2830792f4366a",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/manifest.json"
+    },
+    {
+      "digest": "sha256:2593fa4f2f53d7ce4ec8c346c183ba4207f4bc45e57d1fd319d70dd4f6c7701b",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-2.0-flash-lite.json"
+    },
+    {
+      "digest": "sha256:8fb7a1cff9a419a12355383e98bfa1bbd47479049bda0cfb2c39c84e4d5d6762",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-2.5-flash.json"
+    },
+    {
+      "digest": "sha256:7df6fb21b031d5fe7f092202c004410094a1d04740aa919dd9b4aed30b4aa489",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-2.5-pro.json"
+    },
+    {
+      "digest": "sha256:80b231f56257f87ea9b43b248ba78264a39da4535e27ee29c78a46dba9989242",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-3-flash-preview.json"
+    },
+    {
+      "digest": "sha256:4bfa02f1396689294ee3d00f2fab5025674bd83f75cde61b0eec5f6102e7a2a9",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-3-pro-preview.json"
+    },
+    {
+      "digest": "sha256:9da502fb9bebc15c5b1c32212940edd355099885074b13cfd73cb34a83898d60",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemini-embedding-001.json"
+    },
+    {
+      "digest": "sha256:db2b0701ccfd483f0fc94590cfb96252c0553f1d6c10936cdf511a88bdfeed93",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemma-3-27b-it.json"
+    },
+    {
+      "digest": "sha256:c1708e7d5887d3076732eef8918bb539520a1acf8d8d8999e1394b96723c85f5",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemma-3n-e4b-it.json"
+    },
+    {
+      "digest": "sha256:57abe0708fcc037d2dd5f9e46231965bec456ba9beaf2efa34176254448be1a7",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/gemma-4-31b-it.json"
+    },
+    {
+      "digest": "sha256:d2d789faa3f6a513e730e3e49d19f3946407a006d4e67c47a70f722823e1634b",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/google/models/text-embedding-004.json"
+    },
+    {
+      "digest": "sha256:38e079a5aca2f34c06dbc5fb15fd8b7075278204f5b4675a4979846c6aa83e7c",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/manifest.json"
+    },
+    {
+      "digest": "sha256:9595228504965471e8a7b8856507e95b5c1388019e54288f62e8b6c2f407c1ee",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/models/llama-3-1-8b-instant.json"
+    },
+    {
+      "digest": "sha256:f5c79953f75f6c068878e4a713adedc6e48b975d48da2f0958fe341ed64f6251",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/models/llama-3.3-70b-versatile.json"
+    },
+    {
+      "digest": "sha256:be7951b9a52b24f5e70c9c9f399b99a6ef1a3ff4cfd04e9749ec3356e765a9d7",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/models/meta-llama-llama-4-scout-17b-16e-instruct.json"
+    },
+    {
+      "digest": "sha256:249d6bc7c537f2fe21c209e6a370b4659be90dbbf6f5e1034f6c31e29bb83d5b",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/models/openai-gpt-oss-120b.json"
+    },
+    {
+      "digest": "sha256:e312ba51e8017bd39d496ae29ef8b9a84bce1490b202deda17a4e179bfa0095e",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/groq/models/openai-gpt-oss-20b.json"
+    },
+    {
+      "digest": "sha256:aba1a05be4b6a6462a22ec31fb2344e7657e719d96612eef730bca19b519fde6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/llama_cpp/manifest.json"
+    },
+    {
+      "digest": "sha256:e3bf3cbc5a34ac1ee808712013453538b2eed9368e296b00e95bb3f882d97c07",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/llama_cpp/models/gguf-model.json"
+    },
+    {
+      "digest": "sha256:b570b5e31fab5a170408f20d9fa6153221fc874d3f0c864e90a9e9eec88a544a",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/longcat/manifest.json"
+    },
+    {
+      "digest": "sha256:68f31e84288ecdcefa50f3835a5d4fd09864a4bf6faef3cc23b35bb9b382043b",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/longcat/models/LongCat-Flash-Chat.json"
+    },
+    {
+      "digest": "sha256:d64365cfff096ec98196dd0f5b19a2115a5b473eb3c902a5f3cc7d63afc0a81f",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/mistral/manifest.json"
+    },
+    {
+      "digest": "sha256:f2776a4a78a1c1d3c7d0da30f262b13acf1741193c047aa0cc6f1bd3bd2f18cf",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/mistral/models/mistral-large-latest.json"
+    },
+    {
+      "digest": "sha256:18e29d55c09e627648d4d2a329bfb331bc3248865e19a2af13c860d6a80234fc",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/moonshotai/manifest.json"
+    },
+    {
+      "digest": "sha256:12ff53c13319ec6d90b6bcce9ef13dae9601114da954afa6ed3f8ad06ee1857f",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/moonshotai/models/kimi-k2-0711-preview.json"
+    },
+    {
+      "digest": "sha256:18463dbe66e1baba80c7ee3cff8fb802b41059cd26c2b46dc71e3147ce8c1c2c",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/moonshotai/models/moonshot-v1-8k.json"
+    },
+    {
+      "digest": "sha256:ea62bb8b4342bc773a2f19536f084c4e94a83b98b3d5e13817b9abf3acb70dc2",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/manifest.json"
+    },
+    {
+      "digest": "sha256:fa9fc4a20a030dab4a85f9981f8a50af23663d4ef126cd1d6016486498da3847",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/deepseek-ai-deepseek-v4-flash.json"
+    },
+    {
+      "digest": "sha256:b017e64c7ccc4ee5064a71f4e05161aff86a2c3283b840b623b5f3b7dd1aceec",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/deepseek-ai-deepseek-v4-pro.json"
+    },
+    {
+      "digest": "sha256:f810504b3655a2ba94479d06015fffdc2852e18e0f3c4f61166edd585fde3402",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/meta-llama-3-1-70b-instruct.json"
+    },
+    {
+      "digest": "sha256:3429b2f718a1bd0b9c6cc8423f2ea9c4759c7f3bb0b210fd434bbf14edd93919",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/meta-llama-3-1-8b-instruct.json"
+    },
+    {
+      "digest": "sha256:a164251d138d4ff84ab01df97c256f872828300aefe149415d972ea265afdf38",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/meta-llama-3-3-70b-instruct.json"
+    },
+    {
+      "digest": "sha256:b513a40e24150ceb4c3361af1f85437fa721f6217e99a6e23fd5ed9010806fb6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/minimaxai-minimax-m2-7.json"
+    },
+    {
+      "digest": "sha256:30237623a6124f0cb5efbd28f8579f93cacddf302eef9f164be3f3abef50c4cd",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/mistralai-mistral-large.json"
+    },
+    {
+      "digest": "sha256:028932756ad583b97040ada3f04ac328816d92390ab1ecf35e48a5eaa3abae3e",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/nvidia-llama-3-1-nemotron-ultra-253b-v1.json"
+    },
+    {
+      "digest": "sha256:315d7f4bb57ad06a53c4d7b8d896af3210594911625631e3b8ae968e8db8892a",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/nvidia-llama-3-3-nemotron-super-49b-v1-5.json"
+    },
+    {
+      "digest": "sha256:fb6bb2d710f4191368e167374d57960483806cd5507fb817a82801181df4692d",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/nvidia-llama-3-3-nemotron-super-49b-v1.json"
+    },
+    {
+      "digest": "sha256:f0019c607e6d5fd7cfeae27593085f5ef27f074c235a165acd92eb2273b629e0",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/nvidia-nvidia-nemotron-nano-9b-v2.json"
+    },
+    {
+      "digest": "sha256:2c9968e32ec89ed4eab859d844602206b742f88a3771abcc55fb5aea15184d21",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/openai-gpt-oss-120b.json"
+    },
+    {
+      "digest": "sha256:1759aa25d4fd48178f5fd2b96c19eb140b9a603c6aaf17574b250d068f6ec258",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/openai-gpt-oss-20b.json"
+    },
+    {
+      "digest": "sha256:fa5a2be6ad95c99f7711bb6bbb503f62b50d7e9de55b29de5b77e2b2c9b51846",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/qwen-qwen3-coder-480b-a35b-instruct.json"
+    },
+    {
+      "digest": "sha256:65ec95b4542b028d14f2e5df4f2cad04dfd74f7844ae1aa69777fb3b30ce4ec0",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/qwen-qwen3-next-80b-a3b-instruct.json"
+    },
+    {
+      "digest": "sha256:ace6162567767290b625f6cd3fa3c49f5599586c871855590f1abd332fe530a8",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/qwen-qwen3-next-80b-a3b-thinking.json"
+    },
+    {
+      "digest": "sha256:a2f27c746d81f44ddc0f14521318123fa39356ba93d217d60684da9a923b8397",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/nvidia/models/z-ai-glm-5-1.json"
+    },
+    {
+      "digest": "sha256:40ec0fbc3a974fabb3a4f63e45593f06c5a20cb80cf4bc188ca566517c1c01fa",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/ollama/manifest.json"
+    },
+    {
+      "digest": "sha256:e7909dec77c5a0722caf3c8cd4d0eb8e73203ebb9a0271965f1af18a108c82c2",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/ollama/models/llama3.1-8b.json"
+    },
+    {
+      "digest": "sha256:9031c3887f11ad57aba0abd40820a45de09561eb5fa10baa60a56c40c6984c02",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/manifest.json"
+    },
+    {
+      "digest": "sha256:222fe50601d6125592630a41d24fb2563b871a3ee6c55c7177094ffd27165ac3",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/gpt-4o.json"
+    },
+    {
+      "digest": "sha256:266c431e29bfeeb04a9272fba5a3ab2c5c38b3abfc9839da099e3f70aa09d859",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/gpt-5.4-mini.json"
+    },
+    {
+      "digest": "sha256:7c3c2041d8a394a2ec3ba3ee2fff8cd4a486c88ded40b6a17d1d2c793b1fd896",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/gpt-5.4.json"
+    },
+    {
+      "digest": "sha256:761b25dd9501adf0b8f0c98f1f35e6f2fe0035fc4021064aa276b48043f1b32b",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/gpt-5.5-mini.json"
+    },
+    {
+      "digest": "sha256:da1f76610199a3fee0ee7b1539e0b9073f8cd825d467231f54aafe6f337fd6ae",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/gpt-5.5.json"
+    },
+    {
+      "digest": "sha256:d56480f49fc59306db977b28f13c8736d2f03e9a7976f613b8a8488691790d34",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai/models/text-embedding-3-large.json"
+    },
+    {
+      "digest": "sha256:d2d64c82c56cd4acc7073d212853d5db4d897a061de2beb45c0a9b6b754f4572",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai_compatible/manifest.json"
+    },
+    {
+      "digest": "sha256:9f5133d3198999b52e4810d8a31c74e5790c03c3a886f83de0354b61b752a23d",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openai_compatible/models/custom-model.json"
+    },
+    {
+      "digest": "sha256:799e646a7aab7905c8f128997e917a5317bb200989843207f20d6e92b0d24fda",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/manifest.json"
+    },
+    {
+      "digest": "sha256:6734511c47e5678a76e8805e6918ea8aa6a340002d1649bd536b58124fa5d4ce",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/anthropic-claude-sonnet-5.json"
+    },
+    {
+      "digest": "sha256:32c9875d66c88886f9cfd535974e6eb2acd4a138bce7bb7e40e621752d9651f6",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/cohere-north-mini-code-free.json"
+    },
+    {
+      "digest": "sha256:39d42bdedf43e0063594ec68fd7a0eb7f5bdd508fd7c35f538c90192d2095ca9",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/deepseek-deepseek-r1-0528.json"
+    },
+    {
+      "digest": "sha256:90987d36300e3ed2291fef8cf7cff3a15f26207405befafca262df523096bbfc",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/google-gemini-2.5-pro.json"
+    },
+    {
+      "digest": "sha256:6fe795bd5fe87f936825f2a3590477982c3d652f8998aecda459f57c7221332e",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/moonshotai-kimi-k2.7-code.json"
+    },
+    {
+      "digest": "sha256:19f16222f317b26e46f29517968cc7b1aa8d59126a5351e2110e35aa4faf3bd9",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/nvidia-nemotron-3-ultra-550b-a55b-free.json"
+    },
+    {
+      "digest": "sha256:13769884532af8da02268e7a6b4557216d49ce83f3d1c5a01325a2a64aa1fee8",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/openai-o3-pro.json"
+    },
+    {
+      "digest": "sha256:b31b5ac155e03c43143397317b06236b8201d0f680ebad30f26734aa6dc32acc",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/qwen-qwen3-coder-next.json"
+    },
+    {
+      "digest": "sha256:1610a1aaa2fd5551b647f3aa132d2c233bc8c9ccab8760bf3d492a094e946477",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/tencent-hy3-preview-free.json"
+    },
+    {
+      "digest": "sha256:08f47bb5de9068e6928417c146811f8422b8017548fe4086f6022f3a6569aa47",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/openrouter/models/z-ai-glm-5.2.json"
+    },
+    {
+      "digest": "sha256:b8a0ffd33bfbb698e828e879a8f77300d0bf43064426785c95821dbb317de423",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/perplexity/manifest.json"
+    },
+    {
+      "digest": "sha256:089dd0686a9390872b194affd237322cff2f749f74910398ae4baf542e007db0",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/perplexity/models/sonar-pro.json"
+    },
+    {
+      "digest": "sha256:e18fc002a220ed52d3efc11c8197235504cce0ee69ceacd4aa21aef3351f2112",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/rumi/manifest.json"
+    },
+    {
+      "digest": "sha256:4b97274032c2df5c301a7ab1b694df0860d22a0884b133b6400194db99ca8ae9",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/rumi/models/default.json"
+    },
+    {
+      "digest": "sha256:a5b53eb55f997bc1df80143611a23fb77f1d73e34b2b64303eff9edc792f9865",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/stub/manifest.json"
+    },
+    {
+      "digest": "sha256:56cc837d5b82cd8270316f73e46f8ed62a2e00cdb1af23a354ae484f87fc0a63",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/stub/models/default.json"
+    },
+    {
+      "digest": "sha256:4586fd29b5f59e0d098726d01a5cf88ced7f37c4948c5bfdac473b94b728d3e3",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/together/manifest.json"
+    },
+    {
+      "digest": "sha256:b468260ae84e0e7a5eedee07e3889f883c8328863b0b5079c36ae572f1972d4f",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/together/models/meta-llama__Llama-3.3-70B-Instruct-Turbo.json"
+    },
+    {
+      "digest": "sha256:6263718fa483cc99c33dd24d6f6c1b2e359ccc7d25104d71cc573edb33d4f958",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/vllm/manifest.json"
+    },
+    {
+      "digest": "sha256:c98eda4b8e72be085b4ac8705de69b29f769abd3fdcc3163626c24d466ad6cd2",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/vllm/models/openai-compatible-model.json"
+    },
+    {
+      "digest": "sha256:15c6254741993d5ea4679fc24b0bea0b9050eac9305ecbda773e1fe07981b761",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/xai/manifest.json"
+    },
+    {
+      "digest": "sha256:811017fdfe6d636e5050fa5e8434adea543b035b0b26c365ef7111d7a736dd51",
+      "kind": "sidecar",
+      "path": "extensions/llm/providers/xai/models/grok-3-beta.json"
+    },
+    {
+      "digest": "sha256:bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:14a9fb214d04dd4b511b512d0704408b2f6f30a2c78cec0586e70e845b0270c7",
+      "kind": "executable",
+      "path": "runtime/catalog.py"
+    },
+    {
+      "digest": "sha256:fd32bed6784ed05a9216aedf753c882d015ddc1641912a0b3a03ffaa7a741561",
+      "kind": "executable",
+      "path": "runtime/native_filters.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ],
+      "revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+      "id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "implementation_digest": "sha256:14a9fb214d04dd4b511b512d0704408b2f6f30a2c78cec0586e70e845b0270c7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6",
+    "artifact_set_digest": "sha256:3668d854f73c806f886b7a42c22d6d5a7b48bc4bf22b6b7ba51fdd6ea3a4c6b5",
+    "contract_catalog_digest": "sha256:ae4a44704cd9214256e3c28f3a0959a20dea63590b3c20ab6899ad3997f8fa62"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.resource.ai.model.catalog.v1",
+      "rumi:ecosystem/rumi_model_catalog_pack",
+      "rumi_model_catalog_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
+    "display_name": "Rumi Model Catalog",
+    "id": "rumi_model_catalog_pack",
+    "kind": "host_extension",
+    "version": "2.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
+    "source_digest": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:84895dab6db68229feccca49e5786764a0ed2fa0e2c93da0029da8847de239b2",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:badec7a1572185c2ca0b6b04d17be94a118650a4f4ea94364dcef7c08ce3a287",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.model.catalog.read"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

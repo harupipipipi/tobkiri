@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.agent.state.v1",
+      "rumi.resource.agent.state.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Authoritative agent profile and run lifecycle state.",
+  "display_name": "Rumi Agent State Store",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:db485c4986383ef9d3f18d5c58484a47ba81afd3f8029cfc1f8fb4daa9720c7c",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:581656c6422c1cbab9eb159c0733d77b252bcd67ace50fe773ef9c84f83062cc"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:581656c6422c1cbab9eb159c0733d77b252bcd67ace50fe773ef9c84f83062cc"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "agent_profiles",
+      "agent_runs",
+      "subagent_links",
+      "agent_guidance",
+      "agent_handoffs"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_agent_state_store_pack",
+  "pack_identity": "rumi:ecosystem/rumi_agent_state_store_pack",
+  "provenance": {
+    "build_identity": "rumi_agent_state_store_pack:1.0.0",
+    "content_hash": "sha256:6b56316cbabeb6c2459006c6f2037debf85ae32df619f0313b3de4dcfeeb1073",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "agent.state.manage",
+    "agent.state.read",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "linux-file": {
+    "kind": "file",
+    "root_name": "tobkiri-shell.AppImage",
+    "files": {
+      "": "ELF-stub-linux\n"
+    },
+    "sha256": "sha256:d76c622048ea5ae3dd65bff697f1ba089e396373928dcc1edeb90a30034b6978",
+    "size": 15
+  },
+  "windows-exe": {
+    "kind": "file",
+    "root_name": "tobkiri-shell.exe",
+    "files": {
+      "": "MZ-stub-windows\r\n"
+    },
+    "sha256": "sha256:02cd8f6541444eff80a5be3b7de3f6268a59ba26238f660f27295721191b8700",
+    "size": 17
+  },
+  "mac-app": {
+    "kind": "directory",
+    "root_name": "Tobkiri.app",
+    "files": {
+      "Contents/Info.plist": "plist-fixture\n",
+      "Contents/MacOS/tobkiri-shell": "#!/bin/sh\nexit 0\n"
+    },
+    "sha256": "sha256:817e9ff56eb5f08b0b0ce29d174e1715113734b37dfff536a27415b41358ff09",
+    "size": 31
+  }
+}

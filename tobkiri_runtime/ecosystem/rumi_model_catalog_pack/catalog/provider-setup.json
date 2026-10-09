@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "sources": {
+    "models.dev": {
+      "url": "https://models.dev/api.json",
+      "retrieved_on": "2026-10-03",
+      "sha256": "9b622f1b0eea1e5026eb99c6ecbb746f136f1f4c78b2d68ecf6d16c5aa1d8ee5",
+      "license": "MIT",
+      "license_file": "licenses/models.dev-MIT.txt"
+    },
+    "openrouter": {
+      "url": "https://openrouter.ai/api/v1/models",
+      "retrieved_on": "2026-10-03",
+      "sha256": "1a4167f5a951e065a4e73bbf1024fcd42370410da34d7a56a3dac0736024db74"
+    },
+    "avian": {
+      "url": "https://api.avian.io/v1/models",
+      "retrieved_on": "2026-10-03",
+      "sha256": "5df18535adb3a2c8b63f3b68ce0a6847d430c89ab61105ae3382299d6948c233"
+    },
+    "sambanova": {
+      "url": "https://api.sambanova.ai/v1/models",
+      "retrieved_on": "2026-10-03",
+      "sha256": "231af742da7841b3f91bad712e5cb098cf241231546d9f017dba9c030150ab4e"
+    }
+  },
+  "providers": {
+    "ai21": {
+      "endpoint": "https://api.ai21.com/studio/v1",
+      "protocol": "openai-compatible",
+      "display_name": "AI21 Labs",
+      "models_dev_id": "ai21",
+      "models_file": "setup/ai21.json"
+    },
+    "alibaba-dashscope": {
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Alibaba",
+      "models_dev_id": "alibaba",
+      "models_file": "setup/alibaba-dashscope.json"
+    },
+    "anthropic": {
+      "endpoint": "https://api.anthropic.com/v1",
+      "protocol": "anthropic",
+      "display_name": "Anthropic",
+      "models_dev_id": "anthropic",
+      "models_file": "setup/anthropic.json"
+    },
+    "avian": {
+      "endpoint": "https://api.avian.io/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Avian",
+      "models_dev_id": "avian",
+      "models_file": "setup/avian.json"
+    },
+    "cerebras": {
+      "endpoint": "https://api.cerebras.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Cerebras",
+      "models_dev_id": "cerebras",
+      "models_file": "setup/cerebras.json"
+    },
+    "deepinfra": {
+      "endpoint": "https://api.deepinfra.com/v1/openai",
+      "protocol": "openai-compatible",
+      "display_name": "Deep Infra",
+      "models_dev_id": "deepinfra",
+      "models_file": "setup/deepinfra.json"
+    },
+    "deepseek": {
+      "endpoint": "https://api.deepseek.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "DeepSeek",
+      "models_dev_id": "deepseek",
+      "models_file": "setup/deepseek.json"
+    },
+    "fireworks": {
+      "endpoint": "https://api.fireworks.ai/inference/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Fireworks AI",
+      "models_dev_id": "fireworks-ai",
+      "models_file": "setup/fireworks.json"
+    },
+    "friendli": {
+      "endpoint": "https://api.friendli.ai/serverless/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Friendli",
+      "models_dev_id": "friendli",
+      "models_file": "setup/friendli.json"
+    },
+    "gitlawb-opengateway": {
+      "endpoint": "https://opengateway.gitlawb.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "gitlawb-opengateway",
+      "models_dev_id": "gitlawb-opengateway",
+      "models_file": "setup/gitlawb-opengateway.json"
+    },
+    "glm": {
+      "endpoint": "https://api.z.ai/api/paas/v4",
+      "protocol": "openai-compatible",
+      "display_name": "Z.AI",
+      "models_dev_id": "zai",
+      "models_file": "setup/glm.json"
+    },
+    "google": {
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "protocol": "openai-compatible",
+      "display_name": "Google",
+      "models_dev_id": "google",
+      "models_file": "setup/google.json"
+    },
+    "groq": {
+      "endpoint": "https://api.groq.com/openai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Groq",
+      "models_dev_id": "groq",
+      "models_file": "setup/groq.json"
+    },
+    "huggingface-inference": {
+      "endpoint": "https://router.huggingface.co/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Hugging Face",
+      "models_dev_id": "huggingface",
+      "models_file": "setup/huggingface-inference.json"
+    },
+    "hyperbolic": {
+      "endpoint": "https://api.hyperbolic.xyz/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Charm Hyper",
+      "models_dev_id": "hyper",
+      "models_file": "setup/hyperbolic.json"
+    },
+    "inference-net": {
+      "endpoint": "https://api.inference.net/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Inference",
+      "models_dev_id": "inference",
+      "models_file": "setup/inference-net.json"
+    },
+    "longcat": {
+      "endpoint": "https://api.longcat.chat/openai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "LongCat",
+      "models_dev_id": "longcat",
+      "models_file": "setup/longcat.json"
+    },
+    "mistral": {
+      "endpoint": "https://api.mistral.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Mistral",
+      "models_dev_id": "mistral",
+      "models_file": "setup/mistral.json"
+    },
+    "moonshotai": {
+      "endpoint": "https://api.moonshot.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Moonshot AI",
+      "models_dev_id": "moonshotai",
+      "models_file": "setup/moonshotai.json"
+    },
+    "nebius": {
+      "endpoint": "https://api.studio.nebius.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Nebius Token Factory",
+      "models_dev_id": "nebius",
+      "models_file": "setup/nebius.json"
+    },
+    "novita": {
+      "endpoint": "https://api.novita.ai/openai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "NovitaAI",
+      "models_dev_id": "novita-ai",
+      "models_file": "setup/novita.json"
+    },
+    "nvidia": {
+      "endpoint": "https://integrate.api.nvidia.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Nvidia",
+      "models_dev_id": "nvidia",
+      "models_file": "setup/nvidia.json"
+    },
+    "openai": {
+      "endpoint": "https://api.openai.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "OpenAI",
+      "models_dev_id": "openai",
+      "models_file": "setup/openai.json"
+    },
+    "opencode-go": {
+      "endpoint": "https://opencode.ai/zen/go/v1",
+      "protocol": "openai-compatible",
+      "display_name": "OpenCode Go",
+      "models_dev_id": "opencode-go",
+      "models_file": "setup/opencode-go.json"
+    },
+    "opencode-zen": {
+      "endpoint": "https://opencode.ai/zen/v1",
+      "protocol": "openai-compatible",
+      "display_name": "OpenCode Zen",
+      "models_dev_id": "opencode",
+      "models_file": "setup/opencode-zen.json"
+    },
+    "openrouter": {
+      "endpoint": "https://openrouter.ai/api/v1",
+      "protocol": "openai-compatible",
+      "display_name": "OpenRouter",
+      "models_dev_id": "openrouter",
+      "models_file": "setup/openrouter.json"
+    },
+    "perplexity": {
+      "endpoint": "https://api.perplexity.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Perplexity",
+      "models_dev_id": "perplexity",
+      "models_file": "setup/perplexity.json"
+    },
+    "sambanova": {
+      "endpoint": "https://api.sambanova.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "SambaNova",
+      "models_dev_id": "sambanova",
+      "models_file": "setup/sambanova.json"
+    },
+    "siliconflow": {
+      "endpoint": "https://api.siliconflow.cn/v1",
+      "protocol": "openai-compatible",
+      "display_name": "SiliconFlow (China)",
+      "models_dev_id": "siliconflow-cn",
+      "models_file": "setup/siliconflow.json"
+    },
+    "together": {
+      "endpoint": "https://api.together.xyz/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Together AI",
+      "models_dev_id": "togetherai",
+      "models_file": "setup/together.json"
+    },
+    "upstage": {
+      "endpoint": "https://api.upstage.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Upstage",
+      "models_dev_id": "upstage",
+      "models_file": "setup/upstage.json"
+    },
+    "vercel-ai-gateway": {
+      "endpoint": "https://ai-gateway.vercel.sh/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Vercel AI Gateway",
+      "models_dev_id": "vercel",
+      "models_file": "setup/vercel-ai-gateway.json"
+    },
+    "xai": {
+      "endpoint": "https://api.x.ai/v1",
+      "protocol": "openai-compatible",
+      "display_name": "xAI",
+      "models_dev_id": "xai",
+      "models_file": "setup/xai.json"
+    },
+    "xiaomi-mimo-global": {
+      "endpoint": "https://api.xiaomimimo.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Xiaomi",
+      "models_dev_id": "xiaomi",
+      "models_file": "setup/xiaomi-mimo-global.json"
+    },
+    "xiaomi-token-plan-ams": {
+      "endpoint": "https://token-plan-ams.xiaomimimo.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Xiaomi Token Plan (Europe)",
+      "models_dev_id": "xiaomi-token-plan-ams",
+      "models_file": "setup/xiaomi-token-plan-ams.json"
+    },
+    "xiaomi-token-plan-cn": {
+      "endpoint": "https://token-plan-cn.xiaomimimo.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Xiaomi Token Plan (China)",
+      "models_dev_id": "xiaomi-token-plan-cn",
+      "models_file": "setup/xiaomi-token-plan-cn.json"
+    },
+    "xiaomi-token-plan-sgp": {
+      "endpoint": "https://token-plan-sgp.xiaomimimo.com/v1",
+      "protocol": "openai-compatible",
+      "display_name": "Xiaomi Token Plan (Singapore)",
+      "models_dev_id": "xiaomi-token-plan-sgp",
+      "models_file": "setup/xiaomi-token-plan-sgp.json"
+    }
+  }
+}

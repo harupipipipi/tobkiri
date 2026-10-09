@@ -12,11 +12,7 @@ Consolidates the following previously duplicated helpers:
 """
 
 import re
-import sys
-import os
 from pathlib import Path
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")

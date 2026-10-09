@@ -1,0 +1,35 @@
+{
+ "provider_id": "longcat",
+ "models": [
+  {
+   "model_id": "LongCat-2.0",
+   "display_name": "LongCat-2.0",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 2.95,
+    "cache_read": 0.015
+   },
+   "source": "models.dev"
+  }
+ ]
+}

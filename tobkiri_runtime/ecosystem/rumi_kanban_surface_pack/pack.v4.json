@@ -1,0 +1,97 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:62de60365a0208e8b1648cb60239870243b4bd7772d12ccd1ab97b20f1ef4011",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:5e2f74830566e7205145902e53cd755a53dbece1a9fe3539297c5f2eed4beb80",
+      "kind": "sidecar",
+      "path": "frontend/contributions/kanban.json"
+    },
+    {
+      "digest": "sha256:e1c51703717be1080e8f4ff3dfb6f4157bc2211a08f66c1fe5e82a3396440444",
+      "kind": "sidecar",
+      "path": "ui/app.js"
+    },
+    {
+      "digest": "sha256:1446942d2f89ae17c77264986d3e1f30ac08829651fca8064aad564af7eebd2d",
+      "kind": "sidecar",
+      "path": "ui/index.html"
+    },
+    {
+      "digest": "sha256:89196eec19483ea7feab23d425646a72b5b90c5f2d9c41d611807d4192924425",
+      "kind": "sidecar",
+      "path": "ui/style.css"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:6776cec2583ef3ffe10c2258b9a5c33c4283642f6495c9846761f3e37a1ccae3",
+    "contract_catalog_digest": "sha256:a6caba7e06584a9813a7d8cab62ad555ee2bd4389dd737ec75617fe36ed1f4d2",
+    "source_identity": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_kanban_surface_pack",
+      "rumi_kanban_surface_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:6776cec2583ef3ffe10c2258b9a5c33c4283642f6495c9846761f3e37a1ccae3",
+    "display_name": "Rumi Kanban Surface",
+    "id": "rumi_kanban_surface_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_kanban_surface_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "kanban.state.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

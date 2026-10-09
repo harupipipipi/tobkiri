@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import warnings
 
+from .di_container import DIContainer, get_container, reset_container
+
 warnings.warn(
     "core_runtime.ds_container is deprecated. Use core_runtime.di_container instead.",
     DeprecationWarning,
     stacklevel=2,
 )
-
-from .di_container import DIContainer, get_container, reset_container
 
 __all__ = ["DIContainer", "get_container", "reset_container"]

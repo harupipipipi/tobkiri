@@ -157,3 +157,41 @@ test("startWakeListening reports embedding dispatch errors after startup", async
   assert.ok(reported instanceof Error);
   assert.equal((reported as Error).message, "ambient event dispatch failed");
 });
+
+test("shared voice recorder closes microphone tracks on constructor/start/stop/cancel failures", async () => {
+  const { startPinchAudioRecorder } = await import("./ambientMedia");
+  const oldNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const oldRecorder = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
+  let mode = "constructor";
+  let trackStops = 0;
+  class FakeRecorder {
+    static isTypeSupported() { return true; }
+    state = "recording";
+    mimeType = "audio/webm";
+    constructor() { if (mode === "constructor") throw new Error("constructor failed"); }
+    addEventListener() { /* Device events are irrelevant to synchronous failures. */ }
+    start() { if (mode === "start") throw new Error("start failed"); }
+    stop() { if (mode === "stop" || mode === "cancel") throw new Error("device stopped"); this.state = "inactive"; }
+  }
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { mediaDevices: { async getUserMedia() { return { getTracks: () => [{ stop() { trackStops += 1; } }] }; } } } });
+  Object.defineProperty(globalThis, "MediaRecorder", { configurable: true, value: FakeRecorder });
+  try {
+    await assert.rejects(startPinchAudioRecorder(), /constructor failed/);
+    assert.equal(trackStops, 1);
+    mode = "start";
+    await assert.rejects(startPinchAudioRecorder(), /start failed/);
+    assert.equal(trackStops, 2);
+    mode = "stop";
+    const stopping = await startPinchAudioRecorder();
+    await assert.rejects(stopping.stop(), /device stopped/);
+    assert.equal(trackStops, 3);
+    mode = "cancel";
+    const cancelling = await startPinchAudioRecorder();
+    assert.doesNotThrow(() => cancelling.cancel());
+    cancelling.cancel();
+    assert.equal(trackStops, 4);
+  } finally {
+    if (oldNavigator) Object.defineProperty(globalThis, "navigator", oldNavigator); else Reflect.deleteProperty(globalThis, "navigator");
+    if (oldRecorder) Object.defineProperty(globalThis, "MediaRecorder", oldRecorder); else Reflect.deleteProperty(globalThis, "MediaRecorder");
+  }
+});

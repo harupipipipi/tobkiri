@@ -1,0 +1,114 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:30c239f72a370278ed5c91e9cb091e98110b53638a6f3f7ef43e0d7a81d565ce",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:7ce817541c5130121ac2994ff7da685e8e13dd446656184833f5a31ea3956777",
+      "kind": "sidecar",
+      "path": "frontend/contributions/scheduler.json"
+    },
+    {
+      "digest": "sha256:3b76e73bdfc0dd7670a05f4c65374dec68836cf0e4ba11352b177913946feb7d",
+      "kind": "sidecar",
+      "path": "ui/app.js"
+    },
+    {
+      "digest": "sha256:769e1cc433b606f914ef7120e9be8605b7fbd92d4f390d912e37e84be03565a8",
+      "kind": "sidecar",
+      "path": "ui/index.html"
+    },
+    {
+      "digest": "sha256:276fae893cbaa617e4593545b26bef24b3a4eaacc275a34538f2651c147ab632",
+      "kind": "sidecar",
+      "path": "ui/style.css"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:8c40b381c528c61144c5d4d81aa2d97105ad0333a535b8d9ccf397a4c12ebe4a",
+    "artifact_set_digest": "sha256:62123993359cb14328adce4eb40e326e2890bb80754017ea046f94de6d129979",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_scheduler_surface_pack",
+      "rumi_scheduler_surface_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:5d19ae1e7e31946068a13407e39f2713811537810e5c466df84a4d1e5244796a",
+    "display_name": "Rumi Scheduler Surface",
+    "id": "rumi_scheduler_surface_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_scheduler_surface_pack/pack.v4.json",
+    "source_digest": "sha256:8c40b381c528c61144c5d4d81aa2d97105ad0333a535b8d9ccf397a4c12ebe4a",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:09b8a5b268605007a2e58b703984e7a231f9ff9829a7741a75380d337137b8cf",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:0be5fb7dd6a12cc0f557bf509d95b94b4b91e4438d6d32086fcf37311fada854",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_scheduler_surface_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:8c40b381c528c61144c5d4d81aa2d97105ad0333a535b8d9ccf397a4c12ebe4a"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "schedule.read",
+      "scheduler.observe"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.scheduler.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

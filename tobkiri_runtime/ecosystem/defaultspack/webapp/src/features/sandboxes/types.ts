@@ -37,7 +37,13 @@ export type RuntimeIsolationFacts = {
   warnings?: string[];
 };
 
+export type RuntimeOperationSupport = Partial<Record<
+  "create" | "setup" | "lifecycle" | "delete" | "access" | "control" | "frame" | "doctor", boolean
+>>;
+
 export type RuntimeProviderStatus = {
+  registered?: boolean;
+  host_platform_supported?: boolean;
   provider_id: RuntimeProviderKind;
   label?: string;
   status: RuntimeStatusKind;
@@ -57,6 +63,8 @@ export type RuntimeProviderStatus = {
 };
 
 export type RuntimeProvidersResponse = {
+  operation_support?: RuntimeOperationSupport;
+  diagnostics?: Record<string, unknown>;
   providers: RuntimeProviderStatus[];
   selected_provider_id?: string | null;
   default_provider_id?: string | null;
@@ -65,6 +73,7 @@ export type RuntimeProvidersResponse = {
 };
 
 export type RuntimeDoctorResult = {
+  operation_support?: RuntimeOperationSupport;
   status: RuntimeStatusKind;
   providers?: RuntimeProviderStatus[];
   selected_provider_id?: string | null;

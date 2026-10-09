@@ -1,0 +1,31 @@
+.task-pet-character { transform-origin: 50% 90%; }
+.task-pet-spinner { animation: task-pet-spin 1.8s linear infinite; }
+.task-pet-window-document,
+.task-pet-window-document body,
+.task-pet-window-document #root { width: 100%; height: 100%; min-height: 0; margin: 0; overflow: hidden; background: transparent !important; }
+.task-pet-window { box-sizing: border-box; color: #f4f4f5; font-family: var(--font-sans); }
+.task-pet-window-card { display: flex; align-items: flex-end; gap: 0.15rem; width: 100%; height: 100%; }
+.task-pet-window-drag { position: relative; display: flex; flex: 0 0 8rem; height: 9rem; padding: 0; align-items: flex-end; justify-content: center; border: 0; background: transparent; color: inherit; cursor: grab; touch-action: none; }
+.task-pet-window-drag:active { cursor: grabbing; }
+.task-pet-window-drag:focus-visible { outline: 2px solid #a1a1aa; outline-offset: 2px; border-radius: 0.75rem; }
+.task-pet-window-drag .task-pet-character { width: 8rem; height: 8.5rem; object-fit: contain; pointer-events: none; }
+.task-pet-window-grip { position: absolute; top: 0.25rem; left: 0.25rem; display: flex; align-items: center; gap: 0.25rem; border-radius: 999px; padding: 0.25rem 0.45rem; background: rgb(9 9 11 / 85%); color: #d4d4d8; font-size: 0.65rem; pointer-events: none; }
+.task-pet-bubble { min-width: 0; max-height: calc(100dvh - 1rem); overflow-y: auto; overflow-wrap: anywhere; flex: 1; margin-bottom: 0.25rem; border: 1px solid #3f3f46; border-radius: 1rem; padding: 0.7rem 0.8rem; background: rgb(9 9 11 / 96%); box-shadow: 0 10px 28px rgb(0 0 0 / 30%); }
+.task-pet-window-label { display: flex; align-items: center; gap: 0.4rem; color: #a1a1aa; font-size: 0.72rem; }
+.task-pet-window-title { margin: 0.3rem 0 0; color: #f4f4f5; font-size: 0.82rem; font-weight: 600; line-height: 1.3; }
+.task-pet-window-detail { margin: 0.25rem 0 0; color: #a1a1aa; font-size: 0.72rem; line-height: 1.35; }
+.task-pet-window-card[data-state="thinking"] .task-pet-character { animation: task-pet-breathe 2.4s ease-in-out infinite; }
+.task-pet-window-card[data-state="completed"] .task-pet-bubble { border-color: rgb(110 231 183 / 45%); }
+.task-pet-window-card[data-state="error"] .task-pet-bubble { border-color: rgb(252 211 77 / 45%); }
+.task-pet-window-hide { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.55rem; border: 1px solid #3f3f46; border-radius: 0.5rem; padding: 0.25rem 0.45rem; background: transparent; color: #d4d4d8; font: inherit; font-size: 0.68rem; cursor: pointer; }
+.task-pet-window-hide:hover { background: #27272a; }
+.task-pet-window-error { margin: 0.35rem 0 0; color: #fde68a; font-size: 0.68rem; }
+.task-pet-launcher { position: fixed; right: 1rem; bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+.task-pet-launcher-button, .task-pet-launcher-notifications { display: inline-flex; align-items: center; gap: 0.35rem; border: 1px solid #3f3f46; border-radius: 999px; padding: 0.45rem 0.7rem; background: #09090b; color: #e4e4e7; font: inherit; font-size: 0.72rem; cursor: pointer; }
+.task-pet-launcher-button:hover, .task-pet-launcher-notifications:hover { background: #27272a; }
+.task-pet-launcher-notice { position: absolute; right: 0; bottom: 100%; width: max-content; max-width: 18rem; margin-bottom: 0.4rem; border-radius: 0.5rem; padding: 0.5rem 0.65rem; background: #451a03; color: #fef3c7; font-size: 0.72rem; }
+@keyframes task-pet-breathe { 50% { transform: translateY(-3px); } }
+@keyframes task-pet-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .task-pet-character, .task-pet-spinner { animation: none !important; }
+}

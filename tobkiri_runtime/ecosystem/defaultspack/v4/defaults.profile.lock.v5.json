@@ -1,0 +1,1735 @@
+{
+  "lock_api_version": "io.tobkiri.profile-artifact-lock.v1",
+  "profile_api_version": "io.tobkiri.profile.v5",
+  "resolution_scope": "source_release",
+  "activation_authority": "unbound",
+  "profile_id": "defaults",
+  "profile_revision": "sha256:70f31fbedca26b171ef66f0f6a19584311f042d6b3b65658d815307b0dd64fc8",
+  "profile_definition_digest": "sha256:5b8ed3272c2ad6bd47b067d9846c07e2bac19760241321a0f21e0fc34601cce2",
+  "catalog_revision": "sha256:a234139e1ec53fdcf4353fe563440cb8a1e00f4858071d6bb2a966765d5ebf0a",
+  "bundle_digest": "sha256:fcec6d2973df31158f62ac988a9461f664da4c976cd379bd4ca6d9398ff31b48",
+  "base": {
+    "pack_id": "defaults-basepack",
+    "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
+    "definition_revision": "sha256:715a4d4c1b95a980b39e5ec58821d3e9482f477ad6a9a3cc87dea1ab251d188a"
+  },
+  "shell": {
+    "provider_id": "shell.tauri.default",
+    "pack_id": "shell.tauri.default",
+    "artifact_digest": "sha256:75e4452baa85b5034a50746b452d0e65055e8951aae06577921ee9f115f6d507",
+    "executable_artifact_digest": "sha256:18c9dd40e572aa0c2ce68bb9391bf9ecb81bdcf5666df881eb43a2917d5d01b1",
+    "definition_revision": "sha256:b863b3115dc009bc0b166197ee8bf971c7d239502722dee56646f6db34e3a294",
+    "contract_id": "app.shell.v1",
+    "platform": "macos",
+    "architecture": "arm64"
+  },
+  "application": {
+    "pack_id": "runtime.tauri.application.default",
+    "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
+    "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
+    "definition_digest": "sha256:f48817ac5557a4eb2650638d73890eb727e36ccfae3f3fa28577d4313cb6132c"
+  },
+  "effective_set": [
+    {
+      "role": "base",
+      "identity": "defaults-basepack",
+      "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077"
+    },
+    {
+      "role": "shell",
+      "identity": "shell.tauri.default",
+      "artifact_digest": "sha256:75e4452baa85b5034a50746b452d0e65055e8951aae06577921ee9f115f6d507"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_tool_registry_pack",
+      "artifact_digest": "sha256:4a46900f5742339f4ec08caaa69089391cf9fbdbf58c491d5712ab7ac3807335"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_credential_broker_pack",
+      "artifact_digest": "sha256:a39ef19b536ecc0129e0c2ee9221900cd6987dd6a1e115baa4f1c41f073e6eb8"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb"
+    },
+    {
+      "role": "pack",
+      "identity": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5"
+    },
+    {
+      "role": "pack",
+      "identity": "defaultspack",
+      "artifact_digest": "sha256:25de0fa8704e2ed95bfa14e891c6656a94a20baf218efdd152c0cf16e64e4c28"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_file_inspect_pack",
+      "artifact_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8"
+    },
+    {
+      "role": "pack",
+      "identity": "tobkiri_host_pack_control",
+      "artifact_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57"
+    },
+    {
+      "role": "pack",
+      "identity": "runtime.tauri.application.default",
+      "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_model_catalog_pack",
+      "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_model_registry_pack",
+      "artifact_digest": "sha256:7223413e05f87a7091e773e493aaf05086e5065f9d669190a00890183ee42d3b"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_pipeline_pack",
+      "artifact_digest": "sha256:ff28630be8f3aa98bb6bc7ae18513dc71a5d39cb3f9f05b0e5deaa66f160c27b"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_provider_adapters_pack",
+      "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_routing_pack",
+      "artifact_digest": "sha256:c5b52e64224aafa9ca9425d53787bd7789d3f37d2b2a8acfbcfb025b8c552cfa"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_stream_pack",
+      "artifact_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_tool_bridge_pack",
+      "artifact_digest": "sha256:748bda231eadaf01152e7062f339d3cafdd9021cd8505143a5558fd310c9bfdc"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_usage_pack",
+      "artifact_digest": "sha256:ed8f91da4b22cae647640fae3952bcf9816006506bdb694774f2c30cef986981"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_shell_execute_pack",
+      "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_git_publish_pack",
+      "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_tool_broker_pack",
+      "artifact_digest": "sha256:f7c59bb38add5a1e89e8fcce315850abb3d0d3974ba644bcc716f8301955ac3a"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_tool_validation_pack",
+      "artifact_digest": "sha256:26e1daa22c394be9662e5044b3ff93664804076d65a222b8d9705e77d0b57fb7"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_tool_result_pack",
+      "artifact_digest": "sha256:08f274f18a53a095917bbeecf0aa8f149bc0c983e55de2f11acf249b1257e362"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_tool_local_executor_pack",
+      "artifact_digest": "sha256:02d7a42e3b30d3be37fbdb0c7e4b620ddfe7f3ed407279cc0f60fdbb4685c27f"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_prompt_studio_pack",
+      "artifact_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_strategy_runtime_pack",
+      "artifact_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
+    },
+    {
+      "role": "pack",
+      "identity": "tobkiri_side_chat_pack",
+      "artifact_digest": "sha256:93164eef7e4e2fa63ca5c1ed2b1519028b3c9c44a3e8771b53776b5ce798fdd6"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_kanban_state_store_pack",
+      "artifact_digest": "sha256:2f73023d03a22e062d24a8f54dbd00f72d2360f0bc7d69e48bfb8e6aebcc7d13"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_sandbox_runtime_pack",
+      "artifact_digest": "sha256:b82f44cf3b826c71102259780fe7641e3be84fa88363fc33d4f545e1de5a3088"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_workspace_mount_pack",
+      "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_schedule_store_pack",
+      "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_scheduler_runtime_pack",
+      "artifact_digest": "sha256:f57f61bebd9d6c66efeb0e805cb806a69be2f710484d504e8d02290844058702"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_job_action_broker_pack",
+      "artifact_digest": "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6"
+    },
+    {
+      "role": "pack",
+      "identity": "tobkiri_workflow_pack",
+      "artifact_digest": "sha256:56065c5b9ecff68f64b27fad8b07a8388d815eb84a3008723435930b7ca1550c"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_ai_modality_pack",
+      "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40"
+    },
+    {
+      "role": "pack",
+      "identity": "tobkiri_conversation_orchestration_pack",
+      "artifact_digest": "sha256:3f2ae22f64ed02ff00a65ee61d6b9687e1f965888b693b8d75deac7d55c3e378"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_browser_host_service_pack",
+      "artifact_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_clipboard_host_service_pack",
+      "artifact_digest": "sha256:76377cc3a85b98f5d138681cdf00013845379a47b3c88293e280a106dfe51fd8"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_desktop_host_service_pack",
+      "artifact_digest": "sha256:b186aa7b575b3ae2107d83aa065b2c1e8dc3fe775cfb1fad01e7ff3d17a5a882"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_shell_policy_pack",
+      "artifact_digest": "sha256:cc6420af77762ffc3d982f4c1275027af04c01548495c0d366ec112e33195b8b"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_git_read_pack",
+      "artifact_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f"
+    }
+  ],
+  "content_projections": [],
+  "content_projection_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "variant_pins": [
+    {
+      "pack_id": "defaultspack",
+      "artifact_digest": "sha256:25de0fa8704e2ed95bfa14e891c6656a94a20baf218efdd152c0cf16e64e4c28",
+      "executable_catalog_digest": "sha256:8da3113164e4f9d951c8f6345b633254b0087ada5de08388e22e047e91893e72",
+      "variant_id": "defaultspack.application-presentation.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "pack_vm"
+    },
+    {
+      "pack_id": "defaultspack",
+      "artifact_digest": "sha256:25de0fa8704e2ed95bfa14e891c6656a94a20baf218efdd152c0cf16e64e4c28",
+      "executable_catalog_digest": "sha256:8da3113164e4f9d951c8f6345b633254b0087ada5de08388e22e047e91893e72",
+      "variant_id": "defaultspack.conversation.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "pack_vm"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836",
+      "executable_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836",
+      "executable_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836",
+      "executable_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.route-quote.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836",
+      "executable_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "artifact_digest": "sha256:b7044550a4720866d4f8993caef505d9511bb91458ba5a1afe7d5fd351201836",
+      "executable_catalog_digest": "sha256:1f68032d5040f231c069469e950db6ebb26269794e386b8d1021abf413454a00",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.text-generate.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_modality_pack",
+      "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
+      "executable_catalog_digest": "sha256:0452d397d41c646865e9faa5cc5489edb2b0d2ca8df87a7ce0bac42ce32cb289",
+      "variant_id": "rumi_ai_modality_pack.ai-modality.speech.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_modality_pack",
+      "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
+      "executable_catalog_digest": "sha256:0452d397d41c646865e9faa5cc5489edb2b0d2ca8df87a7ce0bac42ce32cb289",
+      "variant_id": "rumi_ai_modality_pack.ai-modality.transcribe.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_pipeline_pack",
+      "artifact_digest": "sha256:ff28630be8f3aa98bb6bc7ae18513dc71a5d39cb3f9f05b0e5deaa66f160c27b",
+      "executable_catalog_digest": "sha256:a94b4136c1637be023b9254b0e03ecbcdbd2eeac0c563ede6e3065ef0f7d39b0",
+      "variant_id": "rumi_ai_pipeline_pack.ai-pipeline.failover.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_pipeline_pack",
+      "artifact_digest": "sha256:ff28630be8f3aa98bb6bc7ae18513dc71a5d39cb3f9f05b0e5deaa66f160c27b",
+      "executable_catalog_digest": "sha256:a94b4136c1637be023b9254b0e03ecbcdbd2eeac0c563ede6e3065ef0f7d39b0",
+      "variant_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_routing_pack",
+      "artifact_digest": "sha256:c5b52e64224aafa9ca9425d53787bd7789d3f37d2b2a8acfbcfb025b8c552cfa",
+      "executable_catalog_digest": "sha256:3bda6730781baa37caaada0d1d19ebcbe825985aab825c04892b0d0055aa2b08",
+      "variant_id": "rumi_ai_routing_pack.ai-routing.default.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_strategy_runtime_pack",
+      "artifact_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
+      "executable_catalog_digest": "sha256:b3c7ff0f7b16574c237c8a280739a01f5b40c18deedd0240431d60c00341ddc9",
+      "variant_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_strategy_runtime_pack",
+      "artifact_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
+      "executable_catalog_digest": "sha256:b3c7ff0f7b16574c237c8a280739a01f5b40c18deedd0240431d60c00341ddc9",
+      "variant_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_stream_pack",
+      "artifact_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1",
+      "executable_catalog_digest": "sha256:743994b33414120aae11c553bf69c8cc6963beea92ef0ded3b15598da289a213",
+      "variant_id": "rumi_ai_stream_pack.ai-stream.normalize.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_tool_bridge_pack",
+      "artifact_digest": "sha256:748bda231eadaf01152e7062f339d3cafdd9021cd8505143a5558fd310c9bfdc",
+      "executable_catalog_digest": "sha256:64adb8fbfbe2ebd19a34708fefbbfcbfc2a57467741b8987307deb1c598e5612",
+      "variant_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_ai_usage_pack",
+      "artifact_digest": "sha256:ed8f91da4b22cae647640fae3952bcf9816006506bdb694774f2c30cef986981",
+      "executable_catalog_digest": "sha256:696c1a3515344932a17463ec5f6119a85462e6807b52d15a1e9970fb17cec728",
+      "variant_id": "rumi_ai_usage_pack.ai-usage.cost.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
+      "executable_catalog_digest": "sha256:7258ca4bc8d0d3af864422667c365a5bc691cb2100e1639c3cfb6f675b7d26e5",
+      "variant_id": "rumi_command_protocol_pack.catalog.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
+      "executable_catalog_digest": "sha256:7258ca4bc8d0d3af864422667c365a5bc691cb2100e1639c3cfb6f675b7d26e5",
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
+      "executable_catalog_digest": "sha256:7258ca4bc8d0d3af864422667c365a5bc691cb2100e1639c3cfb6f675b7d26e5",
+      "variant_id": "rumi_command_protocol_pack.command.invoke.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
+      "executable_catalog_digest": "sha256:7258ca4bc8d0d3af864422667c365a5bc691cb2100e1639c3cfb6f675b7d26e5",
+      "variant_id": "rumi_command_protocol_pack.command.state.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:eeb99edebb8b6e2b836374a12e3226511b2ab82aea0731d51d4f3c65b9249f9b",
+      "executable_catalog_digest": "sha256:7258ca4bc8d0d3af864422667c365a5bc691cb2100e1639c3cfb6f675b7d26e5",
+      "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5",
+      "executable_catalog_digest": "sha256:178020a287aa15ae4ad263892a21938862c76288a96cadab5ee958c43f66a8fa",
+      "variant_id": "rumi_conversation_store_pack.chat-reference.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5",
+      "executable_catalog_digest": "sha256:178020a287aa15ae4ad263892a21938862c76288a96cadab5ee958c43f66a8fa",
+      "variant_id": "rumi_conversation_store_pack.conversation-store.completion.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5",
+      "executable_catalog_digest": "sha256:178020a287aa15ae4ad263892a21938862c76288a96cadab5ee958c43f66a8fa",
+      "variant_id": "rumi_conversation_store_pack.conversation-store.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5",
+      "executable_catalog_digest": "sha256:178020a287aa15ae4ad263892a21938862c76288a96cadab5ee958c43f66a8fa",
+      "variant_id": "rumi_conversation_store_pack.conversation-store.message-manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:3a422d911281f1f800085ef55383f88968b71a6ee1a53a6e4852cae6bdd427f5",
+      "executable_catalog_digest": "sha256:178020a287aa15ae4ad263892a21938862c76288a96cadab5ee958c43f66a8fa",
+      "variant_id": "rumi_conversation_store_pack.conversation-store.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_credential_broker_pack",
+      "artifact_digest": "sha256:a39ef19b536ecc0129e0c2ee9221900cd6987dd6a1e115baa4f1c41f073e6eb8",
+      "executable_catalog_digest": "sha256:49239e81b638650863df1086f69cfbabdd2ea27761f0d5e0df55ea46fd017d07",
+      "variant_id": "rumi_credential_broker_pack.credential-broker.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.calculator.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.chat-message-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.chat-message-send.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.chat-message-tool.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.chat-reference-tools.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.file-create-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.file-create-tool.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.file-create.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:53599fc4643a7568f9abd859e32e617459cacc58baa62636967f4623cf1242a1",
+      "executable_catalog_digest": "sha256:4a888dfe2212734a1981d38cb1f655306ee8d5506159810e7ab6f72105952ba2",
+      "variant_id": "rumi_default_tools_pack.files-read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_file_inspect_pack",
+      "artifact_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8",
+      "executable_catalog_digest": "sha256:3750577260ce87760e90276ff6dee7fca4ff2cf657adaadd4f74a5841b7d7f0f",
+      "variant_id": "rumi_file_inspect_pack.file-inspect.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_publish_pack",
+      "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
+      "executable_catalog_digest": "sha256:61c8c07a5de15b8ba22641b9c7ddf3c999c36c43474d028bd91cc45c84204e56",
+      "variant_id": "rumi_git_publish_pack.git-publish.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_publish_pack",
+      "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
+      "executable_catalog_digest": "sha256:61c8c07a5de15b8ba22641b9c7ddf3c999c36c43474d028bd91cc45c84204e56",
+      "variant_id": "rumi_git_publish_pack.git-push-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-apply-patch-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-apply-patch.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-commit-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-commit.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-restore-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "executable_catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
+      "variant_id": "rumi_git_write_pack.git-restore.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-window.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.host-consent.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "artifact_digest": "sha256:b1e4ddc7d325bbd5b25c8da11f92d4e74089dfda483c4bce665dc506b29f2b2f",
+      "executable_catalog_digest": "sha256:18d19edff81ec80024a6dafabd6c0e29eb4b9b4aedfe6445aa7c0022f87fbcfc",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_job_action_broker_pack",
+      "artifact_digest": "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6",
+      "executable_catalog_digest": "sha256:0711a45a521d6c63a431c3f7662252c21f371dda03016e8b03b0e324a672c515",
+      "variant_id": "rumi_job_action_broker_pack.job-action.broker.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_kanban_state_store_pack",
+      "artifact_digest": "sha256:2f73023d03a22e062d24a8f54dbd00f72d2360f0bc7d69e48bfb8e6aebcc7d13",
+      "executable_catalog_digest": "sha256:47c721249d393c4d74cff8a14b7a30b5671b1712a28173a8fc8c71e7914a90d0",
+      "variant_id": "rumi_kanban_state_store_pack.kanban-state.action.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_kanban_state_store_pack",
+      "artifact_digest": "sha256:2f73023d03a22e062d24a8f54dbd00f72d2360f0bc7d69e48bfb8e6aebcc7d13",
+      "executable_catalog_digest": "sha256:47c721249d393c4d74cff8a14b7a30b5671b1712a28173a8fc8c71e7914a90d0",
+      "variant_id": "rumi_kanban_state_store_pack.kanban-state.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_model_catalog_pack",
+      "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
+      "executable_catalog_digest": "sha256:4686635d251d82de9784684e62b97db589b6da3d50585a6779aaf3b6cd535e20",
+      "variant_id": "rumi_model_catalog_pack.model-catalog.bundled.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_model_registry_pack",
+      "artifact_digest": "sha256:7223413e05f87a7091e773e493aaf05086e5065f9d669190a00890183ee42d3b",
+      "executable_catalog_digest": "sha256:ff84bbd3c2806d6bd1c2804ca92bcbe21d5ca0c0758c864cdc613410513bc58c",
+      "variant_id": "rumi_model_registry_pack.model-registry.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_model_registry_pack",
+      "artifact_digest": "sha256:7223413e05f87a7091e773e493aaf05086e5065f9d669190a00890183ee42d3b",
+      "executable_catalog_digest": "sha256:ff84bbd3c2806d6bd1c2804ca92bcbe21d5ca0c0758c864cdc613410513bc58c",
+      "variant_id": "rumi_model_registry_pack.model-registry.profile.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_prompt_studio_pack",
+      "artifact_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
+      "executable_catalog_digest": "sha256:6145f7480ba0ca22f0d90471734dc74d6be35c2a4b73024cada7d3da4f7aab78",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_adapters_pack",
+      "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
+      "executable_catalog_digest": "sha256:a79239c892c9f7bcb1ceba6963fbda2fa0460a7588902482fe19fc829c297506",
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_adapters_pack",
+      "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
+      "executable_catalog_digest": "sha256:a79239c892c9f7bcb1ceba6963fbda2fa0460a7588902482fe19fc829c297506",
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_adapters_pack",
+      "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
+      "executable_catalog_digest": "sha256:a79239c892c9f7bcb1ceba6963fbda2fa0460a7588902482fe19fc829c297506",
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.generate.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_adapters_pack",
+      "artifact_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
+      "executable_catalog_digest": "sha256:a79239c892c9f7bcb1ceba6963fbda2fa0460a7588902482fe19fc829c297506",
+      "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.model-access.catalog.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.model-access.execute.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.model-access.prepare.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.model-access.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.provider-configure.execute.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.provider-configure.prepare.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.provider-registry.health.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
+      "executable_catalog_digest": "sha256:d2113611c605c06df1624adef873ea11c0b4c5ac901b3dc91fec4f4e21b323d4",
+      "variant_id": "rumi_provider_registry_pack.provider-registry.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_sandbox_runtime_pack",
+      "artifact_digest": "sha256:b82f44cf3b826c71102259780fe7641e3be84fa88363fc33d4f545e1de5a3088",
+      "executable_catalog_digest": "sha256:0a0c0831511da2037fd9a357e91fed7133db7b7f1d9426199196c00fd3be151f",
+      "variant_id": "tobkiri.managed-desktops.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_schedule_store_pack",
+      "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+      "executable_catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+      "variant_id": "rumi_schedule_store_pack.calendar.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_schedule_store_pack",
+      "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+      "executable_catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+      "variant_id": "rumi_schedule_store_pack.calendar.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_schedule_store_pack",
+      "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+      "executable_catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+      "variant_id": "rumi_schedule_store_pack.schedule-store.action.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_schedule_store_pack",
+      "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+      "executable_catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+      "variant_id": "rumi_schedule_store_pack.schedule-store.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_scheduler_runtime_pack",
+      "artifact_digest": "sha256:f57f61bebd9d6c66efeb0e805cb806a69be2f710484d504e8d02290844058702",
+      "executable_catalog_digest": "sha256:6c4bc7a5574a518559eb3fd88e4286a2b81876593016701a533f535189205308",
+      "variant_id": "rumi_scheduler_runtime_pack.scheduler.clock.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_scheduler_runtime_pack",
+      "artifact_digest": "sha256:f57f61bebd9d6c66efeb0e805cb806a69be2f710484d504e8d02290844058702",
+      "executable_catalog_digest": "sha256:6c4bc7a5574a518559eb3fd88e4286a2b81876593016701a533f535189205308",
+      "variant_id": "rumi_scheduler_runtime_pack.scheduler.control.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_shell_execute_pack",
+      "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
+      "executable_catalog_digest": "sha256:f334e96552075a89d1c6ba80a04150a5f676c70ca8ee58674de1121c0d303d48",
+      "variant_id": "rumi_shell_execute_pack.shell-execute.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_shell_execute_pack",
+      "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
+      "executable_catalog_digest": "sha256:f334e96552075a89d1c6ba80a04150a5f676c70ca8ee58674de1121c0d303d48",
+      "variant_id": "rumi_shell_execute_pack.shell-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_shell_policy_pack",
+      "artifact_digest": "sha256:cc6420af77762ffc3d982f4c1275027af04c01548495c0d366ec112e33195b8b",
+      "executable_catalog_digest": "sha256:5610ba6939c837bf25108b908ba1284f05f8e3255210ae4fac312a019b1a7c64",
+      "variant_id": "rumi_shell_policy_pack.shell-policy.inspect.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_tool_broker_pack",
+      "artifact_digest": "sha256:f7c59bb38add5a1e89e8fcce315850abb3d0d3974ba644bcc716f8301955ac3a",
+      "executable_catalog_digest": "sha256:fc97d2c4e8a88e29960d5ea376f9968c811c99dbad8262a2924906bb5757c256",
+      "variant_id": "rumi_tool_broker_pack.tool-broker.invoke.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_tool_local_executor_pack",
+      "artifact_digest": "sha256:02d7a42e3b30d3be37fbdb0c7e4b620ddfe7f3ed407279cc0f60fdbb4685c27f",
+      "executable_catalog_digest": "sha256:ff130509dc1c532ecc2bf3577be969e22b465c95cd5c301b34df03d2e56006f7",
+      "variant_id": "rumi_tool_local_executor_pack.tool-executor.local.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_tool_registry_pack",
+      "artifact_digest": "sha256:4a46900f5742339f4ec08caaa69089391cf9fbdbf58c491d5712ab7ac3807335",
+      "executable_catalog_digest": "sha256:3c55fdafff41664203aea520450212ff9824d2d1fcea90488f3dcdf75c5adf22",
+      "variant_id": "rumi_tool_registry_pack.tool-registry.definition.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_tool_result_pack",
+      "artifact_digest": "sha256:08f274f18a53a095917bbeecf0aa8f149bc0c983e55de2f11acf249b1257e362",
+      "executable_catalog_digest": "sha256:50bc5dcc7fd97e234e414152a267803f99ec47def8ba0e4c656f2149a7f9c97f",
+      "variant_id": "rumi_tool_result_pack.tool-result.normalize.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_tool_validation_pack",
+      "artifact_digest": "sha256:26e1daa22c394be9662e5044b3ff93664804076d65a222b8d9705e77d0b57fb7",
+      "executable_catalog_digest": "sha256:aec9830cc0bfef2c30844d5ca1acca8dc0fa6f32df941778051db2bd5ffdf3e5",
+      "variant_id": "rumi_tool_validation_pack.tool-validation.arguments.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.chat-message-deliver.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.chat-saved-job-adapter.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.guidance.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.progress.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:9316dc4f58bddf425f5e15a326a3949a6120b875b4b1cd8c6cbdb91afaf90fdb",
+      "executable_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_workspace_mount_pack",
+      "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349",
+      "executable_catalog_digest": "sha256:0eb680282fe3fdfb339c4ba0d9103931f61cc9480674db0ee053366555b340ea",
+      "variant_id": "rumi_workspace_mount_pack.project-directory.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_workspace_mount_pack",
+      "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349",
+      "executable_catalog_digest": "sha256:0eb680282fe3fdfb339c4ba0d9103931f61cc9480674db0ee053366555b340ea",
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-execute.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_workspace_mount_pack",
+      "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349",
+      "executable_catalog_digest": "sha256:0eb680282fe3fdfb339c4ba0d9103931f61cc9480674db0ee053366555b340ea",
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-prepare.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_workspace_mount_pack",
+      "artifact_digest": "sha256:0ba8ccb137185dabe87e63ca11296ca5d10a18885ca1e9ab1ec6ec9490d6f349",
+      "executable_catalog_digest": "sha256:0eb680282fe3fdfb339c4ba0d9103931f61cc9480674db0ee053366555b340ea",
+      "variant_id": "rumi_workspace_mount_pack.workspace-mount.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_conversation_orchestration_pack",
+      "artifact_digest": "sha256:3f2ae22f64ed02ff00a65ee61d6b9687e1f965888b693b8d75deac7d55c3e378",
+      "executable_catalog_digest": "sha256:8f116df230307cebad6827d77167a57b6feed160d587f5b81d82aa80a69f4223",
+      "variant_id": "tobkiri_conversation_orchestration_pack.messages.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "pack_vm"
+    },
+    {
+      "pack_id": "tobkiri_conversation_orchestration_pack",
+      "artifact_digest": "sha256:3f2ae22f64ed02ff00a65ee61d6b9687e1f965888b693b8d75deac7d55c3e378",
+      "executable_catalog_digest": "sha256:8f116df230307cebad6827d77167a57b6feed160d587f5b81d82aa80a69f4223",
+      "variant_id": "tobkiri_conversation_orchestration_pack.saved.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "pack_vm"
+    },
+    {
+      "pack_id": "tobkiri_host_pack_control",
+      "artifact_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
+      "executable_catalog_digest": "sha256:c0caa4fecdface5273c008aadcdc8e6b6d0df36d58b13982de313865cd020f52",
+      "variant_id": "tobkiri.host.control-presentation.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_host_pack_control",
+      "artifact_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
+      "executable_catalog_digest": "sha256:c0caa4fecdface5273c008aadcdc8e6b6d0df36d58b13982de313865cd020f52",
+      "variant_id": "tobkiri.host.pack-control.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_side_chat_pack",
+      "artifact_digest": "sha256:93164eef7e4e2fa63ca5c1ed2b1519028b3c9c44a3e8771b53776b5ce798fdd6",
+      "executable_catalog_digest": "sha256:af0755521bf015cec5c411ecb96de4d090de896760f406b9c9ffd43de4826342",
+      "variant_id": "tobkiri_side_chat_pack.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_side_chat_pack",
+      "artifact_digest": "sha256:93164eef7e4e2fa63ca5c1ed2b1519028b3c9c44a3e8771b53776b5ce798fdd6",
+      "executable_catalog_digest": "sha256:af0755521bf015cec5c411ecb96de4d090de896760f406b9c9ffd43de4826342",
+      "variant_id": "tobkiri_side_chat_pack.resource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_side_chat_pack",
+      "artifact_digest": "sha256:93164eef7e4e2fa63ca5c1ed2b1519028b3c9c44a3e8771b53776b5ce798fdd6",
+      "executable_catalog_digest": "sha256:af0755521bf015cec5c411ecb96de4d090de896760f406b9c9ffd43de4826342",
+      "variant_id": "tobkiri_side_chat_pack.turn.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.project.state.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.project.state.replace.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.catalog.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.model-search.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.model-state.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.model-state.write.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.preferences.write.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.recovery-diagnostic.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.recovery-diagnostic.write.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_ui_settings_pack",
+      "artifact_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+      "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+      "variant_id": "tobkiri.ui.settings.read.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_workflow_pack",
+      "artifact_digest": "sha256:56065c5b9ecff68f64b27fad8b07a8388d815eb84a3008723435930b7ca1550c",
+      "executable_catalog_digest": "sha256:6d4fdcf4caa1804342c4a74d3cbf4ad94cd0fbdba5f0e86f67cbe442e425d58d",
+      "variant_id": "tobkiri.workflow.provider.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "tobkiri_workflow_pack",
+      "artifact_digest": "sha256:56065c5b9ecff68f64b27fad8b07a8388d815eb84a3008723435930b7ca1550c",
+      "executable_catalog_digest": "sha256:6d4fdcf4caa1804342c4a74d3cbf4ad94cd0fbdba5f0e86f67cbe442e425d58d",
+      "variant_id": "tobkiri.workflow.stop.provider.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    }
+  ],
+  "requested_edges_digest": "sha256:1a668f88f42fdff8700f5d9084b99cc9f52f1c6912e9d13ee3060e24b164b85c",
+  "constraints_digest": "sha256:b34d89e9756152a0a73ed49095fe613f81f5612ca55e9f6dc670a7d930bd1e70",
+  "closure_digest": "sha256:9686a21ebd71e733389bdddd405d6c344e50670f6a901294dc7c6f3bb042b2a9",
+  "provenance_digest": "sha256:d93cc122fde9e771e5acf2f849fa89ad5a6f8cecdb06d4c357f3c26f160ced6e",
+  "lock_digest": "sha256:8fd5affcba5f61aa00730dc0af85a21871e3a7c7fb7cbbbc14f5fb8513715ce1"
+}

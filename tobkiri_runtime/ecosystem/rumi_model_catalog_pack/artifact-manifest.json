@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "path": "catalog/licenses/models.dev-MIT.txt",
+      "role": "resource",
+      "sha256": "sha256:dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a"
+    },
+    {
+      "path": "catalog/provider-setup.json",
+      "role": "resource",
+      "sha256": "sha256:4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28"
+    },
+    {
+      "path": "runtime/__init__.py",
+      "role": "runtime",
+      "sha256": "sha256:bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273"
+    },
+    {
+      "path": "runtime/catalog.py",
+      "role": "runtime",
+      "sha256": "sha256:14a9fb214d04dd4b511b512d0704408b2f6f30a2c78cec0586e70e845b0270c7"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

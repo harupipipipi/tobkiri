@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "task-pet-child",
+  "description": "Shell presentation-only task pet controls; native code validates admitted Profile and caller URL.",
+  "local": false,
+  "windows": [
+    "task-pet"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*"
+    ]
+  },
+  "permissions": [
+    "allow-task-pet-context",
+    "allow-drag-task-pet",
+    "allow-hide-task-pet",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

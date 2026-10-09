@@ -1,4 +1,4 @@
-import adaptiveBackendFixture from "./adaptiveBackend.fixture.json";
+import adaptiveBackendFixture from "./adaptiveBackend.fixture.json" with { type: "json" };
 import type {
   AdaptiveActivityState,
   AdaptiveAutomationState,
