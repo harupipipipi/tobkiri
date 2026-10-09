@@ -36,7 +36,7 @@ export type DevtoolsPanelRouteKey = (typeof DEVTOOLS_PANEL_ROUTE_KEYS)[number];
 
 export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   home: { path: panelRoutes.home, titleKey: 'nav.home', navKey: 'nav.home' },
-  setup: { path: panelRoutes.setup, titleKey: 'nav.setup' },
+  setup: { path: panelRoutes.setup, titleKey: 'nav.setup', navKey: 'nav.setup' },
   packs: { path: panelRoutes.packs, titleKey: 'nav.packs', navKey: 'nav.packs' },
   profile: { path: panelRoutes.profile, titleKey: 'nav.profile', navKey: 'nav.profile' },
   settings: { path: panelRoutes.settings, titleKey: 'nav.settings', navKey: 'nav.settings' },
@@ -70,7 +70,7 @@ const primaryViewerNavGroups = [
   {
     id: 'preferences',
     labelKey: 'nav.group.preferences',
-    routes: ['profile', 'settings'] satisfies PanelRouteKey[],
+    routes: ['profile', 'setup', 'settings'] satisfies PanelRouteKey[],
   },
 ] as const;
 
