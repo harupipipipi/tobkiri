@@ -330,6 +330,26 @@ def _untokens(tokens: Any, limits: Limits) -> Any:
     return result
 
 
+def decode_data_tokens(
+    payload: bytes | str, *, encoding: str, limits: Limits = DEFAULT_LIMITS,
+) -> Any:
+    """Validate an untrusted private-ABI token stream as application data.
+
+    This is a parser, not authentication or an authority assertion. Callers
+    must select a fixed protocol schema themselves, validate the decoded
+    application shape, and never accept control/authority claims from it.
+    Durable authenticated records should continue using decode_record.
+    """
+    if type(encoding) is not str or encoding != VERSION:
+        raise CodecError("unsupported data token encoding")
+    raw = _raw(payload, limits)
+    parsed = _parse(raw, limits)
+    result = _untokens(parsed, limits)
+    if _canonical(parsed, limits) != raw:
+        raise CodecError("non-canonical extended encoding")
+    return result
+
+
 def decode_payload(
     payload: bytes | str, *, encoding: str | None = None,
     authenticated_record: bool = False, limits: Limits = DEFAULT_LIMITS,

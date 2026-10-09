@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Conversation, SavedTurnEventSnapshot } from "./api";
 import { mergeSavedChatProgress, savedChatProgressMessage, savedChatProgressWitness } from "./savedChatProgress";
-import type { PendingChatRequest } from "./pendingChat";
+import { savedTurnSnapshotState, type PendingChatRequest } from "./pendingChat";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
+import { lateSavedProgressFixture, lateSavedProgressText } from "../../test-support/lateSavedProgressFixture";
 
 const now = 5_000;
 const userId = `message:${"a".repeat(64)}`;
@@ -71,4 +72,49 @@ test("forged owners, replay/skips, unmatched result and status disagreement fail
   assert.equal(mergeSavedChatProgress(first, { ...page([end], 2, true), binding: { ...page([], 0).binding, request_id: "foreign" } }, witness, now), null);
   assert.equal(parseThreadProgressPage(page([{ ...end, event: { ...end.event, status: "error" } }], 2, true), now), null);
   assert.equal(mergeSavedChatProgress(first, page([{ ...end, cursor: 3 }], 3, true), witness, now), null);
+});
+
+test("late ChatApp fixture has valid contiguous progress that would display for its running owner", () => {
+  const fixture = lateSavedProgressFixture("turn-late", now);
+  const owner: PendingChatRequest = { ...pending, conversationId: fixture.runningConversation.id, operationId: "turn-late" };
+  const liveWitness = savedChatProgressWitness(fixture.runningSnapshot, fixture.runningConversation, owner);
+  assert.ok(liveWitness);
+  assert.deepEqual(parseThreadProgressPage(fixture.initialPage, now), fixture.initialPage);
+  assert.deepEqual(parseThreadProgressPage(fixture.latePage, now + 5_000), fixture.latePage);
+  const initial = mergeSavedChatProgress(null, fixture.initialPage, liveWitness, now);
+  assert.ok(initial);
+  assert.equal(initial.stage.text, lateSavedProgressText.provisional);
+  const late = mergeSavedChatProgress(initial, fixture.latePage, liveWitness, now + 5_000);
+  assert.ok(late);
+  assert.equal(late.stage.cursor, 2);
+  assert.equal(late.stage.providerComplete, false);
+  assert.deepEqual(late.started, { [`${fixture.latePage.progress_id}:call-late`]: "web_search" });
+  const displayed = savedChatProgressMessage(late, liveWitness, fixture.runningConversation);
+  assert.equal(displayed?.finish_reason, "streaming");
+  assert.equal(displayed?.events?.[0].type, "tool_call_started");
+  assert.equal(displayed?.events?.[0].tool_call_id, "call-late");
+  // A skipped, replayed or foreign-owner event could be ignored for the wrong
+  // reason. The actual browser fixture must exercise a valid in-flight page.
+  assert.equal(mergeSavedChatProgress(null, fixture.latePage, liveWitness, now), null);
+  assert.equal(mergeSavedChatProgress(late, fixture.latePage, liveWitness, now), null);
+  assert.equal(mergeSavedChatProgress(initial, fixture.latePage, { ...liveWitness, turnId: "foreign" }, now), null);
+});
+
+test("canonical terminal fixture retires valid late progress without treating it as completion", () => {
+  const fixture = lateSavedProgressFixture("turn-late", now);
+  const owner: PendingChatRequest = { ...pending, conversationId: fixture.runningConversation.id, operationId: "turn-late" };
+  const liveWitness = savedChatProgressWitness(fixture.runningSnapshot, fixture.runningConversation, owner)!;
+  const initial = mergeSavedChatProgress(null, fixture.initialPage, liveWitness, now);
+  const late = mergeSavedChatProgress(initial, fixture.latePage, liveWitness, now + 5_000)!;
+  assert.ok(late);
+  assert.equal(fixture.latePage.canonical_turn_status, "running");
+  assert.equal("result_reference" in fixture.latePage, false);
+  assert.equal(savedTurnSnapshotState(fixture.completedTurn, fixture.completedConversation,
+    fixture.completedConversation.id, owner.operationId!), "current");
+  assert.deepEqual(fixture.completedSnapshot.terminal?.result_reference, fixture.completedTurn.result_reference);
+  assert.equal(savedChatProgressWitness(fixture.completedSnapshot, fixture.runningConversation, owner), null);
+  assert.equal(savedChatProgressWitness(fixture.completedSnapshot, fixture.completedConversation, null), null);
+  assert.equal(savedChatProgressMessage(late, null, fixture.runningConversation), null);
+  assert.equal(savedChatProgressMessage(late, liveWitness, fixture.completedConversation), null);
+  assert.equal(fixture.completedConversation.messages[1].id, fixture.completedTurn.result_reference?.assistant_message_id);
 });

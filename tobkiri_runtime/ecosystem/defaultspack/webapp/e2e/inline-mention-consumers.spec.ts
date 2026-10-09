@@ -13,11 +13,18 @@ const verifyInline = async (input: Locator) => {
       el.dispatchEvent(new Event('select', {bubbles:true}));
     }, end);
     await input.press('Enter');
+    // Confirmation restores its caret in requestAnimationFrame. Observe that
+    // callback before the next explicit selection can be overwritten by it.
+    await input.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    await expect(input).toHaveJSProperty('selectionStart', end + 1);
+    await expect(input).toHaveJSProperty('selectionEnd', end + 1);
   }
   await expect(root.locator('[data-search-token]')).toHaveText(['@model', '@openai']);
   await expect(root.locator('[data-search-token]').first()).toHaveCSS('color', 'rgb(96, 165, 250)');
   await expect(input).toHaveJSProperty('tagName', 'INPUT');
   await input.evaluate(el => (el as HTMLInputElement).setSelectionRange(0, 7));
+  await expect(input).toHaveJSProperty('selectionStart', 0);
+  await expect(input).toHaveJSProperty('selectionEnd', 7);
   await input.press('Backspace');
   await expect(input).toHaveValue('@openai Fixture');
   await expect(root.locator('[data-search-token]')).toHaveText(['@openai']);

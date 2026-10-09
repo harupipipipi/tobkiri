@@ -14,6 +14,7 @@ from tobkiri_host.errors import BackendUnavailableError
 from tobkiri_host.qemu_request_ledger import QemuRequestLedger
 from tobkiri_host.qemu_supervisor_transport import PROTOCOL, QemuSupervisorTransport
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.packvm_data_wire import encode_invoke_payload
 
 
 class GuestProcess:
@@ -66,6 +67,9 @@ class GuestProcess:
                 "cancel_token",
                 "budget_seconds",
             }
+            if "payload_encoding" in checked["payload"]:
+                expected.remove("payload")
+                expected.update({"payload_encoding", "payload_tokens"})
             assert set(checked["payload"]) == expected
             reply = guest._agent_success(checked, {"state": "complete", "test_only": True})
         else:
@@ -190,6 +194,76 @@ def test_modified_signed_guest_response_is_rejected(transport):
                 request_digest="sha256:" + "f" * 64,
             )
         )
+
+
+def _numeric_invoke_request():
+    return {
+        "request_id": "numeric-request",
+        "request_digest": "sha256:" + "f" * 64,
+        "contract_id": "test.contract.v1",
+        "contract_version": "1.0.0",
+        "operation_id": "test",
+        "deadline_monotonic": None,
+        **encode_invoke_payload({"number": -0.0, "nested": [0.1, 1.0]}),
+    }
+
+
+def test_qemu_preserves_numeric_payload_fields_without_decoding(transport):
+    supervisor, process, envelope = transport
+    request = _numeric_invoke_request()
+    supervisor.exchange(envelope("invoke", guest_challenge="d" * 64, request=request))
+    forwarded = process.requests[-1]["payload"]
+    assert "payload" not in forwarded
+    assert forwarded["payload_tokens"] == request["payload_tokens"]
+    assert forwarded["payload_encoding"] == request["payload_encoding"]
+    assert forwarded["request_digest"] == request["request_digest"]
+
+
+@pytest.mark.parametrize("mutation", [
+    {"payload": {}},
+    {"payload_encoding": None},
+    {"payload_encoding": "tobkiri.flow-data.ieee754.v2"},
+    {"payload_tokens": None},
+    {"payload_tokens": {}},
+    {"contract_id": []},
+    {"contract_id": {}},
+    {"operation_id": []},
+    {"contract_version": {}},
+    {"extra": "field"},
+    {"contract_id": "conversation.saved-turn.v1"},
+    {"contract_id": "tobkiri.service.mcp.tool.call.v1"},
+])
+def test_qemu_rejects_invalid_extended_request_before_guest_dispatch(transport, mutation):
+    supervisor, process, envelope = transport
+    request = {**_numeric_invoke_request(), **mutation}
+    with pytest.raises(BackendUnavailableError, match="invoke shape is invalid"):
+        supervisor.exchange(envelope("invoke", guest_challenge="d" * 64, request=request))
+    assert len(process.requests) == 1
+
+
+@pytest.mark.parametrize("field", ["payload_encoding", "payload_tokens"])
+def test_qemu_rejects_stripped_extended_request_field(transport, field):
+    supervisor, process, envelope = transport
+    request = _numeric_invoke_request()
+    request.pop(field)
+    with pytest.raises(BackendUnavailableError, match="invoke shape is invalid"):
+        supervisor.exchange(envelope("invoke", guest_challenge="d" * 64, request=request))
+    assert len(process.requests) == 1
+
+
+@pytest.mark.parametrize("extended", [False, True])
+def test_qemu_enforces_same_payload_wire_budget_for_both_variants(transport, extended):
+    supervisor, process, envelope = transport
+    request = _numeric_invoke_request()
+    if extended:
+        request["payload_tokens"] = ["o", 1, "number", "s", "x" * (1280 * 1024)]
+    else:
+        request.pop("payload_encoding")
+        request.pop("payload_tokens")
+        request["payload"] = {"value": "x" * (1280 * 1024)}
+    with pytest.raises(BackendUnavailableError, match="invoke payload exceeds limit"):
+        supervisor.exchange(envelope("invoke", guest_challenge="d" * 64, request=request))
+    assert len(process.requests) == 1
 
 
 def test_terminate_requires_owned_lease_and_actual_process_stop(transport):
@@ -350,3 +424,87 @@ def test_diagnostic_failure_cannot_mask_startup_error_or_skip_cleanup(monkeypatc
         _make_transport()
     assert result.value is original
     assert len(stopped) == 1 and not stopped[0].running
+
+
+def test_host_numeric_carrier_reaches_real_guest_legacy_guard_before_artifact_access(
+    transport, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real Host/QEMU codecs, guest admission, Ed25519 and HMAC; no VM boot.
+
+    Generic transports preserve opaque operation IDs. The guest remains the
+    owner of its legacy ABI alias and rejects it before consulting any artifact.
+    """
+    import socket
+
+    from tobkiri_host.macos_vz_supervisor import MacOSVZSupervisorDriver
+    from tobkiri_protocol.canonical import canonical_json, strict_loads
+
+    supervisor, process, _envelope = transport
+    request = SimpleNamespace(
+        payload={"number": -0.0}, contract_id="extension.numeric.v1",
+        contract_version="1.0.0", operation_id="rumi_mcp_gateway_pack.mcp-tool-call",
+        deadline_monotonic=None,
+    )
+    driver = SimpleNamespace(
+        _new_host_nonce=lambda: "2" * 64,
+        _compromise=lambda reason: pytest.fail(reason),
+    )
+    host_envelope = MacOSVZSupervisorDriver._invoke_envelope(
+        driver, request, supervisor._allocation.domain_id,
+        SimpleNamespace(launch_binding_digest=supervisor._binding_digest),
+        "legacy-alias-request", "sha256:" + "f" * 64, "d" * 64,
+    )
+    serialized = strict_loads(canonical_json(host_envelope))
+    assert serialized["request"]["operation_id"] == request.operation_id
+    assert "payload" not in serialized["request"]
+    errors = []
+    safe_error = guest._safe_agent_error_response
+
+    def record_error(value, error):
+        errors.append(str(error))
+        return safe_error(value, error)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("legacy encoded operation reached root/artifact execution checks")
+
+    monkeypatch.setattr(guest, "_safe_agent_error_response", record_error)
+    monkeypatch.setattr(guest.os, "geteuid", forbidden)
+    monkeypatch.setattr(guest, "_verify_invocation_artifact", forbidden)
+    monkeypatch.setattr(guest, "_spawn_staged_implementation", forbidden)
+    monkeypatch.setattr(guest, "_execute_invocation_step", forbidden)
+
+    def real_guest_exchange(value, timeout):
+        assert timeout > 0
+        process.requests.append(value)
+        config = guest._VsockAgentConfig(
+            value["domain_id"], value["binding_digests"], Path("/unused-test-key"),
+        )
+        client, agent = socket.socketpair()
+        with client, agent:
+            raw = canonical_json(value) + b"\n"
+            assert len(raw) < 4096  # This synchronous exchange fits the socket buffer.
+            client.sendall(raw)
+            guest._serve_agent_connection(agent, config, process.key, process.ledger)
+            with client.makefile("rb") as reader:
+                return strict_loads(reader.readline(guest.MAX_AGENT_RESPONSE_BYTES + 1))
+
+    monkeypatch.setattr(process, "exchange", real_guest_exchange)
+    response = MacOSVZSupervisorDriver._exchange(
+        driver, serialized, transport=supervisor, channel_key=b"k" * 32,
+        expected_operation="invoke", expected_host_nonce="2" * 64,
+        expected_domain_id=supervisor._allocation.domain_id,
+        expected_binding_digest=supervisor._binding_digest,
+    )
+    assert len(process.requests) == 2  # Attestation, then the guest-owned denial.
+    assert errors == ["PackVM bridge/saved invocation encoding is unsupported"]
+    assert response["payload"]["success"] is False
+    assert "data" not in response["payload"]
+    assert response["payload"]["error"]["code"] == "CAPABILITY_UNAVAILABLE"
+    with pytest.raises(BackendUnavailableError, match="guest rejected the operation"):
+        MacOSVZSupervisorDriver._validated_guest_response(
+            driver, response["payload"], operation="invoke",
+            request_id="legacy-alias-request", domain_id=supervisor._allocation.domain_id,
+            binding_digests=process.requests[-1]["binding_digests"],
+            guest_challenge="d" * 64,
+            public_key=supervisor._allocation.guest_public_key,
+        )

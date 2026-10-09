@@ -248,7 +248,7 @@ def test_finite_projection_never_exposes_key_handle_or_other_provider_models():
     from pathlib import Path
     base = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location(
-        "isolated_model_access_presentation", base / "ecosystem/defaultspack/defaultspack/model_access_presentation.py",
+        "isolated_model_access_presentation", base / "ecosystem/rumi_provider_registry_pack/runtime/model_access_presentation.py",
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

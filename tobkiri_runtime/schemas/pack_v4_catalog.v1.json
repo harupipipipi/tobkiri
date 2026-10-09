@@ -1169,11 +1169,6 @@
           "path": "defaultspack/frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:4dd3907319cd1c0102522b90aa6a4f19e1230e3b45cdc6b2ed3ea295f53b4dd7",
-          "kind": "executable",
-          "path": "defaultspack/model_access_presentation.py"
-        },
-        {
           "digest": "sha256:a5aacf576f868c970831e9ed5898396c8070dd1a84a1feee264578ff3d4ac442",
           "kind": "executable",
           "path": "defaultspack/chat_reference_presentation.py"
@@ -18368,7 +18363,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.model-access.read",
-          "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+          "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
           "operation_ids": [
             "rumi_provider_registry_pack.model-access-read"
           ]
@@ -18376,7 +18371,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.model-access.catalog",
-          "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+          "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
           "operation_ids": [
             "rumi_provider_registry_pack.model-access-catalog"
           ]
@@ -18530,12 +18525,12 @@
             {
               "entrypoint_id": "rumi_provider_registry_pack.model-access-read",
               "id": "rumi_provider_registry_pack.model-access-read",
-              "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805"
+              "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53"
             },
             {
               "entrypoint_id": "rumi_provider_registry_pack.model-access-catalog",
               "id": "rumi_provider_registry_pack.model-access-catalog",
-              "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805"
+              "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -18671,7 +18666,7 @@
           "path": "runtime/model_access_mutation.py"
         },
         {
-          "digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+          "digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
           "kind": "executable",
           "path": "runtime/model_access_resource.py"
         },
@@ -18679,6 +18674,11 @@
           "digest": "sha256:4bbf2b8f5fc8e569a4ae36127f5ee209394b8cf198afd54c45e079012a8eddde",
           "kind": "executable",
           "path": "runtime/provider_filters.py"
+        },
+        {
+          "digest": "sha256:4dd3907319cd1c0102522b90aa6a4f19e1230e3b45cdc6b2ed3ea295f53b4dd7",
+          "kind": "executable",
+          "path": "runtime/model_access_presentation.py"
         }
       ],
       "secrets": [],

@@ -285,17 +285,29 @@ def _invoke(
         "contract_id",
         "contract_version",
         "operation_id",
-        "payload",
         "request_digest",
         "deadline_monotonic",
         "cancel_token",
     }
-    if not required <= set(request) <= required | {"budget_seconds"}:
+    from tobkiri_protocol.packvm_data_wire import (
+        PAYLOAD_FIELDS, validate_invoke_payload_fields,
+    )
+
+    if not required <= set(request) <= required | {"budget_seconds"} | PAYLOAD_FIELDS:
         raise ValueError("PackVM invocation fields are invalid")
+    _identifier(request["contract_id"], "contract_id")
+    _identifier(request["operation_id"], "operation_id")
+    payload_fields = validate_invoke_payload_fields(request)
+    encoded_payload = "payload_encoding" in payload_fields
+    if encoded_payload and (
+        request["contract_id"] in {PACKVM_MCP_CONTRACT, "conversation.saved-turn.v1"}
+        or request["operation_id"] == PACKVM_MCP_OPERATION
+    ):
+        raise ValueError("PackVM bridge/saved invocation encoding is unsupported")
     for field in ("request_id", "target_domain", "contract_version"):
         if not isinstance(request[field], str) or not request[field]:
             raise ValueError(f"PackVM invocation {field} is invalid")
-    invocation_payload = request["payload"]
+    invocation_payload = payload_fields.get("payload", {})
     if not isinstance(invocation_payload, dict):
         raise ValueError("PackVM invocation payload must be an object")
     if (
@@ -329,6 +341,11 @@ def _invoke(
         raise ValueError("PackVM invocation cancel token is invalid")
     if os.geteuid() != 0:
         raise ValueError("PackVM invocation requires the root-owned supervisor")
+    if encoded_payload:
+        return _execute_invocation_step(
+            request, invocation_payload, guest_deadline, execution_guard=execution_guard,
+            payload_fields=payload_fields,
+        )
     return _execute_invocation_step(
         request, invocation_payload, guest_deadline, execution_guard=execution_guard,
     )
@@ -337,6 +354,7 @@ def _invoke(
 def _execute_invocation_step(
     request: dict[str, object], payload: dict[str, object], guest_deadline: float,
     *, execution_guard: Callable[[], None] | None = None,
+    payload_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Verify the sealed artifact again and execute one fresh sandbox child."""
     if os.geteuid() != 0:
@@ -360,7 +378,7 @@ def _execute_invocation_step(
     child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
-        "payload": payload,
+        **(payload_fields if payload_fields is not None else {"payload": payload}),
     }
     try:
         _remaining_guest_budget(guest_deadline)
@@ -402,6 +420,8 @@ def _execute_invocation_step(
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise _GuestOperationError("EXECUTION_FAILED") from exc
         if _looks_like_bridge_request(result):
+            if payload_fields is not None:
+                raise ValueError("PackVM encoded invocation cannot enter bridge protocol")
             result = _validate_bridge_request(result, operation_id=request["operation_id"])
     finally:
         _unregister_request(str(request["request_id"]), process.pid)
@@ -479,6 +499,25 @@ def _communicate_staged_implementation(
         raise ValueError("PackVM implementation result is invalid") from None
     if not isinstance(result, dict):
         raise ValueError("PackVM implementation result must be an object")
+    from tobkiri_protocol.packvm_data_wire import (
+        ENCODED_INVOKE_RESULT_KIND, PRIVATE_RESULT_KIND, public_terminal_from_child,
+    )
+
+    kind = result.get("kind")
+    if isinstance(kind, str) and kind in {
+        PACKVM_INVOKE_RESULT_KIND, PRIVATE_RESULT_KIND, ENCODED_INVOKE_RESULT_KIND,
+    }:
+        # The Pack owns stdout, including any claimed wrapper/encoding. Only
+        # root synthesizes the public extended terminal after full validation.
+        result = public_terminal_from_child(result)
+    else:
+        saved_intent = (
+            result.get("kind") == "tobkiri.packvm.continuation.intent.v2"
+            and child_request.get("contract_id") == "conversation.saved-turn.v1"
+            and child_request.get("operation_id") == "saved_complete"
+        )
+        if not _looks_like_bridge_request(result) and not saved_intent:
+            raise ValueError("PackVM unrecognized child result frame")
     _remaining_guest_budget(guest_deadline)
     return result
 
@@ -586,10 +625,9 @@ def _host_invoke_result(value: dict[str, object]) -> dict[str, object]:
     kind = value.get("kind")
     if isinstance(kind, str) and kind.startswith("tobkiri.packvm."):
         raise ValueError("PackVM control frame is not a terminal outcome")
-    return {
-        "kind": PACKVM_INVOKE_RESULT_KIND,
-        "outcome": value,
-    }
+    from tobkiri_protocol.packvm_data_wire import private_terminal
+
+    return private_terminal(value)
 
 
 def _validate_bridge_request(
@@ -2251,13 +2289,26 @@ def _execute_staged_module(path: Path) -> int:
         raw_request = sys.stdin.buffer.read(MAX_CHILD_REQUEST_BYTES + 1)
         if len(raw_request) > MAX_CHILD_REQUEST_BYTES:
             raise ValueError("PackVM child request exceeds size limit")
-        request = json.loads(raw_request)
-        if not isinstance(request, dict) or set(request) != {
-            "contract_id",
-            "operation_id",
-            "payload",
-        }:
+        from tobkiri_protocol.canonical import strict_loads
+        from tobkiri_protocol.packvm_data_wire import (
+            PAYLOAD_FIELDS, PRIVATE_RESULT_KIND, decode_invoke_payload,
+        )
+
+        request = strict_loads(raw_request, max_bytes=MAX_CHILD_REQUEST_BYTES)
+        required = {"contract_id", "operation_id"}
+        if (not isinstance(request, dict)
+                or not required <= set(request) <= required | PAYLOAD_FIELDS):
             raise ValueError("PackVM child request is invalid")
+        _identifier(request["contract_id"], "contract_id")
+        _identifier(request["operation_id"], "operation_id")
+        if "payload_encoding" in request and (
+            request["contract_id"] in {PACKVM_MCP_CONTRACT, "conversation.saved-turn.v1"}
+            or request["operation_id"] == PACKVM_MCP_OPERATION
+        ):
+            raise ValueError("PackVM bridge/saved invocation encoding is unsupported")
+        # Validate before importing any artifact code. This parser carries no
+        # authority assertion; root has already admitted the exact wire shape.
+        payload = decode_invoke_payload(request)
         specification = importlib.util.spec_from_file_location("_tobkiri_packvm_entry", path)
         if specification is None or specification.loader is None:
             raise ValueError("PackVM implementation cannot be loaded")
@@ -2266,7 +2317,7 @@ def _execute_staged_module(path: Path) -> int:
         operation = getattr(module, "tobkiri_packvm_invoke", None)
         if not callable(operation):
             raise ValueError("PackVM implementation does not export tobkiri_packvm_invoke")
-        result = operation(request["operation_id"], request["payload"])
+        result = operation(request["operation_id"], payload)
         if not isinstance(result, dict):
             raise ValueError("PackVM implementation result must be an object")
         if (
@@ -2279,8 +2330,12 @@ def _execute_staged_module(path: Path) -> int:
             host_result = result
         else:
             host_result = _host_invoke_result(result)
+        # Preserve legacy child bytes, including Unicode escaping. Extended
+        # private records use canonical UTF-8 tokens, never bare JSON floats.
         encoded = json.dumps(
             host_result,
+            ensure_ascii=host_result.get("kind") != PRIVATE_RESULT_KIND,
+            allow_nan=False,
             sort_keys=True,
             separators=(",", ":"),
         ).encode()

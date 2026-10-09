@@ -1,3 +1,5 @@
+import { taskPetHideAcknowledgment, taskPetHideActionOutcome } from "../test-support/taskPetHideAcknowledgment";
+import { taskPetPreferenceKey } from "../src/lib/taskPet";
 import { expect, test, type Page } from "@playwright/test";
 
 async function openPet(page: Page) {
@@ -33,18 +35,68 @@ test("independent pet receives saved task updates, hides and restores without cl
   const hideButton = popup.getByRole("button", { name: "非表示" });
   await expect(hideButton).toBeInViewport();
   expect(await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await hideButton.click();
-  await expect.poll(() => popup.isClosed()).toBe(true);
+  const preferenceKey = taskPetPreferenceKey("default", "enabled");
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), preferenceKey)).toBe("true");
+  // Observe the actual trusted click and its exact source WindowProxy. These
+  // test-only probes do not dispatch events, delay closing or alter application state.
+  await page.evaluate(() => {
+    const owner = window as Window & { __petHideProbe?: { source: Window | null; targetIsHide: boolean; trustedPrimaryClick: boolean; matchingHideMessage: boolean } };
+    owner.__petHideProbe = { source: null, targetIsHide: false, trustedPrimaryClick: false, matchingHideMessage: false };
+    const observe = (event: MessageEvent) => {
+      const probe = owner.__petHideProbe;
+      if (probe?.source && event.source === probe.source && event.origin === location.origin
+        && event.data?.type === "task-pet-hidden" && event.data.profileId === "default") {
+        probe.matchingHideMessage = true;
+        window.removeEventListener("message", observe);
+      }
+    };
+    window.addEventListener("message", observe);
+  });
+  await hideButton.evaluate((element) => {
+    element.addEventListener("click", (event) => {
+      const owner = window.opener as (Window & { __petHideProbe?: { source: Window | null; targetIsHide: boolean; trustedPrimaryClick: boolean; matchingHideMessage: boolean } }) | null;
+      if (!owner?.__petHideProbe) return;
+      owner.__petHideProbe.source = window;
+      owner.__petHideProbe.targetIsHide = event.currentTarget === element
+        && element.matches("button.task-pet-window-hide") && element.textContent?.trim() === "非表示";
+      owner.__petHideProbe.trustedPrimaryClick = event.isTrusted && event instanceof MouseEvent && event.button === 0;
+    }, { capture: true, once: true });
+  });
+  const childClose = popup.waitForEvent("close");
+  const [clickOutcome, closeOutcome] = await Promise.allSettled([hideButton.click(), childClose]);
+  taskPetHideActionOutcome(clickOutcome, closeOutcome);
+  await expect.poll(() => page.evaluate(() => Boolean((window as Window & {
+    __petHideProbe?: { matchingHideMessage: boolean };
+  }).__petHideProbe?.matchingHideMessage))).toBe(true);
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), preferenceKey)).toBe("false");
+  const clickEvidence = await page.evaluate(() => {
+    const probe = (window as Window & { __petHideProbe?: { targetIsHide: boolean; trustedPrimaryClick: boolean; matchingHideMessage: boolean } }).__petHideProbe;
+    return { targetIsHide: probe?.targetIsHide === true, trustedPrimaryClick: probe?.trustedPrimaryClick === true,
+      matchingHideMessage: probe?.matchingHideMessage === true };
+  });
+  const evidence = { ...clickEvidence, childClosed: popup.isClosed(), parentOpen: !page.isClosed(),
+    persistedHidden: await page.evaluate((key) => localStorage.getItem(key) === "false", preferenceKey) };
+  const acknowledgment = taskPetHideAcknowledgment(clickOutcome, closeOutcome, evidence);
+  await testInfo.attach("task-pet-hide-acknowledgment", {
+    body: Buffer.from(JSON.stringify({ acknowledgment, evidence })), contentType: "application/json",
+  });
+  expect(page.url()).toBe(originalUrl);
+  expect(popup.isClosed()).toBe(true);
   await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
   await page.getByRole("button", { name: "親画面を操作" }).click();
-  await expect(page.getByRole("status")).toHaveText("親画面の操作回数: 1");
+  await expect(page.getByRole("status").filter({ hasText: /^親画面の操作回数:/ })).toHaveText("親画面の操作回数: 1");
   const restored = await openPet(page);
+  expect(restored).not.toBe(popup);
+  await expect(restored).toHaveURL(/\/p\/default\/chat\?surface=task-pet/);
+  await expect(restored.locator(".task-pet-window-card")).toHaveAttribute("data-state", "completed");
   await expect(restored.getByText("タスクが完了しました")).toBeVisible();
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), preferenceKey)).toBe("true");
   await restored.close();
   await expect(page.locator(".task-pet-launcher")).toHaveCount(0);
   expect(page.isClosed()).toBe(false);
   expect(apiRequests).toEqual([]);
   await expect(page.getByTestId("chat-dispatches")).toHaveText("0");
+  await expect(page.getByTestId("steer-dispatches")).toHaveText("0");
 });
 
 test("pet rejects foreign sources, origins and malformed state; drag requests move only its own window", async ({ page, context }) => {

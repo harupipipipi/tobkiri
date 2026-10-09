@@ -20,6 +20,10 @@ export type FixtureContractBinding = {
 };
 
 const identities = {
+  chatReferencesList: { contributionId: "defaults.chat.references.list", contractId: "tobkiri.resource.chat.reference.v1", operationId: "rumi_conversation_store_pack.chat-reference-read", method: "GET" },
+  chatReferencesResolve: { contributionId: "defaults.chat.references.resolve", contractId: "tobkiri.resource.chat.reference.v1", operationId: "rumi_conversation_store_pack.chat-reference-read", method: "POST" },
+  savedTurnEvents: { contributionId: "defaults.conversations.turn.events", contractId: "tobkiri.event.turn.v1", operationId: "rumi_turn_runtime_pack.turn-events", method: "GET" },
+  toolCatalog: { contributionId: "defaults.tools.catalog", contractId: "tobkiri.resource.tool.definition.v1", operationId: "rumi_tool_registry_pack.tool-definition-resource", method: "GET" },
   modelAccessRead: { contributionId: "defaults.provider-model-access.read", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.model-access-read", method: "POST" },
   modelAccessCatalog: { contributionId: "defaults.provider-model-access.catalog", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.model-access-catalog", method: "POST" },
   providerConnections: { contributionId: "defaults.connections.status.read", contractId: "tobkiri.resource.ai.provider.registry.v1", operationId: "rumi_provider_registry_pack.provider-registry-resource", method: "GET" },

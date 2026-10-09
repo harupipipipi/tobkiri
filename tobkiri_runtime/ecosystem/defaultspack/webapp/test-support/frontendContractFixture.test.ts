@@ -11,7 +11,7 @@ import {
 } from "./frontendContractFixture";
 
 test("fixture matching resolves the shipped formal identity and query-bearing transport", () => {
-  for (const key of ["kanbanList", "kanbanCreate", "desktopsList", "runtimeProviders", "sandboxTemplates",
+  for (const key of ["chatReferencesList", "chatReferencesResolve", "savedTurnEvents", "toolCatalog", "kanbanList", "kanbanCreate", "desktopsList", "runtimeProviders", "sandboxTemplates",
     "providerConnections", "providerConfigure", "interactiveApprovalGet", "modelProfilesList", "modelProfilesSave", "modelSearch", "modelAccessRead", "modelAccessCatalog"] as const) {
     const binding = frontendFixtureBinding(key);
     const url = defaultspackContractUrl(defaultspackContractRoute(`${binding.path}?fixture=1`), binding.method);
@@ -100,5 +100,30 @@ test("provider search fixture requires its exact POST declaration and full forma
     const changed = { ...route, targets: [{ ...route.targets[0], [field]: "foreign" }] };
     assert.throws(() => frontendFixtureBinding("modelSearch", [changed]));
     assert.equal(matchesFrontendFixtureBinding(frontendFixtureRequest(url, "POST", [changed]), binding), false);
+  }
+});
+
+
+test("tool catalog override requires its exact GET declaration and full formal identity", () => {
+  const binding = frontendFixtureBinding("toolCatalog");
+  assert.equal(binding.method, "GET");
+  const url = defaultspackContractUrl(defaultspackContractRoute(binding.path), binding.method);
+  const route: FixtureContractRoute = { path: binding.path, method: binding.method,
+    targets: [{ contribution_id: binding.contributionId, contract_id: binding.contractId, operation_id: binding.operationId }] };
+  const matches = (input: string, method: string, routes?: FixtureContractRoute[]) => (
+    matchesFrontendFixtureBinding(frontendFixtureRequest(input, method, routes), binding)
+  );
+  assert.equal(matches(url, "GET"), true);
+  assert.equal(matches(url, "POST"), false);
+  assert.equal(matches(defaultspackContractUrl(defaultspackContractRoute(binding.path), "POST"), "POST"), false);
+  assert.equal(matches(`${url}%2Funexpected`, "GET"), false);
+  const other = frontendFixtureBinding("modelProfilesList");
+  assert.equal(matches(defaultspackContractUrl(defaultspackContractRoute(other.path), other.method), other.method), false);
+  assert.throws(() => frontendFixtureBinding("toolCatalog", []));
+  assert.throws(() => frontendFixtureBinding("toolCatalog", [route, route]));
+  for (const field of ["contribution_id", "contract_id", "operation_id"] as const) {
+    const changed = { ...route, targets: [{ ...route.targets[0], [field]: "foreign" }] };
+    assert.throws(() => frontendFixtureBinding("toolCatalog", [changed]));
+    assert.equal(matches(url, "GET", [changed]), false);
   }
 });

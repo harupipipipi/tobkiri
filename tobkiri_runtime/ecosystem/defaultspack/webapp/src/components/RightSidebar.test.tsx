@@ -577,18 +577,20 @@ test("closed Canvas retains its mounted content without creating a Timeline pane
 });
 
 
-test("catalogue entries for independent widgets do not duplicate their rail actions", () => {
-  const html = renderToStaticMarkup(createElement(RightSidebar, {
-    items: [{ id: "canvas", label: "Canvas", category: "widget" }, { id: "timeline", label: "Timeline", category: "widget" }],
-    settingsValues: { sidebar: { pinned_item_ids: ["canvas", "timeline"] } }, settingsSections: [],
-    onSettingChange: noop, onOpenSettings: noop, activeItemId: "__canvas_widget__:1",
-    canvasPanel: createElement("div", null, "Canvas content"),
-    timelinePanel: createElement("div", null, "Timeline content"),
-  }));
-  assert.equal((html.match(/aria-label="Canvas"/g) ?? []).length, 1);
-  assert.equal((html.match(/data-rail-slot-id="item:canvas"/g) ?? []).length, 0);
-  assert.equal((html.match(/data-rail-slot-id="item:timeline"/g) ?? []).length, 0);
-});
+for (const canvasId of ["canvas", "__canvas_widget__"]) {
+  test(`catalogue entry ${canvasId} does not duplicate the native Canvas rail action`, () => {
+    const html = renderToStaticMarkup(createElement(RightSidebar, {
+      items: [{ id: canvasId, label: "Canvas", category: "widget" }, { id: "timeline", label: "Timeline", category: "widget" }],
+      settingsValues: { sidebar: { pinned_item_ids: [canvasId, "timeline"] } }, settingsSections: [],
+      onSettingChange: noop, onOpenSettings: noop, activeItemId: "__canvas_widget__:1",
+      canvasPanel: createElement("div", null, "Canvas content"),
+      timelinePanel: createElement("div", null, "Timeline content"),
+    }));
+    assert.equal((html.match(/aria-label="Canvas"/g) ?? []).length, 1);
+    assert.equal((html.match(new RegExp(`data-rail-slot-id="item:${canvasId}"`, "g")) ?? []).length, 0);
+    assert.equal((html.match(/data-rail-slot-id="item:timeline"/g) ?? []).length, 0);
+  });
+}
 
 
 test("Canvas render callback receives current visibility without losing its wrapper", () => {

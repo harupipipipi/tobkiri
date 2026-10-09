@@ -28,6 +28,8 @@ MEMBERS = {
     "tobkiri_host/saved_turn_plan.py",
     "tobkiri_protocol/__init__.py",
     "tobkiri_protocol/canonical.py",
+    "tobkiri_protocol/data_codec.py",
+    "tobkiri_protocol/packvm_data_wire.py",
     "tobkiri_protocol/errors.py",
     "tobkiri_protocol/packvm_serial.py",
     "tobkiri_protocol/saved_context.py",

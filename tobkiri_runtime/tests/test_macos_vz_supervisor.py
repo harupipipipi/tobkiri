@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import struct
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
@@ -15,6 +16,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
 import tobkiri_host.macos_vz_supervisor as macos_vz_supervisor
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.packvm_data_wire import (
+    decode_invoke_payload,
+    encode_invoke_payload,
+)
 
 from tobkiri_host.artifact_materialization import (
     MaterializedArtifactFile,
@@ -681,6 +686,156 @@ def test_direct_driver_uses_dynamic_assets_and_per_domain_helper(tmp_path: Path)
     assert transport.closed and allocator.released == [transport.allocation]
 
 
+def _numeric_terminal(value: dict[str, Any]) -> dict[str, Any]:
+    encoded = encode_invoke_payload(value)
+    return {
+        "kind": "tobkiri.packvm.invoke.result.v2",
+        "outcome_encoding": encoded["payload_encoding"],
+        "outcome_tokens": encoded["payload_tokens"],
+    }
+
+
+def _supply_terminal(
+    monkeypatch: pytest.MonkeyPatch, transport: _Transport, terminal: Mapping[str, Any]
+) -> None:
+    original = transport._guest
+
+    def guest(request: Mapping[str, Any], **fields: Any) -> Mapping[str, Any]:
+        if fields.get("data", {}).get("kind") == "tobkiri.packvm.invoke.result.v1":
+            fields["data"] = terminal
+        return original(request, **fields)
+
+    monkeypatch.setattr(transport, "_guest", guest)
+
+
+def test_numeric_request_changes_only_wire_payload(tmp_path: Path) -> None:
+    driver, allocator = _driver(tmp_path)
+    _launch(driver)
+    request = _request("domain.provider.conversation")
+    logical = {"number": -0.0, "nested": [0.1, 1.0, True, 3, "é"]}
+    request.payload = logical
+    digest = request.request_digest
+    driver.invoke(request)
+    wire = allocator.transports[request.target_domain.value].requests[-1]["request"]
+    assert "payload" not in wire
+    assert wire["payload_encoding"] == "tobkiri.flow-data.ieee754.v1"
+    assert decode_invoke_payload(wire) == logical
+    assert struct.pack(">d", decode_invoke_payload(wire)["number"]) == struct.pack(">d", -0.0)
+    assert request.payload is logical and request.request_digest == digest
+    assert wire["request_digest"] == digest
+    canonical_json(wire)
+
+
+@pytest.mark.parametrize("bridge", [False, True])
+def test_numeric_terminal_decodes_after_authentication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bridge: bool,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    driver.bind_capability_bridge(lambda _outer, request: _bridge_result(request))
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = bridge
+    expected = {"number": -0.0, "nested": [0.1, 1.0, 5e-324, 1e308, True, "é"]}
+    _supply_terminal(monkeypatch, transport, _numeric_terminal(expected))
+    outcome = driver.invoke(_request("domain.provider.conversation")).payload
+    assert outcome == expected
+    assert struct.pack(">d", outcome["number"]) == struct.pack(">d", -0.0)
+
+
+@pytest.mark.parametrize("cancel_at", ["invoke", "bridge_result"])
+def test_cancellation_fences_numeric_terminal_before_decoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_at: str,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    driver.bind_capability_bridge(lambda _outer, request: _bridge_result(request))
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = cancel_at == "bridge_result"
+    _supply_terminal(monkeypatch, transport, _numeric_terminal({"number": 0.1}))
+    original = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = original(request)
+        if request["operation"] == cancel_at:
+            driver.cancel("request-1")
+        return response
+
+    def forbidden_decode(_record: object) -> None:
+        pytest.fail("cancelled numeric data reached terminal decoding")
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    monkeypatch.setattr(macos_vz_supervisor, "decode_invoke_outcome", forbidden_decode)
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+
+
+@pytest.mark.parametrize("tamper", ["outcome_encoding", "outcome_tokens"])
+@pytest.mark.parametrize("authentication", ["mac", "signature"])
+def test_numeric_terminal_tampering_never_reaches_decoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tamper: str, authentication: str,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    _supply_terminal(monkeypatch, transport, _numeric_terminal({"number": 0.1}))
+    original = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = dict(original(request))
+        data = response["payload"]["data"]
+        data[tamper] = "forged" if tamper == "outcome_encoding" else ["o", 0]
+        if authentication == "signature":
+            core = {key: value for key, value in response.items() if key != "agent_mac"}
+            response["agent_mac"] = hmac.new(
+                allocator.channel_keys[transport.allocation.domain_id],
+                canonical_json(core), hashlib.sha256,
+            ).hexdigest()
+        return response
+
+    def forbidden_decode(_record: object) -> None:
+        pytest.fail("unauthenticated numeric data reached terminal decoding")
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    monkeypatch.setattr(macos_vz_supervisor, "decode_invoke_outcome", forbidden_decode)
+    with pytest.raises(BackendUnavailableError, match="helper MAC|signature verification"):
+        driver.invoke(_request("domain.provider.conversation"))
+    assert driver.capability()[0] is False
+
+
+@pytest.mark.parametrize("kind", [
+    "tobkiri.packvm.bridge.request.v1",
+    "tobkiri.packvm.continuation.intent.v2",
+    "tobkiri.packvm.invoke.result.v2",
+])
+def test_encoded_control_frame_is_not_a_terminal(kind: str) -> None:
+    with pytest.raises(BackendUnavailableError, match="not a terminal outcome"):
+        macos_vz_supervisor._validated_invoke_outcome(
+            _numeric_terminal({"kind": kind, "number": 0.1})
+        )
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("contract_id", "conversation.saved-turn.v1"),
+    ("contract_id", "tobkiri.service.mcp.tool.call.v1"),
+])
+def test_special_invocation_cannot_use_numeric_carrier(
+    tmp_path: Path, field: str, value: str,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    _launch(driver)
+    request = _request("domain.provider.conversation")
+    request.payload = {"number": 0.1}
+    setattr(request, field, value)
+    with pytest.raises(BackendUnavailableError, match="requires canonical payload"):
+        driver._invoke_envelope(
+            request, request.target_domain.value,
+            driver._domains[request.target_domain.value],
+            request.context.request_id, request.request_digest, "a" * 64,
+        )
+    assert len(allocator.transports[request.target_domain.value].requests) == 1
+
+
 def test_terminate_reclaims_domain_when_helper_process_is_dead(tmp_path: Path) -> None:
     driver, allocator = _driver(tmp_path / "dead")
     _launch(driver)
@@ -1259,3 +1414,43 @@ def test_tampered_dynamic_seed_is_remeasured_before_helper_launch(
     with pytest.raises(BackendUnavailableError, match=message):
         _launch(driver)
     assert allocator.transports["domain.provider.conversation"].closed
+
+
+@pytest.mark.parametrize("field", ["contract_id", "contract_version", "operation_id"])
+@pytest.mark.parametrize("value", [[], {}])
+def test_numeric_envelope_rejects_nontext_authority_before_membership(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    _launch(driver)
+    request = _request("domain.provider.conversation")
+    request.payload = {"number": 0.5}
+    setattr(request, field, value)
+    with pytest.raises(BackendUnavailableError):
+        driver._invoke_envelope(
+            request, request.target_domain.value,
+            driver._domains[request.target_domain.value],
+            request.context.request_id, request.request_digest, "a" * 64,
+        )
+    assert len(allocator.transports[request.target_domain.value].requests) == 1
+
+
+@pytest.mark.parametrize("operation_id", [
+    "extension.future-operation", "rumi_mcp_gateway_pack.mcp-tool-call",
+])
+def test_numeric_host_transport_treats_operation_identifiers_as_opaque(
+    tmp_path: Path, operation_id: str,
+) -> None:
+    driver, _allocator = _driver(tmp_path)
+    _launch(driver)
+    request = _request("domain.provider.conversation")
+    request.payload = {"number": -0.0}
+    request.operation_id = operation_id
+    envelope = driver._invoke_envelope(
+        request, request.target_domain.value,
+        driver._domains[request.target_domain.value],
+        request.context.request_id, request.request_digest, "a" * 64,
+    )
+    assert envelope["request"]["operation_id"] == operation_id
+    assert envelope["request"]["request_digest"] == request.request_digest
+    assert decode_invoke_payload(envelope["request"]) == request.payload

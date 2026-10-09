@@ -24,6 +24,8 @@ _SOURCES = {
     "tobkiri_host/saved_turn_plan.py": "tobkiri_host/saved_turn_plan.py",
     "tobkiri_protocol/packvm_serial.py": "tobkiri_protocol/packvm_serial.py",
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
+    "tobkiri_protocol/data_codec.py": "tobkiri_protocol/data_codec.py",
+    "tobkiri_protocol/packvm_data_wire.py": "tobkiri_protocol/packvm_data_wire.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
     "tobkiri_protocol/flow_values.py": "tobkiri_protocol/flow_values.py",
     "tobkiri_protocol/saved_context.py": "tobkiri_protocol/saved_context.py",

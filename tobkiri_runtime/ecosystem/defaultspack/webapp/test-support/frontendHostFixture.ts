@@ -2,15 +2,15 @@ import frontendContractMap from "../../defaultspack/frontend_contract_map.v4.jso
 import type { FrontendCatalog, VerifiedFrontendContribution } from "../src/host/frontendContracts";
 import { profileScreenPath } from "../src/lib/profileRoute";
 
-const profileId = "defaults";
+export type FrontendHostFixtureProfile = "defaults" | "approval-other";
 
 /** Use the same persistent Profile identity for the fixture URL and catalog. */
-export function frontendHostFixtureScreenPath(applicationRoute: string): string {
+export function frontendHostFixtureScreenPath(applicationRoute: string, profileId: FrontendHostFixtureProfile = "defaults"): string {
   return profileScreenPath(profileId, applicationRoute);
 }
 
 /** Model the Host capture without adding compatibility routes or bypassing admission. */
-export function frontendHostFixtureCatalog(applicationChat = false): FrontendCatalog {
+export function frontendHostFixtureCatalog(applicationChat = false, profileId: FrontendHostFixtureProfile = "defaults"): FrontendCatalog {
   const profileRevision = "e2e-profile-revision";
   const activationId = "e2e-activation";
   const planHash = `sha256:${"b".repeat(64)}`;

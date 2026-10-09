@@ -314,6 +314,11 @@ jobs:
             tests/test_macos_vz_registration.py \
             tests/test_macos_vz_provisioner.py \
             tests/test_packvm_guest_bridge_runner.py \
+            tests/test_packvm_guest_bundle.py \
+            tests/test_packvm_core_boundaries.py \
+            tests/test_flow_data_codec.py \
+            tests/test_packvm_data_wire.py \
+            tests/test_packvm_numeric_archive.py \
             tests/test_linux_packvm_bundle.py \
             tests/test_windows_packvm_bundle.py \
             tests/test_portable_packvm_binding.py \
@@ -718,7 +723,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.13"]
-        shard: [capture-control, migration-providers]
+        shard: [capture-lifecycle, capture-guards, migration-providers]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -747,9 +752,44 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.shard }}" in
-            capture-control)
+            capture-lifecycle)
               tests=(
-                tests/test_pack_control_v4.py
+                tests/test_pack_control_v4.py::test_catalog_separates_admission_and_active_pack_digests
+                tests/test_pack_control_v4.py::test_dashboard_counts_only_active_approved_packs_without_catalog_projection
+                tests/test_pack_control_v4.py::test_dashboard_rejects_stale_inactive_install_binding
+                tests/test_pack_control_v4.py::test_reconfirmation_excludes_optional_packs_with_stale_approvals
+                tests/test_pack_control_v4.py::test_catalog_install_approve_enable_and_restart_read_back
+                tests/test_pack_control_v4.py::test_committed_enable_with_failed_recapture_is_never_a_definite_failure
+                tests/test_pack_control_v4.py::test_committed_approval_with_failed_recapture_is_indeterminate
+                tests/test_pack_control_v4.py::test_install_published_before_persistence_error_is_indeterminate
+                tests/test_pack_control_v4.py::test_committed_revocation_with_failed_recapture_is_indeterminate
+                tests/test_pack_control_v4.py::test_profile_activation_readback_failure_is_indeterminate
+                tests/test_pack_control_v4.py::test_scheduler_enable_projects_signed_dependency_edges
+              )
+              ;;
+            capture-guards)
+              tests=(
+                tests/test_pack_control_v4.py::test_control_operation_reuses_only_its_scoped_capture
+                tests/test_pack_control_v4.py::test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture
+                tests/test_pack_control_v4.py::test_slow_catalog_capture_does_not_own_the_control_session_lock
+                tests/test_pack_control_v4.py::test_enable_does_not_require_unrelated_pack_install_or_approval
+                tests/test_pack_control_v4.py::test_committed_baseline_defaultspack_requires_a_live_grant_to_invoke
+                tests/test_pack_control_v4.py::test_required_pack_rejects_disable_and_revoke_before_side_effects
+                tests/test_pack_control_v4.py::test_approval_is_session_bound_one_shot_and_not_implicit
+                tests/test_pack_control_v4.py::test_never_approved_revoke_is_unapproved_not_unavailable
+                tests/test_pack_control_v4.py::test_corrupt_approval_revoke_remains_unavailable
+                tests/test_pack_control_v4.py::test_revoke_persists_audit_and_rejects_revision_replay_after_restart
+                tests/test_pack_control_v4.py::test_revoke_audit_failure_rolls_back_and_leaves_approval_usable
+                tests/test_pack_control_v4.py::test_unknown_and_traversal_pack_ids_fail_closed
+                tests/test_pack_control_v4.py::test_cross_workspace_stale_profile_and_tampered_install_fail_closed
+                tests/test_pack_control_v4.py::test_tampered_approval_and_symlinked_pack_fail_closed
+                tests/test_pack_control_v4.py::test_missing_profile_and_symlinked_state_fail_closed
+                tests/test_pack_control_v4.py::test_profile_identity_traversal_fails_before_control_state_access
+                tests/test_pack_control_v4.py::test_generic_dispatch_is_retired_without_client_selected_execution
+                tests/test_pack_control_v4.py::test_pack_control_state_hardlink_fails_closed
+                tests/test_pack_control_v4.py::test_pack_approval_hardlink_fails_closed
+                tests/test_pack_control_v4.py::test_pack_control_root_replacement_fails_closed
+                tests/test_pack_control_v4.py::test_pack_approval_root_replacement_fails_closed
               )
               ;;
             migration-providers)

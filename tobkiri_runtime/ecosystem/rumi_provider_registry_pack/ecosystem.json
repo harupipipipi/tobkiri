@@ -15,9 +15,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:c98c95f9f400cb8b05ad927510340cae9b7549475cc02d243e33a2abb139c330",
+      "artifact_digest": "sha256:2f80e425ed044c44f8a8aa5c01edacfd4485e3934a52871737ac5f768e6de5a6",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:3697eb616f2c5bc32c45cf1215579201b49434f2f8220cb84a1e9ab02742a5ae"
+      "source_identity": "sha256:4f1d679902b05b67ac4664cd5c85e8140ac6109760ffafe4198643d14e7ff42c"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -25,7 +25,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:3697eb616f2c5bc32c45cf1215579201b49434f2f8220cb84a1e9ab02742a5ae"
+      "source_content_hash": "sha256:4f1d679902b05b67ac4664cd5c85e8140ac6109760ffafe4198643d14e7ff42c"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"

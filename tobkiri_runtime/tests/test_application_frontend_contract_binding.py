@@ -689,7 +689,10 @@ def test_active_pack_digest_keeps_host_identity_and_readiness_fences(fault):
 
 
 @pytest.mark.parametrize("different", [None, "contract_id", "operation_id", "provider_id", "function_id"])
-def test_dynamic_alias_never_shadows_an_exact_explicit_contribution(different):
+@pytest.mark.parametrize("schema_kind", ["finite", "missing", "open"])
+def test_dynamic_alias_never_shadows_an_exact_explicit_contribution(
+    different, schema_kind,
+):
     from core_runtime.global_contracts.http_contract_dispatch import HTTPContractTarget
 
     identity = {"contract_id": "fixture.read.v1", "operation_id": "read",
@@ -705,11 +708,29 @@ def test_dynamic_alias_never_shadows_an_exact_explicit_contribution(different):
     dynamic = dict(identity)
     if different:
         dynamic[different] = "different"
+    # Unknown contracts need a captured finite schema independently of alias
+    # precedence. Give admitted aliases their own payload boundary, not the
+    # explicit contribution's pack_id schema.
+    schema = {
+        "type": "object", "additionalProperties": schema_kind != "finite",
+        "properties": {"query": {"type": "string"}},
+    }
+    operation = {**dynamic, "invokable": True}
+    if schema_kind != "missing":
+        operation["input_schema"] = schema
     catalog = {"packs": [{"pack_id": "fixture", "enabled": True, "approved": True,
                            "pack_artifact_digest": "sha256:" + "a" * 64,
-                           "operations": [{**dynamic, "invokable": True}]}]}
+                           "operations": [operation]}]}
     targets = defaultspack_dynamic_capability_targets(binding, catalog=catalog)
-    assert len(targets) == (0 if different is None else 1)
+    assert len(targets) == (1 if different and schema_kind == "finite" else 0)
+    if targets:
+        target = targets[0]
+        assert {key: getattr(target, key) for key in identity} == dynamic
+        assert target.contribution_id == f"pack.fixture.{dynamic['operation_id']}"
+        assert target.owner_pack_id == "fixture"
+        assert target.artifact_digest == "sha256:" + "a" * 64
+        assert target.allowed_payload_keys == frozenset({"query"})
+        assert json.loads(target.input_schema) == schema
     assert binding.targets == (explicit,)
     assert explicit.contribution_id == "app.explicit.read"
     assert explicit.owner_pack_id == "app.fixture"
@@ -739,7 +760,22 @@ def test_explicit_target_is_preserved_without_dynamic_fallback(fault):
                                                             "artifact_digest": digest}])
     catalog = {"packs": [{"pack_id": "fixture", "enabled": True, "approved": True,
                            "pack_artifact_digest": digest,
-                           "operations": [{**identity, "invokable": True}]}]}
+                           "operations": [{**identity, "invokable": True,
+                                           "input_schema": {
+                                               "type": "object",
+                                               "additionalProperties": False,
+                                               "properties": {
+                                                   "pack_id": {"type": "string"},
+                                               },
+                                           }}]}]}
+    # The alias is otherwise admissible. An explicit contribution must suppress
+    # it before Host readiness checks, including when that contribution is stale.
+    unbound = FrontendContractBinding(
+        method=binding.method, path=binding.path,
+        presentation=binding.presentation, targets=(),
+    )
+    assert len(defaultspack_dynamic_capability_targets(unbound, catalog=catalog)) == 1
+    assert defaultspack_dynamic_capability_targets(binding, catalog=catalog) == ()
     snapshot = capture_capability_binding_snapshot(
         binding, session=session, catalog=catalog,
         dynamic_target_factory=defaultspack_dynamic_capability_targets,

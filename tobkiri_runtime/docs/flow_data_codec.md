@@ -70,8 +70,37 @@ This does not change PackVM bridge continuation/request/result protocols,
 which have their own canonical authority/data formats and require a separate
 paired protocol change before claiming float support on those paths. The new
 codec is not an implicit change to every artifact, backend, or semantic type.
-None of this patch's importing runtime modules is in the finite guest zipapp
-source closure, so it adds no guest-bundle dependency.
+
+Ordinary PackVM invocation now uses a paired, data-only wire adapter. Canonical
+requests retain `payload`; float-bearing requests instead carry the exact
+`payload_encoding` / `payload_tokens` variant. Removing either field cannot
+produce a valid legacy request. The Host encodes already-Broker-normalized data
+without changing the logical request or its digest. Swift and QEMU preserve
+the canonical carrier, and the guest validates it before artifact execution.
+Existing protected-channel and launch-binding checks remain in force; the
+guest only syntax-checks `request_digest`, so it is not a cryptographic request
+field binding. The private child parses the same sealed zipapp's codec and
+passes ordinary Python values to the Pack ABI.
+
+Float-bearing child terminal data uses the reserved private-result kind. The
+root treats all stdout as untrusted, validates the full token grammar, object
+shape, version and logical budgets, rejects decoded reserved control kinds,
+and rebuilds `tobkiri.packvm.invoke.result.v2` itself. The existing guest
+Ed25519 signature and helper HMAC cover that public encoding. Host decoding
+occurs only after both checks and the existing cancellation fence. Canonical
+terminals retain their v1 shape and bytes. The new unauthenticated token parser
+is a private-ABI data validator, never an authority assertion.
+
+The finite guest zipapp includes exactly `data_codec.py` and
+`packvm_data_wire.py` in addition to its previous closure. Token expansion counts
+against existing byte ceilings: 1280 KiB helper payload fields, 1 MiB whole
+child request, 16 MiB child stdout, and the existing smaller outer transport /
+authentication envelope limits. The adapter reserves the enclosing record's
+logical depth within canonical 64: requests allow 62 data levels and outcomes 61,
+with the 100,000-node data limit. MCP and saved-turn encoded requests fail closed until their
+paired protocols are adapted; an encoded ordinary request cannot enter a
+bridge continuation. These are local serialized protocol and sealed archive
+checks, not evidence of a real VM boot or native helper execution.
 
 A browser's `JSON.stringify(-0)` emits `0`; Python persistence cannot recover
 sign bits already removed by browser serialization. Browser authoring needs an

@@ -1,3 +1,4 @@
+import { approvalCommandOwnsDraft, completeApprovalCommandDraft } from "./lib/approvalCommandDraft";
 import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
@@ -88,7 +89,7 @@ import { admittedStrategyContributions, ChatStreamInterruptedError, api, compose
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import { useApprovalPolicyCapabilities } from "./features/tools/useApprovalPolicyCapabilities";
-import { approvalModeAvailable, captureSupportedApprovalMode, readApprovalPreferences } from "./features/tools/approvalPreferences";
+import { approvalModeAvailable, captureApprovalMode, captureSupportedApprovalMode, readApprovalPreferences, requestApprovalPreferenceChange } from "./features/tools/approvalPreferences";
 import {
   PROJECTS_CHANGED_EVENT,
   bootstrapProjects,
@@ -3085,6 +3086,7 @@ export function ChatApp() {
   const [confirmedSpotlightSettings, setConfirmedSpotlightSettings] = useState<Record<string, unknown>>({});
   const pinnedPlacementSaveRevisionRef = useRef(0);
   const settingsSaveRevisionRef = useRef(0);
+  const approvalPreferenceSaveInFlightRef = useRef(false);
   const settingsDocumentMutationRevisionRef = useRef(0);
   const settingsDocumentRevisionRef = useRef<number | null>(null);
   const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -3203,9 +3205,6 @@ export function ChatApp() {
     setActiveSidebarItemId(showPreview ? "__canvas_widget__" : "__close_canvas_widget__");
     setSidebarSelectionTick((tick) => tick + 1);
   }, [showPreview]);
-  const [yoloMode, setYoloMode] = useLocalStorage("rumi-yolo-mode", false);
-  const [ultraYoloMode, setUltraYoloMode] = useLocalStorage("rumi-ultra-yolo-mode", false);
-  const [ultraYoloRestoreYoloMode, setUltraYoloRestoreYoloMode] = useLocalStorage("rumi-ultra-yolo-restore-yolo-mode", false);
   const [mode, setMode] = useLocalStorage<AppMode>("rumi-app-mode", "agent");
   const [codingContext, setCodingContext] = useState<CodingContext | null>(null);
   const [codingWorkspaces, setCodingWorkspaces] = useState<CodingWorkspaceRecord[]>([]);
@@ -4243,15 +4242,15 @@ export function ChatApp() {
       .map((command) => {
         const stateRef = protocolCommandStateRef(command);
         const protocolState = stateRef === "host:approval.full_access"
-          ? ultraYoloMode
+          ? captureApprovalMode(settingsValues.tools) === "full"
           : settingsStateRefValue(stateRef, settingsValues);
         const legacyState = command.id === "yolo" || command.id === "ultra_yolo"
-          ? ultraYoloMode
+          ? captureApprovalMode(settingsValues.tools) === "full"
           : command.id === mode;
         const active = protocolState ?? legacyState;
         return { ...command, active, enabled: active };
       });
-  }, [activeProfile, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
+  }, [activeProfile, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled]);
   const modelCommandCandidates = composerCandidateMenu?.mode === "model" ? composerCandidateMenu.candidates : [];
   const unknownBlockStrategy = String(settingsValues.chat_rendering?.unknown_block_strategy ?? "placeholder");
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
@@ -6190,25 +6189,42 @@ export function ChatApp() {
   );
   const actionApprovalMode = approvalPreferences.controlVisible
     ? approvalPreferences.selectedMode : approvalPreferences.fixedMode;
-  const handleActionApprovalModeChange = (nextMode: ActionApprovalMode) => {
-    if (approvalModeAvailable(nextMode, approvalPolicySupport.captureAvailableModes())) {
-      handleSettingChange("tools", "action_approval_mode", nextMode);
+  const handleActionApprovalModeChange = async (nextMode: ActionApprovalMode) => {
+    if (approvalPreferenceSaveInFlightRef.current) {
+      setError("承認方式を保存しています。完了してから再試行してください。");
+      return false;
+    }
+    approvalPreferenceSaveInFlightRef.current = true;
+    try {
+      return await requestApprovalPreferenceChange(
+        settingsValuesRef.current.tools,
+        nextMode,
+        approvalPolicySupport.captureAvailableModes(),
+        async (acceptedMode) => {
+          const current = settingsValuesRef.current;
+          // Keep the effective mode unchanged until the existing revisioned
+          // Settings path acknowledges persistence. This does not grant policy.
+          const result = await persistSettingsValues(
+            { ...current, tools: { ...current.tools, action_approval_mode: acceptedMode } },
+            "tools.action_approval_mode",
+            [{ section: "tools", field: "action_approval_mode", value: acceptedMode }],
+          );
+          if (!result || captureApprovalMode(result.values.tools) !== acceptedMode
+            || captureApprovalMode(settingsValuesRef.current.tools) !== acceptedMode) {
+            throw new Error("Approval preference persistence was not confirmed.");
+          }
+        },
+        setError,
+      );
+    } finally {
+      approvalPreferenceSaveInFlightRef.current = false;
     }
   };
 
-  const setFullAccessEnabled = useCallback((enabled: boolean) => {
-    const nextState = resolveUltraYoloModeState(
-      {
-        yoloMode,
-        ultraYoloMode,
-        restoreYoloMode: ultraYoloRestoreYoloMode,
-      },
-      enabled,
-    );
-    setYoloMode(nextState.yoloMode);
-    setUltraYoloMode(nextState.ultraYoloMode);
-    setUltraYoloRestoreYoloMode(nextState.restoreYoloMode);
-  }, [setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode, ultraYoloMode, ultraYoloRestoreYoloMode, yoloMode]);
+  const handleToggleFullAccess = (enabled?: unknown) => handleActionApprovalModeChange(
+    parseCommandBoolean(enabled, captureApprovalMode(settingsValuesRef.current.tools) !== "full")
+      ? "full" : "ask",
+  );
 
   const handleSwitchToVisionModel = useCallback(() => {
     if (preferredVisionCandidate) {
@@ -6508,10 +6524,9 @@ export function ChatApp() {
         handleModeChange("agent");
         return;
       case "toggle_yolo":
-      case "toggle_ultra_yolo": {
-        setFullAccessEnabled(parseCommandBoolean(args.enabled, !ultraYoloMode));
-        return;
-      }
+      case "toggle_ultra_yolo":
+        // Both aliases and the sidebar use the same capability-guarded preference.
+        return handleToggleFullAccess(args.enabled);
       case "open_tool_picker": {
         const query = String(args.query ?? "").trim().toLowerCase();
         if (query) {
@@ -6528,7 +6543,7 @@ export function ChatApp() {
       }
       case "show_status":
         setError(
-          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, strategy=${strategyReference ?? "direct"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
+          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, strategy=${strategyReference ?? "direct"}, approval_preference=${captureApprovalMode(settingsValuesRef.current.tools)}, tools=${selectedTools.length}`,
         );
         return;
       case "open_context_viewer":
@@ -6801,8 +6816,7 @@ export function ChatApp() {
       }
       if (isRegisteredSlashCommand(parsed.command) && !parsed.command.canonical_id) {
         const frontendAction = parsed.command.execution.type === "frontend" ? parsed.command.execution.action : undefined;
-        runFrontendCommandAction(frontendAction, parsed.command, parsed.args, ticket);
-        return true;
+        return (await runFrontendCommandAction(frontendAction, parsed.command, parsed.args, ticket)) !== false;
       }
       const commandArgs = { ...parsed.args };
       if (parsed.command.id === "think" && commandArgs.level && activeProfile) {
@@ -6877,12 +6891,13 @@ export function ChatApp() {
 
       if (result.action || parsed.command.execution.type === "frontend") {
         const frontendAction = parsed.command.execution.type === "frontend" ? parsed.command.execution.action : undefined;
-        runFrontendCommandAction(
+        const applied = await runFrontendCommandAction(
           result.action ?? frontendAction,
           parsed.command,
           resolvedFrontendCommandArgs(parsed.command, parsed.args, result.args),
           ticket,
         );
+        if (applied === false) return false;
       }
       if (parsed.command.execution.type === "rumi_function" && appliedStatePaths.length === 0) {
         await refreshCatalog();
@@ -6902,8 +6917,10 @@ export function ChatApp() {
       }
     } catch (commandError) {
       if (commandUiIsCurrent()) setError(commandError instanceof Error ? commandError.message : "command execution に失敗しました。");
+      return false;
     }
     if (!commandUiIsCurrent()) return false;
+    return true;
   };
 
   const handleLocalComposerCommand = (rawInput: string): boolean => consumeLocalTaskPetInput(
@@ -6930,7 +6947,23 @@ export function ChatApp() {
 
   const handleComposerCommand = (commandId: string, rawInput?: string) => {
     if (!slashCommandsEnabled) return;
-    void executeComposerCommand(commandId, rawInput);
+    const command = effectiveCommandCatalog.find((item) => item.id === commandId || item.name === commandId);
+    if (!approvalCommandOwnsDraft(command)) {
+      void executeComposerCommand(commandId, rawInput);
+      return;
+    }
+    const ticket = conversationViewLoaderRef.current.capture();
+    const generation = taskPetDraftRef.current.generation;
+    const submittedDraft = taskPetDraftRef.current.input;
+    const profileId = runtimeProfileId;
+    void completeApprovalCommandDraft(
+      () => executeComposerCommand(commandId, rawInput),
+      () => submittedDraft.startsWith("/") && !submittedDraft.startsWith("//")
+        && conversationViewLoaderRef.current.matches(ticket)
+        && taskPetDraftRef.current.generation === generation
+        && liveTaskContextRef.current.profileId === profileId,
+      () => setInput(""),
+    );
   };
 
   const handleModelCommandCandidateSelect = (candidate: ModelCommandCandidate) => {
@@ -8031,16 +8064,6 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (!override && handleLocalComposerCommand(input)) return;
-    let submittedApprovalMode: ActionApprovalMode;
-    try {
-      // Capture before draft changes or awaits; the Host authorizes every effect.
-      submittedApprovalMode = captureSupportedApprovalMode(
-        settingsValuesRef.current.tools, approvalPolicySupport.captureAvailableModes(),
-      );
-    } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : "承認方式を確認してください。");
-      return;
-    }
     if (!conversationOwnsSelectedView(
       savedTurnViewFenceRef.current.capture(), activeWorkspaceTabId,
       activeConversationId, activeConversation?.id ?? null,
@@ -8072,6 +8095,32 @@ export function ChatApp() {
       setError("送信の保存先を確認しています。下書きは保持されています。");
       return;
     }
+
+    const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
+    if (commandInput) {
+      const commandTicket = conversationViewLoaderRef.current.capture();
+      const shouldClearInput = await executeComposerCommand(commandInput.command.id, commandInput.raw);
+      if (conversationViewLoaderRef.current.matches(commandTicket) && shouldClearInput !== false
+        && recoveryDraftStateRef.current.input === inputForSubmit) setInput("");
+      return;
+    }
+
+    if (approvalPreferenceSaveInFlightRef.current) {
+      setError("承認方式を保存しています。完了してから送信してください。下書きは保持しています。");
+      return;
+    }
+    let submittedApprovalMode: ActionApprovalMode;
+    try {
+      // Turn approval is captured after command dispatch so /yolo can return to
+      // human approval after elevated support expires, before any draft changes.
+      submittedApprovalMode = captureSupportedApprovalMode(
+        settingsValuesRef.current.tools, approvalPolicySupport.captureAvailableModes(),
+      );
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "承認方式を確認してください。");
+      return;
+    }
+
     shouldFollowMessagesRef.current = true;
     if (activeConversationId) {
       conversationScrollState.set(activeConversationId, {
@@ -8080,14 +8129,6 @@ export function ChatApp() {
       });
     }
     setRetryableSubmission(null);
-
-    const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
-    if (commandInput) {
-      const commandTicket = conversationViewLoaderRef.current.capture();
-      const shouldClearInput = await executeComposerCommand(commandInput.command.id, commandInput.raw);
-      if (conversationViewLoaderRef.current.matches(commandTicket) && shouldClearInput !== false) setInput("");
-      return;
-    }
 
     const trimmedInput = inputForSubmit.trim();
     const userText = (trimmedInput.startsWith("//") ? trimmedInput.slice(1) : trimmedInput) || "添付ファイルを確認してください。";
@@ -9437,7 +9478,7 @@ export function ChatApp() {
             onLoadPromptActive={promptResources.getActiveSummary}
             onTogglePromptEdge={promptResources.toggleEdge}
             onToggleChatPromptUsage={setShowPromptUsageInMessages}
-            yoloMode={ultraYoloMode}
+            yoloMode={actionApprovalMode === "full"}
             workspaceTabs={workspaceTabs}
             workspaceTabsEnabled={workspaceTabsEnabled}
             workspaceTabCreateOptions={workspaceTabCreateOptions}
@@ -9447,7 +9488,7 @@ export function ChatApp() {
             onSettingChange={handleSettingChange}
             onOpenSettings={openSettingsHome}
             onOpenSettingsSection={openSettingsSection}
-            onToggleYolo={() => setFullAccessEnabled(!ultraYoloMode)}
+            onToggleYolo={() => { void handleToggleFullAccess(); }}
             onWorkspaceTabSelect={handleWorkspaceTabSelect}
             onWorkspaceTabClose={handleWorkspaceTabClose}
             onWorkspaceTabCreate={handleWorkspaceTabCreate}

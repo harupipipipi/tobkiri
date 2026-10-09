@@ -219,3 +219,20 @@ test("confirmed MCP server resolves only authenticated enabled inspected tool id
   const disconnected = { ...anchored, metadata: { ...anchored.metadata, service: { tool_ids: [] } } };
   assert.deepEqual(resolveComposerToolMentions(text, [disconnected], tools).toolIds, []);
 });
+
+test("new draft clearing confirmed widgets retains one migrated mention without tool authority", () => {
+  const snapshot = { current: ["drive_read"] };
+  const selected = consumeLegacyToolMentionSnapshot(snapshot, "profile:chat-1", []);
+  const migrated = materializeLegacyToolMentions("", {}, selected, tools);
+  assert.equal(migrated.value, "@drive_read ");
+  assert.deepEqual(resolveComposerToolMentions(migrated.value, migrated.widgets, tools).toolIds, ["drive_read"]);
+  const completed = ["profile:chat-1"];
+  for (const key of ["profile:draft", "profile:draft"]) {
+    const reset = materializeLegacyToolMentions(migrated.value, {}, consumeLegacyToolMentionSnapshot(snapshot, key, completed), tools);
+    assert.equal(reset.value, "@drive_read ");
+    assert.deepEqual(resolveComposerToolMentions(reset.value, reset.widgets, tools), {
+      include: [], exclude: [], toolIds: [], widgets: [],
+    });
+    completed.push(key);
+  }
+});

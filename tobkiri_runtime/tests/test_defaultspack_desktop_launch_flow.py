@@ -190,7 +190,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/http_surface_presentation.py",
         "defaultspack/kanban_presentation.py",
         "defaultspack/managed_desktop_presentation.py",
-        "defaultspack/model_access_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
     } | tool_paths
@@ -218,7 +217,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/http_surface_presentation.py",
         "defaultspack/kanban_presentation.py",
         "defaultspack/managed_desktop_presentation.py",
-        "defaultspack/model_access_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
     }

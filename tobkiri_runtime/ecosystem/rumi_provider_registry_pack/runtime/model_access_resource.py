@@ -17,7 +17,7 @@ from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
     is_official_openrouter,
     normalize_native_filters,
 )
-from ecosystem.defaultspack.defaultspack.model_access_presentation import (
+from ecosystem.rumi_provider_registry_pack.runtime.model_access_presentation import (
     project_model_access,
     project_model_access_catalog,
 )

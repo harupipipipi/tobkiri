@@ -31,6 +31,18 @@ tooling-test:
 compact-runner-test:
     python -m pytest scripts/quality/test_compact_test_runner.py -q
 
+# Verify ordinary PackVM numeric wire boundaries; this is not a real VM proof.
+packvm-numeric-test:
+    cd tobkiri_runtime && python -B -m pytest \
+        tests/test_flow_data_codec.py \
+        tests/test_packvm_data_wire.py \
+        tests/test_packvm_numeric_archive.py \
+        tests/test_packvm_guest_bundle.py \
+        tests/test_packvm_core_boundaries.py \
+        tests/test_bounded_child_io.py \
+        tests/test_macos_vz_supervisor.py \
+        tests/test_qemu_supervisor_transport.py -q
+
 # Run Python static checks over the backend surfaces guarded in CI.
 lint:
     cd tobkiri_runtime && python -m ruff check core_runtime backend_core ecosystem/defaultspack/domain/coding ecosystem/defaultspack/domain/tool ecosystem/defaultspack/blocks/coding app.py

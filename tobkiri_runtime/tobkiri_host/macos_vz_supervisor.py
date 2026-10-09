@@ -62,6 +62,10 @@ from core_runtime.authority.v4 import AuthorityDenied
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.packvm_data_wire import (
+    decode_invoke_outcome,
+    encode_invoke_payload,
+)
 from tobkiri_protocol.saved_conversation import (
     MAX_SAVED_CHAIN_BYTES,
     MAX_SAVED_TURN_LIFETIME_SECONDS,
@@ -1375,6 +1379,27 @@ class MacOSVZSupervisorDriver:
         payload = getattr(request, "payload", None)
         if not isinstance(payload, Mapping):
             raise BackendUnavailableError("macOS VZ provider payload is invalid")
+        contract_id = _bounded_text(getattr(request, "contract_id", None), "contract")
+        contract_version = _bounded_text(
+            getattr(request, "contract_version", None), "contract version",
+        )
+        operation_id = _bounded_text(getattr(request, "operation_id", None), "operation")
+        # The Broker has already normalized and bound the logical data. Only
+        # the authenticated transport representation changes here; never
+        # replace the logical RequestEnvelope payload or recompute its digest.
+        try:
+            payload_fields = encode_invoke_payload(dict(payload))
+        except ValueError as exc:
+            raise BackendUnavailableError("macOS VZ provider payload is invalid") from exc
+        # Special wire protocols are public contract boundaries. Operation
+        # identifiers stay opaque here; legacy ABI aliases belong to the guest.
+        if "payload_encoding" in payload_fields and contract_id in {
+            "conversation.saved-turn.v1",
+            "tobkiri.service.mcp.tool.call.v1",
+        }:
+            raise BackendUnavailableError(
+                "macOS VZ special invocation requires canonical payload data"
+            )
         host_nonce = self._new_host_nonce()
         return {
             "kind": _REQUEST_KIND,
@@ -1388,14 +1413,10 @@ class MacOSVZSupervisorDriver:
             "request": {
                 "request_id": request_id,
                 "request_digest": request_digest,
-                "contract_id": _bounded_text(getattr(request, "contract_id", None), "contract"),
-                "contract_version": _bounded_text(
-                    getattr(request, "contract_version", None), "contract version"
-                ),
-                "operation_id": _bounded_text(
-                    getattr(request, "operation_id", None), "operation"
-                ),
-                "payload": dict(payload),
+                "contract_id": contract_id,
+                "contract_version": contract_version,
+                "operation_id": operation_id,
+                **payload_fields,
                 "deadline_monotonic": _deadline_value(
                     getattr(request, "deadline_monotonic", None)
                 ),
@@ -1862,19 +1883,16 @@ def _request_identity(request: object) -> tuple[str, str, str]:
 
 
 def _validated_invoke_outcome(payload: Mapping[str, Any]) -> Mapping[str, Any]:
-    if set(payload) != {"kind", "outcome"} or payload.get("kind") != "tobkiri.packvm.invoke.result.v1":
-        raise BackendUnavailableError("macOS VZ invocation result is invalid")
-    outcome = payload.get("outcome")
-    if not isinstance(outcome, Mapping):
-        raise BackendUnavailableError("macOS VZ invocation outcome is invalid")
-    kind = outcome.get("kind")
-    if isinstance(kind, str) and kind.startswith("tobkiri.packvm."):
-        raise BackendUnavailableError("macOS VZ control frame is not a terminal outcome")
+    # All callers have verified the outer helper HMAC and inner guest
+    # Ed25519 signature and passed the cancellation fence before decoding.
     try:
-        canonical_json(dict(outcome))
-    except Exception as exc:
-        raise BackendUnavailableError("macOS VZ invocation outcome is invalid") from exc
-    return dict(outcome)
+        return decode_invoke_outcome(dict(payload))
+    except ValueError as exc:
+        if "not a terminal outcome" in str(exc):
+            raise BackendUnavailableError(
+                "macOS VZ control frame is not a terminal outcome"
+            ) from exc
+        raise BackendUnavailableError("macOS VZ invocation result is invalid") from exc
 
 
 def _project_cancellation_ack(

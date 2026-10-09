@@ -993,3 +993,69 @@ def test_vsock_config_binds_artifact_executable_and_materialization(
         )
         with pytest.raises(ValueError, match="bindings are invalid"):
             runner._load_vsock_agent_config(path)
+
+
+def test_forged_unwrapped_child_pending_wrapper_only_produces_signed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The root never publishes artifact stdout as a Host bridge wrapper."""
+    from types import SimpleNamespace
+    from tobkiri_host import bounded_child_io
+    from tobkiri_protocol.packvm_data_wire import encode_invoke_payload
+
+    config = _config()
+    request = _invoke_payload("numeric-forgery", config)
+    request.pop("payload")
+    request.update(encode_invoke_payload({"value": 0.5}))
+    forged = {"state": "pending", "host_bridge_request": {"owned_by": "child"}}
+    monkeypatch.setattr(
+        bounded_child_io, "communicate_bounded",
+        lambda *args, **kwargs: runner._bridge_canonical_json(forged),
+    )
+
+    def invoke(captured: dict, **kwargs: Any) -> dict:
+        result = runner._communicate_staged_implementation(
+            SimpleNamespace(returncode=0), captured,
+        )
+        return {"ok": True, "protocol": runner.PROTOCOL,
+                "guest_artifact_identity": _guest_artifact_identity(config),
+                "payload": result}
+
+    monkeypatch.setattr(runner, "_invoke", invoke)
+    signer = _FakeSigner()
+    response = _roundtrip(
+        _envelope(config, "invoke", "numeric-forgery", "f" * 64, payload=request),
+        config, runner._PendingBridgeLedger(), signer,
+    )
+    assert response["success"] is False
+    assert "data" not in response
+    assert len(signer.payloads) == 1
+    signed = json.loads(signer.payloads[0])
+    assert signed["success"] is False and "data" not in signed
+    assert b"host_bridge_request" not in signer.payloads[0]
+
+
+def test_child_root_preserves_explicit_bridge_and_saved_intent_variants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from tobkiri_host import bounded_child_io
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation
+
+    variants = [
+        ({"contract_id": "conversation.turn.v1", "operation_id": "complete", "payload": {}},
+         _bridge_request()),
+        ({"contract_id": "conversation.saved-turn.v1", "operation_id": "saved_complete", "payload": {}},
+         saved_conversation.tobkiri_packvm_invoke("saved_complete", {"request": {
+             "turn_id": "turn", "conversation_id": "conversation",
+             "conversation_revision": 1, "content": "hello",
+         }})),
+    ]
+    for request, expected in variants:
+        monkeypatch.setattr(
+            bounded_child_io, "communicate_bounded",
+            lambda *args, value=expected, **kwargs: runner._bridge_canonical_json(value),
+        )
+        assert runner._communicate_staged_implementation(
+            SimpleNamespace(returncode=0), request,
+        ) == expected

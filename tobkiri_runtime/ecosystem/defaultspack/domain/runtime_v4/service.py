@@ -41,6 +41,8 @@ from tobkiri_protocol.bundle_catalog import (
     DefaultProfileV4Error,
 )
 
+from ._record_validation_cache import _RECORD_VALIDATION_CACHE
+
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ACTIVATION_RE = re.compile(r"^activation:[a-z0-9][a-z0-9._-]{7,127}$")
 _ENVELOPE_SCHEMA = "io.tobkiri.defaultspack-activation-envelope.v1"
@@ -2427,9 +2429,15 @@ class ActivationStore:
             return self._load_active_snapshot_locked(
                 verify_selected_artifact=verify_selected_artifact
             )
-        profile = validate_document(profile_value, "profile")
-        lock = validate_document(lock_value, "profile_lock")
-        plan = validate_document(plan_value, "resolved_plan")
+        profile = _RECORD_VALIDATION_CACHE.validate(
+            profile_value, "profile", validator=validate_document
+        )
+        lock = _RECORD_VALIDATION_CACHE.validate(
+            lock_value, "profile_lock", validator=validate_document
+        )
+        plan = _RECORD_VALIDATION_CACHE.validate(
+            plan_value, "resolved_plan", validator=validate_document
+        )
         activation = validate_document(activation_value, "activation")
         self._validate_record_graph(profile, lock, plan)
         if activation["activation_id"] != pointer["activation_id"]:

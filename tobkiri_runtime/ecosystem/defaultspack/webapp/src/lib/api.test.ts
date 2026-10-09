@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, savedTurnContentFromAttachments, validSavedTurnContent } from "./api";
 import { defaultspackContractRoute, defaultspackContractUrl } from "./api";
 import type { ComposerCommandItem, SavedTurnRequest } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
@@ -801,6 +801,24 @@ test("saved turn rejects unsupported fields and invalid revisions before sending
     await assert.rejects(api.startSavedTurn({ ...input, ...patch } as never), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
+});
+
+test("text-only saved turn content preserves exact strings rather than stored message blocks", () => {
+  for (const text of [
+    "Use \\@Web Search",
+    "Use \\@GitHub",
+    "先𐐀 @𐐀tool",
+    "Use and summarize the result",
+    "Use again @𐐀tool",
+    "Calculate 1+2 using @Calculator",
+    "Answer using no external tools.",
+    "Keep this exact text",
+    "  Preserve surrounding whitespace  ",
+  ]) {
+    const content = savedTurnContentFromAttachments(text, []);
+    assert.equal(content, text);
+    assert.equal(validSavedTurnContent(content), true);
+  }
 });
 
 test("saved turn content validator rejects malformed image blocks without throwing", () => {

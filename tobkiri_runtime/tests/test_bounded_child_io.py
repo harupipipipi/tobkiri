@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -158,8 +159,10 @@ def test_timeout_covers_both_open_pipes_and_child_wait_after_eof(source: str) ->
 
 
 def test_runner_accepts_exact_json_and_redacts_failed_child_stderr() -> None:
-    with _child("import sys; sys.stdin.buffer.read(); print('{\"answer\":42}')") as process:
-        assert runner._communicate_staged_implementation(process, {}) == {"answer": 42}
+    terminal = {"kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"answer": 42}}
+    source = "import sys; sys.stdin.buffer.read(); print(" + repr(json.dumps(terminal)) + ")"
+    with _child(source) as process:
+        assert runner._communicate_staged_implementation(process, {}) == terminal
     with _child("import sys; sys.stderr.write('secret'); sys.exit(1)") as process:
         with pytest.raises(ValueError, match="implementation failed") as error:
             runner._communicate_staged_implementation(process, {})

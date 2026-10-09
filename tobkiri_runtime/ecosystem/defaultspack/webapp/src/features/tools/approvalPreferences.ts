@@ -55,3 +55,28 @@ export function captureSupportedApprovalMode(
   }
   return mode;
 }
+
+/** Change a preference only; the Host still authorizes each submitted operation. */
+export async function requestApprovalPreferenceChange(
+  tools: Record<string, unknown> = {},
+  nextMode: ActionApprovalMode,
+  hostModes: readonly unknown[],
+  onChange: (mode: ActionApprovalMode) => void | Promise<void>,
+  onError: (message: string) => void,
+): Promise<boolean> {
+  if (!readApprovalPreferences(tools).controlVisible) {
+    onError("承認方式は設定で固定されています。変更するには承認方式の設定を確認してください。");
+    return false;
+  }
+  if (!approvalModeAvailable(nextMode, hostModes)) {
+    onError("選択した承認方式は現在利用できません。承認方式は変更していません。");
+    return false;
+  }
+  try {
+    await onChange(nextMode);
+    return true;
+  } catch {
+    onError("承認方式を保存できませんでした。承認方式の設定を確認してから再試行してください。");
+    return false;
+  }
+}

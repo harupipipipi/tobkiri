@@ -198,7 +198,7 @@ def test_model_policy_presentation_without_registry_runtime() -> None:
     _run_isolated("""
 import importlib.util
 from pathlib import Path
-source = (Path(sys.argv[1]) / 'ecosystem/defaultspack/defaultspack/'
+source = (Path(sys.argv[1]) / 'ecosystem/rumi_provider_registry_pack/runtime/'
           'model_access_presentation.py')
 spec = importlib.util.spec_from_file_location('isolated_model_presentation', source)
 presentation = importlib.util.module_from_spec(spec)
@@ -239,3 +239,133 @@ assert catalog.discovery_url({
 }) == ('https://openrouter.ai/api/v1/models?'
        'output_modalities=text&category=programming')
 """)
+
+
+def test_registry_model_access_resources_import_without_defaults_pack() -> None:
+    """The owning Pack imports its public projections without a peer runtime."""
+    script = """
+import importlib.abc
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+
+class RejectDefaultsPack(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'ecosystem.defaultspack' or fullname.startswith(
+            'ecosystem.defaultspack.'
+        ):
+            raise ImportError('Defaults Pack is unavailable')
+
+sys.meta_path.insert(0, RejectDefaultsPack())
+from ecosystem.rumi_provider_registry_pack.runtime import model_access_presentation
+from ecosystem.rumi_provider_registry_pack.runtime import model_access_resource
+assert model_access_resource.project_model_access is (
+    model_access_presentation.project_model_access
+)
+assert model_access_resource.project_model_access_catalog is (
+    model_access_presentation.project_model_access_catalog
+)
+connection = {
+    'provider_instance_id': 'saved.connection',
+    'credential_handle': 'opaque:secret-marker',
+    'endpoint': 'https://private-endpoint.invalid/v1',
+    'metadata': {'catalog_provider_id': 'public-catalog', 'api_key': 'secret-marker'},
+}
+snapshot = {'profile_id': 'test-profile', 'revision': 3, 'providers': [connection]}
+# Legacy default policy also remains supported, without leaking private fields.
+projection = model_access_resource.project_model_access(snapshot, 'saved.connection')
+catalog = model_access_resource.project_model_access_catalog(snapshot, 'saved.connection', {
+    'models': [{'provider_id': 'public-catalog', 'provider_model_id': 'vendor/model',
+                'credential_handle': 'opaque:secret-marker', 'api_key': 'secret-marker'}],
+})
+assert set(projection) == {'profile_id', 'provider_instance_id', 'registry_revision',
+                           'model_access', 'native_capability'}
+assert catalog == {
+    'profile_id': 'test-profile', 'provider_instance_id': 'saved.connection',
+    'models': [{'model_id': 'vendor/model', 'display_name': 'vendor/model'}],
+    'status': 'unavailable',
+}
+assert 'secret-marker' not in json.dumps([projection, catalog])
+assert 'private-endpoint' not in json.dumps([projection, catalog])
+assert not any(name == 'ecosystem.defaultspack' or name.startswith(
+    'ecosystem.defaultspack.'
+) for name in sys.modules)
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", script, str(_RUNTIME)],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_model_access_projection_is_sealed_by_owning_pack_only() -> None:
+    """A standalone provider registry artifact set contains the projection bytes."""
+    import hashlib
+    import json
+
+    ecosystem = _RUNTIME / "ecosystem"
+    owner = ecosystem / "rumi_provider_registry_pack"
+    relative = "runtime/model_access_presentation.py"
+    expected_digest = "sha256:" + hashlib.sha256((owner / relative).read_bytes()).hexdigest()
+    index = json.loads((owner / "artifact-index.v4.json").read_text())
+    assert [item for item in index["artifacts"] if item["path"] == relative] == [
+        {"path": relative, "digest": expected_digest, "role": "runtime"},
+    ]
+    manifest = json.loads((owner / "pack.v4.json").read_text())
+    assert any(item["path"] == relative and item["digest"] == expected_digest
+               for item in manifest["artifacts"])
+    defaults = ecosystem / "defaultspack"
+    assert not (defaults / "defaultspack/model_access_presentation.py").exists()
+    defaults_index = json.loads((defaults / "artifact-index.v4.json").read_text())
+    assert not any(item["path"].endswith("model_access_presentation.py")
+                   for item in defaults_index["artifacts"])
+
+
+@pytest.mark.parametrize("operation", ["model-access-read", "model-access-catalog"])
+def test_model_access_factory_loads_through_verified_synthetic_loader(
+    monkeypatch: pytest.MonkeyPatch, operation: str,
+) -> None:
+    """Load the sealed owner through production's package-less module loader."""
+    monkeypatch.syspath_prepend(str(_RUNTIME))
+    from core_runtime.host_provider_hooks_v4 import load_host_provider_factory
+    from tobkiri_host.artifact_compiler import compile_pack_root
+    from tobkiri_host.contracts import OperationCatalog, OperationRoute
+    from tobkiri_host.models import OpaqueAuthorityRef
+
+    pack_id = "rumi_provider_registry_pack"
+    root = _RUNTIME / "ecosystem" / pack_id
+    compiled = compile_pack_root(root)
+    contract_id = "tobkiri.resource.ai.provider.registry.v1"
+    operation_id = f"{pack_id}.{operation}"
+    metadata = compiled.routes[(contract_id, operation_id)]
+    function_id = f"{pack_id}.model-access." + (
+        "read" if operation == "model-access-read" else "catalog"
+    )
+    route = OperationRoute(
+        contract_id=contract_id,
+        operation_id=operation_id,
+        artifact_digest=compiled.artifact.digest,
+        function_id=function_id,
+        variant_id=metadata["variant_id"],
+        catalog_digest=compiled.artifact.catalog_digest,
+        platform=metadata["platform"],
+        architecture=metadata["architecture"],
+        runtime_abi=metadata["runtime_abi"],
+        backend=metadata["backend"],
+        execution_kind=metadata["execution_kind"],
+        domain_kind=metadata["domain_kind"],
+        execution_domain_profile=metadata["execution_domain_profile"],
+        materialization_mode=metadata["materialization_mode"],
+        target_principal_ref=OpaqueAuthorityRef("authority:model-access-import-test"),
+    )
+    binding = OperationCatalog((compiled.artifact,), (route,)).resolve(
+        contract_id, operation_id, ">=1,<2",
+    )
+    factory = load_host_provider_factory(root, binding)
+    assert factory.function_id == function_id
+    assert factory.operation == operation_id
+    assert type(factory).__module__.startswith("_tobkiri_host_provider_")
+    assert callable(factory.capture)

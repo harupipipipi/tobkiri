@@ -1,8 +1,11 @@
-import { expect, test, type Page, type Route, type Request } from "@playwright/test";
+import { createHistoryReferenceFixture, HistoryReferenceFixtureError } from "../test-support/historyReferenceFixture";
+import { completedSavedTurnFixtureEvents, completedSavedTurnFixtureList, createConversationFixtureState, FixtureMutationError, settingsFixtureMutation } from "../test-support/uiContractMutationFixture";
+import { expect, test, type Page, type Route, type Request, type Response, type Locator, type Frame } from "@playwright/test";
 import { frontendFixtureBinding, frontendFixtureRequest, matchesFrontendFixtureBinding } from "../test-support/frontendContractFixture";
-import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
+import { validSavedToolSelection, type ChatMessage, type ModelProfile, type SavedTurnRequest, type SavedTurnResult } from "../src/lib/api";
 import { canonicalRequestQuery } from "./contractRequestMatcher";
 import { frontendHostFixtureCatalog as dynamicHostCatalog, frontendHostFixtureScreenPath } from "../test-support/frontendHostFixture";
+import { lateSavedProgressConversation, lateSavedProgressFixture, lateSavedProgressText } from "../test-support/lateSavedProgressFixture";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -184,7 +187,7 @@ test("actual ChatApp waits for canonical registration and recovers a lost start 
     await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Copy backend connection error", exact: true })).toHaveCount(0);
     releaseStart();
-    await expect(page.getByText("Failed to fetch", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert").getByText("Failed to fetch - Tobkiri", { exact: true })).toBeVisible();
     registered = true;
     await expect.poll(() => registeredListReads).toBeGreaterThan(0);
     await page.getByRole("button", { name: "New Chat", exact: true }).click();
@@ -317,7 +320,7 @@ test("actual ChatApp preserves an uncached selected root and draft while its rec
     await expect(composer).toBeEnabled();
     await composer.fill("Keep this draft for B");
     await composer.press("Enter");
-    await expect(page.getByText("会話を読み込んでいます。完了してから送信してください。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert").getByText("会話を読み込んでいます。完了してから送信してください。 - Tobkiri", { exact: true })).toBeVisible();
     await expect(composer).toHaveValue("Keep this draft for B");
     expect(writes).toEqual([]);
     await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
@@ -337,7 +340,7 @@ test("actual ChatApp preserves an uncached selected root and draft while its rec
 // the Python integration tests that assert tool_logs and tool_call events.
 const now = 1_785_000_000_000;
 const approvalDigest = "a".repeat(64);
-const historyChatDropMime = "application/rumi-history-chat";
+const historyReferenceDropEvent = "tobkiri:history-reference-drop";
 
 for (const switchToB of [false, true]) {
   test(`actual ChatApp delayed model completion ${switchToB ? "preserves B tab body URL and draft" : "refreshes its owning A normally"}`, async ({ page }) => {
@@ -557,6 +560,13 @@ test("verified Pack v4 conversation boots from the dynamic-host catalog", async 
 
 type ApiMockOptions = {
   applicationChat?: boolean;
+  calendarPreview?: boolean;
+  historyReferences?: boolean;
+  preserveLocalStorage?: boolean;
+  runtimeProfileId?: "defaults" | "approval-other";
+  beforeSettingsWriteResponse?: () => Promise<void>;
+  settingsWriteResponse?: "conflict" | "unconfirmed";
+  onSettingsWriteCommitted?: () => void;
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
@@ -822,7 +832,7 @@ const sidebarItems = [
     },
   },
   {
-    id: "𐐀tool",
+    id: "unicode_tool",
     label: "𐐀tool",
     category: "tool",
     description: "Supplementary-plane Unicode tool.",
@@ -1019,6 +1029,18 @@ const toolCatalogTools = [
     tags: ["github"],
   },
   {
+    tool_id: "unicode_tool",
+    service_id: "unicode",
+    service_label: "Unicode",
+    name: "𐐀tool",
+    summary: "Supplementary-plane Unicode tool.",
+    action_class: "read",
+    risk: "low",
+    connection_status: "connected",
+    minimum_permission: "auto",
+    tags: ["unicode"],
+  },
+  {
     tool_id: "scheduler",
     service_id: "calendar",
     service_label: "Calendar",
@@ -1065,17 +1087,17 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
   if (options.applicationChat) {
     await page.route("**/health", (route) => fulfill(route, { status: "ok", saved_turn_store_id: `sha256:${"a".repeat(64)}` }));
   }
-  await page.addInitScript(({ selectedToolIds, pendingStorage }: { selectedToolIds: string[]; pendingStorage?: Record<string, unknown> }) => {
-    localStorage.clear();
+  await page.addInitScript(({ selectedToolIds, pendingStorage, runtimeProfileId, preserveLocalStorage }: { selectedToolIds: string[]; pendingStorage?: Record<string, unknown>; runtimeProfileId: string; preserveLocalStorage: boolean }) => {
+    if (!preserveLocalStorage) localStorage.clear();
     sessionStorage.clear();
     // The floating pet is covered by component tests. Keep contract-test
     // pointer targets deterministic while exercising chat controls.
-    localStorage.setItem("tobkiri.task-pet.enabled.v2:defaults", "false");
-    if (pendingStorage) localStorage.setItem("rumi-pending-chat-v2:defaults", JSON.stringify(pendingStorage));
+    localStorage.setItem(`tobkiri.task-pet.enabled.v2:${runtimeProfileId}`, "false");
+    if (pendingStorage) localStorage.setItem(`rumi-pending-chat-v2:${runtimeProfileId}`, JSON.stringify(pendingStorage));
     if (selectedToolIds.length) {
       localStorage.setItem("rumi-selected-tool-ids", JSON.stringify(selectedToolIds));
     }
-  }, { selectedToolIds: options.initialSelectedToolIds ?? [], pendingStorage: options.initialPendingStorage });
+  }, { selectedToolIds: options.initialSelectedToolIds ?? [], pendingStorage: options.initialPendingStorage, runtimeProfileId: options.runtimeProfileId ?? "defaults", preserveLocalStorage: options.preserveLocalStorage === true });
   await page.addInitScript(() => {
     const fixtureWindow = window as Window & {
       __approvalRendererFixture?: {
@@ -1152,8 +1174,13 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       ...(options.initialSettingsValues?.general ?? {}),
     },
   }));
-  let conversationToolPreferences: Record<string, unknown> = {};
+  let settingsRevision = 1;
+  const historyReferenceFixture = options.historyReferences ? createHistoryReferenceFixture() : null;
+  const initialConversation = { ...smokeConversation(), metadata: {} as Record<string, unknown> };
+  options.conversationMutator?.(initialConversation);
+  const conversationState = createConversationFixtureState(initialConversation.conversation_revision, initialConversation.metadata);
   let completedSavedTurn: SavedTurnRequest | null = null;
+  let completedSavedTurnResult: SavedTurnResult | null = null;
   let codingApprovalRequest: Record<string, unknown> | null = null;
   let interactiveApprovalRequest: InteractiveApprovalFixture | null = options.interactiveApproval
     ? {
@@ -1175,10 +1202,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     const url = new URL(request.url());
     const path = requestTarget(url);
     const method = request.method();
-    const conversation = smokeConversation();
-    options.conversationMutator?.(conversation);
+    const conversation = { ...structuredClone(initialConversation), ...conversationState.snapshot() };
     if (completedSavedTurn) {
-      conversation.conversation_revision = completedSavedTurn.conversation_revision + 1;
       const request = completedSavedTurn;
       const userText = typeof request.content === "string" ? request.content : request.content[0].text;
       const savedMessages: ChatMessage[] = [
@@ -1235,7 +1260,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
-        dynamic_host: dynamicHostCatalog(options.applicationChat),
+        dynamic_host: dynamicHostCatalog(options.applicationChat, options.runtimeProfileId),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
@@ -1273,28 +1298,38 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/ui/settings") && method === "PUT") {
-      const payload = request.postDataJSON() as {
-        values?: Record<string, Record<string, unknown>>;
-        patches?: Array<{ section: string; field: string; value: unknown }>;
-      };
-      options.onSettingsWrite?.(payload);
-      if (payload.values) {
-        currentSettingsValues = JSON.parse(JSON.stringify(payload.values));
-      } else {
-        for (const patch of payload.patches ?? []) {
-          currentSettingsValues[patch.section] = {
-            ...(currentSettingsValues[patch.section] ?? {}),
-            [patch.field]: patch.value,
-          };
+      const payload: unknown = request.postDataJSON();
+      options.onSettingsWrite?.(payload as Record<string, unknown>);
+      try {
+        settingsFixtureMutation(payload, settingsRevision);
+        await options.beforeSettingsWriteResponse?.();
+        if (options.settingsWriteResponse === "conflict") {
+          return route.fulfill({ status: 409, json: { status: "error", success: false, error: "Settings revision conflict" } });
         }
+        if (options.settingsWriteResponse === "unconfirmed") {
+          // An HTTP success without a canonical receipt is not an acknowledged write.
+          return route.fulfill({ status: 202, json: { status: "pending", success: true, data: { pending: true }, error: null } });
+        }
+        // Recheck CAS after a delayed response gate, before mutating fixture state.
+        const receipt = settingsFixtureMutation(payload, settingsRevision);
+        for (const [section, values] of Object.entries(receipt.values)) {
+          currentSettingsValues[section] = { ...currentSettingsValues[section], ...values };
+        }
+        settingsRevision = receipt.document_revision;
+        // This observes fixture state commit, not receipt delivery to the client.
+        options.onSettingsWriteCommitted?.();
+        await fulfill(route, receipt);
+        return;
+      } catch (error) {
+        if (!(error instanceof FixtureMutationError)) throw error;
+        return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
       }
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
     if (path === routeKey("api/ui/settings")) {
       return fulfill(route, {
         sections: settingsSections, values: currentSettingsValues,
-        ...(options.applicationChat ? { document_revision: 1 } : {}),
+        document_revision: settingsRevision,
       });
     }
 
@@ -1309,7 +1344,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { namespace: "defaultspack.projects.v1", revision: 0, projects: [] });
     }
 
-    if (options.applicationChat && /^\/api\/ui\/conversations\/[^/]+\/preview$/.test(path)) {
+    if (options.applicationChat && /^\/api\/ui\/conversations\/[^/]+\/preview$/.test(path)
+      && !(options.calendarPreview && path === routeKey("api/ui/conversations/c-smoke/preview"))) {
       return fulfill(route, { conversation_id: path.split("/")[4], previews: [], summary: {} });
     }
 
@@ -1458,6 +1494,28 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
+    if (historyReferenceFixture) {
+      const binding = frontendFixtureRequest(request.url(), method);
+      const list = frontendFixtureBinding("chatReferencesList");
+      const resolve = frontendFixtureBinding("chatReferencesResolve");
+      const listQuery = canonicalRequestQuery(request, "api/chat/references", "GET");
+      const resolveQuery = canonicalRequestQuery(request, "api/chat/references/resolve", "POST");
+      if (listQuery !== null || resolveQuery !== null) {
+        try {
+          if (listQuery !== null && matchesFrontendFixtureBinding(binding, list)) {
+            return fulfill(route, historyReferenceFixture.list(listQuery));
+          }
+          if (resolveQuery !== null && matchesFrontendFixtureBinding(binding, resolve) && [...resolveQuery].length === 0) {
+            return fulfill(route, historyReferenceFixture.resolve(request.postDataJSON()));
+          }
+          throw new HistoryReferenceFixtureError(400, "History reference fixture binding does not match");
+        } catch (error) {
+          if (!(error instanceof HistoryReferenceFixtureError)) throw error;
+          return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
+        }
+      }
+    }
+
     if (path === routeKey("api/chat/conversations") && method === "GET") {
       return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1, store_revision: 1 });
     }
@@ -1465,6 +1523,16 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     if (path === routeKey("api/chat/conversations") && method === "POST") {
       options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/conversation") && method === "PUT") {
+      try {
+        const mutation = conversationState.mutate(request.postDataJSON());
+        return fulfill(route, { ...conversation, ...mutation });
+      } catch (error) {
+        if (!(error instanceof FixtureMutationError)) throw error;
+        return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
+      }
     }
 
     if (path === routeKey("api/chat/conversation") && method === "GET") {
@@ -1475,6 +1543,13 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       const payload = request.postDataJSON() as { request: SavedTurnRequest };
       options.onSavedTurnRequest?.(payload);
       await options.beforeSavedTurnResponse?.();
+      let committedRevision: number;
+      try {
+        committedRevision = conversationState.completeTurn(payload.request.conversation_id, payload.request.conversation_revision).conversation_revision;
+      } catch (error) {
+        if (!(error instanceof FixtureMutationError)) throw error;
+        return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
+      }
       completedSavedTurn = payload.request;
       const result: SavedTurnResult = {
         status: "completed",
@@ -1483,16 +1558,39 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
           conversation_id: payload.request.conversation_id,
           status: "completed",
           revision: 3,
+          request_id: `saved-turn.${payload.request.turn_id}`,
+          events: [],
           result_reference: {
             conversation_id: payload.request.conversation_id,
-            conversation_revision: payload.request.conversation_revision + 1,
+            conversation_revision: committedRevision,
             user_message_id: "m-saved-user",
             assistant_message_id: "m-saved-assistant",
             outcome_digest: `sha256:${"f".repeat(64)}`,
           },
         },
       };
+      completedSavedTurnResult = result;
       return fulfill(route, result);
+    }
+
+    const turnListQuery = canonicalRequestQuery(request, "api/chat/turns", "GET");
+    if (turnListQuery !== null) {
+      try {
+        return fulfill(route, completedSavedTurnFixtureList(turnListQuery, completedSavedTurnResult?.turn ?? null));
+      } catch (error) {
+        if (!(error instanceof FixtureMutationError)) throw error;
+        return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
+      }
+    }
+
+    const turnEventsQuery = canonicalRequestQuery(request, "api/chat/turn/events", "GET");
+    if (turnEventsQuery !== null) {
+      try {
+        return fulfill(route, completedSavedTurnFixtureEvents(turnEventsQuery, completedSavedTurnResult?.turn ?? null));
+      } catch (error) {
+        if (!(error instanceof FixtureMutationError)) throw error;
+        return route.fulfill({ status: error.status, json: { status: "error", success: false, error: error.message } });
+      }
     }
 
     if (path === routeKey("api/command-protocol/v1/invocations/events/query") && method === "POST") {
@@ -1583,19 +1681,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, conversation);
     }
 
-    if ((path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) && method === "PUT") {
-      const payload = request.postDataJSON() as Record<string, unknown>;
-      conversationToolPreferences = (payload.preferences && typeof payload.preferences === "object" && !Array.isArray(payload.preferences))
-        ? payload.preferences as Record<string, unknown>
-        : {};
-      return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
-    }
-
-    if (path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) {
-      return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
-    }
-
     if (path === routeKey("api/ui/conversations/c-smoke/preview")) {
+      if (!options.calendarPreview) return fulfill(route, { conversation_id: "c-smoke", previews: [], summary: {} });
       return fulfill(route, {
         conversation_id: "c-smoke",
         previews: [
@@ -1879,7 +1966,7 @@ async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
   await page.locator("textarea.rumi-composer-textarea").fill("/coding");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/coding(?:\?|$)/);
-  const codingWidgetButton = page.getByRole("button", { name: "Coding widget" });
+  const codingWidgetButton = page.getByRole("button", { name: "Coding widget", exact: true });
   await expect(codingWidgetButton).toBeVisible();
   await codingWidgetButton.click();
   await expect(page.locator(".coding-cockpit")).toBeVisible();
@@ -2114,17 +2201,77 @@ test("approval window reports expiry discovered by its decision preflight", asyn
 });
 
 test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {
-  await openDefaultspack(page, "/chat");
+  const writes: Record<string, unknown>[] = [];
+  const settingsIdentity = {
+    GET: { contributionId: "defaults.ui.settings.read", contractId: "tobkiri.resource.ui.settings.v1",
+      operationId: "tobkiri_ui_settings_pack.settings-read", method: "GET", path: routeKey("api/ui/settings") },
+    PUT: { contributionId: "defaults.ui.preferences.write", contractId: "tobkiri.action.ui.preferences.v1",
+      operationId: "tobkiri_ui_settings_pack.preferences-write", method: "PUT", path: routeKey("api/ui/settings") },
+  };
+  const isSettingsRequest = (request: Request, method: "GET" | "PUT") => {
+    const query = canonicalRequestQuery(request, "api/ui/settings", method);
+    return query !== null && (method !== "PUT" || query.size === 0)
+      && matchesFrontendFixtureBinding(frontendFixtureRequest(request.url(), request.method()), settingsIdentity[method]);
+  };
+  await openDefaultspack(page, "/chat", { onSettingsWrite: (payload) => writes.push(payload) });
   await expect(page.getByRole("status", { name: "現在の実行オプション" })).toHaveCount(0);
 
-  await page.getByTitle("Settings").last().click();
-  await page.getByRole("button", { name: "Advanced Settings" }).click();
-  await page.getByRole("button", { name: "Change settings display mode" }).click();
-  await page.locator("main#settings-content details summary").click();
-  await page.getByRole("button", { name: "Manual Runtime Mode Selection" }).click();
+  const openAdvancedSettings = async () => {
+    await page.getByTitle("Settings").last().click();
+    await page.getByRole("button", { name: "Change settings display mode" }).click();
+    await page.getByRole("button", { name: "Advanced Settings", exact: true }).click();
+    await page.locator("main#settings-content details summary").click();
+  };
+  await openAdvancedSettings();
+  const optIn = page.getByRole("button", { name: "Manual Runtime Mode Selection", exact: true });
+  await expect(optIn).toHaveAttribute("aria-pressed", "false");
+  const saved = page.waitForResponse((response) => isSettingsRequest(response.request(), "PUT"));
+  await optIn.click();
+  const receipt = await saved;
+  expect(receipt.status()).toBe(200);
+  expect(frontendFixtureRequest(receipt.url(), receipt.request().method())).toEqual(settingsIdentity.PUT);
+  expect(receipt.request().postDataJSON()).toEqual({
+    changes: { general: { manual_runtime_mode_selection: true } }, expected_revision: 1,
+  });
+  expect(await receipt.json()).toEqual(ok({
+    values: { general: { manual_runtime_mode_selection: true } }, document_revision: 2,
+  }));
+  await expect(optIn).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Close settings" }).click();
-
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeHidden();
   await expect(page.getByRole("status", { name: "現在の実行オプション" })).toBeVisible();
+
+  // A fresh document must obtain the persisted value, rather than an optimistic toggle.
+  let newDocumentCommitted = false;
+  const freshSettingsRequests = new Set<Request>();
+  const onNavigated = (frame: Frame) => { if (frame === page.mainFrame()) newDocumentCommitted = true; };
+  const onRequest = (request: Request) => {
+    if (newDocumentCommitted && request.frame() === page.mainFrame() && isSettingsRequest(request, "GET")) {
+      freshSettingsRequests.add(request);
+    }
+  };
+  page.on("framenavigated", onNavigated);
+  page.on("request", onRequest);
+  try {
+    const restored = page.waitForResponse((response) => freshSettingsRequests.has(response.request())
+      && isSettingsRequest(response.request(), "GET"));
+    await page.goto(frontendHostFixtureScreenPath("/chat"));
+    const persisted = await restored;
+    expect(persisted.status()).toBe(200);
+    expect(frontendFixtureRequest(persisted.url(), persisted.request().method())).toEqual(settingsIdentity.GET);
+    expect(await persisted.json()).toMatchObject({ data: {
+      values: { general: { manual_runtime_mode_selection: true } }, document_revision: 2,
+    } });
+  } finally {
+    page.off("framenavigated", onNavigated);
+    page.off("request", onRequest);
+  }
+  await expect(page.getByRole("status", { name: "現在の実行オプション" })).toBeVisible();
+  await openAdvancedSettings();
+  await expect(optIn).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeHidden();
+  expect(writes).toHaveLength(1);
 });
 
 test("manual runtime mode control opens the mode selector when enabled", async ({ page }) => {
@@ -2138,8 +2285,8 @@ test("manual runtime mode control opens the mode selector when enabled", async (
   await expect(runtimeOptions).toBeVisible();
   await runtimeOptions.getByRole("button", { name: "実行モード: 自律エージェント" }).click();
   await expect(page.getByText("モード選択")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Coding/ })).toBeVisible();
-  await page.getByRole("button", { name: /^Chat/ }).click();
+  await expect(page.getByRole("button", { name: "Coding コード編集・Git操作", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Chat 通常チャット", exact: true }).click();
   await expect(runtimeOptions.getByRole("button", { name: "実行モード: 通常チャット" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-app-mode"))).toBe('"chat"');
 });
@@ -2219,33 +2366,99 @@ test("tool hub search suggestions close on outside click while keeping filtered 
   await expect(search).toHaveValue("web");
 
   await page.getByRole("button", { name: "表示中を今回使う" }).click();
-  await expect(page.locator(".rumi-composer-frame")).toContainText("Web Search");
+  await expect(page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" })).toHaveValue("@web_search ");
 });
 
 test("composer approval menu opens action permissions independently of tool selection modes", async ({ page }) => {
-  await openDefaultspack(page);
-
-  await page.getByRole("button", { name: "アクションの承認方法" }).click();
+  const settingsWrites: Record<string, unknown>[] = [];
+  const mutationRequests: string[] = [];
+  await openDefaultspack(page, "/chat", { onSettingsWrite: (payload) => settingsWrites.push(payload) });
+  page.on("request", (request) => {
+    const binding = frontendFixtureRequest(request.url(), request.method());
+    const path = requestTarget(new URL(request.url()));
+    // Only an exact canonical POST bound to a shipped resource contract is a read.
+    // Unknown POSTs and every non-read service/action request remain effects.
+    const resourceRead = request.method() === "POST" && binding?.method === "POST"
+      && binding.contractId.startsWith("tobkiri.resource.")
+      && canonicalRequestQuery(request, binding.path.slice(1), "POST") !== null;
+    if ((!["GET", "HEAD", "OPTIONS"].includes(request.method()) && !resourceRead)
+      || binding?.contractId.startsWith("tobkiri.action.")
+      || binding?.contractId === "tobkiri.service.interactive-effect.v1"
+      || path === routeKey("api/command-protocol/v1/invoke")) {
+      mutationRequests.push(`${request.method()} ${path}`);
+    }
+  });
+  const approval = page.getByRole("button", { name: "アクションの承認方法" });
+  await approval.click();
   const approvalMenu = page.getByRole("menu", { name: "アクションの承認方法" });
   await expect(approvalMenu).toHaveAccessibleName("アクションの承認方法");
-  await expect(approvalMenu).toContainText("承認を求める");
-  await expect(approvalMenu).toContainText("代理で承認");
-  await expect(approvalMenu).toContainText("フルアクセス");
+  await expect(approvalMenu.getByRole("menuitemradio", { name: /^人が承認/ })).toBeEnabled();
+  await expect(approvalMenu.getByRole("menuitemradio", { name: /^人が承認/ })).toHaveAttribute("aria-checked", "true");
+  await expect(approvalMenu.getByRole("menuitemradio", { name: /^別のAIが承認/ })).toBeDisabled();
+  await expect(approvalMenu.getByRole("menuitemradio", { name: /^追加承認なし/ })).toBeDisabled();
   await expect(approvalMenu).not.toContainText("カスタム（設定）");
   await expect(approvalMenu).not.toContainText("自動で選ぶ");
 
   await approvalMenu.getByRole("button", { name: "詳細はこちら" }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await page.getByRole("button", { name: "Tools", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-  await expect(page.getByText("ツールとログインは別に管理されます")).toBeVisible();
-  await expect(page.getByText("MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.")).toBeVisible();
-  await expect(page.getByText("Safety rules")).toBeVisible();
-  await expect(page.getByText("Tool source → Tools & MCP")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  await expect(dialog).toBeVisible();
+  const categories = dialog.getByRole("navigation", { name: "Settings categories" });
+  await categories.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /^Tobkiriが自動で選ぶ/ })).toBeEnabled();
+  await expect(dialog.getByRole("checkbox", { name: "入力欄に承認モードを表示" })).toBeChecked();
+  const fixedApproval = dialog.getByRole("combobox", { name: "非表示時の固定モード（必須）", exact: true });
+  await expect(fixedApproval).toHaveValue("ask");
+  // Playwright 1.60's disabled matcher follows the wrapping label to its enabled
+  // select. Check each native option itself, then exercise normal keyboard input.
+  for (const name of [/^別のAIが承認/, /^追加承認なし/]) {
+    const unavailable = fixedApproval.getByRole("option", { name });
+    await expect(unavailable).toHaveAttribute("disabled", "");
+    await expect(unavailable).toHaveJSProperty("disabled", true);
+  }
+  await expect(fixedApproval).toBeEnabled();
+  await fixedApproval.focus();
+  await expect(fixedApproval).toBeFocused();
+  for (const key of ["ArrowDown", "End", "ArrowUp", "Home"]) {
+    await fixedApproval.press(key);
+    await expect(fixedApproval).toHaveValue("ask");
+  }
+  await fixedApproval.press("Tab");
+  await expect(fixedApproval).toHaveValue("ask");
+  expect(settingsWrites).toEqual([]);
+  expect(mutationRequests).toEqual([]);
+  await dialog.getByRole("button", { name: "権限", exact: true }).click();
+  await expect(dialog.getByText("機能の選定と、実行時の許可は別です。ここで「確認する」にした操作は、実行前にランタイムの承認UIへ渡されます。", { exact: true })).toBeVisible();
+  const sendPermissions = dialog.locator("div.rounded-lg").filter({ has: page.getByRole("heading", { name: "送信する", exact: true }) });
+  await expect(sendPermissions.getByRole("button", { name: "確認する", exact: true })).toBeEnabled();
+  await expect(sendPermissions.getByRole("button", { name: "使わない", exact: true })).toBeEnabled();
+
+  // Technical tool-source/account separation is in the Advanced Connections tab.
+  await dialog.getByRole("button", { name: "Change settings display mode" }).click();
+  await categories.getByRole("button", { name: "Tools", exact: true }).click();
+  await dialog.getByRole("button", { name: "接続", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "ツールとログインは別に管理されます", exact: true })).toBeVisible();
+  await expect(dialog.getByText("MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Safety rules", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Tool source → Tools & MCP", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Off Disable Codex App Server integration.", exact: true })).toBeVisible();
+  await categories.getByRole("button", { name: "Connections", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Connection summary", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Official secrets are not bundled. The official app can provide hosted sign-in, while self-hosted installations can import credentials or configure their own OAuth client.", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: "入力欄に承認モードを表示" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Off Disable Codex App Server integration.", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(approval).toContainText("承認");
+  expect(settingsWrites).toEqual([]);
+  expect(mutationRequests).toEqual([]);
 });
 
 test("composer tool mode menu offers supported modes and opens manual tool settings", async ({ page }) => {
-  await openDefaultspack(page);
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: { tools: { show_tool_selection_control: true } },
+  });
 
   const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
   await expect(mode).toBeVisible();
@@ -2259,11 +2472,11 @@ test("composer tool mode menu offers supported modes and opens manual tool setti
   await expect(menu.getByRole("menuitemradio", { name: /使う前に確認/ })).toHaveCount(0);
 
   await menu.getByRole("menuitemradio", { name: /自分で選ぶ/ }).click();
-  await expect(mode).toContainText("機能 手動");
   await expect(menu).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(mode).toContainText("機能 手動");
 
   await mode.click();
   await menu.getByRole("menuitemradio", { name: /自動で選ぶ/ }).click();
@@ -2274,11 +2487,18 @@ test("composer tool mode menu offers supported modes and opens manual tool setti
 test("composer per-turn no-tools mode reaches the request and locks during generation without settings writes", async ({ page }) => {
   const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
   const settingsWrites: Array<Record<string, unknown>> = [];
+  const operationMismatches: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("Saved turn events do not match the pending operation")) {
+      operationMismatches.push(message.text());
+    }
+  });
   let releaseSavedTurn: (() => void) | undefined;
   const savedTurnGate = new Promise<void>((resolve) => { releaseSavedTurn = resolve; });
   await installDefaultspackApiMocks(page, {
     modelProfiles: [smokeProfile],
     applicationChat: true,
+    initialSettingsValues: { tools: { show_tool_selection_control: true } },
     conversationMutator: (conversation) => {
       conversation.conversation_kind = "chat";
       conversation.tags = [];
@@ -2300,12 +2520,13 @@ test("composer per-turn no-tools mode reaches the request and locks during gener
   await expect(mode).toContainText("機能 なし");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
 
+  let savedResponses: Promise<[Response, Response]>;
   try {
     await expect.poll(() => savedTurnRequests.length).toBe(1);
     expect(savedTurnRequests[0].request).toMatchObject({
       conversation_id: "c-smoke",
       conversation_revision: 1,
-      content: [{ type: "text", text: "Answer using no external tools." }],
+      content: "Answer using no external tools.",
     });
     expect(savedTurnRequests[0].request.tool_selection).toMatchObject({
       mode: "none",
@@ -2314,22 +2535,73 @@ test("composer per-turn no-tools mode reaches the request and locks during gener
     });
     await expect(mode).toBeDisabled();
     expect(settingsWrites).toEqual([]);
+    // Register both reads under the closed gate only after busy-state assertions
+    // succeed, so a failed assertion cannot leave dangling response promises.
+    savedResponses = Promise.all([
+      page.waitForResponse((response) => chatRequestKind(response.request()) === "startTurn"),
+      page.waitForResponse((response) => {
+        const query = canonicalRequestQuery(response.request(), "api/chat/turn/events", "GET");
+        return query !== null && query.get("conversation_id") === "c-smoke"
+          && query.get("turn_id") === savedTurnRequests[0].request.turn_id;
+      }),
+    ]);
   } finally {
     releaseSavedTurn?.();
   }
 
+  const [startResponse, eventReceipt] = await savedResponses;
+  expect(startResponse.status()).toBe(200);
+  const startReceipt = await startResponse.json();
+  expect(startReceipt.data.status).toBe("completed");
+  expect(eventReceipt.status()).toBe(200);
+  const eventsBinding = frontendFixtureBinding("savedTurnEvents");
+  expect(eventsBinding).toMatchObject({
+    contributionId: "defaults.conversations.turn.events", contractId: "tobkiri.event.turn.v1",
+    operationId: "rumi_turn_runtime_pack.turn-events", method: "GET",
+  });
+  expect(frontendFixtureRequest(eventReceipt.request().url(), eventReceipt.request().method())).toEqual(eventsBinding);
+  expect([...canonicalRequestQuery(eventReceipt.request(), "api/chat/turn/events", "GET")!].sort()).toEqual(
+    Object.entries({ turn_id: savedTurnRequests[0].request.turn_id, conversation_id: "c-smoke" }).sort(),
+  );
+  const eventSnapshot = (await eventReceipt.json()).data;
+  expect(eventSnapshot.turn).toEqual(startReceipt.data.turn);
+  const identity = {
+    turn_id: savedTurnRequests[0].request.turn_id, conversation_id: "c-smoke",
+    operation_id: savedTurnRequests[0].request.turn_id, request_id: startReceipt.data.turn.request_id,
+    turn_revision: startReceipt.data.turn.revision,
+  };
+  expect(eventSnapshot).toMatchObject({ ...identity, status: "completed", events: [] });
+  expect(eventSnapshot.terminal).toEqual({
+    ...identity, status: "completed", result_reference: startReceipt.data.turn.result_reference, error: null,
+  });
   await expect(mode).toBeEnabled();
   await expect(mode).toContainText("機能 自動");
   await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+  await expect(page.locator("textarea.rumi-composer-textarea")).toHaveValue("");
+  await expect(page.locator("textarea.rumi-composer-textarea")).toBeEditable();
+  expect(savedTurnRequests).toHaveLength(1);
   expect(settingsWrites).toEqual([]);
+  expect(operationMismatches).toEqual([]);
 });
 
-test("new chat resets the draft tool mode and keeps persistent selected tools", async ({ page }) => {
-  await installDefaultspackApiMocks(page, { applicationChat: true, initialSelectedToolIds: ["web_search"] });
+test("new chat resets draft tool mode and confirmed tool authority without duplicating migrated text", async ({ page }) => {
+  const settingsWrites: Array<Record<string, unknown>> = [];
+  await installDefaultspackApiMocks(page, {
+    applicationChat: true,
+    initialSelectedToolIds: ["web_search"],
+    initialSettingsValues: { tools: { show_tool_selection_control: true } },
+    onSettingsWrite: (payload) => settingsWrites.push(payload),
+  });
   await page.goto(frontendHostFixtureScreenPath("/chat"));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  const mentions = page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention');
+  await expect(composer).toHaveValue("@web_search ");
+  await expect(mentions).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["web_search"]');
   const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
   await mode.click();
   await page.getByRole("menuitemradio", { name: /機能を使わない/ }).click();
@@ -2337,8 +2609,21 @@ test("new chat resets the draft tool mode and keeps persistent selected tools", 
   await page.getByRole("button", { name: "New Chat", exact: true }).click();
 
   await expect(mode).toContainText("機能 自動");
+  // Text remains a draft; only confirmed widgets carry tool-selection authority.
+  await expect(composer).toHaveValue("@web_search ");
+  await expect(mentions).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
-    .toBe('["web_search"]');
+    .toBe("[]");
+  expect(settingsWrites).toEqual([]);
+
+  // A second new draft must not replay the consumed legacy selected-tool snapshot.
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+  await expect(mode).toContainText("機能 自動");
+  await expect(composer).toHaveValue("@web_search ");
+  await expect(mentions).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe("[]");
+  expect(settingsWrites).toEqual([]);
 });
 
 test("tool selection controller resets transient draft state while preserving persistent preferences", async ({ page }) => {
@@ -2383,23 +2668,180 @@ test("tool selection controller resets transient draft state while preserving pe
   expect(snapshots.settingsValues).toEqual({ tools: { default_mode: "auto" } });
 });
 
-test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {
-  await openDefaultspack(page, "/chat");
-
+test("slash yolo cannot enable unavailable approval and retains its command draft", async ({ page }) => {
+  const settingsWrites: Record<string, unknown>[] = [];
+  const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
+  await openDefaultspack(page, "/chat", {
+    onSettingsWrite: (payload) => settingsWrites.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
+  });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   const approval = page.getByRole("button", { name: "アクションの承認方法" });
-  await expect(approval).toContainText("承認");
-
   await composer.fill("/yolo");
   await composer.press("Enter");
-  await expect(approval).toContainText("フル");
-  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
-  await expect(page.locator('[data-composer-widget="yolo-status"]')).toHaveCount(0);
+  await expect(page.getByRole("alert").getByText("選択した承認方式は現在利用できません。承認方式は変更していません。 - Tobkiri", { exact: true })).toBeVisible();
+  await expect(approval).toContainText("承認");
+  await expect(composer).toHaveValue("/yolo");
+  expect(settingsWrites).toEqual([]);
+  expect(savedTurnRequests).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem("rumi-ultra-yolo-mode"))).not.toBe("true");
+});
 
-  await composer.fill("/yolo");
+test("slash yolo can return to human approval after elevated support is unavailable", async ({ page }) => {
+  const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: { tools: { action_approval_mode: "full" } },
+    conversationMutator: (conversation) => { conversation.conversation_kind = "chat"; conversation.tags = []; },
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
+  });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  const approval = page.getByRole("button", { name: "アクションの承認方法" });
+  // An unknown command remains a normal message and must not bypass turn approval.
+  await composer.fill("/not-a-registered-command");
+  await composer.press("Enter");
+  await expect(page.getByRole("alert").getByText("選択した承認方式は現在利用できません。設定で「人が承認」を選んでください。下書きは保持しています。 - Tobkiri", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("/not-a-registered-command");
+  expect(savedTurnRequests).toEqual([]);
+  await composer.fill("/yolo off");
   await composer.press("Enter");
   await expect(approval).toContainText("承認");
-  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await composer.fill("Keep this exact text");
+  await composer.press("Enter");
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
+  expect(savedTurnRequests[0].request).toMatchObject({
+    action_approval_mode: "ask", content: "Keep this exact text",
+  });
+});
+
+
+for (const change of ["none", "newer edit", "edit and restore", "new chat"] as const) {
+  test(`approval preference delayed acknowledgment preserves draft ownership: ${change}`, async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const writes: Record<string, unknown>[] = [];
+    const turns: Array<{ request: SavedTurnRequest }> = [];
+    await openDefaultspack(page, "/chat", {
+      initialSettingsValues: { tools: { action_approval_mode: "full" } },
+      onSettingsWrite: (payload) => writes.push(payload),
+      beforeSettingsWriteResponse: () => gate,
+      onSavedTurnRequest: (payload) => turns.push(payload),
+    });
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    const approval = page.getByRole("button", { name: "アクションの承認方法" });
+    try {
+      await composer.fill("/yolo off");
+      await composer.press("Enter");
+      await expect.poll(() => writes.length).toBe(1);
+      expect(writes[0]).toEqual({ changes: { tools: { action_approval_mode: "ask" } }, expected_revision: 1 });
+      await expect(approval).toContainText("フル");
+      await expect(composer).toHaveValue("/yolo off");
+      expect(turns).toEqual([]);
+      let expectedDraft = "";
+      if (change === "newer edit") {
+        expectedDraft = "This newer draft must survive";
+        await composer.fill(expectedDraft);
+      } else if (change === "edit and restore") {
+        await composer.fill("Temporary different draft");
+        expectedDraft = "/yolo off";
+        await composer.fill(expectedDraft);
+      } else if (change === "new chat") {
+        await page.getByRole("button", { name: "New Chat", exact: true }).click();
+        await expect(page.getByRole("tab", { name: "New Conversation", exact: true })).toHaveAttribute("aria-selected", "true");
+        expectedDraft = "New conversation draft must survive";
+        await composer.fill(expectedDraft);
+      }
+      const response = page.waitForResponse((item) => item.request().method() === "PUT"
+        && requestTarget(new URL(item.url())) === routeKey("api/ui/settings"));
+      release();
+      const acknowledged = await response;
+      expect(acknowledged.status()).toBe(200);
+      expect(await acknowledged.json()).toEqual(ok({ values: { tools: { action_approval_mode: "ask" } }, document_revision: 2 }));
+      await expect(approval).toContainText("承認");
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(composer).toHaveValue(expectedDraft);
+      expect(writes).toHaveLength(1);
+      expect(turns).toEqual([]);
+    } finally { release(); }
+  });
+}
+
+for (const outcome of ["conflict", "unconfirmed"] as const) {
+  test(`approval preference ${outcome} response preserves draft and effective mode`, async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const writes: Record<string, unknown>[] = [];
+    const turns: Array<{ request: SavedTurnRequest }> = [];
+    await openDefaultspack(page, "/chat", {
+      initialSettingsValues: { tools: { action_approval_mode: "full" } },
+      beforeSettingsWriteResponse: () => gate,
+      settingsWriteResponse: outcome,
+      onSettingsWrite: (payload) => writes.push(payload),
+      onSavedTurnRequest: (payload) => turns.push(payload),
+    });
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    const approval = page.getByRole("button", { name: "アクションの承認方法" });
+    try {
+      await composer.fill("/yolo off");
+      await composer.press("Enter");
+      await expect.poll(() => writes.length).toBe(1);
+      expect(writes[0]).toEqual({ changes: { tools: { action_approval_mode: "ask" } }, expected_revision: 1 });
+      await expect(composer).toHaveValue("/yolo off");
+      await expect(approval).toContainText("フル");
+      release();
+      await expect(page.getByRole("alert")).toContainText("承認方式を保存できませんでした");
+      await expect(composer).toHaveValue("/yolo off");
+      await expect(approval).toContainText("フル");
+      expect(writes).toHaveLength(1);
+      expect(turns).toEqual([]);
+    } finally { release(); }
+  });
+}
+
+test("approval preference old Profile completion cannot clear a new Profile document draft", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let oldWriteCommitted = false;
+  const oldWrites: Record<string, unknown>[] = [];
+  const newWrites: Record<string, unknown>[] = [];
+  const turns: Array<{ request: SavedTurnRequest }> = [];
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: { tools: { action_approval_mode: "full" } },
+    onSettingsWrite: (payload) => oldWrites.push(payload),
+    beforeSettingsWriteResponse: () => gate,
+    onSettingsWriteCommitted: () => { oldWriteCommitted = true; },
+    onSavedTurnRequest: (payload) => turns.push(payload),
+  });
+  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  try {
+    await composer.fill("/yolo off");
+    await composer.press("Enter");
+    await expect.poll(() => oldWrites.length).toBe(1);
+    expect(oldWrites[0]).toEqual({ changes: { tools: { action_approval_mode: "ask" } }, expected_revision: 1 });
+    await expect(composer).toHaveValue("/yolo off");
+    // Profile changes use full navigation in production. Each fixture installation
+    // owns independent Settings state and a matching captured Application catalog.
+    await installDefaultspackApiMocks(page, {
+      applicationChat: true,
+      runtimeProfileId: "approval-other",
+      initialSettingsValues: { tools: { action_approval_mode: "ask" } },
+      onSettingsWrite: (payload) => newWrites.push(payload),
+      onSavedTurnRequest: (payload) => turns.push(payload),
+    });
+    await page.goto(frontendHostFixtureScreenPath("/chat", "approval-other"));
+    await expect(page.getByRole("tab", { name: "Preview Calendar Chat", exact: true })).toHaveAttribute("aria-selected", "true");
+    await composer.fill("Other Profile draft must survive");
+    release();
+    // The old document may have cancelled its fetch; this proves fixture-side
+    // state commit and new-document isolation, not acknowledgment by the old document.
+    await expect.poll(() => oldWriteCommitted).toBe(true);
+    expect(oldWrites).toHaveLength(1);
+    await expect(page).toHaveURL(/\/p\/approval-other\/chat(?:\?|$)/);
+    await expect(composer).toHaveValue("Other Profile draft must survive");
+    await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+    expect(newWrites).toEqual([]);
+    expect(turns).toEqual([]);
+  } finally { release(); }
 });
 
 test("new chat structured options open above the compact composer and apply values", async ({ page }) => {
@@ -2535,8 +2977,10 @@ test("tool hub service selections can be scoped to the conversation and survive 
   await openDefaultspack(page);
 
   await page.locator('button[title="機能"]').click();
-  await page.getByRole("button", { name: "この会話" }).click();
-  const githubCard = page.locator("div.rounded-md").filter({ hasText: "GitHub" }).first();
+  await page.getByRole("button", { name: "会話の既定", exact: true }).click();
+  const githubCard = page.locator("div.rounded-md")
+    .filter({ has: page.getByText("GitHub", { exact: true }) })
+    .filter({ has: page.getByRole("button", { name: /^(サービスを使う|サービス指定を解除)$/ }) });
   await expect(githubCard).toBeVisible();
   await githubCard.getByTitle("サービスを使う").click();
   await expect(githubCard).toContainText("会話固定");
@@ -2545,8 +2989,10 @@ test("tool hub service selections can be scoped to the conversation and survive 
   await page.goto(frontendHostFixtureScreenPath("/chat"));
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
   await page.locator('button[title="機能"]').click();
-  await page.getByRole("button", { name: "この会話" }).click();
-  const reloadedGithubCard = page.locator("div.rounded-md").filter({ hasText: "GitHub" }).first();
+  await page.getByRole("button", { name: "会話の既定", exact: true }).click();
+  const reloadedGithubCard = page.locator("div.rounded-md")
+    .filter({ has: page.getByText("GitHub", { exact: true }) })
+    .filter({ has: page.getByRole("button", { name: /^(サービスを使う|サービス指定を解除)$/ }) });
   await expect(reloadedGithubCard).toContainText("会話固定");
 });
 
@@ -2578,7 +3024,7 @@ test("composer at mention selects tools skills and services with semantic metada
   await composer.press("End");
   await composer.pressSequentially("@gith");
   await expect(mentions).toBeVisible();
-  const githubService = page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" });
+  const githubService = page.getByRole("option", { name: "@GitHub（まとめ） 接続されたサービス · 1件のツールをまとめて選択 接続", exact: true });
   await expect(githubService).toBeVisible();
   await githubService.click();
   await expect(composer).toHaveValue("Use @Web Search @Live Review @GitHub ");
@@ -2678,9 +3124,9 @@ test("composer at mention selects tools skills and services with semantic metada
 });
 
 test("composer removes semantic tool state after an escaped edit", async ({ page }) => {
-  const escapedRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => escapedRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
@@ -2691,24 +3137,23 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => escapedRequests.length).toBe(1);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
 
-  const escapedRequest = escapedRequests[0];
-  expect(escapedRequest.tools).toBeUndefined();
-  const escapedSelection = (escapedRequest.params as Record<string, unknown>)
-    .tool_selection as Record<string, unknown>;
-  expect(escapedSelection).toMatchObject({ mode: "manual", include: [] });
-  const escapedMetadata = (escapedRequest.message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(escapedMetadata.mentions).toBeUndefined();
-  expect(escapedMetadata.selected_tools).toBeUndefined();
-  expect(escapedMetadata.dropped_widgets).toEqual([]);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("Use \\@Web Search");
+  // Confirmed ids only temporarily promote auto to manual; escaped prose grants no selection.
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "auto", include: [], exclude: [], scope: "turn", must_use: false,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
 });
 
 test("composer renders semantic tool mentions inline and clears state after an escaped edit", async ({ page }) => {
-  const chipRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => chipRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const chipComposer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
   await chipComposer.fill("Use @web");
@@ -2722,25 +3167,26 @@ test("composer renders semantic tool mentions inline and clears state after an e
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => chipRequests.length).toBe(1);
-  const chipRequest = chipRequests[0];
-  expect(chipRequest.tools).toBeUndefined();
-  const chipMetadata = (chipRequest.message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(chipMetadata.mentions).toBeUndefined();
-  expect(chipMetadata.selected_tools).toBeUndefined();
-  expect(chipMetadata.dropped_widgets).toEqual([]);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("Use \\@Web Search");
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "auto", include: [], exclude: [], scope: "turn", must_use: false,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
 });
 
 test("composer reconciles an escaped service mention before submit", async ({ page }) => {
-  const serviceRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => serviceRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
   await composer.fill("Use @gith");
-  const githubOption = page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" });
+  const githubOption = page.getByRole("option", { name: "@GitHub（まとめ） 接続されたサービス · 1件のツールをまとめて選択 接続", exact: true });
   await expect(githubOption).toBeVisible();
   await githubOption.click();
   await expect(composer).toHaveValue("Use @GitHub ");
@@ -2751,14 +3197,15 @@ test("composer reconciles an escaped service mention before submit", async ({ pa
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => serviceRequests.length).toBe(1);
-  const serviceRequest = serviceRequests[0];
-  expect(serviceRequest.tools).toBeUndefined();
-  const serviceMetadata = (serviceRequest.message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(serviceMetadata.mentions).toBeUndefined();
-  expect(serviceMetadata.selected_tools).toBeUndefined();
-  expect(serviceMetadata.dropped_widgets).toEqual([]);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("Use \\@GitHub");
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "auto", include: [], exclude: [], scope: "turn", must_use: false,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
 });
 
 test("slash and mention candidates share one full-width JSON palette", async ({ page }) => {
@@ -2808,10 +3255,45 @@ test("composer removes file mention metadata when its attachment is removed", as
   expect(fileMetadata.dropped_widgets).toEqual([]);
 });
 
+test("Unicode tool fixture keeps display text separate from valid saved identity", () => {
+  const sidebarTool = sidebarItems.find((item) => item.id === "unicode_tool");
+  const catalogTool = toolCatalogTools.find((tool) => tool.tool_id === sidebarTool?.id);
+  expect(sidebarTool?.label).toBe("𐐀tool");
+  expect(sidebarTool?.ui.composer_label).toBe("𐐀tool");
+  expect(catalogTool?.name).toBe("𐐀tool");
+  expect(validSavedToolSelection({
+    mode: "manual", include: [{ kind: "tool", id: catalogTool?.tool_id }],
+    exclude: [], scope: "turn", must_use: true,
+  })).toBe(true);
+  expect(validSavedToolSelection({
+    mode: "manual", include: [{ kind: "tool", id: catalogTool?.name }],
+    exclude: [], scope: "turn", must_use: true,
+  })).toBe(false);
+});
+
+test("unregistered Unicode sidebar tools are not offered as confirmed references", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  let catalogRead = false;
+  const catalogBinding = frontendFixtureBinding("toolCatalog");
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const binding = frontendFixtureRequest(request.url(), request.method());
+    if (!matchesFrontendFixtureBinding(binding, catalogBinding)) return route.fallback();
+    catalogRead = true;
+    const tools = toolCatalogTools.filter((tool) => tool.tool_id !== "unicode_tool");
+    return fulfill(route, { services: toolCatalogServices, tools, count: tools.length });
+  });
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
+  await expect.poll(() => catalogRead).toBe(true);
+  await page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" }).fill("Use @𐐀");
+  await expect(page.getByRole("listbox", { name: "メンション候補", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: /@𐐀tool/ })).toHaveCount(0);
+});
+
 test("composer supplementary-plane mention keeps textarea and parser indices aligned", async ({ page }) => {
-  const streamRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => streamRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
@@ -2820,19 +3302,21 @@ test("composer supplementary-plane mention keeps textarea and parser indices ali
   await composer.press("Enter");
   await expect(composer).toHaveValue("先𐐀 @𐐀tool ");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => streamRequests.length).toBe(1);
-  expect(streamRequests[0].tools).toEqual(["𐐀tool"]);
-  const metadata = (streamRequests[0].message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(metadata.mentions).toEqual([
-    { id: "𐐀tool", kind: "tool", label: "𐐀tool", syntax: "@𐐀tool" },
-  ]);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("先𐐀 @𐐀tool");
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "manual", include: [{ kind: "tool", id: "unicode_tool" }], exclude: [], scope: "turn", must_use: true,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
 });
 
 test("composer removes a no-space mention atomically without leaving tool state", async ({ page }) => {
-  const streamRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => streamRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
@@ -2848,40 +3332,64 @@ test("composer removes a no-space mention atomically without leaving tool state"
     .toBe("[]");
   await composer.pressSequentially("and summarize the result");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => streamRequests.length).toBe(1);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
 
-  expect(streamRequests[0].tools).toBeUndefined();
-  const metadata = (streamRequests[0].message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(metadata.mentions).toBeUndefined();
-  expect(metadata.selected_tools).toBeUndefined();
-  expect(metadata.dropped_widgets).toEqual([]);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("Use and summarize the result");
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "auto", include: [], exclude: [], scope: "turn", must_use: false,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
 });
 
 test("editing and reselecting an atomically deleted no-space mention restores it", async ({ page }) => {
-  const streamRequests: Record<string, unknown>[] = [];
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => streamRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
 
-  await composer.fill("Use @𐐀");
-  await composer.press("Enter");
+  const mentions = page.getByTestId("composer-at-mention-candidates");
+  const unicodeOption = mentions.getByRole("option", { name: /^@𐐀tool(?:\s|$)/ });
+  const confirmUnicodeMention = async (prefix: string) => {
+    await composer.fill(`${prefix}@𐐀`);
+    await expect(mentions).toBeVisible();
+    await expect(unicodeOption).toBeVisible();
+    await expect(unicodeOption).toHaveAttribute("aria-selected", "true");
+    const optionId = await unicodeOption.getAttribute("id");
+    expect(optionId).toBeTruthy();
+    await expect(composer).toHaveAttribute("aria-activedescendant", optionId!);
+    await composer.press("Enter");
+    await expect(composer).toHaveValue(`${prefix}@𐐀tool `);
+    await expect(mentions).toBeHidden();
+    await expect.poll(() => composer.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(`${prefix}@𐐀tool `.length);
+    expect(savedTurnRequests).toHaveLength(0);
+  };
+
+  await confirmUnicodeMention("Use ");
   await composer.press("End");
   await composer.press("Backspace");
   await composer.press("Backspace");
   await expect(composer).toHaveValue("Use ");
-  await composer.fill("Use again @𐐀");
-  await composer.press("Enter");
+  await expect(page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention').filter({ hasText: "@𐐀tool" })).toHaveCount(0);
+  await confirmUnicodeMention("Use again ");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
-  await expect.poll(() => streamRequests.length).toBe(1);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
 
-  expect(streamRequests[0].tools).toEqual(["𐐀tool"]);
-  const metadata = (streamRequests[0].message as Record<string, unknown>)
-    .metadata as Record<string, unknown>;
-  expect(metadata.mentions).toEqual([
-    { id: "𐐀tool", kind: "tool", label: "𐐀tool", syntax: "@𐐀tool" },
-  ]);
+  const actualSavedTurnRequest = savedTurnRequests[0].request;
+  expect(actualSavedTurnRequest.content).toBe("Use again @𐐀tool");
+  expect(actualSavedTurnRequest.tool_selection).toEqual({
+    mode: "manual", include: [{ kind: "tool", id: "unicode_tool" }], exclude: [], scope: "turn", must_use: true,
+  });
+  for (const legacyField of ["tools", "params", "message", "metadata", "mentions", "selected_tools", "dropped_widgets"]) {
+    expect(actualSavedTurnRequest).not.toHaveProperty(legacyField);
+  }
+  await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("");
+  await expect(composer).toBeEditable();
+  expect(savedTurnRequests).toHaveLength(1);
 });
 
 test("workspace mention waits for its attachment before submit", async ({ page }) => {
@@ -3022,9 +3530,9 @@ test("migrated keyboard navigation marker keeps composer controls reachable", as
 });
 
 test("composer mention keyboard and ARIA contracts stay predictable at Unicode and empty boundaries", async ({ page }) => {
-  const streamRequests: Record<string, unknown>[] = [];
+  const savedRequests: Array<{ request: SavedTurnRequest }> = [];
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => streamRequests.push(payload),
+    onSavedTurnRequest: (payload) => savedRequests.push(payload),
   });
 
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
@@ -3087,13 +3595,20 @@ test("composer mention keyboard and ARIA contracts stay predictable at Unicode a
   );
   await composer.press("Shift+Enter");
   await expect(composer).toHaveValue("@this_candidate_does_not_exist\n");
-  expect(streamRequests).toHaveLength(0);
+  expect(savedRequests).toHaveLength(0);
 
   await composer.fill("@this_candidate_does_not_exist");
   await composer.press("Enter");
-  await expect.poll(() => streamRequests.length).toBe(1);
-  const sentMessage = streamRequests[0].message as Record<string, unknown>;
-  expect(sentMessage.content).toBe("@this_candidate_does_not_exist");
+  await expect.poll(() => savedRequests.length).toBe(1);
+  expect(savedRequests[0].request.content).toBe("@this_candidate_does_not_exist");
+  expect(savedRequests[0].request.tool_selection?.include ?? []).toEqual([]);
+  expect(savedRequests[0].request).not.toHaveProperty("metadata");
+  await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("");
+  await expect(composer).toBeEditable();
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+  expect(savedRequests).toHaveLength(1);
 });
 
 test("coding file mentions keep stable semantic metadata through submit", async ({ page }) => {
@@ -3140,49 +3655,134 @@ test("coding file mentions keep stable semantic metadata through submit", async 
   ]);
 });
 
-test("composer controls are keyboard reachable, visibly named, and at least 44px", async ({ page }) => {
-  await openDefaultspack(page, "/chat");
+async function assertVisibleTouchTarget(control: Locator) {
+  await expect(control).toBeVisible();
+  await control.scrollIntoViewIfNeeded();
+  await expect.poll(() => control.evaluate((element) => {
+    let active = 0;
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      active += ancestor.getAnimations().filter((animation) => animation.pending || animation.playState === "running").length;
+    }
+    return active;
+  })).toBe(0);
+  const box = await control.boundingBox();
+  const label = await control.getAttribute("aria-label");
+  expect(label).toBeTruthy();
+  expect(box).not.toBeNull();
+  expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(44);
+  expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(44);
+  expect(await control.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit === element || (hit !== null && element.contains(hit));
+  }), `${label} receives input at its visible center`).toBe(true);
+}
 
-  const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
-  await composer.focus();
-  await composer.press("Tab");
-  await expect(composer).not.toBeFocused();
+test.describe("coarse-pointer composer controls", () => {
+  test.use({ hasTouch: true });
 
-  for (const control of [
-    page.getByRole("button", { name: "ファイルを添付" }),
-    page.getByRole("button", { name: "音声入力を開始" }),
-    page.getByRole("button", { name: "アクションの承認方法" }),
-    page.getByRole("button", { name: /^モデル:/ }),
-    page.getByRole("button", { name: "メッセージを送信" }),
-  ]) {
-    const box = await control.boundingBox();
-    const label = await control.getAttribute("aria-label");
-    expect(box).not.toBeNull();
-    expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(44);
-    expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(44);
-  }
+  test("composer controls are keyboard reachable, visibly named, and at least 44px", async ({ page }) => {
+    await openDefaultspack(page, "/chat");
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Keyboard reachability draft");
+    const controls = [
+      page.getByRole("button", { name: "添付とコマンド", exact: true }),
+      page.getByRole("button", { name: "Start reviewable voice input", exact: true }),
+      page.getByRole("button", { name: "アクションの承認方法", exact: true }),
+      page.getByRole("button", { name: /^モデル:/ }),
+      page.getByRole("button", { name: "メッセージを送信", exact: true }),
+    ];
+    for (const control of controls) await assertVisibleTouchTarget(control);
+    await composer.focus();
+    const remaining = new Set(controls);
+    const tabBudget = await page.locator("button,input,textarea,select,a[href],[tabindex]").count() + 1;
+    for (let step = 0; step < tabBudget && remaining.size; step++) {
+      await page.keyboard.press("Tab");
+      for (const control of remaining) {
+        if (await control.evaluate((element) => element === document.activeElement)) {
+          await expect(control).toBeFocused();
+          expect(await control.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
+          remaining.delete(control);
+        }
+      }
+    }
+    expect(remaining.size, "every named control is reachable through normal Tab navigation").toBe(0);
+  });
+
+  test("mobile composer attachment target stays 44px and opens the file menu without overlapping its editor", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
+    await openDefaultspack(page, "/chat", { onSavedTurnRequest: (payload) => savedTurnRequests.push(payload) });
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const plus = page.getByRole("button", { name: "添付とコマンド", exact: true });
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill("Mobile target draft");
+    await assertVisibleTouchTarget(plus);
+    await assertVisibleTouchTarget(page.getByRole("button", { name: "メッセージを送信", exact: true }));
+    const plusBox = await plus.boundingBox();
+    const editorBox = await composer.boundingBox();
+    expect(plusBox).not.toBeNull();
+    expect(editorBox).not.toBeNull();
+    expect(plusBox!.x + plusBox!.width).toBeLessThanOrEqual(editorBox!.x);
+    await expect(page.locator('[data-composer-widget="file-attach"]')).toHaveCSS("min-width", "44px");
+    await plus.tap();
+    await expect(plus).toHaveAttribute("aria-expanded", "true");
+    const commands = page.getByRole("listbox", { name: "Composer commands", exact: true });
+    const attach = commands.getByRole("option", { name: /^\/attach(?:\s|$)/ });
+    await expect(commands).toBeVisible();
+    await expect(attach).toBeVisible();
+    await composer.press("Escape");
+    await expect(plus).toHaveAttribute("aria-expanded", "false");
+    await expect(composer).toHaveValue("Mobile target draft");
+
+    await plus.tap();
+    await expect(attach).toBeEnabled();
+    const fileChooser = page.waitForEvent("filechooser");
+    await attach.tap();
+    const chooser = await fileChooser;
+    expect(chooser.isMultiple()).toBe(true);
+    expect(await chooser.element().getAttribute("type")).toBe("file");
+    expect(await chooser.element().getAttribute("accept")).toBeNull();
+    // Exercise the actual chooser action without fabricating an upload.
+    await chooser.setFiles([]);
+    await expect(commands).toBeHidden();
+    await expect(plus).toHaveAttribute("aria-expanded", "false");
+    await expect(composer).toHaveValue("Mobile target draft");
+    expect(savedTurnRequests).toEqual([]);
+  });
 });
 
 test("composer uses a leading plus menu and accepts clipboard and workspace file drops", async ({ page }) => {
-  await openDefaultspack(page, "/chat");
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
+  await openDefaultspack(page, "/chat", { onSavedTurnRequest: (payload) => savedTurnRequests.push(payload) });
   await page.getByTitle("New Chat").first().click();
-  await expect(page.locator(".rumi-composer-new")).toHaveCSS("filter", "blur(0px)");
+  await expect(page.locator(".rumi-composer-new")).toHaveCSS("filter", "none");
 
   const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
-  const attach = page.getByRole("button", { name: "ファイルを添付" });
+  const attach = page.getByRole("button", { name: "添付とコマンド", exact: true });
   const composerBox = await composer.boundingBox();
   const attachBox = await attach.boundingBox();
   expect(composerBox).not.toBeNull();
   expect(attachBox).not.toBeNull();
-  expect(attachBox!.x).toBeLessThan(composerBox!.x);
-  const composerCenterY = composerBox!.y + composerBox!.height / 2;
-  const attachCenterY = attachBox!.y + attachBox!.height / 2;
-  expect(Math.abs(attachCenterY - composerCenterY)).toBeLessThanOrEqual(1);
+  // Home editor children use self-end: the desktop plus is 32px beside a 44px
+  // textarea. Assert the actual shared baseline, not equal-height centers.
+  expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(composerBox!.x);
+  expect(attachBox!.y + attachBox!.height).toBe(composerBox!.y + composerBox!.height);
+  expect(attachBox!.y).toBeGreaterThanOrEqual(composerBox!.y);
+  expect(await attach.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return hit === element || (hit !== null && element.contains(hit));
+  })).toBe(true);
 
   await attach.click();
-  await expect(page.getByRole("menu", { name: "添付メニュー" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /写真とファイルを追加/ })).toBeVisible();
+  const commands = page.getByRole("listbox", { name: "Composer commands", exact: true });
+  await expect(commands).toBeVisible();
+  await expect(commands.getByRole("option", { name: /\/attach/ })).toBeVisible();
   await attach.click();
+  await expect(commands).toBeHidden();
+  await expect(composer).toBeEditable();
 
   await composer.evaluate((target) => {
     const dataTransfer = new DataTransfer();
@@ -3195,6 +3795,12 @@ test("composer uses a leading plus menu and accepts clipboard and workspace file
   });
   const removeClipboardAttachment = page.getByRole("button", { name: "clipboard.txt を削除" });
   await expect(removeClipboardAttachment).toBeVisible();
+  await expect.poll(() => removeClipboardAttachment.evaluate((element) => {
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor.getAnimations().some((animation) => animation.pending || animation.playState === "running")) return false;
+    }
+    return true;
+  })).toBe(true);
   const removeAttachmentBox = await removeClipboardAttachment.boundingBox();
   expect(removeAttachmentBox).not.toBeNull();
   expect(removeAttachmentBox!.width).toBeGreaterThanOrEqual(44);
@@ -3238,6 +3844,8 @@ test("composer uses a leading plus menu and accepts clipboard and workspace file
   await page.getByRole("button", { name: "workspace-drop.txt を削除" }).click();
   await expect(attachmentRegion).toHaveAttribute("data-attachment-state", "collapsed");
   await expect.poll(async () => (await attachmentRegion.boundingBox())?.height ?? -1).toBe(0);
+  await expect(composer).toBeEditable();
+  expect(savedTurnRequests).toEqual([]);
 });
 
 test("composer mentions paste portably and delete as one semantic unit", async ({ page }) => {
@@ -3263,6 +3871,39 @@ test("composer mentions paste portably and delete as one semantic unit", async (
 });
 
 test("attachment remove and cancel actions expose 44px visible focus targets", async ({ page }) => {
+  const settledAttachmentBox = async (control: Locator) => {
+    const reveal = page.locator("[data-composer-attachment-region]").filter({ has: control });
+    await expect(reveal).toHaveAttribute("data-attachment-state", "expanded");
+    await expect(reveal).toHaveCSS("opacity", "1");
+    await expect(reveal).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    // The reveal animates its clipped grid as well as translation. Wait for
+    // these actual transitions, not an arbitrary delay or rounded geometry.
+    await expect.poll(() => control.evaluate((element) => {
+      let active = 0;
+      // Include the chat pane's mount animation, but not descendant spinners.
+      for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+        active += ancestor.getAnimations().filter((animation) => animation.pending
+          || animation.playState === "running").length;
+      }
+      return active;
+    })).toBe(0);
+    await expect(control).toBeVisible();
+    const geometry = await control.evaluate(async (element) => {
+      const before = element.getBoundingClientRect().toJSON();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      return {
+        before, after: element.getBoundingClientRect().toJSON(),
+        clip: element.closest(".rumi-composer-attachment-reveal-inner")?.getBoundingClientRect().toJSON(),
+      };
+    });
+    expect(geometry.after).toEqual(geometry.before);
+    expect(geometry.clip).toBeDefined();
+    expect(geometry.after.top).toBeGreaterThanOrEqual(geometry.clip!.top);
+    expect(geometry.after.bottom).toBeLessThanOrEqual(geometry.clip!.bottom);
+    expect(geometry.after.left).toBeGreaterThanOrEqual(geometry.clip!.left);
+    expect(geometry.after.right).toBeLessThanOrEqual(geometry.clip!.right);
+    return control.boundingBox();
+  };
   let releaseRead!: () => void;
   const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
   await openDefaultspack(page, "/chat", {
@@ -3275,7 +3916,7 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   await page.getByRole("option").filter({ hasText: "@README.md" }).click();
 
   const cancel = page.getByRole("button", { name: "README.md の読み込みを取り消す" });
-  const cancelBox = await cancel.boundingBox();
+  const cancelBox = await settledAttachmentBox(cancel);
   expect(cancelBox).not.toBeNull();
   expect(cancelBox!.width).toBeGreaterThanOrEqual(44);
   expect(cancelBox!.height).toBeGreaterThanOrEqual(44);
@@ -3288,7 +3929,7 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   releaseRead();
   const inlineRemove = page.getByRole("button", { name: "README.md を削除" });
   await expect(inlineRemove).toBeVisible();
-  const inlineBox = await inlineRemove.boundingBox();
+  const inlineBox = await settledAttachmentBox(inlineRemove);
   expect(inlineBox).not.toBeNull();
   expect(inlineBox!.width).toBeGreaterThanOrEqual(44);
   expect(inlineBox!.height).toBeGreaterThanOrEqual(44);
@@ -3303,7 +3944,7 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   await newComposer.fill("Review @REA");
   await page.getByRole("option").filter({ hasText: "@README.md" }).click();
   const cardRemove = page.getByRole("button", { name: "README.md を削除" });
-  const cardBox = await cardRemove.boundingBox();
+  const cardBox = await settledAttachmentBox(cardRemove);
   expect(cardBox).not.toBeNull();
   expect(cardBox!.width).toBeGreaterThanOrEqual(44);
   expect(cardBox!.height).toBeGreaterThanOrEqual(44);
@@ -3319,12 +3960,33 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   expect(focusedCardStyle.outlineStyle).not.toBe("none");
 });
 
-test("history reload restores localized semantic mention badges", async ({ page }) => {
+test("history reload restores localized semantic mentions inline", async ({ page }) => {
   await openDefaultspack(page, "/chat");
-  await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
+  const mention = page.locator(".rumi-message-mention").filter({ hasText: "@Web Search" });
+  const assertLocalizedMention = async () => {
+    await expect(mention).toHaveCount(1);
+    await expect(mention).toBeVisible();
+    await expect(mention).toHaveText("@Web Search");
+    const message = mention.locator("..");
+    await expect(message).toHaveText("Show the current @Web Search state.");
+    await expect(message).not.toContainText("web_search");
+    await expect(page.getByTestId("message-mention-badge")).toHaveCount(0);
+  };
+  await assertLocalizedMention();
 
+  let newDocument = false;
+  const freshReads = new Set<Request>();
+  page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) newDocument = true; });
+  page.on("request", (request) => {
+    if (newDocument && requestConversationId(request) === "c-smoke") freshReads.add(request);
+  });
+  const read = page.waitForResponse((response) => freshReads.has(response.request()));
   await page.goto(frontendHostFixtureScreenPath("/chat"));
-  await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
+  const response = await read;
+  expect(newDocument).toBe(true);
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toMatchObject({ data: { id: "c-smoke" } });
+  await assertLocalizedMention();
 });
 
 test("composer browser behavior covers long text popovers and mobile coding trust", async ({ page }) => {
@@ -3376,37 +4038,81 @@ test("composer browser behavior covers long text popovers and mobile coding trus
   await expect(workspacePicker.locator("svg.text-emerald-300").first()).toBeVisible();
 });
 
-test("resizable canvas and tool widgets persist width choices", async ({ page }) => {
-  await openDefaultspack(page);
+async function openSchedulerCanvas(page: Page): Promise<Locator> {
+  const sidebar = page.getByRole("complementary", { name: "Tools and utility panels" });
+  await sidebar.getByRole("button", { name: "機能", exact: true }).click();
+  await page.getByPlaceholder("機能を検索").fill("scheduler");
+  const scheduler = page.getByTestId("tool-manager-candidates").getByRole("button", { name: /Scheduler/ });
+  await expect(scheduler).toHaveCount(1);
+  await scheduler.click();
+  await expect(sidebar.getByText("Calendar and trigger smoke surface.", { exact: true })).toBeVisible();
+  const read = page.waitForResponse((response) => canonicalRequestQuery(response.request(), "api/agent/schedules", "GET") !== null);
+  await sidebar.getByTitle("Calendar", { exact: true }).click();
+  const response = await read;
+  expect(response.status()).toBe(200);
+  expect(frontendFixtureRequest(response.request().url(), "GET")).toMatchObject({
+    contributionId: "defaults.calendar.schedules.list",
+    contractId: "tobkiri.resource.calendar.schedule.v1",
+    operationId: "rumi_schedule_store_pack.calendar-read",
+  });
+  expect(await response.json()).toMatchObject({ data: { schedules: [{ id: "nightly-review", name: "nightly-review", schedule: "every 1h" }] } });
+  const canvas = page.getByTestId("canvas-widget-panel");
+  await expect(canvas).toBeVisible();
+  await expect(canvas.getByRole("button", { name: "Calendar.json", exact: true })).toBeVisible();
+  await expect(canvas).toContainText("nightly-review");
+  return canvas;
+}
 
-  await page.getByTitle("Canvas を開く").click();
-  const preview = page.getByLabel("Activity preview");
-  await expect(preview).toBeVisible();
-  const canvasHandle = page.getByLabel("Canvas幅を変更");
-  await expect(canvasHandle).toBeVisible();
-  const canvasBox = await canvasHandle.boundingBox();
-  expect(canvasBox).not.toBeNull();
-  await page.mouse.move(canvasBox!.x + canvasBox!.width / 2, canvasBox!.y + canvasBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(canvasBox!.x - 80, canvasBox!.y + canvasBox!.height / 2, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-activity-preview-width"))).not.toBeNull();
-  const storedCanvasWidth = await page.evaluate(() => Number(localStorage.getItem("rumi-activity-preview-width")));
-  expect(storedCanvasWidth).toBeGreaterThanOrEqual(300);
+test("resizable canvas and tool widgets persist their shared width", async ({ page }) => {
+  // A fresh test context starts empty; preserve its real width across navigation.
+  await openDefaultspack(page, "/chat", { preserveLocalStorage: true });
+  const canvas = await openSchedulerCanvas(page);
+  const canvasHandle = canvas.getByRole("separator", { name: "Canvas widget幅を変更", exact: true });
+  const widthKey = "rumi-right-sidebar-panel-width";
+  const dragWider = async (handle: Locator, delta: number) => {
+    await expect(handle).toBeVisible();
+    // A tool panel can still be sliding into place when it first becomes visible.
+    await expect.poll(() => handle.evaluate((element) => {
+      let active = 0;
+      for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+        active += ancestor.getAnimations().filter((animation) => animation.pending
+          || animation.playState === "running").length;
+      }
+      return active;
+    })).toBe(0);
+    const initial = Number(await handle.getAttribute("aria-valuenow"));
+    const expected = Math.min(520, initial + delta);
+    // This test proves movement, not a no-op at an already persisted width limit.
+    expect(expected).toBeGreaterThan(initial);
+    const bounds = await handle.boundingBox();
+    expect(bounds).not.toBeNull();
+    const x = bounds!.x + bounds!.width / 2;
+    const y = bounds!.y + bounds!.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - delta, y, { steps: 5 });
+    await page.mouse.up();
+    await expect(handle).toHaveAttribute("aria-valuenow", String(expected));
+    await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), widthKey)).toBe(String(expected));
+    return expected;
+  };
+  const canvasWidth = await dragWider(canvasHandle, 80);
+  await expect(canvas).toHaveCSS("width", `${canvasWidth}px`);
 
-  await page.locator('button[title="機能"]').click();
-  await expect(page.getByRole("heading", { name: "機能" })).toBeVisible();
-  const toolHandle = page.getByLabel("機能パネル幅を変更");
-  await expect(toolHandle).toBeVisible();
-  const toolBox = await toolHandle.boundingBox();
-  expect(toolBox).not.toBeNull();
-  await page.mouse.move(toolBox!.x + toolBox!.width / 2, toolBox!.y + toolBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(toolBox!.x - 90, toolBox!.y + toolBox!.height / 2, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-right-sidebar-panel-width"))).not.toBeNull();
-  const storedToolWidth = await page.evaluate(() => Number(localStorage.getItem("rumi-right-sidebar-panel-width")));
-  expect(storedToolWidth).toBeGreaterThanOrEqual(320);
+  const sidebar = page.getByRole("complementary", { name: "Tools and utility panels" });
+  await sidebar.getByRole("button", { name: "機能", exact: true }).click();
+  const toolHandle = sidebar.getByRole("separator", { name: "機能パネル幅を変更", exact: true });
+  await expect(toolHandle).toHaveAttribute("aria-valuenow", String(canvasWidth));
+  const sharedWidth = await dragWider(toolHandle, 90);
+  await sidebar.getByRole("button", { name: "Canvas", exact: true }).click();
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveCSS("width", `${sharedWidth}px`);
+
+  await page.goto(frontendHostFixtureScreenPath("/chat"));
+  await expect(page.getByRole("tab", { name: "Preview Calendar Chat", exact: true })).toBeVisible();
+  const restored = await openSchedulerCanvas(page);
+  await expect(restored.getByRole("separator", { name: "Canvas widget幅を変更", exact: true })).toHaveAttribute("aria-valuenow", String(sharedWidth));
+  await expect(restored).toHaveCSS("width", `${sharedWidth}px`);
 });
 
 test("open utility panel never covers the Home composer at desktop breakpoints", async ({ page }) => {
@@ -3415,7 +4121,7 @@ test("open utility panel never covers the Home composer at desktop breakpoints",
   await page.getByTitle("New Chat").first().click();
   await page.locator('button[title="機能"]').click();
 
-  const panel = page.locator(".rumi-right-sidebar-panel");
+  const panel = page.locator(".rumi-right-sidebar-panel:not([hidden])");
   const composer = page.locator(".rumi-composer-frame");
   const send = page.locator(".rumi-send-button");
   await expect(panel).toBeVisible();
@@ -3440,23 +4146,31 @@ test("open utility panel never covers the Home composer at desktop breakpoints",
   expect(sendOwnsCenterPoint).toBe(true);
 });
 
-test("model picker search supports @provider filters", async ({ page }) => {
+test("model picker search supports @provider filters on registered routes", async ({ page }) => {
   await openDefaultspack(page);
-
-  await page.getByRole("button", { name: /Stub Default/ }).click();
+  const selected = page.getByRole("button", { name: "モデル: Stub Default", exact: true });
+  await selected.click();
   const search = page.getByPlaceholder(/モデルを検索/);
+  const models = page.getByRole("listbox", { name: "登録済みモデル", exact: true });
   await search.fill("@opencode");
-  await expect(page.getByRole("option", { name: /@OpenCode Go/ })).toBeVisible();
-  await expect(page.getByRole("option", { name: /@OpenCode Zen/ })).toBeVisible();
-  await expect(page.getByText("Gemini 2.5 Flash")).toBeHidden();
+  await expect(models.getByRole("option")).toHaveCount(2);
+  await expect(models.getByRole("option", { name: /Qwen3.5 Plus via OpenCode Go/ })).toBeVisible();
+  await expect(models.getByRole("option", { name: /MiniMax M3 Free via OpenCode Zen/ })).toBeVisible();
+  await expect(models.getByRole("option", { name: /Gemini 2.5 Flash/ })).toHaveCount(0);
 
-  await page.getByRole("option", { name: /@OpenCode Zen/ }).click();
-  await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
-  await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeHidden();
+  await search.fill("@opencode-zen");
+  await expect(models.getByRole("option")).toHaveCount(1);
+  await expect(models.getByRole("option", { name: /MiniMax M3 Free via OpenCode Zen/ })).toBeVisible();
+  await expect(models.getByRole("option", { name: /Qwen3.5 Plus via OpenCode Go/ })).toHaveCount(0);
 
   await search.fill("@google flash");
-  await expect(page.getByText("Gemini 2.5 Flash")).toBeVisible();
-  await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeHidden();
+  await expect(models.getByRole("option")).toHaveCount(1);
+  await expect(models.getByRole("option", { name: /Gemini 2.5 Flash/ })).toBeVisible();
+  await search.fill("@unregistered-provider");
+  await expect(models.getByRole("option")).toHaveCount(0);
+  await search.press("Escape");
+  await expect(models).toBeHidden();
+  await expect(selected).toBeVisible();
 });
 
 test("model picker keeps unconfigured opencode zen visible for first-run setup", async ({ page }) => {
@@ -3469,7 +4183,7 @@ test("model picker keeps unconfigured opencode zen visible for first-run setup",
 });
 
 test("preview pane opens from the chat canvas peek", async ({ page }) => {
-  await openDefaultspack(page);
+  await openDefaultspack(page, "/chat", { calendarPreview: true });
 
   await page.getByTitle("Canvas を開く").click();
 
@@ -3478,19 +4192,16 @@ test("preview pane opens from the chat canvas peek", async ({ page }) => {
   await expect(preview).toContainText("calendar-smoke.json");
 });
 
-test("calendar action renders a scheduler preview", async ({ page }) => {
+test("calendar action renders a scheduler preview in the Canvas widget", async ({ page }) => {
   await openDefaultspack(page);
-
-  await page.locator('button[title="機能"]').click();
-  const toolManagerSearch = page.getByPlaceholder("機能を検索");
-  await toolManagerSearch.fill("scheduler");
-  await page.getByTestId("tool-manager-candidates").getByRole("button", { name: /Scheduler/ }).first().click();
-  await expect(page.getByText("Calendar and trigger smoke surface.")).toBeVisible();
-  await page.locator('button[title="Calendar"]').last().click();
-
-  const preview = page.getByLabel("Activity preview");
-  await expect(preview).toContainText("Calendar.json");
-  await expect(preview).toContainText("nightly-review");
+  const canvas = await openSchedulerCanvas(page);
+  await expect(canvas).toContainText("Calendar.json");
+  await expect(canvas).toContainText("nightly-review");
+  await canvas.getByRole("button", { name: "Canvasを閉じる", exact: true }).click();
+  await expect(canvas).toBeHidden();
+  await page.getByRole("complementary", { name: "Tools and utility panels" }).getByRole("button", { name: "Canvas", exact: true }).click();
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toContainText("nightly-review");
 });
 
 test("calendar mode opens quick add and renders new tasks in blue", async ({ page }) => {
@@ -3560,85 +4271,310 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await expect(page.getByRole("navigation", { name: "Settings categories" })).toBeVisible();
 });
 
-test("history card drag uses rumi history MIME and sends dropped_widgets metadata", async ({ page }) => {
-  const streamRequests: Record<string, unknown>[] = [];
+test("history card drag confirms a canonical reference and sends its identity", async ({ page }) => {
+  const savedTurnRequests: { request: SavedTurnRequest }[] = [];
+  const referenceResolutions: Response[] = [];
+  const catalogRequests: Request[] = [];
+  const referenceOrder: string[] = [];
+  page.on("request", (request) => {
+    if (canonicalRequestQuery(request, "api/chat/references", "GET") !== null) catalogRequests.push(request);
+    if (canonicalRequestQuery(request, "api/chat/references/resolve", "POST") !== null) referenceOrder.push("resolve-request");
+    if (chatRequestKind(request) === "startTurn") referenceOrder.push("saved-send-request");
+  });
+  page.on("response", (response) => {
+    if (canonicalRequestQuery(response.request(), "api/chat/references/resolve", "POST") !== null) {
+      referenceResolutions.push(response);
+      referenceOrder.push("resolve-response");
+    }
+  });
+  const listed = page.waitForResponse((response) =>
+    canonicalRequestQuery(response.request(), "api/chat/references", "GET") !== null);
   await openDefaultspack(page, "/chat", {
-    onStreamRequest: (payload) => streamRequests.push(payload),
+    historyReferences: true,
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
   });
 
-  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
-  const composer = page.locator(".rumi-composer-frame");
-  await expect(composer).toBeVisible();
-  const dragEvidence = await page.evaluate((mime) => {
+  const source = page.getByTestId("history-chat-card-c-smoke");
+  const input = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+  await expect(source).toBeVisible();
+  await expect(input).toBeEditable();
+  await expect(input).toHaveValue("");
+  expect(catalogRequests).toEqual([]);
+  // The registered PointerSensor suppresses native HTML drag and needs a move
+  // after crossing its 8px activation threshold. Observe real input and the
+  // application's own candidate event; the observer never dispatches either.
+  await page.evaluate((eventName) => {
     const source = document.querySelector('[data-testid="history-chat-card-c-smoke"]');
-    const target = document.querySelector(".rumi-composer-shell");
-    if (!source || !target) throw new Error("history card or composer target not found");
-    const dataTransfer = new DataTransfer();
-    source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
-    const historyPayload = dataTransfer.getData(mime);
-    target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
-    target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
-    return {
-      historyPayload,
-      plainText: dataTransfer.getData("text/plain"),
-    };
-  }, historyChatDropMime);
-
-  expect(dragEvidence.plainText).toBe("Preview Calendar Chat");
-  expect(JSON.parse(dragEvidence.historyPayload)).toMatchObject({
-    conversationId: "c-smoke",
-    title: "Preview Calendar Chat",
-    conversationKind: "coding",
-    tags: ["coding"],
+    const target = document.querySelector('[data-history-reference-drop-target="composer"]');
+    if (!source || !target) throw new Error("history source or composer target not found");
+    const state = { down: false, up: false, moves: 0, release: null as null | { x: number; y: number },
+      drops: [] as Array<{ rawPayload: string; point: { x: number; y: number }; targetId: string }>, targetId: target.id };
+    (window as Window & { __historyPointer?: typeof state }).__historyPointer = state;
+    document.addEventListener("pointerdown", (event) => {
+      if (event.target instanceof Node && source.contains(event.target)) state.down = event.isTrusted && event.button === 0;
+    }, { capture: true });
+    document.addEventListener("pointermove", (event) => {
+      if (state.down && !state.up && event.isTrusted && event.buttons === 1) state.moves += 1;
+    }, { capture: true });
+    document.addEventListener("pointerup", (event) => {
+      if (!state.down) return;
+      const top = document.elementFromPoint(event.clientX, event.clientY);
+      state.up = event.isTrusted && event.button === 0 && top !== null && target.contains(top);
+      state.release = { x: event.clientX, y: event.clientY };
+    }, { capture: true });
+    window.addEventListener(eventName, (event) => {
+      const detail = (event as CustomEvent).detail;
+      state.drops.push(structuredClone(detail));
+    });
+  }, historyReferenceDropEvent);
+  await source.scrollIntoViewIfNeeded();
+  await input.scrollIntoViewIfNeeded();
+  const start = await source.boundingBox();
+  expect(start).not.toBeNull();
+  const startPoint = { x: Math.floor(start!.x + start!.width / 2), y: Math.floor(start!.y + start!.height / 2) };
+  await page.mouse.move(startPoint.x, startPoint.y);
+  await page.mouse.down();
+  try {
+    // First activate inside the source, then let subsequent moves update delta.
+    await page.mouse.move(startPoint.x + 12, startPoint.y);
+    await expect(source).toHaveAttribute("aria-pressed", "true");
+    const end = await input.boundingBox();
+    expect(end).not.toBeNull();
+    const endPoint = { x: Math.floor(end!.x + end!.width / 2), y: Math.floor(end!.y + end!.height / 2) };
+    await page.mouse.move(endPoint.x, endPoint.y, { steps: 8 });
+    await expect.poll(() => input.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const target = element.closest('[data-history-reference-drop-target="composer"]');
+      const top = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return target !== null && top !== null && target.contains(top);
+    })).toBe(true);
+  } finally {
+    await page.mouse.up();
+  }
+  const dragEvidence = await page.evaluate(() =>
+    (window as Window & { __historyPointer?: {
+      down: boolean; up: boolean; moves: number; release: { x: number; y: number } | null;
+      drops: Array<{ rawPayload: string; point: { x: number; y: number }; targetId: string }>; targetId: string;
+    } }).__historyPointer);
+  await test.info().attach("history-pointer-transport", { body: JSON.stringify(dragEvidence), contentType: "application/json" });
+  expect(dragEvidence?.down).toBe(true);
+  expect(dragEvidence?.up).toBe(true);
+  expect(dragEvidence!.moves).toBeGreaterThan(1);
+  expect(dragEvidence?.drops).toHaveLength(1);
+  expect(dragEvidence!.drops[0].targetId).toBe(dragEvidence!.targetId);
+  expect(dragEvidence!.drops[0].point).toEqual(dragEvidence!.release);
+  expect(JSON.parse(dragEvidence!.drops[0].rawPayload)).toEqual({
+    schema: "io.tobkiri.history-reference.v1", kind: "chat", profile_id: "defaults",
+    id: "c-smoke", label: "Preview Calendar Chat",
   });
-  await expect(composer).toContainText("Preview Calendar Chat");
-
-  await page.locator("textarea.rumi-composer-textarea").fill("Use this dropped chat as context.");
-  await page.locator(".rumi-send-button").click();
-  await expect.poll(() => streamRequests.length).toBe(1);
-
-  const request = streamRequests[0];
-  const message = request.message as Record<string, unknown>;
-  const metadata = message.metadata as Record<string, unknown>;
-  const droppedWidgets = metadata.dropped_widgets as Array<Record<string, unknown>>;
-  expect(droppedWidgets).toHaveLength(1);
-  expect(droppedWidgets[0]).toMatchObject({
-    id: "conversation:c-smoke",
-    type: "conversation",
-    widgetKind: "history_context",
-    sourceItemId: "c-smoke",
-    label: "Preview Calendar Chat",
+  await expect.poll(() => referenceResolutions.length).toBe(1);
+  const receipt = referenceResolutions[0];
+  expect(receipt.status()).toBe(200);
+  expect(frontendFixtureRequest(receipt.url(), receipt.request().method())).toEqual(frontendFixtureBinding("chatReferencesResolve"));
+  expect(receipt.request().postDataJSON()).toEqual({ references: [{ kind: "chat", id: "c-smoke" }] });
+  const snapshot = (await receipt.json()).data;
+  expect(snapshot).toMatchObject({
+    kind: "tobkiri.chat.reference.snapshot.v1", profile_id: "defaults",
+    store_revision: 1, project_revision: 0, next_cursor: null, truncated: false,
+    references: [{ kind: "chat", id: "c-smoke", label: "Preview Calendar Chat",
+      conversation_ids: ["c-smoke"], member_count: 1, membership_complete: true }],
   });
-  expect(droppedWidgets[0].metadata).toMatchObject({
-    conversation_id: "c-smoke",
-    title: "Preview Calendar Chat",
-  });
+  await expect(input).toHaveValue("@chat:c-smoke ");
+  // Suggestions load lazily when the confirmed drop inserts @. Empty drafts
+  // do not request this catalog; resolution itself is available before it.
+  const catalog = await listed;
+  expect(catalog.status()).toBe(200);
+  expect(frontendFixtureRequest(catalog.url(), catalog.request().method())).toEqual(frontendFixtureBinding("chatReferencesList"));
+  expect([...canonicalRequestQuery(catalog.request(), "api/chat/references", "GET")!]).toEqual([["limit", "100"]]);
+  expect(await catalog.json()).toMatchObject({ status: "ok", success: true, data: { profile_id: "defaults", references: [{ kind: "chat", id: "c-smoke" }] } });
+  expect(catalogRequests).toEqual([catalog.request()]);
+
+  await expect(page.locator("[data-composer-inline-mentions]")).toContainText("@chat:c-smoke");
+  expect(savedTurnRequests).toEqual([]);
+
+  // Preserve the confirmed token's range; replacing the draft would revoke it.
+  await input.press("End");
+  await input.pressSequentially("Use this dropped chat as context.");
+  await expect(input).toHaveValue("@chat:c-smoke Use this dropped chat as context.");
+  expect(referenceResolutions).toHaveLength(1);
+  expect(referenceOrder).toEqual(["resolve-request", "resolve-response"]);
+  const revalidated = page.waitForResponse((response) =>
+    canonicalRequestQuery(response.request(), "api/chat/references/resolve", "POST") !== null);
+  const completed = page.waitForResponse((response) => chatRequestKind(response.request()) === "startTurn");
+  await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+  const [revalidation, completion] = await Promise.all([revalidated, completed]);
+  expect(revalidation).not.toBe(receipt);
+  expect(referenceOrder).toEqual(["resolve-request", "resolve-response", "resolve-request", "resolve-response", "saved-send-request"]);
+  expect(completion.status()).toBe(200);
+  await expect.poll(() => savedTurnRequests.length).toBe(1);
+  const request = savedTurnRequests[0].request;
+  expect(request.conversation_id).toBe("c-smoke");
+  expect(request.content).toBe("@chat:c-smoke Use this dropped chat as context.");
+  expect(request.chat_references).toEqual([{ kind: "chat", profile_id: "defaults", id: "c-smoke" }]);
+  // Selection and send each require their own successful owner read.
+  expect(referenceResolutions).toHaveLength(2);
+  for (const resolution of referenceResolutions) {
+    expect(resolution.status()).toBe(200);
+    expect(resolution.request().postDataJSON()).toEqual({ references: [{ kind: "chat", id: "c-smoke" }] });
+    expect(frontendFixtureRequest(resolution.url(), resolution.request().method())).toEqual(frontendFixtureBinding("chatReferencesResolve"));
+    expect(await resolution.json()).toMatchObject({ status: "ok", success: true, data: { profile_id: "defaults", references: [{ kind: "chat", id: "c-smoke", conversation_ids: ["c-smoke"], membership_complete: true }] } });
+  }
+  for (const legacy of ["message", "metadata", "dropped_widgets", "mentions", "tools", "params"]) {
+    expect(request).not.toHaveProperty(legacy);
+    expect(savedTurnRequests[0]).not.toHaveProperty(legacy);
+  }
+  expect(await completion.json()).toMatchObject({ status: "ok", success: true, data: { status: "completed", turn: { id: request.turn_id, conversation_id: "c-smoke", status: "completed" } } });
+  await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
+  await expect(input).toHaveValue("");
+  await expect(input).toBeEditable();
+  await expect(page.getByRole("button", { name: "メッセージを送信", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
 });
 
-test("late stream activity after final message does not leave an empty draft pending", async ({ page }) => {
-  await openDefaultspack(page, "/chat", {
-    streamEvents: (message) => [
-      { type: "content_delta", data: { delta: "Structured response accepted." } },
-      { type: "assistant_message_completed", data: { message } },
-      {
-        type: "tool_call_started",
-        data: {
-          tool_name: "browser_use",
-          tool_call_id: "call-late",
-          display_text: "browser_use を使用中",
-          message: "browser_use を使用中",
-        },
-      },
-      { type: "done", data: { message } },
-    ],
+test("actual ChatApp ignores late tool progress after canonical completion without reviving an empty draft", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { applicationChat: true });
+  const base = lateSavedProgressConversation;
+  let fixture: ReturnType<typeof lateSavedProgressFixture> | undefined;
+  let saved = false;
+  let starts = 0;
+  let progressReads = 0;
+  let terminalReads = 0;
+  let lateRequest: Request | undefined;
+  const controls: string[] = [];
+  let releaseStart!: () => void;
+  let releaseLate!: () => void;
+  const startGate = new Promise<void>((resolve) => { releaseStart = resolve; });
+  const lateGate = new Promise<void>((resolve) => { releaseLate = resolve; });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const binding = frontendFixtureRequest(request.url(), request.method());
+    const kind = chatRequestKind(request);
+    if (kind === "listConversations") {
+      return fulfill(route, { conversations: [{ ...base, messages: [] }], total: 1, store_revision: 1 });
+    }
+    if (kind === "getConversation") {
+      expect(requestConversationId(request)).toBe(base.id);
+      return fulfill(route, fixture ? saved ? fixture.completedConversation : fixture.runningConversation : base);
+    }
+    if (kind === "startTurn") {
+      starts += 1;
+      expect(starts).toBe(1);
+      const submitted = (request.postDataJSON() as { request: SavedTurnRequest }).request;
+      expect(submitted).toMatchObject({ conversation_id: base.id, conversation_revision: 1, content: lateSavedProgressText.draft });
+      fixture = lateSavedProgressFixture(submitted.turn_id, Date.now());
+      await startGate;
+      return fulfill(route, { status: "completed", turn: fixture.completedTurn });
+    }
+    if (kind === "turns") {
+      expect([...canonicalRequestQuery(request, "api/chat/turns", "GET")!]).toEqual([["conversation_id", base.id]]);
+      return fulfill(route, { turns: fixture ? [saved ? fixture.completedTurn : fixture.runningTurn] : [] });
+    }
+    if (kind === "turnEvents" || kind === "reconcile") {
+      expect(fixture).toBeDefined();
+      if (kind === "reconcile") {
+        expect(request.postDataJSON()).toEqual({ turn_id: fixture!.runningTurn.id });
+        return fulfill(route, { status: saved ? "completed" : "reconciliation_required",
+          turn: saved ? fixture!.completedTurn : fixture!.runningTurn });
+      }
+      expect([...canonicalRequestQuery(request, "api/chat/turn/events", "GET")!].sort()).toEqual(
+        Object.entries({ turn_id: fixture!.runningTurn.id, conversation_id: base.id }).sort(),
+      );
+      if (saved) terminalReads += 1;
+      return fulfill(route, saved ? fixture!.completedSnapshot : fixture!.runningSnapshot);
+    }
+    if (binding?.contributionId === "defaults.conversations.turn.progress") {
+      expect(binding).toMatchObject({ contractId: "tobkiri.resource.turn.progress.v1",
+        operationId: "rumi_turn_runtime_pack.turn-progress-resource", method: "GET" });
+      expect(fixture).toBeDefined();
+      const query = canonicalRequestQuery(request, "api/chat/turn/progress", "GET");
+      expect(query).not.toBeNull();
+      progressReads += 1;
+      expect(progressReads).toBeLessThanOrEqual(2);
+      const initial = progressReads === 1;
+      expect([...query!].sort()).toEqual(Object.entries({ turn_id: fixture!.runningTurn.id,
+        conversation_id: base.id, cursor: initial ? "0" : "1",
+        ...(initial ? {} : { progress_id: fixture!.initialPage.progress_id! }) }).sort());
+      // Capture a valid running-owner response while the canonical turn is
+      // still active, but deliver its tool event only after the UI settles.
+      expect(saved).toBe(false);
+      const response = initial ? fixture!.initialPage : fixture!.latePage;
+      if (!initial) {
+        lateRequest = request;
+        await lateGate;
+      }
+      return fulfill(route, response);
+    }
+    if (kind === "stop" || kind === "steer") {
+      controls.push(kind);
+      return route.fulfill({ status: 409, json: { status: "error", error: "Unexpected control dispatch" } });
+    }
+    return route.fallback();
   });
+  try {
+    await page.goto(`/p/defaults/chat?chat=${base.id}`);
+    const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
+    await composer.fill(lateSavedProgressText.draft);
+    await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
+    await expect(page.getByText(lateSavedProgressText.provisional, { exact: true })).toBeVisible();
+    await expect(page.locator('[data-message-id^="live-progress:"]')).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toBeEnabled();
+    await expect.poll(() => progressReads).toBe(2);
+    expect(terminalReads).toBe(0);
+    const terminalResponse = page.waitForResponse(async (response) => {
+      const query = canonicalRequestQuery(response.request(), "api/chat/turn/events", "GET");
+      return query?.get("turn_id") === fixture!.runningTurn.id && query.get("conversation_id") === base.id
+        && (await response.json()).data?.terminal?.status === "completed";
+    });
+    saved = true;
+    releaseStart();
+    const terminal = await terminalResponse;
+    expect(terminal.status()).toBe(200);
+    expect(await terminal.json()).toEqual(ok(fixture!.completedSnapshot));
+    await terminal.finished();
 
-  await page.locator("textarea.rumi-composer-textarea").fill("Use browser after final.");
-  await page.locator(".rumi-send-button").click();
-
-  await expect(page.getByText("Structured response accepted.")).toBeVisible();
-  await expect(page.getByText("レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。")).toBeHidden();
-  await expect(page.getByText("tool 準備中")).toBeHidden();
+    const expectSettled = async () => {
+      await expect(page.getByText(lateSavedProgressText.answer, { exact: true })).toBeVisible();
+      await expect(page.locator('[data-message-role="agent"]')).toHaveCount(1);
+      await expect(page.locator('[data-message-id^="live-progress:"]')).toHaveCount(0);
+      await expect(page.getByText(lateSavedProgressText.provisional, { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "ツール履歴", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "生成を停止", exact: true })).toHaveCount(0);
+      await expect(page.locator('[data-runtime-activity="running"]')).toHaveCount(0);
+      await expect(composer).toBeEditable();
+      await expect(composer).toHaveValue("");
+      const send = page.getByRole("button", { name: "メッセージを送信", exact: true });
+      await expect(send).toBeVisible();
+      await expect(send).toBeDisabled();
+      await expect(page).not.toHaveURL(/pending=1/);
+      await expect.poll(() => page.evaluate((id) => {
+        const stored = JSON.parse(localStorage.getItem("rumi-pending-chat-v2:defaults") ?? "null");
+        return stored?.scopes?.[`sha256:${"a".repeat(64)}`]?.[id] ?? null;
+      }, base.id)).toBeNull();
+      await expect(page.getByText("レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。")).toHaveCount(0);
+      await expect(page.getByText("tool 準備中")).toHaveCount(0);
+    };
+    await expectSettled();
+    expect(terminalReads).toBeGreaterThan(0);
+    await page.clock.install();
+    expect(lateRequest).toBeDefined();
+    expect(fixture!.latePage.expires_at_ms).toBeGreaterThan(await page.evaluate(() => Date.now()));
+    const lateResponse = page.waitForResponse((response) => response.request() === lateRequest);
+    releaseLate();
+    const delivered = await lateResponse;
+    expect(delivered.status()).toBe(200);
+    expect(await delivered.json()).toEqual(ok(fixture!.latePage));
+    await delivered.finished();
+    // Cover three progress-poll periods (750ms) and a saved-turn poll (1500ms)
+    // after actual delivery, so a briefly hidden revived request cannot pass.
+    await page.clock.runFor(2_250);
+    await expectSettled();
+    expect(progressReads).toBe(2);
+    expect(starts).toBe(1);
+    expect(controls).toEqual([]);
+  } finally {
+    releaseStart();
+    releaseLate();
+  }
 });
 
 test("coding slash command toggles coding mode off again", async ({ page }) => {
@@ -3647,12 +4583,12 @@ test("coding slash command toggles coding mode off again", async ({ page }) => {
   await page.locator("textarea.rumi-composer-textarea").fill("/coding");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/coding(?:\?|$)/);
-  await expect(page.getByRole("button", { name: "Coding widget" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Coding widget", exact: true })).toBeVisible();
 
   await page.locator("textarea.rumi-composer-textarea").fill("/coding");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/chat(?:\?|$)/);
-  await expect(page.getByRole("button", { name: "Coding widget" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Coding widget", exact: true })).toBeHidden();
 });
 
 test("tool timeline shows streamed activity details", async ({ page }) => {
@@ -3913,7 +4849,7 @@ test("actual ChatApp sends the selected finite tool and displays authenticated l
     conversation_revision: 1, status: saved ? "completed" : "running", revision: saved ? 3 : 2,
     ...(saved ? { result_reference: reference() } : {}) });
   const user = () => ({ id: userId, conversation_id: base.id, role: "user", created_at: Date.now(),
-    content: [{ type: "text", text: "Calculate 1+2 using calculator" }], metadata: { turn_id: operationId } });
+    content: [{ type: "text", text: "Calculate 1+2 using @Calculator" }], metadata: { turn_id: operationId } });
   const conversation = () => operationId ? { ...base, conversation_revision: saved ? 3 : 2,
     current_node_id: saved ? assistantId : userId, messages: [user(), ...(saved ? [{
       id: assistantId, conversation_id: base.id, role: "assistant", created_at: Date.now(), finish_reason: "stop",
@@ -3967,10 +4903,16 @@ test("actual ChatApp sends the selected finite tool and displays authenticated l
   try {
     await page.goto(`/p/defaults/chat?chat=${base.id}`);
     const composer = page.getByRole("combobox", { name: "Tobkiriにメッセージを送信" });
-    await composer.fill("Calculate 1+2 using calculator");
+    // Replacing the draft removes its old mention authority. Confirm the tool
+    // again after filling so only the visible selected reference is submitted.
+    await composer.fill("Calculate 1+2 using @cal");
+    await page.getByRole("option").filter({ has: page.getByText("@Calculator", { exact: true }) }).click();
+    await expect(composer).toHaveValue("Calculate 1+2 using @Calculator ");
     await page.getByRole("button", { name: "メッセージを送信", exact: true }).click();
     await expect.poll(() => starts).toBe(1);
-    expect(submitted?.tool_selection).toMatchObject({ mode: "manual", include: [{ kind: "tool", id: "calculator" }] });
+    expect(submitted?.content).toBe("Calculate 1+2 using @Calculator");
+    expect(submitted?.tool_selection).toMatchObject({ mode: "manual" });
+    expect(submitted?.tool_selection?.include).toEqual([{ kind: "tool", id: "calculator" }]);
     await expect.poll(() => progressReads).toBeGreaterThan(0);
     const history = page.getByRole("region", { name: "ツール履歴", exact: true });
     await expect(history).toBeVisible();
