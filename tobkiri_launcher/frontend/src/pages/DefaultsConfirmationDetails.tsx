@@ -12,6 +12,16 @@ export function DefaultsConfirmationDetails({confirmation}: {readonly confirmati
       <Field label="Authority snapshot" value={confirmation.authority_snapshot_digest} />
       <Field label="SecurityEpoch" value={String(confirmation.security_epoch)} />
       <Field label="Confirmation digest" value={confirmation.confirmation_digest} />
+      {confirmation.definition_predecessor && <>
+        <Field label="Imported predecessor revision" value={confirmation.definition_predecessor.profile_revision} />
+        <Field label="Imported definition digest" value={confirmation.definition_predecessor.definition_digest} />
+        <Field label="Imported registry generation" value={String(confirmation.definition_predecessor.store_generation)} />
+        <Field label="Imported registry snapshot" value={confirmation.definition_predecessor.snapshot_digest} />
+        <Field label="Completed handover digest" value={confirmation.definition_predecessor.handover_digest} />
+        <Field label="Imported Shell artifact" value={confirmation.definition_predecessor.shell_artifact_digest ?? 'Unpinned'} />
+        <Field label="Imported Shell executable" value={confirmation.definition_predecessor.shell_executable_artifact_digest ?? 'Unpinned'} />
+        <Field label="Imported Shell definition" value={confirmation.definition_predecessor.shell_definition_revision ?? 'Unpinned'} />
+      </>}
     </dl>
     <ul aria-label="Confirmed operation bindings" className="mt-4 space-y-2">
       {confirmation.bindings.map((binding, index) => <li key={`${binding.caller_function_id}:${binding.operation_id}:${index}`}>

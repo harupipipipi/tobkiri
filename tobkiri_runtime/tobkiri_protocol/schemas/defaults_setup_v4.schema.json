@@ -99,7 +99,28 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/binding"}
         },
+        "definition_predecessor": {"$ref": "#/$defs/definitionPredecessor"},
         "confirmation_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "definitionPredecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_revision", "definition_digest", "store_generation", "snapshot_digest", "handover_digest", "display_name", "pack_ids", "base_pack_id", "shell_pack_id", "shell_provider_id", "shell_artifact_digest", "shell_executable_artifact_digest", "shell_definition_revision"],
+      "properties": {
+        "profile_revision": {"$ref": "#/$defs/digest"},
+        "definition_digest": {"$ref": "#/$defs/digest"},
+        "store_generation": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "snapshot_digest": {"$ref": "#/$defs/digest"},
+        "handover_digest": {"$ref": "#/$defs/digest"},
+        "display_name": {"type": "string", "minLength": 1},
+        "pack_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "base_pack_id": {"$ref": "#/$defs/id"},
+        "shell_pack_id": {"$ref": "#/$defs/id"},
+        "shell_provider_id": {"$ref": "#/$defs/id"},
+        "shell_artifact_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "shell_executable_artifact_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "shell_definition_revision": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
       }
     },
     "base": {

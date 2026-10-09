@@ -6,6 +6,8 @@ import {
   DEFAULTS_BINDING_KEYS,
   DEFAULTS_BINDING_OPTIONAL_KEYS,
   DEFAULTS_CONFIRMATION_KEYS,
+  DEFAULTS_CONFIRMATION_OPTIONAL_KEYS,
+  DEFAULTS_PREDECESSOR_KEYS,
   DEFAULTS_CONFIRMED_SHELL_KEYS,
   DEFAULTS_FUNCTION_PRINCIPAL_KEYS,
   DEFAULTS_PACK_KEYS,
@@ -43,6 +45,22 @@ export type DefaultsBinding = {
   };
 };
 
+export type DefaultsDefinitionPredecessor = {
+  readonly profile_revision: string;
+  readonly definition_digest: string;
+  readonly store_generation: number;
+  readonly snapshot_digest: string;
+  readonly handover_digest: string;
+  readonly display_name: string;
+  readonly pack_ids: readonly string[];
+  readonly base_pack_id: string;
+  readonly shell_pack_id: string;
+  readonly shell_provider_id: string;
+  readonly shell_artifact_digest: string | null;
+  readonly shell_executable_artifact_digest: string | null;
+  readonly shell_definition_revision: string | null;
+};
+
 export type DefaultsConfirmation = {
   readonly confirmation_api_version: 'io.tobkiri.defaults-confirmation.v1';
   readonly operation_id: 'defaults.activate';
@@ -66,6 +84,7 @@ export type DefaultsConfirmation = {
     readonly definition_digest: string;
   };
   readonly bindings: readonly DefaultsBinding[];
+  readonly definition_predecessor?: DefaultsDefinitionPredecessor;
   readonly confirmation_digest: string;
 };
 
@@ -212,7 +231,31 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
   exactString(shell.provider_id, 'shell.tauri.default', 'Defaults Shell provider');
   exactString(shell.contract_id, 'app.shell.v1', 'Defaults Shell contract');
   const confirmation = object(profile.confirmation, 'Defaults confirmation');
-  exactKeys(confirmation, DEFAULTS_CONFIRMATION_KEYS, 'Defaults confirmation');
+  exactKeys(confirmation, DEFAULTS_CONFIRMATION_KEYS, 'Defaults confirmation', DEFAULTS_CONFIRMATION_OPTIONAL_KEYS);
+  if (confirmation.definition_predecessor !== undefined) {
+    const predecessor = object(confirmation.definition_predecessor, 'Defaults definition predecessor');
+    exactKeys(predecessor, DEFAULTS_PREDECESSOR_KEYS, 'Defaults definition predecessor');
+    for (const field of ['profile_revision', 'definition_digest', 'snapshot_digest', 'handover_digest']) {
+      digest(predecessor[field], `Defaults predecessor ${field}`);
+    }
+    if (predecessor.profile_revision !== predecessor.definition_digest) {
+      throw new Error('Defaults predecessor revision is mismatched');
+    }
+    positiveSafeInteger(predecessor.store_generation, 'Defaults predecessor generation');
+    nonEmptyString(predecessor.display_name, 'Defaults predecessor name');
+    for (const field of ['base_pack_id', 'shell_pack_id', 'shell_provider_id']) {
+      if (typeof predecessor[field] !== 'string' || !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(String(predecessor[field]))) {
+        throw new Error(`Defaults predecessor ${field} is invalid`);
+      }
+    }
+    if (!Array.isArray(predecessor.pack_ids) || new Set(predecessor.pack_ids).size !== predecessor.pack_ids.length
+      || predecessor.pack_ids.some((id) => typeof id !== 'string' || !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(id))) {
+      throw new Error('Defaults predecessor Pack selection is invalid');
+    }
+    for (const field of ['shell_artifact_digest', 'shell_executable_artifact_digest', 'shell_definition_revision']) {
+      if (predecessor[field] !== null) digest(predecessor[field], `Defaults predecessor ${field}`);
+    }
+  }
   exactString(
     confirmation.confirmation_api_version,
     'io.tobkiri.defaults-confirmation.v1',

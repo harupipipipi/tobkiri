@@ -1999,6 +1999,16 @@ class ActivationStore:
             )
 
     @contextmanager
+    def inactive_definition_registration(self) -> Iterator[None]:
+        """Exclude workspace activation while registering a reviewed successor."""
+        with self._activation_lock():
+            if self._state.exists("active.json"):
+                raise ProfileResolutionDenied(
+                    "inactive bootstrap predecessor has an active workspace"
+                )
+            yield
+
+    @contextmanager
     def _activation_lock(self) -> Iterator[None]:
         """Serialize activation recovery and publication across Host processes."""
         profile_digest = hashlib.sha256(self.profile_id.encode("utf-8")).hexdigest()[:24]

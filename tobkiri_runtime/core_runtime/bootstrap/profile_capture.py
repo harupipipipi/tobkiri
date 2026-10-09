@@ -38,6 +38,7 @@ from .profile_publication import (
     candidate_matches,
     published_candidate,
 )
+from .profile_predecessor import inactive_bootstrap_predecessor
 from .profile_registry import (
     bootstrap_review_catalog,
     recover_bootstrap_definition,
@@ -500,12 +501,16 @@ def _resolve_bootstrap_candidate(
 
         with runtime_user_data_scope(user_data):
             verify_reconfirmed_pack_approvals(resolved, catalog)
+    definition_predecessor = inactive_bootstrap_predecessor(
+        user_data=user_data, source=source_profile
+    )
     return resolved, dict(
         runtime.bootstrap_confirmation(
             resolved=resolved,
             profile_id=profile_id,
             authority_snapshot_digest=snapshot_digest,
             security_epoch=security_epoch,
+            definition_predecessor=definition_predecessor,
         )
     )
 
@@ -1257,6 +1262,20 @@ def _capture_bootstrap_profile(
         raise ProfileResolutionDenied("bootstrap activation confirmation is stale or tampered")
     # Materialize legacy collections before adding the explicitly chosen template.
     host_profile_catalog(base_dir)
+    bundle_root = _bundle_root(base_dir)
+    catalog = runtime.load_catalog(bundle_root)
+    source = catalog.profiles[profile_id]
+    bundle_digest = (
+        "sha256:"
+        + hashlib.sha256(
+            (bundle_root / "bundle.lock.json").read_bytes()
+        ).hexdigest()
+    )
+    if (
+        canonical_digest(source) != resolved.plan["profile_definition_digest"]
+        or bundle_digest != resolved.lock["bundle_digest"]
+    ):
+        raise ProfileResolutionDenied("bootstrap target changed after confirmation")
     activation_id = (
         f"activation:{profile_id}-" + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
     )
@@ -1264,9 +1283,11 @@ def _capture_bootstrap_profile(
         predecessor=publication_predecessor, resolved=resolved,
         activation_id=activation_id, confirmation=confirmation,
     )
-    register_bootstrap_definition(
-        user_data, runtime.load_catalog(_bundle_root(base_dir)).profiles[profile_id]
+    definition_predecessor = expected_confirmation.get(
+        "definition_predecessor"
     )
+    if definition_predecessor is None:
+        register_bootstrap_definition(user_data, source)
     workspace = user_data / "workspaces" / profile_id
     workspace.mkdir(parents=True, exist_ok=True)
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
@@ -1275,9 +1296,18 @@ def _capture_bootstrap_profile(
             workspace=workspace,
             profile_id=profile_id,
             authority=authority,
-            catalog=runtime.load_catalog(_bundle_root(base_dir)),
+            catalog=catalog,
         )
         store.recover()
+        if definition_predecessor is not None:
+            with store.inactive_definition_registration():
+                register_bootstrap_definition(
+                    user_data, source,
+                    approved_predecessor_digest=definition_predecessor[
+                        "definition_digest"
+                    ],
+                    approved_inactive_predecessor=definition_predecessor,
+                )
         activation_id = (
             f"activation:{profile_id}-" + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
         )

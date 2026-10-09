@@ -52,3 +52,21 @@ test("schema optional-field drift fails closed before frontend generation", asyn
     await rm(root, {recursive: true, force: true});
   }
 });
+
+
+test("confirmation accepts only its declared imported predecessor field", async () => {
+  const result = await checkGeneratedDefaultsSetupContract();
+  assert.deepEqual(result.contract.confirmationOptionalKeys, ["definition_predecessor"]);
+  assert.ok(result.contract.predecessorKeys.includes("handover_digest"));
+  const root = await mkdtemp(join(tmpdir(), "tobkiri-predecessor-contract-"));
+  const schemaPath = join(root, "schema.json");
+  try {
+    const schema = JSON.parse(await readFile(
+      "../../tobkiri_runtime/tobkiri_protocol/schemas/defaults_setup_v4.schema.json", "utf8",
+    ));
+    schema.$defs.confirmation.properties.approved = {type: "boolean"};
+    await writeFile(schemaPath, JSON.stringify(schema));
+    await assert.rejects(generateDefaultsSetupContract({schemaPath, outputPath: join(root, "generated.ts")}),
+      /optional or unrequired serialized fields/);
+  } finally { await rm(root, {recursive: true, force: true}); }
+});

@@ -33,6 +33,10 @@ export function DefaultsReview({
   const canActivate = setup?.state === 'review_required'
     && !activationCommitted
     && activationAllowed;
+  const predecessor = setup?.recommended_default_profile.confirmation.definition_predecessor;
+  const targetPacks = setup?.recommended_default_profile.pack_ids ?? [];
+  const addedPacks = targetPacks.filter((id) => !predecessor?.pack_ids.includes(id));
+  const removedPacks = predecessor?.pack_ids.filter((id) => !targetPacks.includes(id)) ?? [];
   return <section className="rounded-[18px] border border-border bg-bg-card p-7 shadow-lg" aria-labelledby="defaults-review-title">
     <p className="text-xs font-medium text-text-muted">Defaults v4 bootstrap</p>
     <h1 id="defaults-review-title" className="mt-3 text-2xl font-semibold text-text-main">
@@ -75,6 +79,15 @@ export function DefaultsReview({
           Resolve, review, approve, activate, and capture are performed by the Host-owned transaction. This screen only submits the exact confirmation it issued.
         </p>
       </div>
+      {predecessor && <div role="status" className="rounded-lg border border-border p-4 text-sm text-text-main">
+        <p className="font-medium">Review the imported Defaults successor</p>
+        <p className="mt-2">Imported name: {predecessor.display_name}. Successor name: {setup.recommended_default_profile.name}.</p>
+        <p className="mt-2">This activation appends the displayed bundled Defaults as a new revision of “{predecessor.display_name}”. The imported definition remains in immutable history. Existing credentials and approvals are not carried into this activation.</p>
+        <p className="mt-2">Pack selections, operation bindings, and scopes are replaced with the displayed bundled composition.</p>
+        <p className="mt-2">Imported base: {predecessor.base_pack_id}. Imported Shell: {predecessor.shell_provider_id} ({predecessor.shell_pack_id}).</p>
+        <p className="mt-2">Imported Packs: {predecessor.pack_ids.join(', ') || 'None'}.</p>
+        <p className="mt-2">Added Packs: {addedPacks.join(', ') || 'None'}. Removed Packs: {removedPacks.join(', ') || 'None'}.</p>
+      </div>}
       <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
       {!activationAllowed && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
         Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.
@@ -88,7 +101,7 @@ export function DefaultsReview({
           className="mt-1 size-4 shrink-0"
           aria-describedby="defaults-review-confirmation"
         />
-        <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.</span>
+        <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}</span>
       </label>
       <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={onActivate}>Activate Defaults Profile</Button>
     </div>}

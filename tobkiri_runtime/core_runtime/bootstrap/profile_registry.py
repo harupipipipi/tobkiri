@@ -1,17 +1,20 @@
 """Register explicitly selected bootstrap definitions without replacing user state."""
 
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.secure_persistence import SecureDirectory
 
 from ..authority.v4 import AuthorityStore
-from ..active_profile_store_v4 import ActiveProfileStore
+from ..active_profile_store_v4 import ActiveProfileStore, exclusive_profile_lock
 from ..profile_definition_store_v4 import (
     ProfileDefinitionStore,
     ProfileDefinitionStoreConflict,
 )
+from .profile_predecessor import require_inactive_bootstrap_predecessor
 from .profile_source_update import (
     interrupted_source_update_predecessor,
     profile_binding_renewal_required,
@@ -155,9 +158,41 @@ def register_bootstrap_definition(
     source: Mapping[str, Any],
     *,
     approved_predecessor_digest: str | None = None,
+    approved_inactive_predecessor: Mapping[str, Any] | None = None,
 ) -> None:
     """Register a source or append its explicitly confirmed predecessor's successor."""
     definitions = ProfileDefinitionStore(user_data)
+    if approved_inactive_predecessor is not None:
+        # The caller holds the application's workspace activation lock. This
+        # shared Host selection lock excludes another Profile publication while
+        # the reviewed inactive definition is appended under registry CAS.
+        with exclusive_profile_lock(
+            SecureDirectory(user_data / "profiles", create=False),
+            ".active-profile.lock", timeout_seconds=5.0,
+            monotonic_clock=time.monotonic, retry_sleep=time.sleep,
+        ):
+            snapshot = definitions.snapshot()
+            require_inactive_bootstrap_predecessor(
+                user_data=user_data, source=source,
+                expected=approved_inactive_predecessor, snapshot=snapshot,
+            )
+            if (
+                approved_predecessor_digest
+                != approved_inactive_predecessor["definition_digest"]
+            ):
+                raise ProfileDefinitionStoreConflict(
+                    "inactive bootstrap predecessor approval is mismatched"
+                )
+            definitions.update_profile(
+                str(source["profile_id"]), source,
+                expected_profile_revision=approved_inactive_predecessor[
+                    "profile_revision"
+                ],
+                expected_store_generation=approved_inactive_predecessor[
+                    "store_generation"
+                ],
+            )
+        return
     snapshot = definitions.snapshot()
     generation = snapshot["generation"]
     existing = definitions.get_profile(str(source["profile_id"]), include_tombstone=True)

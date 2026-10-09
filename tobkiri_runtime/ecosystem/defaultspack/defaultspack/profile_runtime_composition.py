@@ -149,17 +149,29 @@ class DefaultspackProfileRuntime:
         profile_id: str,
         authority_snapshot_digest: str,
         security_epoch: int,
+        definition_predecessor: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         """Build Defaultspack's explicit bootstrap activation confirmation."""
 
-        return self._confirmation(
-            resolved=resolved,
-            profile_id=profile_id,
-            authority_snapshot_digest=authority_snapshot_digest,
-            security_epoch=security_epoch,
-            confirmation_api_version="io.tobkiri.defaults-confirmation.v1",
-            operation_id="defaults.activate",
+        confirmation = dict(
+            self._confirmation(
+                resolved=resolved,
+                profile_id=profile_id,
+                authority_snapshot_digest=authority_snapshot_digest,
+                security_epoch=security_epoch,
+                confirmation_api_version="io.tobkiri.defaults-confirmation.v1",
+                operation_id="defaults.activate",
+            )
         )
+        if definition_predecessor is not None:
+            confirmation["definition_predecessor"] = dict(definition_predecessor)
+            confirmation["confirmation_digest"] = canonical_digest(
+                {
+                    key: value for key, value in confirmation.items()
+                    if key != "confirmation_digest"
+                }
+            )
+        return confirmation
 
     def profile_confirmation(
         self,
