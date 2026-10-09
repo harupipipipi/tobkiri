@@ -18,7 +18,9 @@ from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSI
 
 def test_signed_owner_source_always_selects_exact_test_policy():
     policy = owner_startup_generation_budget_template()
-    assert policy == NativeGenerationBudgetTemplate("defaults", "provider.main")
+    assert policy == NativeGenerationBudgetTemplate(
+        "defaults", "provider.openrouter.main"
+    )
     assert policy.max_requests == 3 and policy.max_output_tokens == 2048
     assert policy.model == "google/gemma-4-31b-it:free"
 
@@ -31,6 +33,7 @@ def test_signed_owner_source_always_selects_exact_test_policy():
         True,
         "approved",
         NativeGenerationBudgetTemplate("other-profile", "provider.main"),
+        NativeGenerationBudgetTemplate("defaults", "provider.main"),
         NativeGenerationBudgetTemplate("defaults", "provider.other"),
     ],
 )
@@ -78,7 +81,9 @@ def test_common_production_capture_selects_policy_before_catalog_or_credential(
             ecosystem_root=tmp_path / "unused",
             credential_store_factory=credential,
         )
-    assert selected == [NativeGenerationBudgetTemplate("defaults", "provider.main")]
+    assert selected == [
+        NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
+    ]
     assert observed == ([] if profile == "other" else ["catalog"])
     if profile == "defaults":
         material = HostCredentialMaterialStore(user_data_root=tmp_path / "owner")
@@ -169,7 +174,9 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
     )
     with pytest.raises(AuthorityDenied):
         app.main(["--headless"])
-    assert selected == [NativeGenerationBudgetTemplate("defaults", "provider.main")]
+    assert selected == [
+        NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
+    ]
     assert observed == ["kernel-startup", "catalog", "shutdown"]
 
 
@@ -257,7 +264,9 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
         monkeypatch.setattr(production_v4, "_host_profile_catalog", stop_at_catalog)
         with pytest.raises(ActivationCommittedError):
             kernel._lifecycle.activate_bootstrap_profile({})
-        assert selected == [NativeGenerationBudgetTemplate("defaults", "provider.main")]
+        assert selected == [
+            NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
+        ]
         authority = AuthorityStore(user_data / "authority" / "v4.sqlite3")
         material = HostCredentialMaterialStore(user_data_root=user_data)
         binding = capture_native_generation_budget(

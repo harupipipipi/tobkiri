@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from core_runtime.authority.v4 import AuthorityScope
+from core_runtime.authority.v4 import AuthorityScope, AuthorityStore
 from core_runtime.credential_transport import (
     CredentialMaterialStoreBinding,
     CredentialTransportDenied,
@@ -29,8 +29,10 @@ from core_runtime.native_generation_budget import (
     CONFIGURE_FUNCTION,
     CONFIGURE_OPERATION,
     MANAGE_FUNCTION,
+    NativeGenerationBudgetOwner,
     NativeGenerationBudgetTemplate,
     capture_native_generation_budget,
+    owner_startup_generation_budget_template,
 )
 from ecosystem.rumi_credential_broker_pack.runtime.process import (
     CredentialManagementHostFactoryV4,
@@ -50,6 +52,122 @@ from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSI
 from tobkiri_host.models import OpaqueAuthorityRef
 from tobkiri_host.ports import OpaqueInvocationLease
 from tobkiri_protocol.canonical import canonical_digest
+
+
+@pytest.mark.parametrize(
+    "connection_name, accepted",
+    [("openrouter.main", True), ("main", False), ("openrouter.default", False)],
+)
+def test_fixed_owner_accepts_only_normal_openrouter_main_public_plan(
+    tmp_path: Path, connection_name: str, accepted: bool,
+) -> None:
+    """The usual preset identity reaches the real Host guard without aliases."""
+    with AuthorityStore(tmp_path / "authority" / "v4.sqlite3") as authority:
+        user_data = tmp_path / "owner"
+        material = HostCredentialMaterialStore(user_data_root=user_data)
+        template = owner_startup_generation_budget_template()
+        binding = capture_native_generation_budget(
+            binding=CredentialMaterialStoreBinding(material, KEY_VERSION),
+            authority_store=authority,
+            user_data_root=user_data,
+            profile_id="defaults",
+            template=template,
+        )
+        owner = binding.generation_admission
+        assert isinstance(owner, NativeGenerationBudgetOwner)
+        registry = ProviderRegistry("defaults", user_data_root=user_data)
+        request = {
+            "connection_name": connection_name,
+            "protocol": "openai-compatible",
+            "endpoint": "https://openrouter.ai/api/v1",
+            "key_value": "synthetic-openrouter-dummy-key",
+            "catalog_provider_id": "openrouter",
+            "display_name": "main",
+        }
+        try:
+            public_plan = prepare_configuration(registry, request)
+            assert {
+                key: public_plan[key]
+                for key in (
+                    "profile_id", "provider_instance_id", "adapter_id", "endpoint"
+                )
+            } == {
+                "profile_id": "defaults",
+                "provider_instance_id": "provider." + connection_name,
+                "adapter_id": "openai-compatible",
+                "endpoint": "https://openrouter.ai/api/v1",
+            }
+            assert not material.requires_generation_budget(profile_id="defaults")
+            assert authority.get_host_pending_effect(owner._active_id) is None
+            assert owner._witness.get_host_pending_effect(owner._active_id) is None
+            if accepted:
+                prepared = prepare_configuration(registry, request, budget_port=owner)
+                policy = prepared["generation_budget"]
+                assert policy["connection_id"] == "provider.openrouter.main"
+                assert policy["max_requests"] == 3
+                assert policy["max_output_tokens"] == 2048
+                assert policy["model"] == "google/gemma-4-31b-it:free"
+                assert prepare_configuration(
+                    registry, request, budget_port=owner
+                ) == prepared
+            else:
+                with pytest.raises(CredentialTransportDenied) as denied:
+                    prepare_configuration(registry, request, budget_port=owner)
+                assert denied.value.code == "generation_budget_invalid"
+            assert material.list(profile_id="defaults")["count"] == 0
+            assert registry.snapshot()["revision"] == 0
+            assert not registry.path.exists()
+        finally:
+            owner.close()
+
+
+def test_fixed_owner_rejects_immutable_previous_connection_template(
+    tmp_path: Path,
+) -> None:
+    """A connection correction cannot replace an existing required Host policy."""
+    with AuthorityStore(tmp_path / "authority" / "v4.sqlite3") as authority:
+        user_data = tmp_path / "owner"
+        material = HostCredentialMaterialStore(user_data_root=user_data)
+        previous = NativeGenerationBudgetTemplate("defaults", "provider.main")
+        binding = capture_native_generation_budget(
+            binding=CredentialMaterialStoreBinding(material, KEY_VERSION),
+            authority_store=authority,
+            user_data_root=user_data,
+            profile_id="defaults",
+            template=previous,
+        )
+        owner = binding.generation_admission
+        assert isinstance(owner, NativeGenerationBudgetOwner)
+        corrected = owner_startup_generation_budget_template()
+        assert corrected is not None
+        assert previous.effect_id == corrected.effect_id
+        primary_before = authority.get_host_pending_effect(previous.effect_id)
+        witness_before = owner._witness.get_host_pending_effect(previous.effect_id)
+        assert primary_before == witness_before
+        assert authority.get_host_pending_effect(owner._active_id) is None
+        assert owner._witness.get_host_pending_effect(owner._active_id) is None
+        assert not material.requires_generation_budget(profile_id="defaults")
+        try:
+            with pytest.raises(CredentialTransportDenied) as denied:
+                NativeGenerationBudgetOwner(
+                    template=corrected,
+                    authority_store=authority,
+                    witness_store=owner._witness,
+                    material_store=material,
+                    key_version=KEY_VERSION,
+                    install=True,
+                )
+            assert denied.value.code == "generation_budget_invalid"
+            assert (
+                authority.get_host_pending_effect(previous.effect_id) == primary_before
+            )
+            assert (
+                owner._witness.get_host_pending_effect(previous.effect_id)
+                == witness_before
+            )
+            assert material.list(profile_id="defaults")["count"] == 0
+        finally:
+            owner.close()
 
 
 def envelope(harness, issued, context, payload, *, contract, operation):

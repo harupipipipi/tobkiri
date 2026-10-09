@@ -67,7 +67,7 @@ def owner_startup_generation_budget_template(
     requested: NativeGenerationBudgetTemplate | None = None,
 ) -> NativeGenerationBudgetTemplate | None:
     """Select the owner-approved isolated test policy from signed Source."""
-    approved = NativeGenerationBudgetTemplate("defaults", "provider.main")
+    approved = NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
     if requested is not None and (
         type(requested) is not NativeGenerationBudgetTemplate or requested != approved
     ):

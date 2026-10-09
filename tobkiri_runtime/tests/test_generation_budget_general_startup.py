@@ -8,12 +8,14 @@ from core_runtime.native_generation_budget import (
 )
 
 # The separately reviewed signed test variant changes this expectation only.
-_EXPECTED_STARTUP_TEMPLATE = NativeGenerationBudgetTemplate("defaults", "provider.main")
+_EXPECTED_STARTUP_TEMPLATE = NativeGenerationBudgetTemplate(
+    "defaults", "provider.openrouter.main"
+)
 
 
 def test_general_runtime_defaults_to_reviewed_host_template():
     assert owner_startup_generation_budget_template() == _EXPECTED_STARTUP_TEMPLATE
-    policy = NativeGenerationBudgetTemplate("defaults", "provider.main")
+    policy = NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
     assert owner_startup_generation_budget_template(policy) == policy
 
 
