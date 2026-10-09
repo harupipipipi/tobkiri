@@ -835,7 +835,9 @@ def main(
         defaultspack_runtime_capture_inputs,
     )
 
-    from .development_host_handover import DevelopmentHostHandover
+    from ecosystem.defaultspack.defaultspack.development_host_handover import (
+        DevelopmentHostHandover,
+    )
     from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import MacOSVZProvisioner
 
     provisioner = default_packvm_provisioner()
