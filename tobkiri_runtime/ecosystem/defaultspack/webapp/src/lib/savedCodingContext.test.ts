@@ -104,6 +104,6 @@ test("stale refetched workspace context denies saved-turn start", async () => {
     savedTurnStarts += 1;
     return result.metadata;
   };
-  await assert.rejects(startSavedTurn, /workspace context/);
+  await assert.rejects(startSavedTurn, /会話の作業フォルダが変わりました/);
   assert.equal(savedTurnStarts, 0);
 });
