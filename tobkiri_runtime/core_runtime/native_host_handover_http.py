@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .api.api_response import APIResponse
+from .native_host_handover_diagnostic import handover_support_code
 
 
 def handle_native_host_handover(handler: Any, method: str, path: str) -> bool:
@@ -14,7 +15,10 @@ def handle_native_host_handover(handler: Any, method: str, path: str) -> bool:
         prefix + item for item in ("prepare", "commit", "recovery-preview", "recover")
     }:
         return False
-    if handler.headers.get("Origin") is not None or not handler._native_pack_launcher_authenticated():
+    if (
+        handler.headers.get("Origin") is not None
+        or not handler._native_pack_launcher_authenticated()
+    ):
         handler._discard_request_body()
         handler._send_response(APIResponse(False, error="Unauthorized"), 401)
         return True
@@ -41,11 +45,12 @@ def handle_native_host_handover(handler: Any, method: str, path: str) -> bool:
             result = callback(
                 body, native_secret=handler.headers.get("X-Rumi-Desktop-Bootstrap", "")
             )
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+        message = "Host handover changed or requires recovery; current data is retained"
+        if action in {"prepare", "recovery-preview"}:
+            message += f" (Support code: {handover_support_code(action, error)})"
         handler._send_response(
-            APIResponse(
-                False, error="Host handover changed or requires recovery; current data is retained"
-            ),
+            APIResponse(False, error=message),
             409,
         )
         return True

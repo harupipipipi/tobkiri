@@ -41,6 +41,12 @@ fresh confirmation of the imported predecessor and bundled successor.
 Migration and activation cannot run together. If the Profile registry cannot
 be verified, retry its review before starting migration or activation.
 
+If preparing a migration or recovery review fails, its error includes a
+bounded **Support code** identifying a public Source location and error
+category. It excludes exception text, private paths and saved data. Include
+that code when reporting a failure; it does not authorize a transfer or
+replace the Native review.
+
 If interrupted, use **Check migration recovery**. Recovery has its own exact
 native review and fresh approval. It returns the transferred storage when
 its identities still match; staged data, immutable destination Profile
