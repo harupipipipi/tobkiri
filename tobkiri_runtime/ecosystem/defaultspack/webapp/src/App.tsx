@@ -1,3 +1,4 @@
+import { savedCodingContext, savedCodingContextAfterMutation } from "./lib/savedCodingContext";
 import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
@@ -8223,14 +8224,6 @@ export function ChatApp() {
     const workspaceIdForSubmit = pendingNewTaskContext?.workspaceId
       ?? activeContextForSubmit.workspaceId
       ?? (mode === "coding" ? selectedCodingWorkspaceId : null);
-    const workspaceLabelForSubmit = pendingNewTaskContext?.workspaceLabel
-      ?? activeContextForSubmit.workspaceLabel
-      ?? codingWorkspaces.find((workspace) => workspace.workspace_id === workspaceIdForSubmit)?.label
-      ?? null;
-    const workspaceRootForSubmit = pendingNewTaskContext?.workspaceRoot
-      ?? activeContextForSubmit.workspaceRoot
-      ?? codingWorkspaces.find((workspace) => workspace.workspace_id === workspaceIdForSubmit)?.root_path
-      ?? null;
     const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
     const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
     let savedSubmissionStarted = false;
@@ -8275,8 +8268,18 @@ export function ChatApp() {
 
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
+      if (pendingNewTaskContext?.workspaceBindings?.length
+        || activeContextForSubmit.workspaceBindings?.length) {
+        throw new Error("複数 workspace context は保存付き送信に未対応です。");
+      }
+      const canonicalCodingContext = savedCodingContext({
+        coding: isCodingWorkspaceSubmit,
+        workspaceId: workspaceIdForSubmit,
+        pending: pendingNewTaskContext as Record<string, unknown> | null,
+        conversation: activeConversation,
+      });
       if (submittedSkillIds.length
-        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget) && !isSavedTurnHistoryReferenceWidget(widget, referenceProfileId, userText)) || isCodingWorkspaceSubmit
+        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget) && !isSavedTurnHistoryReferenceWidget(widget, referenceProfileId, userText))
         || groupIdForSubmit || rumiDataPathForSubmit
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
@@ -8327,8 +8330,17 @@ export function ChatApp() {
       }
       let conversation = activeConversation;
       if (conversation) {
-        await conversationMutationBarrierRef.current.wait(submissionStoreId!, conversation.id);
-        conversation = await api.getConversation(conversation.id);
+        const existingConversation = conversation;
+        const refreshedContext = await savedCodingContextAfterMutation({
+          coding: isCodingWorkspaceSubmit,
+          workspaceId: workspaceIdForSubmit,
+          pending: pendingNewTaskContext as Record<string, unknown> | null,
+          waitForMutation: () => conversationMutationBarrierRef.current.wait(
+            submissionStoreId!, existingConversation.id,
+          ),
+          refetchConversation: () => api.getConversation(existingConversation.id),
+        });
+        conversation = refreshedContext.conversation;
         if (!submissionUiIsCurrent()) { retainInterruptedDraft(); return; }
       }
       if (!conversation) {
@@ -8340,20 +8352,7 @@ export function ChatApp() {
           conversation_kind: isCodingWorkspaceSubmit ? "coding" : null,
           group_id: groupIdForSubmit ?? null,
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
-          metadata: {
-            ...(groupIdForSubmit ? { group_id: groupIdForSubmit } : {}),
-            ...((pendingNewTaskContext?.workspaceBindings ?? activeContextForSubmit.workspaceBindings)?.length
-              ? { workspace_bindings: (pendingNewTaskContext?.workspaceBindings ?? activeContextForSubmit.workspaceBindings)!.map((item) => ({workspace_id:item.workspaceId,workspace_label:item.workspaceLabel,workspace_root:item.workspaceRoot})) } : {}),
-            ...(rumiDataPathForSubmit ? { rumi_data_path: rumiDataPathForSubmit } : {}),
-            ...(isCodingWorkspaceSubmit
-            ? {
-                mode: "coding",
-                workspace_id: workspaceIdForSubmit,
-                workspace_label: workspaceLabelForSubmit,
-                workspace_root: workspaceRootForSubmit,
-              }
-              : {}),
-          },
+          metadata: canonicalCodingContext ?? {},
         });
         if (!submissionUiIsCurrent()) {
           retainInterruptedDraft();

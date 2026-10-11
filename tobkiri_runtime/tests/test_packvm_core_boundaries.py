@@ -158,6 +158,9 @@ def test_guest_child_policy_denies_all_available_process_and_socket_syscalls(
         b"socketpair": 199,
         b"clone3": 435,
         b"execveat": 281,
+        b"io_uring_setup": 425,
+        b"io_uring_enter": 426,
+        b"io_uring_register": 427,
         b"fork": -1,
         b"vfork": -1,
     }
@@ -176,13 +179,23 @@ def test_guest_child_policy_denies_all_available_process_and_socket_syscalls(
 
     packvm_guest_runner._install_child_process_seccomp_filter()
 
-    assert set(rules) == {198, 199, 220, 221, 281, 435}
+    assert set(rules) == {198, 199, 220, 221, 281, 425, 426, 427, 435}
     assert released == [context]
 
 
 @pytest.mark.parametrize(
     "missing",
-    (b"clone", b"clone3", b"execve", b"execveat", b"socket", b"socketpair"),
+    (
+        b"clone",
+        b"clone3",
+        b"execve",
+        b"execveat",
+        b"socket",
+        b"socketpair",
+        b"io_uring_setup",
+        b"io_uring_enter",
+        b"io_uring_register",
+    ),
 )
 def test_guest_child_policy_rejects_missing_required_syscall(
     missing: bytes,
@@ -207,6 +220,9 @@ def test_guest_child_policy_rejects_missing_required_syscall(
         b"socketpair": 199,
         b"clone3": 435,
         b"execveat": 281,
+        b"io_uring_setup": 425,
+        b"io_uring_enter": 426,
+        b"io_uring_register": 427,
         b"fork": -1,
         b"vfork": -1,
     }
@@ -250,6 +266,9 @@ def test_guest_child_policy_rejects_missing_legacy_aliases_off_arm64(
         b"execveat": 322,
         b"socket": 41,
         b"socketpair": 53,
+        b"io_uring_setup": 425,
+        b"io_uring_enter": 426,
+        b"io_uring_register": 427,
         b"fork": -1,
         b"vfork": -1,
     }

@@ -56,6 +56,13 @@ type PendingMcpApproval = {
   token?: string;
 };
 
+export function dispatchCodingWorkspaceSelection(
+  workspaceId: string,
+  onWorkspaceSelect?: (workspaceId: string) => void,
+): void {
+  if (workspaceId) onWorkspaceSelect?.(workspaceId);
+}
+
 export function CodingCockpit({
   workspaces,
   selectedWorkspaceId,
@@ -326,7 +333,7 @@ export function CodingCockpit({
         </div>
         <select
           value={selectedWorkspace?.workspace_id ?? ""}
-          onChange={(event) => event.target.value && onWorkspaceSelect?.(event.target.value)}
+          onChange={(event) => dispatchCodingWorkspaceSelection(event.target.value, onWorkspaceSelect)}
           className="h-8 w-full rounded-md border border-zinc-800 bg-zinc-950/50 px-2 font-mono text-[11px] text-zinc-300 outline-none"
         >
           {workspaces.map((workspace) => (

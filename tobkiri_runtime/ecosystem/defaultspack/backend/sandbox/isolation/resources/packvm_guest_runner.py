@@ -132,6 +132,12 @@ _REQUIRED_CHILD_PROCESS_SYSCALLS = (
     # future Host listener.
     b"socket",
     b"socketpair",
+    # io_uring can create and connect sockets without invoking socket(2).
+    # Deny its complete submission ABI so asynchronous operations cannot
+    # bypass the process and network syscall boundary.
+    b"io_uring_setup",
+    b"io_uring_enter",
+    b"io_uring_register",
 )
 _FORK_VFORK_CHILD_PROCESS_SYSCALLS = (b"fork", b"vfork")
 _FORK_VFORK_ABSENT_LINUX_ABIS = frozenset({"aarch64", "arm64"})
