@@ -703,6 +703,12 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json"
     },
     {
+      "contract_id": "tobkiri.service.python.sandbox.v1",
+      "digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+      "revision": "1.0.0",
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json"
+    },
+    {
       "contract_id": "tobkiri.service.shell.execute.v1",
       "digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
       "revision": "1.0.0",
@@ -740,7 +746,7 @@
     },
     {
       "contract_id": "tobkiri.service.tool.local.operation.v1",
-      "digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+      "digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_default_tools_pack.pack.v4.json"
     },
@@ -757,7 +763,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:bf476e874cfa33eb3f0d7b54fafb1959c39d6512d97d386f76ac6fc7d17f489d",
+  "default_profile_digest": "sha256:c3050a72f595521591004b41069ac92460c86a126660a92c8bd3bff171c27e45",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -972,7 +978,7 @@
   ],
   "source_manifest_digests": {
     "defaults-basepack": "sha256:f725beab6491289d1a8dcd01b7f9ea090dcf340ac376ff421c27f0105e17975f",
-    "defaultspack": "sha256:d077feabaf5515c8f3157c292f853f0a65eeef6730250aa439ac677e2a6991ec",
+    "defaultspack": "sha256:0e3c4c49be6105099cb8ba53c5ec3bc9615be684133830e6e9b52bffb79dbe1c",
     "rumi_ai_gateway_pack": "sha256:0cc98a4ba7dea1f1daed8aa8617ae06379731167367e592d2406082d5dc61b2f",
     "rumi_ai_pipeline_pack": "sha256:2f5106cc87010e59cb2963629e22d876c8b25f065016c90bab84943d9eba8793",
     "rumi_ai_routing_pack": "sha256:b8044b176b7e0a2f0d79d7467603d6a5ed1c7069028511ddfec9bc2c7961d729",
@@ -985,7 +991,7 @@
     "rumi_command_protocol_pack": "sha256:0b29846d63d070a96a780739047907e64d34f9021ebfb5c568cdb006fb81df9c",
     "rumi_conversation_store_pack": "sha256:6a7c968e0ef3b2f20825ed4f360430b0d42b836d10b0d678fdc68c83305c99fa",
     "rumi_credential_broker_pack": "sha256:60b67bc9483adfd09bd9312b78b2a97a4e6dcb8656dea664b05362964da3af5b",
-    "rumi_default_tools_pack": "sha256:645f32eac02a91f3b03e292d19753f79dad0d093df7df2f47d42640937892172",
+    "rumi_default_tools_pack": "sha256:813a8a24a8fca928af3e42fe623fb182e6679303b32dbd115f2e45ef811d2d72",
     "rumi_desktop_host_service_pack": "sha256:866f04c5397abdf2b50cb58a0742c111001b376e2be5f13bd02a9143e5f38dee",
     "rumi_file_inspect_pack": "sha256:a67a3fa4500f98a045f6af1cc9a9b282cb7731ab2ccced080aec9eb27943753d",
     "rumi_git_publish_pack": "sha256:d477a2abcd3ddc3f06aa535bea9eb1936915d9cb827d7e518fe280964d3aa3ae",
