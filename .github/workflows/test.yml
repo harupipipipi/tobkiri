@@ -300,6 +300,8 @@ jobs:
             tests/test_workflow_attempt_key_privacy.py \
             tests/test_windows_private_file.py \
             tests/test_artifact_materialization.py \
+            tests/test_artifact_metadata_validation_cache.py \
+            tests/test_artifact_metadata_cache_guards.py \
             tests/test_declared_pack_data.py \
             tests/test_runtime_locks.py \
             tests/test_mcp_host_broker.py \

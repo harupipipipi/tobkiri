@@ -3,6 +3,7 @@
   "files": [
     "README.md",
     "__init__.py",
+    "_metadata_validation_cache.py",
     "acceptance_receipts.py",
     "action_approval_policy.py",
     "active_chat_source.py",
