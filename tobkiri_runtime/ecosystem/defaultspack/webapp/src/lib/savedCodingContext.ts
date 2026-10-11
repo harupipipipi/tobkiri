@@ -12,7 +12,7 @@ export function savedCodingContext(input: {
   if (!input.coding) return null;
   const id = input.workspaceId;
   if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/.test(id)) {
-    throw new Error("保存付き coding には単一 workspace ID が必要です。");
+    throw new Error("コード作業を送信するには、作業フォルダを1つ選んでください。");
   }
   const forbidden = ["group_id", "groupId", "workspace_root", "workspaceRoot",
     "rootPath", "rumi_data_path", "rumiDataPath", "rumi_dp_path",
@@ -23,7 +23,7 @@ export function savedCodingContext(input: {
   if (input.pending && (input.pending.workspaceRoot != null
     || input.pending.workspaceLabel != null)
     && input.pending.workspaceId !== id) {
-    throw new Error("表示用 workspace 情報と選択 workspace が一致しません。");
+    throw new Error("選択した作業フォルダの情報が一致しません。選び直してください。");
   }
   for (const context of [input.pending, input.conversation?.metadata]) {
     if (context && forbidden.some((key) => context[key] != null
@@ -32,7 +32,7 @@ export function savedCodingContext(input: {
         || ((key === "workspaceRoot" || key === "workspaceLabel")
           && context.workspaceId === id)
       )))) {
-      throw new Error("この保存付き coding の特殊 workspace context は未対応です。");
+      throw new Error("この会話の作業フォルダ設定には対応していません。作業フォルダを選び直してください。");
     }
   }
   const conversation = input.conversation;
@@ -40,7 +40,7 @@ export function savedCodingContext(input: {
     || ![null, undefined, "", "chat", "coding"].includes(conversation.conversation_kind)
     || conversation.metadata?.workspace_id !== id
     || (conversation.metadata?.mode != null && conversation.metadata.mode !== "coding"))) {
-    throw new Error("保存済み会話の workspace context が一致しません。");
+    throw new Error("会話の作業フォルダが変わりました。選び直してから送信してください。");
   }
   return { mode: "coding", workspace_id: id };
 }

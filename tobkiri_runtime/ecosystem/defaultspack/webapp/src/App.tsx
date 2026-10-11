@@ -8270,7 +8270,7 @@ export function ChatApp() {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
       if (pendingNewTaskContext?.workspaceBindings?.length
         || activeContextForSubmit.workspaceBindings?.length) {
-        throw new Error("複数 workspace context は保存付き送信に未対応です。");
+        throw new Error("作業フォルダを1つ選んでから送信してください。");
       }
       const canonicalCodingContext = savedCodingContext({
         coding: isCodingWorkspaceSubmit,
