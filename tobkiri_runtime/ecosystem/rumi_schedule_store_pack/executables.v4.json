@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:284219f10e6c34523263329735d1e9555d3f4331d3ca7a3a8522887c886d0f30",
+  "catalog_digest": "sha256:7bf8ae0dbb166645ab30db43b6ebd67a9ba8757d26109815ada538f81d8bb61d",
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+  "source_identity": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_schedule_store_pack.calendar.manage",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "implementation_path": "runtime/calendar.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -820,7 +820,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_schedule_store_pack.calendar.resource",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "implementation_path": "runtime/calendar.py",
       "materialization_mode": "on_demand",
       "operations": [

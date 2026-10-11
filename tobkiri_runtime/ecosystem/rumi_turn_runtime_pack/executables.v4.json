@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
+  "catalog_digest": "sha256:86eb2b4fcf6c681a632dda72ae46367cff21e9abf42029f316ffdced51181584",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:3de631bbcabab5ad4b9dcd2b13b3df51dd17cde591e14650453a4ffbdac3393d",
+  "source_identity": "sha256:7e39c487c1b3e925cd54dae04aa369d7a9900839ad2afd8672cea4f5bd4164e7",
   "variants": [
     {
       "architecture": "any",
@@ -532,7 +532,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
-      "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+      "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
       "implementation_path": "runtime/scheduled_job.py",
       "materialization_mode": "on_demand",
       "operations": [

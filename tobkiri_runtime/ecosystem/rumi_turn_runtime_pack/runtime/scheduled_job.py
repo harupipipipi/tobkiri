@@ -250,9 +250,7 @@ def prepare_calendar_destination(
         "sha256:"
     )
     # Pure saved ABI validation precedes owner writes, including reference/profile claims.
-    from ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved import (
-        normalize_scheduled_saved_task,
-    )
+    from tobkiri_protocol.scheduled_task_v1 import normalize_scheduled_saved_task
 
     normalized = normalize_scheduled_saved_task(
         {

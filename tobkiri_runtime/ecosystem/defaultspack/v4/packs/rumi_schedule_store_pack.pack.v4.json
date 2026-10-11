@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1476c77d41819bd00ad319c1c39dbd8ad9705e46b91e37c6abcb00b81cb2a9fb",
+      "digest": "sha256:f20084decab618769832b823c289914d4e35d8408f98e3f4103837adf477e70b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "kind": "executable",
       "path": "runtime/calendar.py"
     },
@@ -55,7 +55,7 @@
     {
       "contract_revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
       "id": "rumi_schedule_store_pack.calendar.manage",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_schedule_store_pack.calendar-manage"
@@ -65,7 +65,7 @@
     {
       "contract_revision_digest": "sha256:c7713c5d19af7b083a9e77759be115d387722acbc4466a8212f80a61df6f51a3",
       "id": "rumi_schedule_store_pack.calendar.resource",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_schedule_store_pack.calendar-read"
@@ -94,8 +94,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:646381aa817e933f5fa82e63945616ad1d8aceb263320d5f1cf757daeb0be7ac",
-    "artifact_set_digest": "sha256:63db80beff62a806223a4f01df8dfbf5291b9fda6075cd6d970e0eca536d84e6",
+    "source_identity": "sha256:197edf707d351da0e1e38e5685a81bb40e543bcbd53da8976b842e686971c5c8",
+    "artifact_set_digest": "sha256:ac8f0c90db09a0ef50ea57c3f0806058403ea165f1a50e87299757725c05958c",
     "contract_catalog_digest": "sha256:80cc0374068e36f4afcc3571399770632b807359e88afbb4b78ee127a7ebb1aa"
   },
   "migration": {
@@ -144,7 +144,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+    "artifact_digest": "sha256:dbe0ed2b076aab0cbbee30d57c73aceb662fc597aac0a66145439a89cd52daa0",
     "display_name": "Rumi Schedule Store",
     "id": "rumi_schedule_store_pack",
     "kind": "host_extension",
@@ -155,15 +155,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_schedule_store_pack/pack.v4.json",
-    "source_digest": "sha256:646381aa817e933f5fa82e63945616ad1d8aceb263320d5f1cf757daeb0be7ac",
+    "source_digest": "sha256:197edf707d351da0e1e38e5685a81bb40e543bcbd53da8976b842e686971c5c8",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:b0d42b3118ad094826fbb82e419917e9b4b365c6cae464fc224b874b8e31b11f",
+    "content_root_digest": "sha256:c73499d641d7dbbcd9a3808ea4327b44690735d773e7c122efea23d5f97696d4",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
-    "input_inventory_digest": "sha256:3a72e45f2a788ed9f71a5c02ba1dc9ab100c74495237d99f395a6a34eca4bd96",
+    "input_inventory_digest": "sha256:67ef4f0c8f201b5c721dc169ec2114a0997b3869d21cf7a3cda1e82d2f0f92e2",
     "normative": true,
     "evidence": [
       {
@@ -174,7 +174,7 @@
       {
         "path": "ecosystem/rumi_schedule_store_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:646381aa817e933f5fa82e63945616ad1d8aceb263320d5f1cf757daeb0be7ac"
+        "digest": "sha256:197edf707d351da0e1e38e5685a81bb40e543bcbd53da8976b842e686971c5c8"
       }
     ]
   },

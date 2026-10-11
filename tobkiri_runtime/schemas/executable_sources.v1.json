@@ -20748,7 +20748,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_schedule_store_pack.calendar.manage",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "implementation_path": "runtime/calendar.py",
       "input_schema": {
         "oneOf": [
@@ -21525,7 +21525,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+          "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
           "implementation_path": "runtime/calendar.py",
           "input_schema": {
             "oneOf": [
@@ -22351,7 +22351,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_schedule_store_pack.calendar.resource",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "implementation_path": "runtime/calendar.py",
       "input_schema": {
         "oneOf": [
@@ -22469,7 +22469,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+          "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
           "implementation_path": "runtime/calendar.py",
           "input_schema": {
             "oneOf": [
@@ -26295,7 +26295,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
-      "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+      "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
       "implementation_path": "runtime/scheduled_job.py",
       "input_schema": {
         "oneOf": [
@@ -26592,7 +26592,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+          "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
           "implementation_path": "runtime/scheduled_job.py",
           "input_schema": {
             "oneOf": [
@@ -38959,7 +38959,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:b22522f5ab976b1e26b1ce6027711f1a2ae80ac0ad1e9f90495cbe894fc975aa",
+    "input_digest": "sha256:bc137aabdb82d5f7d39be3da25ae182257570c5b9db49b6766202861d89b1b47",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -40070,7 +40070,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_research_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:6c78bc3dbd6f27f586b9a78ab121d3de2719bf8b6e29a1ce2e66a709ed52bb96",
+        "digest": "sha256:96b53f832e3aa2d83ea94f34e9fa20e1ebb2eecb0dce14bb3501fdceb4f3e26a",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/rumi.pack.v3.json"
       },
@@ -40190,7 +40190,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:32193fcca99ae3b170f89a5f58eaac5ea1812371be644b7b449e0b32b8ecb32c",
+        "digest": "sha256:49ab2b89d4bf398c1d1e19149229d76edc1170f11b4e312c400f350fc82abc65",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:7f0f28cdbb2228cfcc1d0ea6f9f8934bf12b19a8eae9721dcf595ce4b5e96efb",
+  "source_identity": "sha256:28bd98e7c9a551c113ad9ec3f298d1444acf077e2c35830aa066dd7602c82734",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.chat-message-deliver.python",
@@ -529,7 +529,7 @@
       "variant_id": "rumi_turn_runtime_pack.chat-saved-job-adapter.python",
       "function_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
       "implementation_path": "runtime/scheduled_job.py",
-      "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+      "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -2358,6 +2358,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:0d4e5654b328e1c4e4694091f529aff5051cb906bbcb4afa009395f316343450",
-  "catalog_digest": "sha256:eaf049d532fb99dbc7b5756c4f316d9cf1a212023f0b36deae1a156b868c1ef8"
+  "materialization_catalog_digest": "sha256:86eb2b4fcf6c681a632dda72ae46367cff21e9abf42029f316ffdced51181584",
+  "catalog_digest": "sha256:3d3ea8589f1d4d9b7e442d94cb74e57fb3c2396de78e82d5ffb09098b52066f5"
 }

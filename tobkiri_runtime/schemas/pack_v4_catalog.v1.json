@@ -19371,7 +19371,7 @@
         {
           "contract_id": "tobkiri.resource.calendar.schedule.v1",
           "function_id": "rumi_schedule_store_pack.calendar.resource",
-          "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+          "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
           "operation_ids": [
             "rumi_schedule_store_pack.calendar-read"
           ]
@@ -19379,7 +19379,7 @@
         {
           "contract_id": "tobkiri.action.calendar.schedule.v1",
           "function_id": "rumi_schedule_store_pack.calendar.manage",
-          "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+          "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
           "operation_ids": [
             "rumi_schedule_store_pack.calendar-manage"
           ]
@@ -19714,7 +19714,7 @@
               ],
               "entrypoint_id": "calendar-read",
               "id": "rumi_schedule_store_pack.calendar-read",
-              "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44"
+              "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a"
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -19870,7 +19870,7 @@
               ],
               "entrypoint_id": "calendar-manage",
               "id": "rumi_schedule_store_pack.calendar-manage",
-              "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44"
+              "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a"
             }
           ],
           "owner": "rumi_schedule_store_pack",
@@ -20697,7 +20697,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+          "digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
           "kind": "executable",
           "path": "runtime/calendar.py"
         },
@@ -24446,7 +24446,7 @@
         {
           "contract_id": "tobkiri.action.job.adapter.v2",
           "function_id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
-          "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+          "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
           "operation_ids": [
             "rumi_turn_runtime_pack.chat-saved-job-adapter"
           ]
@@ -26771,7 +26771,7 @@
             {
               "entrypoint_id": "chat-saved-job-adapter",
               "id": "rumi_turn_runtime_pack.chat-saved-job-adapter",
-              "implementation_digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f"
+              "implementation_digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -26963,7 +26963,7 @@
           "path": "runtime/delivery.py"
         },
         {
-          "digest": "sha256:152d856a8508e32f8f9be491d62b2c0cd52cbedc45e9af3b3308bb3680c79b6f",
+          "digest": "sha256:cab7806c01146f10db960a88329640737365b822275c9358ef684c3baa93132a",
           "kind": "executable",
           "path": "runtime/scheduled_job.py"
         },
@@ -26973,7 +26973,7 @@
           "path": "runtime/input_context.py"
         },
         {
-          "digest": "sha256:9c9fb8ac001573b342ffb02e1cc1a58e1f2a8c6538fe4340c130e5c9f8128e27",
+          "digest": "sha256:c913ba86f8030f0fa48413146c06f24dc4621548643bcff5fb819cbf6dfc26e1",
           "kind": "executable",
           "path": "runtime/scheduled_saved.py"
         },
