@@ -11,7 +11,6 @@ from threading import RLock
 import re
 from typing import Any, Iterator
 
-from core_runtime.capture_guard_traversal_v4 import _check_shared_capture
 from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.saved_conversation import (
     SavedWorkspaceResolution,
@@ -178,14 +177,6 @@ class SavedWorkspaceExecutionBinding:
         default_factory=SavedWorkspaceExecutionLease, compare=False, repr=False
     )
 
-    _owner_check: Callable[[], None] = field(
-        init=False, compare=False, repr=False
-    )
-
-    def __post_init__(self) -> None:
-        # A function has identity hashing even when a binding field is unhashable.
-        object.__setattr__(self, "_owner_check", lambda: self._assert_owner_current())
-
     def assert_execution_live(self) -> None:
         """Fence the private dispatch lease and original request lifetime."""
         if (
@@ -214,11 +205,6 @@ class SavedWorkspaceExecutionBinding:
             # own lease, cancellation, parent, and dispatch guards live while
             # avoiding recursively launching another owner read.
             return
-        _check_shared_capture(self._owner_check)
-
-    def _assert_owner_current(self) -> None:
-        """Read full owner/mount facts at traversal entry and successful exit."""
-        self.assert_execution_live()
         recheck = _SavedWorkspaceOwnerRecheck(self)
         token = _SAVED_WORKSPACE_OWNER_RECHECK.set(recheck)
         try:
