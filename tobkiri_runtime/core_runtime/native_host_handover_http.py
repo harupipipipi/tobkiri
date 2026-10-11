@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_host.native_host_handover_diagnostic import handover_support_code
+
 from .api.api_response import APIResponse
-from .native_host_handover_diagnostic import handover_support_code
 
 
 def handle_native_host_handover(handler: Any, method: str, path: str) -> bool:

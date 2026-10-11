@@ -1,11 +1,11 @@
-"""Bounded public-source support codes, without exception or user data."""
+"""Host-owned public-source support codes, without exception or user data."""
 
 from __future__ import annotations
 
 from pathlib import Path
 import sys
-from types import CodeType, FunctionType, ModuleType
-from typing import Iterator
+from types import CodeType, FunctionType, GetSetDescriptorType, ModuleType, TracebackType
+from typing import Iterator, cast
 
 _ROOT = Path(__file__).absolute().parent.parent
 _MODULES = {
@@ -77,7 +77,8 @@ def _source_location(error: BaseException) -> str:
                 trusted[id(code)] = (code, label)
 
     location = "unknown"
-    traceback = BaseException.__traceback__.__get__(error)
+    descriptor = cast(GetSetDescriptorType, BaseException.__dict__["__traceback__"])
+    traceback = cast(TracebackType | None, descriptor.__get__(error, BaseException))
     while traceback is not None:
         code = traceback.tb_frame.f_code
         entry = trusted.get(id(code))

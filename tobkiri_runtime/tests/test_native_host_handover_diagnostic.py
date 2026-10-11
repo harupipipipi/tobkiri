@@ -8,9 +8,9 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from core_runtime.native_host_handover_diagnostic import handover_support_code
 from core_runtime.native_host_handover_http import handle_native_host_handover
 from ecosystem.defaultspack.defaultspack import development_host_handover as owner
+from tobkiri_host.native_host_handover_diagnostic import handover_support_code
 
 _MESSAGE = "Host handover changed or requires recovery; current data is retained"
 _SENTINEL = "PRIVATE_SENTINEL_history_key_session_user_data"

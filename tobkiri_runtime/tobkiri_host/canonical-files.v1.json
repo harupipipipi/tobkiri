@@ -42,6 +42,7 @@
     "materialization.py",
     "model_search.py",
     "models.py",
+    "native_host_handover_diagnostic.py",
     "native_policy_ports.py",
     "native_saved_tool_approval.py",
     "operation_cancellation.py",
