@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:53a28b74c8a15bb878bc32b024f68c36c66956b5f124808c90c94ccfb9d7af3a",
+  "artifact_set_digest": "sha256:bec7546ef25b6746b7a6fc7e5c87a8eafa9e0c51cc1cfc2d031124274889b6cb",
   "artifacts": [
     {
-      "digest": "sha256:4631f21a5c1eababb00b95851978d3a0209c50cb8293fdc3dee3c6c3d8b55840",
+      "digest": "sha256:e20c21c16c0f5b27332fcf1f2dea412bc0c3490dd9c5f83812dbfc1bb22efd96",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:0872f7f3a007e9374ba55cdc58454f635035c45112547cda01b8bad4368a24ee",
+      "digest": "sha256:1424289930e7a126d93a825b0a3de1f32b0b03f9c56de5e775338542b6cfefe3",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:12a3fd27b30c59c76ffddfbb7393bde9c4e8558bc2187e8ce76eef44e5b6fcbe",
+      "digest": "sha256:d2df0f27033721ddb15eb0ae3db487b26124331bc499517549a2bf41c58d7a21",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -79,6 +79,11 @@
     {
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "path": "runtime/conversation.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "path": "runtime/python_sandbox_guest.py",
       "role": "runtime"
     },
     {
@@ -680,8 +685,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:8ebe0c3eca4eb30db71b1c8586aa5c49c35cf83413a21fde4fb4d06c69cd58ae"
+    "signed_digest": "sha256:1973f20f7d2f998c60ef24c5346aa0d3aba91efcb942539ff4d4c96ba4a4ec14"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc"
+  "source_identity": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f"
 }

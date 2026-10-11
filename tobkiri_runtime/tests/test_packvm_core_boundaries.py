@@ -791,7 +791,9 @@ def test_agent_direct_invoke_unwraps_the_runner_completion(
         lambda _request, **_kwargs: _runner_completion(config, outcome),
     )
 
-    response = packvm_guest_runner._dispatch_agent_request({}, config, object())
+    response = packvm_guest_runner._dispatch_agent_request(
+        {}, config, packvm_guest_runner._PendingBridgeLedger()
+    )
 
     assert response["data"] == outcome
 

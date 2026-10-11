@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:7e77c82ae89ef19ed84fea6335b9734f135c8467f5436ca6d1e32253390d803f",
+  "artifact_set_digest": "sha256:01d498e4cf5667aaf8e2622048482d82477ed6df761b603b59825ffe9dacb35a",
   "artifacts": [
     {
-      "digest": "sha256:7a3aab29c2895b00f933277ffff079efddeec84ecd1b99ce6fe436333c78ac3b",
+      "digest": "sha256:700fd624bf8441f2c2699ebbb4cc4fc3ed071134b5bb379e700a414a5aa3e610",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:845285341a6a2e746f05253fdd1fabbba66fcb4f19aff2d556fb984de734f0cb",
+      "digest": "sha256:b7563ff1fabaef5edcc4c1abaf1de02dc8a3dd9c75a2e556e66468c7ae727055",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:449c71687649d01d15f8dbce1cce3e25bd70c3bb0ff81485a09d359b616d7205",
+      "digest": "sha256:07268ab7d7b357dbfcbbd90377558a66b31c8f61819a14f6b5fcf315f09d5263",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -49,6 +49,11 @@
     {
       "digest": "sha256:5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
       "path": "runtime/files.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ad6e0c827cf993ac675f5adc06b943c99ea56d3be4d5fba494cbe12e0b092a4d",
+      "path": "runtime/python_sandbox_execute.py",
       "role": "runtime"
     },
     {
@@ -162,6 +167,11 @@
       "role": "runtime"
     },
     {
+      "digest": "sha256:914555b1bc37689a54e23d60d3cf3efa4bd1b4cbb303d5126300726c0c1aff1e",
+      "path": "tools/python_sandbox_execute/manifest.json",
+      "role": "runtime"
+    },
+    {
       "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
       "path": "tools/reddit_search/manifest.json",
       "role": "runtime"
@@ -220,8 +230,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:0deaee00d636b60b173385d40deec18851316c91369eb66c9aacb3b24fb7a9af"
+    "signed_digest": "sha256:382e310694bb9b84cec027a372607cb057f29bfec89f5bdf4e6f85fdc6040022"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:70c21c819660cb393a32ff8c7f4216b0c91d7a4e6704e97f8ce22b4b03bacdf3"
+  "source_identity": "sha256:0052c8a151a8d095d8f5ae2046a1db5d36140e1c8423705c04ac50da9e7d8fcf"
 }

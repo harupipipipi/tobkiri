@@ -335,7 +335,8 @@ def test_native_consent_uses_distinct_grant_then_actual_read_broker(
     fixture = tmp_path / "fixture.txt"
     fixture.write_text("isolated fixture content")
     payload = {
-        "tool_id": "coding_file_read",
+        # This fixture tests generic read consent; coding reads need a workspace binding.
+        "tool_id": "file_reader",
         "tool_call_id": "call-1",
         "arguments": {"path": "fixture.txt"},
     }

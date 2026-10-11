@@ -41,7 +41,7 @@
       "path": "defaultspack/turn_progress_presentation.py"
     },
     {
-      "digest": "sha256:0872f7f3a007e9374ba55cdc58454f635035c45112547cda01b8bad4368a24ee",
+      "digest": "sha256:1424289930e7a126d93a825b0a3de1f32b0b03f9c56de5e775338542b6cfefe3",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -69,6 +69,11 @@
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "kind": "executable",
       "path": "runtime/conversation.py"
+    },
+    {
+      "digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "kind": "executable",
+      "path": "runtime/python_sandbox_guest.py"
     },
     {
       "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
@@ -687,6 +692,13 @@
         "complete"
       ],
       "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a"
+    },
+    {
+      "contract_id": "tobkiri.service.python.sandbox.v1",
+      "operations": [
+        "defaultspack.python-sandbox-guest-execute"
+      ],
+      "revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682"
     }
   ],
   "functions": [
@@ -719,12 +731,22 @@
         "saved_complete"
       ],
       "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+      "id": "defaultspack.python-sandbox-guest",
+      "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "isolation": "pack_vm",
+      "operations": [
+        "defaultspack.python-sandbox-guest-execute"
+      ],
+      "role": "brokered"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:53a28b74c8a15bb878bc32b024f68c36c66956b5f124808c90c94ccfb9d7af3a",
-    "contract_catalog_digest": "sha256:4631f21a5c1eababb00b95851978d3a0209c50cb8293fdc3dee3c6c3d8b55840",
-    "source_identity": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc"
+    "artifact_set_digest": "sha256:bec7546ef25b6746b7a6fc7e5c87a8eafa9e0c51cc1cfc2d031124274889b6cb",
+    "contract_catalog_digest": "sha256:e20c21c16c0f5b27332fcf1f2dea412bc0c3490dd9c5f83812dbfc1bb22efd96",
+    "source_identity": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f"
   },
   "migration": {
     "compatibility": "none",
@@ -750,6 +772,14 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.service.python.sandbox.v1",
+      "effect_ceiling": [],
+      "operation_id": "defaultspack.python-sandbox-guest-execute",
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.python-sandbox-guest",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "conversation.saved-turn.v1",
       "effect_ceiling": [],
       "operation_id": "saved_complete",
@@ -759,7 +789,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:53a28b74c8a15bb878bc32b024f68c36c66956b5f124808c90c94ccfb9d7af3a",
+    "artifact_digest": "sha256:bec7546ef25b6746b7a6fc7e5c87a8eafa9e0c51cc1cfc2d031124274889b6cb",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -769,7 +799,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc",
+        "digest": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -780,7 +810,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc",
+    "source_digest": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
@@ -808,6 +838,14 @@
       ],
       "owner": "defaultspack",
       "provider_id": "defaultspack.conversation.saved"
+    },
+    {
+      "contract_reference": "tobkiri.service.python.sandbox.v1",
+      "operations": [
+        "defaultspack.python-sandbox-guest-execute"
+      ],
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.python-sandbox-guest"
     }
   ],
   "requirements": {

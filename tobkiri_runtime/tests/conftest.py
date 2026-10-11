@@ -1338,6 +1338,9 @@ def _owner_contract_invoker(owner, facade, expected_profile_id=None):
 @pytest.fixture
 def defaultspack_conversation_owner(request, monkeypatch, tmp_path):
     """Bind one test explicitly to an isolated canonical conversation owner."""
+    monkeypatch.syspath_prepend(
+        str(_PROJECT_ROOT / "ecosystem" / "defaultspack")
+    )
     from domain.chat import store as chat_store_module
     from domain.tool.registry import ToolRegistry
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore

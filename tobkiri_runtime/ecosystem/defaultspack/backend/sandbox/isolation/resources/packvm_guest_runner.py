@@ -23,6 +23,7 @@ from pathlib import Path, PurePosixPath
 import platform
 import re
 import select
+import selectors
 import signal
 import shutil
 import socket
@@ -79,6 +80,20 @@ MAX_BRIDGE_REQUEST_BYTES = 64 * 1024
 MAX_BRIDGE_RESULT_BYTES = 512 * 1024
 MAX_BRIDGE_HOPS = 16
 MAX_CHILD_REQUEST_BYTES = 1024 * 1024
+MAX_PYTHON_SANDBOX_REQUEST_BYTES = 900 * 1024
+MAX_PYTHON_SANDBOX_SNAPSHOT_BYTES = 512 * 1024
+MAX_PYTHON_SANDBOX_FILE_BYTES = 64 * 1024
+MAX_PYTHON_SANDBOX_FILES = 256
+MAX_PYTHON_SANDBOX_ENTRIES = 1024
+MAX_PYTHON_SANDBOX_DEPTH = 64
+MAX_PYTHON_SANDBOX_OUTPUT_BYTES = 64 * 1024
+MAX_PYTHON_SANDBOX_TIMEOUT_SECONDS = 60
+PYTHON_SANDBOX_PACK_ID = "defaultspack"
+PYTHON_SANDBOX_FUNCTION_ID = "defaultspack.python-sandbox-guest"
+PYTHON_SANDBOX_CONTRACT_ID = "tobkiri.service.python.sandbox.v1"
+PYTHON_SANDBOX_CONTRACT_VERSION = "1.0.0"
+PYTHON_SANDBOX_OPERATION_ID = "defaultspack.python-sandbox-guest-execute"
+PYTHON_SANDBOX_IMPLEMENTATION_PATH = "runtime/python_sandbox_guest.py"
 PACKVM_GUEST_AGENT_PORT = 19001
 PACKVM_GUEST_AGENT_CONFIG = Path("/run/tobkiri-packvm/agent-config.json")
 PACKVM_GUEST_AGENT_KEY = Path("/run/tobkiri-packvm/agent-ed25519.pem")
@@ -224,6 +239,8 @@ def main() -> int:
         if sys.argv[1:]:
             if len(sys.argv) == 3 and sys.argv[1] == "--execute":
                 return _execute_staged_module(Path(sys.argv[2]))
+            if len(sys.argv) == 3 and sys.argv[1] == "--execute-python":
+                return _execute_python_sandbox(Path(sys.argv[2]))
             raise ValueError("PackVM runner arguments are invalid")
         raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
         if len(raw) > MAX_REQUEST_BYTES:
@@ -363,6 +380,28 @@ def _execute_invocation_step(
         implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise _GuestOperationError("ARTIFACT_VERIFICATION_FAILED") from exc
+    if manifest.get("function_id") == PYTHON_SANDBOX_FUNCTION_ID:
+        if (
+            manifest.get("pack_id") != PYTHON_SANDBOX_PACK_ID
+            or request.get("contract_id") != PYTHON_SANDBOX_CONTRACT_ID
+            or request.get("contract_version") != PYTHON_SANDBOX_CONTRACT_VERSION
+            or request.get("operation_id") != PYTHON_SANDBOX_OPERATION_ID
+            or implementation_path != PYTHON_SANDBOX_IMPLEMENTATION_PATH
+        ):
+            raise _GuestOperationError("INPUT_LIMIT_REJECTED")
+        try:
+            python_request = _validate_python_sandbox_request(payload)
+        except (TypeError, ValueError, RecursionError, binascii.Error) as exc:
+            raise _GuestOperationError("INPUT_LIMIT_REJECTED") from exc
+        return _execute_python_sandbox_invocation(
+            request,
+            identity,
+            target,
+            implementation,
+            python_request,
+            guest_deadline,
+            execution_guard=execution_guard,
+        )
     child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
@@ -417,6 +456,345 @@ def _execute_invocation_step(
         "guest_artifact_identity": identity,
         "payload": result,
     }
+
+
+def _python_sandbox_path(
+    value: object,
+    *,
+    allow_dot: bool = False,
+    suffix: str | None = None,
+) -> str:
+    """Validate one canonical workspace-relative Python path."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value.encode("utf-8")) > 512
+        or "\x00" in value
+        or "\\" in value
+        or value.startswith(("/", "~"))
+        or ":" in value
+    ):
+        raise ValueError("Python sandbox path is invalid")
+    if allow_dot and value == ".":
+        return "."
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("Python sandbox path is not canonical")
+    path = PurePosixPath(*parts).as_posix()
+    if suffix is not None and not path.endswith(suffix):
+        raise ValueError("Python sandbox script path is invalid")
+    return path
+
+
+def _validate_python_sandbox_request(value: object) -> dict[str, object]:
+    """Validate the finite operation payload without importing Pack code."""
+    if not isinstance(value, Mapping):
+        raise ValueError("Python sandbox request must be an object")
+    mode = value.get("mode")
+    common = {"mode", "cwd", "timeout_seconds", "workspace_snapshot"}
+    if mode == "script":
+        if set(value) != common | {"script_path", "arguments", "stdin"}:
+            raise ValueError("Python sandbox script fields are invalid")
+        script_path = _python_sandbox_path(value["script_path"], suffix=".py")
+        arguments = value["arguments"]
+        if not isinstance(arguments, list) or len(arguments) > 32:
+            raise ValueError("Python sandbox arguments are invalid")
+        total_arguments = 0
+        checked_arguments: list[str] = []
+        for argument in arguments:
+            if not isinstance(argument, str) or not argument or "\x00" in argument:
+                raise ValueError("Python sandbox argument is invalid")
+            size = len(argument.encode("utf-8"))
+            if size > 1024:
+                raise ValueError("Python sandbox argument exceeds its limit")
+            total_arguments += size
+            if total_arguments > 16 * 1024:
+                raise ValueError("Python sandbox arguments exceed their limit")
+            checked_arguments.append(argument)
+        stdin = value["stdin"]
+        if not isinstance(stdin, str) or len(stdin.encode("utf-8")) > 16 * 1024:
+            raise ValueError("Python sandbox stdin exceeds its limit")
+        operation: dict[str, object] = {
+            "mode": "script",
+            "script_path": script_path,
+            "arguments": checked_arguments,
+            "stdin": stdin,
+        }
+    elif mode == "unittest":
+        if set(value) != common | {"test_targets"}:
+            raise ValueError("Python unittest fields are invalid")
+        targets = value["test_targets"]
+        if (
+            not isinstance(targets, list)
+            or not 1 <= len(targets) <= 16
+            or len(set(targets)) != len(targets)
+            or any(
+                not isinstance(target, str)
+                or len(target) > 256
+                or re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
+                    target,
+                ) is None
+                for target in targets
+            )
+        ):
+            raise ValueError("Python unittest targets are invalid")
+        operation = {"mode": "unittest", "test_targets": list(targets)}
+    else:
+        raise ValueError("Python sandbox mode is unsupported")
+
+    cwd = _python_sandbox_path(value["cwd"], allow_dot=True)
+    timeout = value["timeout_seconds"]
+    if (
+        type(timeout) is not int
+        or not 1 <= timeout <= MAX_PYTHON_SANDBOX_TIMEOUT_SECONDS
+    ):
+        raise ValueError("Python sandbox timeout is invalid")
+    raw_files = value["workspace_snapshot"]
+    if not isinstance(raw_files, list) or len(raw_files) > MAX_PYTHON_SANDBOX_FILES:
+        raise ValueError("Python workspace snapshot is invalid")
+    files: list[dict[str, str]] = []
+    file_paths: set[str] = set()
+    directory_paths: set[str] = set()
+    total_bytes = 0
+    for entry in raw_files:
+        if not isinstance(entry, Mapping) or set(entry) != {"path", "content_base64"}:
+            raise ValueError("Python workspace snapshot entry is invalid")
+        path = _python_sandbox_path(entry["path"])
+        if path in file_paths:
+            raise ValueError("Python workspace snapshot has duplicate files")
+        parts = PurePosixPath(path).parts
+        if len(parts) > MAX_PYTHON_SANDBOX_DEPTH:
+            raise ValueError("Python workspace snapshot is too deep")
+        for depth in range(1, len(parts) + 1):
+            directory_paths.add("/".join(parts[:depth]))
+        encoded = entry["content_base64"]
+        maximum_encoded = ((MAX_PYTHON_SANDBOX_FILE_BYTES + 2) // 3) * 4
+        if not isinstance(encoded, str) or len(encoded) > maximum_encoded:
+            raise ValueError("Python workspace snapshot file exceeds its limit")
+        content = base64.b64decode(encoded, validate=True)
+        if (
+            len(content) > MAX_PYTHON_SANDBOX_FILE_BYTES
+            or base64.b64encode(content).decode("ascii") != encoded
+        ):
+            raise ValueError("Python workspace snapshot base64 is invalid")
+        total_bytes += len(content)
+        if total_bytes > MAX_PYTHON_SANDBOX_SNAPSHOT_BYTES:
+            raise ValueError("Python workspace snapshot exceeds 512 KiB")
+        file_paths.add(path)
+        files.append({"path": path, "content_base64": encoded})
+    if len(directory_paths) > MAX_PYTHON_SANDBOX_ENTRIES:
+        raise ValueError("Python workspace snapshot has too many entries")
+    if files != sorted(files, key=lambda item: item["path"]):
+        raise ValueError("Python workspace snapshot order is invalid")
+    for path in file_paths:
+        if any(
+            parent.as_posix() in file_paths
+            for parent in PurePosixPath(path).parents
+            if parent.as_posix() != "."
+        ):
+            raise ValueError("Python workspace snapshot paths collide")
+    if mode == "script" and operation["script_path"] not in file_paths:
+        raise ValueError("Python script is missing from the workspace snapshot")
+    if cwd != "." and not any(path.startswith(cwd + "/") for path in file_paths):
+        raise ValueError("Python workspace working directory is missing")
+    normalized: dict[str, object] = {
+        **operation,
+        "cwd": cwd,
+        "timeout_seconds": timeout,
+        "workspace_snapshot": files,
+    }
+    if len(_bridge_canonical_json(normalized)) > MAX_PYTHON_SANDBOX_REQUEST_BYTES:
+        raise ValueError("Python workspace snapshot request exceeds its limit")
+    return normalized
+
+
+def _execute_python_sandbox_invocation(
+    request: dict[str, object],
+    identity: str,
+    target: Path,
+    implementation: Path,
+    python_request: dict[str, object],
+    guest_deadline: float,
+    *,
+    execution_guard: Callable[[], None] | None = None,
+) -> dict[str, object]:
+    """Run one opaque-output Python child under the request's live cancel owner."""
+    timeout_seconds = python_request["timeout_seconds"]
+    assert type(timeout_seconds) is int
+    deadline = min(guest_deadline, time.monotonic() + timeout_seconds)
+    started = time.monotonic()
+
+    def guard() -> None:
+        _remaining_guest_budget(deadline)
+        if execution_guard is not None:
+            execution_guard()
+
+    try:
+        guard()
+        encoded = _bridge_canonical_json(python_request)
+        process = subprocess.Popen(
+            _sandbox_argv(target, implementation, python_sandbox=True),
+            cwd=target,
+            env={"PATH": "/usr/bin:/bin"},
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except TimeoutError as exc:
+        raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+    except (OSError, ValueError) as exc:
+        raise _GuestOperationError("SANDBOX_LAUNCH_FAILED") from exc
+    try:
+        _register_request(request, process.pid, str(request["cancel_token"]))
+        guard()
+        stdout_bytes, stderr_bytes = _communicate_python_child(
+            process,
+            encoded,
+            deadline=deadline,
+            execution_guard=execution_guard,
+        )
+        guard()
+    except _GuestOperationError:
+        _stop_staged_implementation(process)
+        raise
+    except TimeoutError as exc:
+        _stop_staged_implementation(process)
+        raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+    except InterruptedError as exc:
+        _stop_staged_implementation(process)
+        raise _GuestOperationError("EXECUTION_FAILED") from exc
+    except ValueError as exc:
+        _stop_staged_implementation(process)
+        message = str(exc)
+        code = (
+            "OUTPUT_LIMIT_REJECTED"
+            if "stdout" in message
+            else "ERROR_LIMIT_REJECTED"
+            if "stderr" in message
+            else "EXECUTION_FAILED"
+        )
+        raise _GuestOperationError(code) from exc
+    except BaseException:
+        _stop_staged_implementation(process)
+        raise
+    finally:
+        _unregister_request(str(request["request_id"]), process.pid)
+
+    returncode = process.returncode
+    if type(returncode) is not int or not -255 <= returncode <= 255:
+        raise _GuestOperationError("EXECUTION_FAILED")
+    stdout = stdout_bytes.decode("utf-8", errors="replace")
+    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    if (
+        len(stdout.encode("utf-8")) > MAX_PYTHON_SANDBOX_OUTPUT_BYTES
+        or len(stderr.encode("utf-8")) > MAX_PYTHON_SANDBOX_OUTPUT_BYTES
+    ):
+        raise _GuestOperationError("OUTPUT_LIMIT_REJECTED")
+    result: dict[str, object] = {
+        "status": "completed" if returncode == 0 else "failed",
+        "exit_code": returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_ms": min(
+            MAX_PYTHON_SANDBOX_TIMEOUT_SECONDS * 1000,
+            int(max(0.0, time.monotonic() - started) * 1000),
+        ),
+    }
+    if len(_bridge_canonical_json(result)) > 2 * MAX_PYTHON_SANDBOX_OUTPUT_BYTES + 1024:
+        raise _GuestOperationError("OUTPUT_LIMIT_REJECTED")
+    completion = {
+        "ok": True,
+        "protocol": PROTOCOL,
+        "guest_artifact_identity": identity,
+        "payload": _host_invoke_result(result),
+    }
+    try:
+        guard()
+    except TimeoutError as exc:
+        raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+    return completion
+
+
+def _communicate_python_child(
+    process: subprocess.Popen[bytes],
+    payload: bytes,
+    *,
+    deadline: float,
+    execution_guard: Callable[[], None] | None,
+) -> tuple[bytes, bytes]:
+    """Incrementally drain the untrusted child's two output pipes."""
+    streams = (process.stdin, process.stdout, process.stderr)
+    if any(stream is None for stream in streams) or type(payload) is not bytes:
+        raise ValueError("Python sandbox child pipes are unavailable")
+    output = {"stdout": bytearray(), "stderr": bytearray()}
+    sent = 0
+    with selectors.DefaultSelector() as selector:
+        for stream, name in zip(streams, ("stdin", "stdout", "stderr")):
+            assert stream is not None
+            os.set_blocking(stream.fileno(), False)
+            if name == "stdin" and not payload:
+                stream.close()
+                continue
+            selector.register(
+                stream,
+                selectors.EVENT_WRITE if name == "stdin" else selectors.EVENT_READ,
+                name,
+            )
+        try:
+            while selector.get_map():
+                if execution_guard is not None:
+                    execution_guard()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Python sandbox execution deadline expired")
+                for key, _mask in selector.select(min(0.01, remaining)):
+                    if key.data == "stdin":
+                        try:
+                            sent += os.write(key.fd, payload[sent : sent + 65536])
+                        except BlockingIOError:
+                            continue
+                        except BrokenPipeError:
+                            sent = len(payload)
+                        if sent == len(payload):
+                            selector.unregister(key.fd)
+                            assert process.stdin is not None
+                            process.stdin.close()
+                        continue
+                    output_name = key.data
+                    buffer = output[output_name]
+                    limit = MAX_PYTHON_SANDBOX_OUTPUT_BYTES
+                    try:
+                        chunk = os.read(key.fd, min(65536, limit - len(buffer) + 1))
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fd)
+                        continue
+                    if len(buffer) + len(chunk) > limit:
+                        raise ValueError(
+                            f"Python sandbox {output_name} exceeds its limit"
+                        )
+                    buffer.extend(chunk)
+            while process.poll() is None:
+                if execution_guard is not None:
+                    execution_guard()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Python sandbox execution deadline expired")
+                try:
+                    process.wait(timeout=min(0.01, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Python sandbox execution deadline expired")
+        finally:
+            for stream in streams:
+                if stream is not None:
+                    stream.close()
+    return bytes(output["stdout"]), bytes(output["stderr"])
 
 
 def _spawn_staged_implementation(target: Path, implementation: Path) -> subprocess.Popen[bytes]:
@@ -1197,7 +1575,9 @@ class _PendingBridgeLedger:
             self._purge_expired()
             key = (domain_id, request_id)
             cancelled = self._pending.pop(key, None) is not None
-            expires_at = time.monotonic() + PENDING_BRIDGE_TTL_SECONDS
+            # Retain the cancellation tombstone for the longest accepted guest
+            # request budget so a delayed invocation cannot outlive the fence.
+            expires_at = time.monotonic() + MAX_GUEST_EXECUTION_BUDGET_SECONDS
             if key not in self._cancelled and len(self._cancelled) >= MAX_PENDING_BRIDGES:
                 # Never evict a live cancellation to admit another one. A
                 # bounded overflow fence blocks all late registrations until
@@ -1206,6 +1586,16 @@ class _PendingBridgeLedger:
             else:
                 self._cancelled[key] = expires_at
             return cancelled
+
+    def assert_execution_active(self, *, domain_id: str, request_id: str) -> None:
+        """Fence a cancelled request before spawn, during drain, and on return."""
+        with self._lock:
+            self._purge_expired()
+            if (
+                time.monotonic() < self._cancel_fence_until
+                or (domain_id, request_id) in self._cancelled
+            ):
+                raise InterruptedError("PackVM invocation was cancelled")
 
     def _purge_expired(self) -> None:
         now = time.monotonic()
@@ -1801,12 +2191,43 @@ def _dispatch_agent_request(
         guest_deadline = _local_guest_deadline_from_budget(
             payload.get("budget_seconds")
         )
+
+        def request_guard() -> None:
+            _remaining_guest_budget(guest_deadline)
+            ledger.assert_execution_active(
+                domain_id=config.domain_id,
+                request_id=request_id,
+            )
+
+        if (
+            payload.get("contract_id") == PYTHON_SANDBOX_CONTRACT_ID
+            and payload.get("operation_id") == PYTHON_SANDBOX_OPERATION_ID
+            and type(payload.get("payload")) is dict
+        ):
+            sandbox_timeout = payload["payload"].get("timeout_seconds")
+            if (
+                type(sandbox_timeout) is int
+                and 1 <= sandbox_timeout <= MAX_PYTHON_SANDBOX_TIMEOUT_SECONDS
+            ):
+                guest_deadline = min(
+                    guest_deadline,
+                    time.monotonic() + sandbox_timeout,
+                )
         if payload.get("contract_id") == "conversation.saved-turn.v1":
             def initial_step(
                 captured: dict[str, Any], arguments: dict[str, Any], deadline: float,
                 guard: Callable[[], None],
             ) -> dict[str, Any]:
-                result = _invoke(captured, guest_deadline=deadline, execution_guard=guard)
+                def saved_guard() -> None:
+                    guard()
+                    request_guard()
+
+                result = _invoke(
+                    captured,
+                    guest_deadline=deadline,
+                    execution_guard=saved_guard,
+                )
+                saved_guard()
                 return _agent_invoke_outcome(result, config)
 
             captured_request = dict(payload)
@@ -1816,8 +2237,13 @@ def _dispatch_agent_request(
             return _agent_success(base, ledger.saved.begin(
                 captured_request, _bridge_canonical_digest(config.binding_digests), initial_step,
             ))
-        result = _invoke(dict(payload), guest_deadline=guest_deadline)
-        _remaining_guest_budget(guest_deadline)
+        request_guard()
+        result = _invoke(
+            dict(payload),
+            guest_deadline=guest_deadline,
+            execution_guard=request_guard,
+        )
+        request_guard()
         bridge = result.get("payload")
         if isinstance(bridge, dict) and _looks_like_bridge_request(bridge):
             checked_bridge = _validate_bridge_request(
@@ -1840,6 +2266,7 @@ def _dispatch_agent_request(
                     bridge_request=checked_bridge,
                 ),
             )
+        request_guard()
         return _agent_success(base, _agent_invoke_outcome(result, config))
     if operation == "bridge_result":
         host_bridge_result = base["host_bridge_result"]
@@ -2299,6 +2726,37 @@ def _execute_staged_module(path: Path) -> int:
         return 1
 
 
+def _execute_python_sandbox(path: Path) -> int:
+    """Enter the operation-specific process before loading user workspace code."""
+    if os.geteuid() == 0 or path.as_posix() != "/pack/runtime/python_sandbox_guest.py":
+        return 1
+    if not sys.platform.startswith("linux"):
+        return 1
+    try:
+        _install_child_process_seccomp_filter()
+        import runpy
+
+        try:
+            runpy.run_path(path.as_posix(), run_name="__main__")
+        except SystemExit as exit_request:
+            code = exit_request.code
+            if code is None:
+                return 0
+            if type(code) is int:
+                return code
+            if code:
+                sys.stderr.write(f"{code}\n")
+            return 1
+    except BaseException:
+        # Traceback text is the user's ordinary stderr stream. It is captured
+        # and bounded by the trusted root supervisor and never parsed as ABI.
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
+        return 1
+    return 0
+
+
 def _install_child_process_seccomp_filter() -> None:
     """Deny child processes, image replacement, and sockets before Pack import."""
 
@@ -2380,7 +2838,12 @@ def _resolved_child_process_syscalls(
     # diagnostics and tests deterministic.
     return tuple(dict.fromkeys(resolved))
 
-def _sandbox_argv(target: Path, implementation: Path) -> tuple[str, ...]:
+def _sandbox_argv(
+    target: Path,
+    implementation: Path,
+    *,
+    python_sandbox: bool = False,
+) -> tuple[str, ...]:
     """Build the mandatory default-deny guest sandbox command."""
 
     bwrap = shutil.which("bwrap")
@@ -2421,6 +2884,30 @@ def _sandbox_argv(target: Path, implementation: Path) -> tuple[str, ...]:
     for system_root in ("/usr", "/bin", "/lib", "/lib64", "/etc"):
         if Path(system_root).exists():
             command.extend(("--ro-bind", system_root, system_root))
+    temporary_mounts = (
+        (
+            "--size",
+            str(16 * 1024 * 1024),
+            "--tmpfs",
+            "/tmp",
+            "--size",
+            str(1024 * 1024),
+            "--tmpfs",
+            "/home",
+            "--size",
+            str(1024 * 1024),
+            "--tmpfs",
+            "/run",
+        )
+        if python_sandbox
+        else ("--tmpfs", "/tmp", "--tmpfs", "/home", "--tmpfs", "/run")
+    )
+    child_mode = (
+        ("--execute-python", f"/pack/{relative}")
+        if python_sandbox
+        else ("--execute", f"/pack/{relative}")
+    )
+    home_directory = ("--dir", "/home/pack") if python_sandbox else ()
     command.extend(
         (
             "--ro-bind",
@@ -2433,12 +2920,8 @@ def _sandbox_argv(target: Path, implementation: Path) -> tuple[str, ...]:
             "/dev",
             "--proc",
             "/proc",
-            "--tmpfs",
-            "/tmp",
-            "--tmpfs",
-            "/home",
-            "--tmpfs",
-            "/run",
+            *temporary_mounts,
+            *home_directory,
             "--dir",
             "/var",
             "--clearenv",
@@ -2455,8 +2938,7 @@ def _sandbox_argv(target: Path, implementation: Path) -> tuple[str, ...]:
             "-I",
             "-S",
             "/runner.py",
-            "--execute",
-            f"/pack/{relative}",
+            *child_mode,
         )
     )
     return tuple(command)

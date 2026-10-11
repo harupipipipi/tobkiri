@@ -25,6 +25,7 @@ from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.pack_api_server import PackAPIServer
 from tobkiri_host.backends import BackendRegistry
 from tobkiri_host.runtime import V4DispatchSession
+from tobkiri_host.credential_store import host_credential_store_factory
 from tobkiri_host.errors import BackendUnavailableError
 
 from tests.test_production_frontend_contract_http import (
@@ -47,6 +48,7 @@ def _saved_server(
         tmp_path,
         monkeypatch,
         packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
     )
 
 
@@ -377,6 +379,7 @@ def test_connection_status_distinguishes_missing_credentials(
         tmp_path,
         monkeypatch,
         packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
     )
     server, _session, _authority = next(servers)
     try:
@@ -451,7 +454,11 @@ def test_owner_load_failures_surface_instead_of_empty_success(
         WorkspaceMountStore,
     )
 
-    servers = _captured_production_server(tmp_path, monkeypatch)
+    servers = _captured_production_server(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    )
     server, _session, _authority = next(servers)
     try:
         store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")

@@ -24,7 +24,7 @@ from tobkiri_protocol.turn_progress_v1 import RESOURCE, RESOURCE_OPERATION, payl
     "tool_id,arguments,expected",
     [
         ("calculator", {"expression": "2+2"}, "4"),
-        ("coding_file_read", {"path": "hello.txt"}, "owned file content"),
+        ("file_reader", {"path": "hello.txt"}, "owned file content"),
     ],
 )
 def test_real_captured_tool_progress_and_result_use_original_default_budget(

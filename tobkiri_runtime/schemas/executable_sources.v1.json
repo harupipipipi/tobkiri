@@ -1421,6 +1421,423 @@
       ],
       "variant_id": "defaultspack.conversation.saved.python"
     },
+    "defaultspack.python-sandbox-guest": {
+      "contract_id": "tobkiri.service.python.sandbox.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "defaultspack.python-sandbox-guest",
+      "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "implementation_path": "runtime/python_sandbox_guest.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "test_targets"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "mode": {
+                "const": "script"
+              }
+            },
+            "required": [
+              "mode",
+              "script_path",
+              "arguments",
+              "stdin"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "script_path"
+                  ]
+                },
+                {
+                  "required": [
+                    "arguments"
+                  ]
+                },
+                {
+                  "required": [
+                    "stdin"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "mode": {
+                "const": "unittest"
+              }
+            },
+            "required": [
+              "mode",
+              "test_targets"
+            ]
+          }
+        ],
+        "properties": {
+          "arguments": {
+            "items": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "cwd": {
+            "default": ".",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "script",
+              "unittest"
+            ]
+          },
+          "script_path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+            "type": "string"
+          },
+          "stdin": {
+            "maxLength": 16384,
+            "type": "string"
+          },
+          "test_targets": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "timeout_seconds": {
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workspace_snapshot": {
+            "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content_base64": {
+                  "maxLength": 87384,
+                  "type": "string"
+                },
+                "path": {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content_base64"
+              ],
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "cwd",
+          "timeout_seconds",
+          "workspace_snapshot"
+        ],
+        "type": "object"
+      },
+      "operation_id": "defaultspack.python-sandbox-guest-execute",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.python.sandbox.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "defaultspack.python-sandbox-guest-execute",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+          "implementation_path": "runtime/python_sandbox_guest.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "test_targets"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "script"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "script_path",
+                  "arguments",
+                  "stdin"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "script_path"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "arguments"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "stdin"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "unittest"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "test_targets"
+                ]
+              }
+            ],
+            "properties": {
+              "arguments": {
+                "items": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "cwd": {
+                "default": ".",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "script",
+                  "unittest"
+                ]
+              },
+              "script_path": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                "type": "string"
+              },
+              "stdin": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "test_targets": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "timeout_seconds": {
+                "maximum": 60,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_snapshot": {
+                "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content_base64": {
+                      "maxLength": 87384,
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content_base64"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              }
+            },
+            "required": [
+              "mode",
+              "cwd",
+              "timeout_seconds",
+              "workspace_snapshot"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "defaultspack.python-sandbox-guest-execute",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "maximum": 60000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "exit_code": {
+                "maximum": 255,
+                "minimum": -255,
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "completed",
+                  "failed"
+                ]
+              },
+              "stderr": {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              "stdout": {
+                "maxLength": 65536,
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "exit_code",
+              "stdout",
+              "stderr",
+              "duration_ms"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "maximum": 60000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exit_code": {
+            "maximum": 255,
+            "minimum": -255,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed"
+            ]
+          },
+          "stderr": {
+            "maxLength": 65536,
+            "type": "string"
+          },
+          "stdout": {
+            "maxLength": 65536,
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "exit_code",
+          "stdout",
+          "stderr",
+          "duration_ms"
+        ],
+        "type": "object"
+      },
+      "owner": "defaultspack",
+      "pack_id": "defaultspack",
+      "source": [
+        {
+          "entrypoint_id": "defaultspack.python-sandbox-guest-execute",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "defaultspack.python-sandbox-guest.python"
+    },
     "mcp.connection.call.service": {
       "contract_id": "tobkiri.service.mcp.connection.v1",
       "contract_version": "1.0.0",
@@ -14417,6 +14834,497 @@
         }
       ],
       "variant_id": "rumi_default_tools_pack.files-read.python"
+    },
+    "rumi_default_tools_pack.python-sandbox-execute-tool": {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_default_tools_pack.python-sandbox-execute-tool",
+      "implementation_digest": "sha256:ad6e0c827cf993ac675f5adc06b943c99ea56d3be4d5fba494cbe12e0b092a4d",
+      "implementation_path": "runtime/python_sandbox_execute.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "arguments": {
+            "$id": "urn:tobkiri:proposal:python_sandbox_execute.input.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "script"
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "test_targets"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "workspace_snapshot"
+                        ]
+                      }
+                    ]
+                  },
+                  "properties": {
+                    "arguments": {
+                      "items": {
+                        "maxLength": 1024,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "type": "array"
+                    },
+                    "script_path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                      "type": "string"
+                    },
+                    "stdin": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "script_path",
+                    "arguments",
+                    "stdin"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "unittest"
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "script_path"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "arguments"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "stdin"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "workspace_snapshot"
+                        ]
+                      }
+                    ]
+                  },
+                  "properties": {
+                    "test_targets": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                        "type": "string"
+                      },
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "test_targets"
+                  ]
+                }
+              }
+            ],
+            "properties": {
+              "arguments": {
+                "description": "Script args only; Host rejects empty/NUL values and caps each value at 1 KiB UTF-8 and total args at 16 KiB UTF-8.",
+                "items": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "cwd": {
+                "default": ".",
+                "description": "Relative working directory; Host enforces a 512-byte UTF-8 path limit.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "script",
+                  "unittest"
+                ]
+              },
+              "script_path": {
+                "description": "Relative .py file; Host enforces a 512-byte UTF-8 path limit against the bound workspace.",
+                "maxLength": 512,
+                "type": "string"
+              },
+              "stdin": {
+                "description": "Script mode only; Host caps UTF-8 input at 16 KiB.",
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "test_targets": {
+                "description": "Dotted unittest module identifiers.",
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "timeout_seconds": {
+                "maximum": 60,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "mode",
+              "cwd",
+              "timeout_seconds"
+            ],
+            "title": "python_sandbox_execute arguments",
+            "type": "object"
+          },
+          "tool_call_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            "type": "string"
+          },
+          "tool_id": {
+            "const": "python_sandbox_execute"
+          }
+        },
+        "required": [
+          "tool_id",
+          "tool_call_id",
+          "arguments"
+        ],
+        "type": "object"
+      },
+      "operation_id": "rumi_default_tools_pack.python-sandbox-execute-operation",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_default_tools_pack.python-sandbox-execute-operation",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:ad6e0c827cf993ac675f5adc06b943c99ea56d3be4d5fba494cbe12e0b092a4d",
+          "implementation_path": "runtime/python_sandbox_execute.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "$id": "urn:tobkiri:proposal:python_sandbox_execute.input.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "script"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ]
+                    },
+                    "then": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "test_targets"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "workspace_snapshot"
+                            ]
+                          }
+                        ]
+                      },
+                      "properties": {
+                        "arguments": {
+                          "items": {
+                            "maxLength": 1024,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "maxItems": 32,
+                          "type": "array"
+                        },
+                        "script_path": {
+                          "maxLength": 512,
+                          "minLength": 1,
+                          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                          "type": "string"
+                        },
+                        "stdin": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "script_path",
+                        "arguments",
+                        "stdin"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "unittest"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ]
+                    },
+                    "then": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "script_path"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "arguments"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "stdin"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "workspace_snapshot"
+                            ]
+                          }
+                        ]
+                      },
+                      "properties": {
+                        "test_targets": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                            "type": "string"
+                          },
+                          "uniqueItems": true
+                        }
+                      },
+                      "required": [
+                        "test_targets"
+                      ]
+                    }
+                  }
+                ],
+                "properties": {
+                  "arguments": {
+                    "description": "Script args only; Host rejects empty/NUL values and caps each value at 1 KiB UTF-8 and total args at 16 KiB UTF-8.",
+                    "items": {
+                      "maxLength": 1024,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "default": ".",
+                    "description": "Relative working directory; Host enforces a 512-byte UTF-8 path limit.",
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "script",
+                      "unittest"
+                    ]
+                  },
+                  "script_path": {
+                    "description": "Relative .py file; Host enforces a 512-byte UTF-8 path limit against the bound workspace.",
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  "stdin": {
+                    "description": "Script mode only; Host caps UTF-8 input at 16 KiB.",
+                    "maxLength": 16384,
+                    "type": "string"
+                  },
+                  "test_targets": {
+                    "description": "Dotted unittest module identifiers.",
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "timeout_seconds": {
+                    "maximum": 60,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "cwd",
+                  "timeout_seconds"
+                ],
+                "title": "python_sandbox_execute arguments",
+                "type": "object"
+              },
+              "tool_call_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool_id": {
+                "const": "python_sandbox_execute"
+              }
+            },
+            "required": [
+              "tool_id",
+              "tool_call_id",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_default_tools_pack.python-sandbox-execute-operation",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "is_error": {
+                "type": "boolean"
+              },
+              "result": {
+                "type": "string"
+              },
+              "widget": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "result",
+              "is_error",
+              "widget"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "is_error": {
+            "type": "boolean"
+          },
+          "result": {
+            "type": "string"
+          },
+          "widget": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "result",
+          "is_error",
+          "widget"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_default_tools_pack",
+      "pack_id": "rumi_default_tools_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_default_tools_pack.python-sandbox-execute-operation",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_default_tools_pack.python-sandbox-execute-tool.python"
     },
     "rumi_desktop_host_service_pack.desktop-host.control": {
       "contract_id": "tobkiri.action.desktop.host.v1",
@@ -37731,7 +38639,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:a0ccbb084681e85a881e578dfc0d3311e84da2225a86dc762701c5303795159b",
+    "input_digest": "sha256:4d4f25458bbfa672e4d2c5fc4a9047ec1680799c6d2040bbfece300cfcf55b0c",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -38482,7 +39390,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:e3426d0d52e98c4d0d5902a4d25870c41ab71ea4c98858bef83d0979c455a9d6",
+        "digest": "sha256:ccd8d1dcb759c6b2be7b7bcb84338c7ed18f4ba90838fa7c04a563e5493394c9",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

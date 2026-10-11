@@ -29,6 +29,7 @@ from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegis
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from tests.test_live_production_v4_dispatch import (
     _bundle_root,
+    _credential_store_factory,
     _deny_production_test_internet,  # noqa: F401
 )
 from tests.test_production_frontend_contract_http import _SavedPackVmBackend
@@ -175,6 +176,7 @@ def test_saved_local_model_turns_complete_and_replay_without_duplicate_io(
         target_backend_digests={
             principal.principal_id: backend.status.backend_digest
         },
+        credential_store_factory=_credential_store_factory,
     )
     try:
         for index, content in enumerate(

@@ -143,10 +143,10 @@ def test_cancellation_capacity_never_evicts_a_live_fence(monkeypatch: pytest.Mon
         with pytest.raises(ValueError, match="saturated"):
             ledger.add(domain_id="domain", request={"request_id": request_id}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
     # The first two tombstones expire earlier than the overflow cancellation.
-    now[0] = 100.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    now[0] = 100.0 + runner.MAX_GUEST_EXECUTION_BUDGET_SECONDS
     with pytest.raises(ValueError, match="saturated"):
         ledger.add(domain_id="domain", request={"request_id": "overflow"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
-    now[0] = 110.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    now[0] = 110.0 + runner.MAX_GUEST_EXECUTION_BUDGET_SECONDS
     ledger.add(domain_id="domain", request={"request_id": "fresh"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
     assert ledger.consume(domain_id="domain", request_id="fresh").request["request_id"] == "fresh"
 
@@ -164,7 +164,7 @@ def test_overflow_cancellation_removes_pending_and_extends_fence(monkeypatch: py
         ledger.consume(domain_id="domain", request_id="active")
     now[0] = 120.0
     ledger.cancel(domain_id="domain", request_id="later")
-    now[0] = 100.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    now[0] = 100.0 + runner.MAX_GUEST_EXECUTION_BUDGET_SECONDS
     with pytest.raises(ValueError, match="saturated"):
         ledger.add(domain_id="domain", request={"request_id": "later"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
     assert len(ledger._cancelled) <= 1
@@ -674,7 +674,10 @@ def test_guest_dispatch_retains_initial_local_deadline_across_host_wait(
     deadlines = []
     monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
 
-    def initial(payload: dict, *, guest_deadline: float) -> dict:
+    def initial(
+        payload: dict, *, guest_deadline: float, execution_guard: Any
+    ) -> dict:
+        execution_guard()
         deadlines.append(guest_deadline)
         now[0] = 1020.0
         return {"ok": True, "protocol": runner.PROTOCOL,

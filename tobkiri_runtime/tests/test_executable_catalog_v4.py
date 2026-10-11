@@ -391,3 +391,83 @@ def test_routes_for_plan_rejects_every_exact_variant_pin_swap(
     binding[field] = value
     with pytest.raises(ResolutionError, match="executable variant pin"):
         routes_for_plan({"bindings": [binding]}, (compiled,))
+
+
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        (
+            "rumi_default_tools_pack",
+            "rumi_default_tools_pack.python-sandbox-execute-tool",
+            "rumi_default_tools_pack.python-sandbox-execute-operation",
+        ),
+        (
+            "defaultspack",
+            "defaultspack.python-sandbox-guest",
+            "defaultspack.python-sandbox-guest-execute",
+        ),
+    ),
+)
+def test_python_sandbox_operations_outlive_bounded_guest_execution(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """The 60-second guest budget plus VZ overhead fits the 120-second cap."""
+    from scripts.generate_executable_catalogs_v4 import _operation_timeout_ms
+
+    assert _operation_timeout_ms(pack_id, function_id, operation_id) == 120_000
+    assert (
+        _operation_timeout_ms("defaultspack", "unrelated.function", "read")
+        == 30_000
+    )
+
+
+def test_python_sandbox_guest_schema_requires_every_script_field() -> None:
+    """The signed guest contract rejects script requests its runner rejects."""
+    catalog = json.loads(
+        (ROOT / "schemas" / "pack_v4_catalog.v1.json").read_text(encoding="utf-8")
+    )
+    pack = next(item for item in catalog["packs"] if item["pack_id"] == "defaultspack")
+    contract = next(
+        item
+        for item in pack["provided_contracts"]
+        if item["contract_id"] == "tobkiri.service.python.sandbox.v1"
+    )
+    schema = contract["schemas"]["input"]
+    script_branch = next(
+        branch
+        for branch in schema["oneOf"]
+        if branch["properties"].get("mode", {}).get("const") == "script"
+    )
+    assert set(script_branch["required"]) == {
+        "mode",
+        "script_path",
+        "arguments",
+        "stdin",
+    }
+
+    fixture = json.loads(
+        (ROOT / "tests" / "fixtures" / "legacy_executable_sources.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    host_entry = next(
+        entry
+        for entry in fixture["packs"]["rumi_default_tools_pack"]["entries"]
+        if entry["function_id"]
+        == "rumi_default_tools_pack.python-sandbox-execute-tool"
+    )
+    guest_entry = next(
+        entry
+        for entry in fixture["packs"]["defaultspack"]["entries"]
+        if entry["function_id"] == "defaultspack.python-sandbox-guest"
+    )
+    assert host_entry["operation_ids"] == [
+        "rumi_default_tools_pack.python-sandbox-execute-operation"
+    ]
+    assert guest_entry["operation_ids"] == [
+        "defaultspack.python-sandbox-guest-execute"
+    ]
+    assert host_entry["schemas"]["input"]["additionalProperties"] is False
+    assert guest_entry["schemas"]["input"]["additionalProperties"] is False

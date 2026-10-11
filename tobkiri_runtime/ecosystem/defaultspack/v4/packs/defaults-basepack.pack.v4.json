@@ -3,7 +3,7 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:e07ba18f4505349f6d28fd6f3ad200dc0192095cbb8972b8494835eb0805fa70",
+    "source_identity": "sha256:664db77d2223fe6c7cbf567e5a14a6fdc6eadc67f38ec8ec188384a270267206",
     "artifact_set_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
@@ -27,7 +27,7 @@
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
     "source_digest": "sha256:6ad7096abeb77f606c29c0c00d597f9eb5c60e22c23bf54006f940119c61ccd0",
-    "repository_commit": "working-tree",
+    "repository_commit": "60ba174681457e161480f59e361c6c6c783c37f3",
     "repository_commit_trusted": false,
     "content_root_digest": "sha256:1cb24473adbb5338821ad75eb1c3ea71e124c153dadcb349a2e8529a5304e4b5",
     "generator": "defaultspack-v4-core",

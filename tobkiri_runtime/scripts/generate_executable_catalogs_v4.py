@@ -73,6 +73,13 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
      "rumi_tool_local_executor_pack.tool-local-execute"): 300_000,
     ("rumi_default_tools_pack", "rumi_default_tools_pack.file-create-tool",
      "rumi_default_tools_pack.file-create-operation"): 120_000,
+    # Keep the Host adapter alive through the bounded VZ launch and execution.
+    ("rumi_default_tools_pack", "rumi_default_tools_pack.python-sandbox-execute-tool",
+     "rumi_default_tools_pack.python-sandbox-execute-operation"): 120_000,
+    # A Python request may consume its full 60-second guest budget after the
+    # bounded PackVM startup and snapshot staging complete.
+    ("defaultspack", "defaultspack.python-sandbox-guest",
+     "defaultspack.python-sandbox-guest-execute"): 120_000,
     # These startup reads can enter the selected presentation Pack through a
     # Host-owned nested call.  A first native launch includes the authenticated
     # PackVM cold start, which is bounded separately from steady-state reads.

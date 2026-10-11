@@ -3,6 +3,7 @@
 import tobkiri_host.saved_tool_entry_guards as _host_saved_tool_entry_guards
 import tobkiri_host.saved_tool_context as _host_saved_tool_context
 from dataclasses import replace
+import hashlib
 import threading
 import time
 from types import SimpleNamespace
@@ -37,6 +38,13 @@ from tests.test_tobkiri_host_authority_v4_adapter import (
     _NoAdapters,
 )
 from tobkiri_host.models import OpaqueAuthorityRef, RuntimeEvidence
+from tobkiri_host.saved_workspace_context import (
+    SavedWorkspaceExecutionBinding,
+    SavedWorkspaceExecutionRegistry,
+    resolve_saved_workspace,
+    workspace_resolution,
+)
+from tobkiri_protocol.canonical import canonical_json
 from tobkiri_host.contracts import OperationRoute, AdapterPlanner
 from tobkiri_host.broker import RequestBroker, PreparedInvocationSnapshot
 from tobkiri_host.backends import BackendRegistry
@@ -325,11 +333,13 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
             reconciliation=InMemoryReconciliationStore(),
         )
         root = fixture.context
+        saved_request_digest = _digest("saved-turn-request")
         saved = SimpleNamespace(
             envelope=SimpleNamespace(
                 contract_id="conversation.saved-turn.v1",
                 operation_id="saved_complete",
                 context=root,
+                request_digest=saved_request_digest,
                 payload={"request": {"turn_id": "turn-1", "action_approval_mode": mode}},
             ),
             parent=None,
@@ -472,8 +482,83 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
             "operation": operation,
             "provider_instance_id": function,
         }
+
+        workspace_registry = SavedWorkspaceExecutionRegistry()
+        workspace_binding = None
+        if tool_kind == "read":
+            workspace_id = "policy-broker-workspace"
+            mount_revision = 1
+            root_stat = tmp_path.stat()
+            mount_facts = {
+                "workspace_id": workspace_id,
+                "access": "read_only",
+                "canonical_root": str(tmp_path.resolve()),
+                "mount_revision": mount_revision,
+                "root_st_dev": root_stat.st_dev,
+                "root_st_ino": root_stat.st_ino,
+            }
+            selected_identity = {
+                **mount_facts,
+                "root_identity": hashlib.sha256(canonical_json(mount_facts)).hexdigest(),
+            }
+            owner = resolve_saved_workspace(
+                {
+                    "id": "policy-broker-conversation",
+                    "conversation_revision": 1,
+                    "conversation_kind": "coding",
+                    "metadata": {"mode": "coding", "workspace_id": workspace_id},
+                    "tags": [],
+                },
+                profile_id=root.profile_id,
+                read_binding=lambda request: {
+                    "mount": {
+                        "id": request["workspace_id"],
+                        "mount_revision": mount_revision,
+                    },
+                    "binding": {
+                        "workspace_id": request["workspace_id"],
+                        "mount_revision": mount_revision,
+                        "root_st_dev": root_stat.st_dev,
+                        "root_st_ino": root_stat.st_ino,
+                    },
+                },
+                guard=live,
+            )
+
+            def assert_workspace_live() -> None:
+                live()
+                if invocation.envelope.cancellation_requested.is_set():
+                    raise PermissionError("saved workspace request was cancelled")
+                if time.monotonic() >= invocation.envelope.deadline_monotonic:
+                    raise PermissionError("saved workspace request expired")
+
+            workspace_binding = SavedWorkspaceExecutionBinding(
+                saved_request_id=root.request_id,
+                saved_request_digest=saved_request_digest,
+                resolution=workspace_resolution(owner),
+                canonical_root=str(tmp_path.resolve()),
+                selected_workspace=lambda: dict(selected_identity),
+                read_owner=lambda: owner,
+                owner_context=canonical_json(
+                    {
+                        "conversation_kind": owner.get("conversation_kind"),
+                        "metadata_mode": owner["metadata"].get("mode"),
+                    }
+                ),
+                assert_live=assert_workspace_live,
+            )
+
+        def run_gate(selected_gate):
+            if workspace_binding is None:
+                return selected_gate(invocation, execution, payload)
+            with workspace_registry.register(workspace_binding):
+                captured = workspace_registry.capture(tool_broker.envelope, saved)
+                assert captured is workspace_binding
+                tool_broker.saved_workspace_binding = captured
+                return selected_gate(invocation, execution, payload)
+
         if outcome in {"approve", "restart"}:
-            assert gate(invocation, execution, payload) == {
+            assert run_gate(gate) == {
                 "result": "finite policy fixture" if tool_kind == "read" else 5
             }
             assert effects == [operation]
@@ -487,7 +572,7 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                 policy_selection=policy_root,
             )
             with pytest.raises(PermissionError, match="already claimed"):
-                reopened(invocation, execution, payload)
+                run_gate(reopened)
             if outcome == "restart":
                 resolver = harness.kernel._binding_resolver
                 harness.store = AuthorityStore(tmp_path / "authority.sqlite3", clock=harness.clock)
@@ -531,9 +616,9 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                     policy_selection=restored,
                 )
                 with pytest.raises(PermissionError, match="already claimed"):
-                    restarted_gate(invocation, execution, payload)
+                    run_gate(restarted_gate)
                 payload["tool_call_id"] = "call-after-reload"
-                assert restarted_gate(invocation, execution, payload) == {
+                assert run_gate(restarted_gate) == {
                     "result": "finite policy fixture" if tool_kind == "read" else 5
                 }
                 assert effects == [operation, operation]
@@ -541,6 +626,13 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
             with pytest.raises(
                 (AuthorityDenied, PermissionError, ValueError, ProviderExecutionError)
             ):
-                gate(invocation, execution, payload)
+                run_gate(gate)
             assert effects == []
-        assert releases == ([operation, operation] if outcome == "restart" else [operation])
+        expected_releases = (
+            []
+            if tool_kind == "read" and outcome == "cancel"
+            else [operation, operation]
+            if outcome == "restart"
+            else [operation]
+        )
+        assert releases == expected_releases

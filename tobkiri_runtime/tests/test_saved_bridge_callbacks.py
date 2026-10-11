@@ -539,7 +539,12 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         defaultspack_activation_snapshot_loader,
     )
     from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
-    from tests.test_live_production_v4_dispatch import _CapturedBackend, _bundle_root, _digest
+    from tests.test_live_production_v4_dispatch import (
+        _CapturedBackend,
+        _bundle_root,
+        _credential_store_factory,
+        _digest,
+    )
     from tobkiri_host.backends import BackendRegistry
     from tobkiri_host.broker import RequestEnvelope
     from tobkiri_host.effects import ProviderOutcome
@@ -640,6 +645,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         runtime_surface_factory=create_runtime_surface_services,
         backends=BackendRegistry((backend,)),
         target_backend_digests={principal.principal_id: backend.status.backend_digest},
+        credential_store_factory=_credential_store_factory,
     )
     try:
         assert backend.saved_callbacks is not None
@@ -744,7 +750,12 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         defaultspack_activation_snapshot_loader,
     )
     from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
-    from tests.test_live_production_v4_dispatch import _CapturedBackend, _bundle_root, _digest
+    from tests.test_live_production_v4_dispatch import (
+        _CapturedBackend,
+        _bundle_root,
+        _credential_store_factory,
+        _digest,
+    )
     from tobkiri_host.backends import BackendRegistry
     from tobkiri_host.effects import ProviderOutcome
     from tobkiri_host.runtime import V4DispatchSession
@@ -822,6 +833,7 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         runtime_surface_factory=create_runtime_surface_services,
         backends=BackendRegistry((backend,)),
         target_backend_digests={principal.principal_id: backend.status.backend_digest},
+        credential_store_factory=_credential_store_factory,
     )
     store = ConversationStore("defaults", user_data_root=user_data)
     store.create(

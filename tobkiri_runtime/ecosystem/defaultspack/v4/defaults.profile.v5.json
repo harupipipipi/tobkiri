@@ -209,7 +209,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:7bd85f6f218a577cbfd43ac95879b93ff03c8fe3b7ebee25d616377e6f1e98fa",
+    "source_digest": "sha256:89a16dea7aae65f3852cc9fcefca3273e997ccc0eb36c71bca95132a23c9ad62",
     "repository_commit": "working-tree",
     "repository_tree": "25972fb7a37ce7105bbe0cda4b62a2a38eedb3642269b1ed3205b453baa88e39",
     "generator": "tobkiri-profile-artifacts",
@@ -3371,7 +3371,7 @@
       "operation_id": "rumi_default_tools_pack.calculator-evaluate",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
         "dimensions": {
           "contract": [
             "tobkiri.service.tool.local.operation.v1"
@@ -4173,7 +4173,7 @@
       "operation_id": "rumi_default_tools_pack.files-read-operation",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
         "dimensions": {
           "contract": [
             "tobkiri.service.tool.local.operation.v1"
@@ -4454,7 +4454,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
         "dimensions": {
           "contract": [
             "tobkiri.service.tool.local.operation.v1"
@@ -5070,7 +5070,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
         "dimensions": {
           "contract": [
             "tobkiri.service.tool.local.operation.v1"
@@ -5114,7 +5114,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:83734bb882b63ac243f130496a199a88db4a5a3fc8c3aafa76d65592159e5ea8",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
         "dimensions": {
           "contract": [
             "tobkiri.service.tool.local.operation.v1"
@@ -5858,6 +5858,50 @@
           ],
           "operation": [
             "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_default_tools_pack.python-sandbox-execute-tool",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operation_id": "rumi_default_tools_pack.python-sandbox-execute-operation",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:2b254928ebb060594ad3c817b081bac74ab488a37388563ddb89907550da6914",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.local.operation.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.python-sandbox-execute-operation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_default_tools_pack.python-sandbox-execute-tool",
+      "target_provider_id": "defaultspack.python-sandbox-guest",
+      "contract_id": "tobkiri.service.python.sandbox.v1",
+      "operation_id": "defaultspack.python-sandbox-guest-execute",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.python.sandbox.v1"
+          ],
+          "operation": [
+            "defaultspack.python-sandbox-guest-execute"
           ]
         },
         "quotas": {},

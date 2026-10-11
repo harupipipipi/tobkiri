@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "047b08c60791cbefb8a307fa1d525c71dfd47f5780ecf4708d3ebc539e9c7eb9",
+    "digest": "08389f9cd0f739f5c34308dbbebc1baf7fe35b601afb94c757bd6d2b5deb8e58",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9483,
-        "sha256": "01cd00e02fb41897c08d48fe98212684dd94a532b2393fd4981f4388ed113dd3"
+        "size": 9518,
+        "sha256": "29085a6f33240dac0492dcfe291735529ee10e11d531517635cb2d7d6bb75077"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 444272,
-        "sha256": "fd40d63bcb3d3affdf9b5c58927f7ded128a82bd37477a59755534bb30965da8"
+        "size": 443977,
+        "sha256": "87dc6ebe53883cec56d68a63cbcc37bd69a28bb1a3abeea8e41176662b09ba54"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -635,8 +635,8 @@
       },
       {
         "path": "src/components/coding/CodingCockpit.tsx",
-        "size": 29270,
-        "sha256": "b8948b3191fba96b35536e919880175ca8570922a0ccd27cc36c72a5ac82d9fb"
+        "size": 29472,
+        "sha256": "db7f139c6b001fa77f150a7340f534e8eb9dca577d8fb7a964394c80b4b66d9d"
       },
       {
         "path": "src/components/coding/CodingCommandPanel.tsx",
@@ -2409,6 +2409,16 @@
         "sha256": "23d6f1ded2af76493c548fbdf9f0080abc82d5c189b1f1340124240954332967"
       },
       {
+        "path": "src/lib/savedCodingContext.test.ts",
+        "size": 5618,
+        "sha256": "70169825fef09f6d13c7c43e8b8aff0f819188a331ec57ebed1af12b22f3e5b5"
+      },
+      {
+        "path": "src/lib/savedCodingContext.ts",
+        "size": 3465,
+        "sha256": "63d77639d0fa30ba5a2346d8090ce131f62af8d0f7841f5ed09a369ccd4c774a"
+      },
+      {
         "path": "src/lib/scopedPendingChat.test.ts",
         "size": 3092,
         "sha256": "c8a86202e92ef86497a0f9454e26d9759a284fa5666fc0dc636985783d2cc121"
@@ -2981,7 +2991,7 @@
     ]
   },
   "bundle": {
-    "digest": "046c4f71e369d4e265ec51f77c253f393d6bdff2efa39ba56e3e964d8195dfba",
+    "digest": "bdee4c31084ef8784e6132be573fcd8ff6e571116267ada9da525dd94572325e",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2995,8 +3005,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2754070,
-        "sha256": "70e2304159f334a34e7328a1f3169bdee32f33d5ab53044f8dd4e59d06bda280"
+        "size": 2755485,
+        "sha256": "412a1d10ffc1d88549cbea738f91014fe3611906205ee649e4b402a7b14d3d8f"
       },
       {
         "path": "shell-icons.js",

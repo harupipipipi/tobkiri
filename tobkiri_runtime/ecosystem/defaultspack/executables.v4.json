@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:8b537255b523149d4957ab983c177e55135c2a2d56a525b44978fa541de87c68",
+  "catalog_digest": "sha256:dd346c78b5b3c1a601e14167d16bad43615213eca903679ea31e9a216e128949",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:c7bf3901840f6013f51e18881217710d38dec026a7e9fea34801d2252de475bc",
+  "source_identity": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f",
   "variants": [
     {
       "architecture": "any",
@@ -739,6 +739,223 @@
       "platform": "any",
       "runtime_abi": "python3.13",
       "variant_id": "defaultspack.conversation.saved.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "defaultspack.python-sandbox-guest",
+      "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "implementation_path": "runtime/python_sandbox_guest.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.python.sandbox.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "test_targets"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "script"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "script_path",
+                  "arguments",
+                  "stdin"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "script_path"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "arguments"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "stdin"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "unittest"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "test_targets"
+                ]
+              }
+            ],
+            "properties": {
+              "arguments": {
+                "items": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "cwd": {
+                "default": ".",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "script",
+                  "unittest"
+                ]
+              },
+              "script_path": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                "type": "string"
+              },
+              "stdin": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "test_targets": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "timeout_seconds": {
+                "maximum": 60,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_snapshot": {
+                "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content_base64": {
+                      "maxLength": 87384,
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content_base64"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              }
+            },
+            "required": [
+              "mode",
+              "cwd",
+              "timeout_seconds",
+              "workspace_snapshot"
+            ],
+            "type": "object"
+          },
+          "operation_id": "defaultspack.python-sandbox-guest-execute",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "maximum": 60000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "exit_code": {
+                "maximum": 255,
+                "minimum": -255,
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "completed",
+                  "failed"
+                ]
+              },
+              "stderr": {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              "stdout": {
+                "maxLength": 65536,
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "exit_code",
+              "stdout",
+              "stderr",
+              "duration_ms"
+            ],
+            "type": "object"
+          },
+          "revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "defaultspack.python-sandbox-guest.python"
     }
   ]
 }

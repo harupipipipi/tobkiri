@@ -19,6 +19,7 @@ from scripts.generate_packaged_defaultspack_v4_bundle import package_bundle
 from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
 from tests.conformance_support.host_contract import host_contract
 from tobkiri_host.backends import BackendRegistry
+from tobkiri_host.credential_store import host_credential_store_factory
 
 _RUNTIME_ROOT = Path(__file__).resolve().parents[2]
 
@@ -119,6 +120,7 @@ def captured_host_profile(
             authority_store=store,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
+            credential_store_factory=host_credential_store_factory,
             backends=BackendRegistry(backends),
         )
         yield session, store
