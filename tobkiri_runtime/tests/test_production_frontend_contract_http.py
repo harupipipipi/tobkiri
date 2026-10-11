@@ -276,7 +276,7 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
             "request_id": request_id,
             "target_domain": domain,
             "guest_artifact_identity": request.target_principal.value,
-            "request_digest": canonical_digest(payload),
+            "request_digest": request.request_digest,
             "deadline_monotonic": str(request.deadline_monotonic),
             "payload": payload,
         }
