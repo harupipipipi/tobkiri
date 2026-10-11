@@ -194,7 +194,7 @@ def validate_saved_conversation_context(
         or not isinstance(workspace_id, str)
         or not workspace_id
     ):
-        raise ValueError("saved bridge coding context is incomplete")
+        raise ValueError("saved bridge coding context resolution is incomplete")
     if workspace_id and (
         type(workspace_resolution) is not SavedWorkspaceResolution
         or workspace_resolution.conversation_id != conversation.get("id")

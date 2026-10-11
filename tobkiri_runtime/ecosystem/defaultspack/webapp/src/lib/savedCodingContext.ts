@@ -39,6 +39,8 @@ export function savedCodingContext(input: {
   if (conversation && (conversation.group_id
     || ![null, undefined, "", "chat", "coding"].includes(conversation.conversation_kind)
     || conversation.metadata?.workspace_id !== id
+    || (conversation.conversation_kind === "coding" && conversation.metadata?.mode !== "coding")
+    || (conversation.metadata?.mode === "coding" && conversation.conversation_kind !== "coding")
     || (conversation.metadata?.mode != null && conversation.metadata.mode !== "coding"))) {
     throw new Error("会話の作業フォルダが変わりました。選び直してから送信してください。");
   }

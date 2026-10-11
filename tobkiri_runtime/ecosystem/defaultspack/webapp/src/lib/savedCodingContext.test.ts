@@ -25,6 +25,10 @@ test("refetched coding conversation with a stale workspace fails closed", () => 
   assert.throws(() => savedCodingContext({...base,conversation:{metadata:{workspace_id:"other"}}}));
   assert.throws(() => savedCodingContext({...base,conversation:{conversation_kind:"coding",
     metadata:{mode:"coding",workspace_id:"workspace.other"}}}));
+  assert.throws(() => savedCodingContext({...base,conversation:{conversation_kind:"coding",
+    metadata:{workspace_id:"workspace.one"}}}));
+  assert.throws(() => savedCodingContext({...base,conversation:{conversation_kind:"chat",
+    metadata:{mode:"coding",workspace_id:"workspace.one"}}}));
 });
 test("legacy root group multiple bindings aliases remain denied", () => {
   for (const key of ["groupId","workspaceRoot","workspaceBindings","rumiDataPath"]) {

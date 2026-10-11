@@ -1007,7 +1007,8 @@ class SavedBridgeCallbacks:
                     if (
                         not callable(is_set)
                         or is_set()
-                        or type(deadline) not in (int, float)
+                        or not isinstance(deadline, (int, float))
+                        or isinstance(deadline, bool)
                         or not math.isfinite(deadline)
                         or time.monotonic() >= deadline
                     ):
