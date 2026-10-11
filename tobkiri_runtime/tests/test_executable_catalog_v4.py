@@ -217,6 +217,10 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
         ("conversation.saved-turn.v1", "saved_complete"),
         ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
         (
+            "tobkiri.service.python.sandbox.v1",
+            "defaultspack.python-sandbox-guest-execute",
+        ),
+        (
             "tobkiri.service.file.inspect.v1",
             "rumi_file_inspect_pack.file-inspect",
         ),
@@ -229,6 +233,10 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
         ("conversation.turn.v1", "complete"),
         ("conversation.saved-turn.v1", "saved_complete"),
         ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
+        (
+            "tobkiri.service.python.sandbox.v1",
+            "defaultspack.python-sandbox-guest-execute",
+        ),
     }
     assert set(inspect.routes) == {
         (
