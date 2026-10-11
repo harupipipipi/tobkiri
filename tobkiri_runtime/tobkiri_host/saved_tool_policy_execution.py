@@ -24,7 +24,15 @@ from .saved_tool_context import (
     SAVED_TOOL_CAPTURE_FIELDS,
     saved_tool_owner_and_request_scope,
 )
-from .saved_tool_consent import SavedToolConsentExecution
+from .saved_tool_consent import (
+    PYTHON_SANDBOX_OPERATION,
+    SavedToolConsentExecution,
+    validate_python_sandbox_payload,
+)
+from tobkiri_host.saved_workspace_context import (
+    require_saved_workspace_binding,
+    saved_workspace_binding,
+)
 
 
 def requested_saved_tool_mode(invocation: Any) -> tuple[str, str]:
@@ -101,8 +109,26 @@ class SavedToolApprovalExecution:
             "rumi_default_tools_pack.files-read-operation",
             "rumi_default_tools_pack.calculator-evaluate",
             "rumi_default_tools_pack.file-create-operation",
+            PYTHON_SANDBOX_OPERATION,
         }:
             raise PermissionError("saved tool delegated target is unsupported")
+        workspace_binding = None
+        if execution["operation"] == "rumi_default_tools_pack.file-create-operation":
+            # Preserve the existing no-workspace-ID saved create path, which
+            # still settles through native selected-policy and jailed writes.
+            # Workspace-bearing owners inherit their exact Host binding.
+            workspace_binding = saved_workspace_binding(invocation)
+        elif execution["operation"] == "rumi_default_tools_pack.files-read-operation":
+            workspace_binding = saved_workspace_binding(invocation)
+            if (
+                isinstance(payload.get("tool_id"), str)
+                and payload["tool_id"].startswith("coding_")
+                and workspace_binding is None
+            ):
+                raise PermissionError("saved coding workspace proof is unavailable")
+        elif execution["operation"] == PYTHON_SANDBOX_OPERATION:
+            workspace_binding = require_saved_workspace_binding(invocation)
+            workspace_binding.assert_current()
         frozen = strict_loads(
             canonical_json({"execution": dict(execution), "payload": dict(payload)})
         )
@@ -116,7 +142,7 @@ class SavedToolApprovalExecution:
             ):
                 raise PermissionError("saved file create payload is invalid")
             create_arguments(frozen["payload"]["arguments"])
-        else:
+        elif execution["operation"] == "rumi_default_tools_pack.calculator-evaluate":
             args = frozen["payload"].get("arguments")
             if (
                 set(frozen["payload"]) != {"tool_id", "tool_call_id", "arguments"}
@@ -126,6 +152,8 @@ class SavedToolApprovalExecution:
             ):
                 raise PermissionError("saved tool calculator arguments are invalid")
             calculate(args["expression"])
+        else:
+            frozen["payload"] = validate_python_sandbox_payload(frozen["payload"])
         operation_digest = canonical_digest(frozen)
         reservation = self._admissions.reserve(
             {
@@ -168,6 +196,8 @@ class SavedToolApprovalExecution:
 
             def before_settlement() -> None:
                 invocation.assert_current()
+                if workspace_binding is not None:
+                    workspace_binding.assert_current()
                 if invocation.envelope.cancellation_requested.is_set():
                     raise PermissionError("saved tool operation was cancelled")
                 current_root, current_scope = saved_tool_owner_and_request_scope(

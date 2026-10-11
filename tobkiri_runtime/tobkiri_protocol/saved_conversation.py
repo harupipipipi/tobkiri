@@ -185,6 +185,16 @@ def validate_saved_conversation_context(
     if not isinstance(metadata, Mapping) or not isinstance(tags, list):
         raise ValueError("saved bridge owned context is invalid")
     workspace_id = metadata.get("workspace_id")
+    conversation_kind = conversation.get("conversation_kind")
+    mode = metadata.get("mode")
+    coding_context = conversation_kind == "coding" or mode == "coding"
+    if coding_context and (
+        conversation_kind != "coding"
+        or mode != "coding"
+        or not isinstance(workspace_id, str)
+        or not workspace_id
+    ):
+        raise ValueError("saved bridge coding context is incomplete")
     if workspace_id and (
         type(workspace_resolution) is not SavedWorkspaceResolution
         or workspace_resolution.conversation_id != conversation.get("id")
@@ -207,24 +217,43 @@ def validate_saved_conversation_context(
         raise ValueError("saved bridge workspace resolution is required")
     if (
         conversation.get("agent_id")
-        or conversation.get("conversation_kind") not in (None, "", "chat")
+        or conversation_kind not in (None, "", "chat", "coding")
         or conversation.get("group_id")
         or any(
             metadata.get(key)
             for key in (
                 "group_id",
                 "groupId",
+                "group_ids",
+                "groupIds",
+                "agent_id",
+                "agentId",
                 "workspaceId",
                 "workspace_root",
                 "workspaceRoot",
+                "workspace_path",
+                "workspacePath",
+                "project_root",
+                "projectRoot",
+                "workspace_ids",
+                "workspaceIds",
+                "workspaces",
+                "primary_workspace_id",
+                "primaryWorkspaceId",
                 "rootPath",
+                "root_path",
+                "canonical_root",
+                "canonicalRoot",
+                "host_path",
+                "path",
+                "directory",
                 "rumi_data_path",
                 "rumiDataPath",
                 "rumi_dp_path",
                 "shared_read_only",
             )
         )
-        or metadata.get("mode") not in (None, "", "chat")
+        or mode not in (None, "", "chat", "coding")
         or metadata.get("profile_id")
         in (
             "defaultspack.operations_company",

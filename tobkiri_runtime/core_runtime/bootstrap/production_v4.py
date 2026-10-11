@@ -2533,10 +2533,28 @@ def capture_production_dispatch(
         except (AuthorityDenied, PermissionError, RuntimeError, ValueError):
             return False
 
+    from tobkiri_host.saved_workspace_context import SavedWorkspaceExecutionRegistry
+
+    saved_workspace_execution_registry = SavedWorkspaceExecutionRegistry()
+
+    def saved_selected_workspace() -> Mapping[str, Any]:
+        from ecosystem.rumi_workspace_mount_pack.runtime.mounts import (
+            capture_selected_workspace_binding,
+        )
+
+        if not dispatch_holder:
+            raise AuthorityDenied("saved workspace capture is unavailable")
+        dispatch_holder[0].assert_current()
+        return capture_selected_workspace_binding(
+            str(profile["profile_id"]), user_data_root=authority_user_data,
+        )
+
     saved_callbacks = SavedBridgeCallbacks(
         saved_dispatch,
         require_saved_targets,
         saved_stream_available,
+        saved_workspace_execution_registry,
+        saved_selected_workspace,
     )
 
     def saved_capability_bridge(
@@ -2715,19 +2733,26 @@ def capture_production_dispatch(
         with caller_session_bindings_lock:
             parent = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
         saved_tool_entry_guard = saved_tool_entry_guards.capture(envelope)
+        saved_workspace_binding = saved_workspace_execution_registry.capture(
+            envelope, parent
+        )
 
         def guard() -> None:
             with _capture_guard_traversal(assert_current_capture):
                 assert_dispatched_invocation(envelope, authority_store)
                 if saved_tool_entry_guard is not None:
                     saved_tool_entry_guard()
+                if saved_workspace_binding is not None:
+                    saved_workspace_binding.assert_current()
                 if parent is not None:
                     parent.assert_current()
                 if not dispatch_holder:
                     raise AuthorityDenied("captured dispatch is unavailable")
                 dispatch_holder[0].assert_current()
 
-        return CapturedInvocationScopeV4(envelope, guard, parent)
+        return CapturedInvocationScopeV4(
+            envelope, guard, parent, saved_workspace_binding
+        )
 
     def bind_nested_session(
         session_id: str,
@@ -3897,13 +3922,9 @@ def capture_production_dispatch(
             and workspace_binding_resolver is not None
             and authority_approval_window_open is not None):
         from core_runtime.bootstrap.saved_tool_policy_composition_v4 import compose_saved_tool_policy_v4
-        from ecosystem.rumi_workspace_mount_pack.runtime.mounts import capture_selected_workspace_binding
 
         def current_selected_workspace() -> Mapping[str, Any]:
-            assert_current_capture()
-            return capture_selected_workspace_binding(
-                str(profile["profile_id"]), user_data_root=authority_user_data,
-            )
+            return saved_selected_workspace()
 
         def policy_owner_context(function_id: str) -> HostProviderCaptureContextV4:
             matches = tuple(item for item in loaded_host_factories if item[0] == function_id)

@@ -78,6 +78,8 @@ class SavedHostExchange:
             self._user_current_node_id,
             self._tool_plan.ai_mode if self._tool_plan else "buffered",
             self._workspace_context_owner,
+            self.identity.request_id,
+            self._request_digest,
         )
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:

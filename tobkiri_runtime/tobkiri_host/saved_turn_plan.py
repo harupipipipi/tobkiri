@@ -36,6 +36,8 @@ class SavedToolFrame:
     expected_current_node_id: str | None
     ai_mode: str = "buffered"
     workspace_context_owner: SavedWorkspacePins | None = None
+    saved_request_id: str | None = None
+    saved_request_digest: str | None = None
 
 
 class SavedTurnPlan:

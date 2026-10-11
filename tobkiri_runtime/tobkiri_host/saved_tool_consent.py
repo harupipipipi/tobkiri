@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import time
 import uuid
+import re
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 if TYPE_CHECKING:
@@ -26,6 +28,10 @@ from tobkiri_host.saved_tool_context import (
     saved_tool_owner_and_request_scope,
     SAVED_TOOL_CAPTURE_FIELDS,
 )
+from tobkiri_host.saved_workspace_context import (
+    require_saved_workspace_binding,
+    saved_workspace_binding,
+)
 from tobkiri_host.ports import (
     InteractiveApprovalRequestCommand,
     InteractiveApprovalGrantAttestation,
@@ -34,6 +40,128 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_
 
 CONSENT_CONTRACT = "tobkiri.action.host.consent.v1"
 CONSENT_OPERATION = "host_consent.admit"
+PYTHON_SANDBOX_OPERATION = "rumi_default_tools_pack.python-sandbox-execute-operation"
+_PYTHON_MODULE_ID = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
+)
+_PYTHON_TOOL_CALL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
+_PYTHON_ARGUMENT_LIMIT = 32
+_PYTHON_ARGUMENT_BYTES_LIMIT = 1024
+_PYTHON_ARGUMENT_TOTAL_BYTES_LIMIT = 16 * 1024
+_PYTHON_STDIN_BYTES_LIMIT = 16 * 1024
+_PYTHON_PATH_BYTES_LIMIT = 512
+
+
+def _python_utf8_size(value: str) -> int:
+    try:
+        return len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise ValueError("Python sandbox text is not valid UTF-8") from None
+
+
+def validate_python_sandbox_arguments(value: Any) -> dict[str, Any]:
+    """Validate only the closed public arguments for Python sandbox execution."""
+    if not isinstance(value, Mapping):
+        raise ValueError("Python sandbox arguments must be an object")
+    mode = value.get("mode")
+    common = {"mode", "cwd", "timeout_seconds"}
+    if mode == "script":
+        expected = common | {"script_path", "arguments", "stdin"}
+        if set(value) != expected:
+            raise ValueError("Python script arguments are invalid")
+        script_path = _python_relative_path(value["script_path"], suffix=".py")
+        arguments = value["arguments"]
+        if not isinstance(arguments, list) or len(arguments) > _PYTHON_ARGUMENT_LIMIT:
+            raise ValueError("Python CLI arguments are invalid")
+        total = 0
+        for item in arguments:
+            if not isinstance(item, str) or not item or "\x00" in item:
+                raise ValueError("Python CLI argument is invalid")
+            size = _python_utf8_size(item)
+            if size > _PYTHON_ARGUMENT_BYTES_LIMIT:
+                raise ValueError("Python CLI argument exceeds its limit")
+            total += size
+        if total > _PYTHON_ARGUMENT_TOTAL_BYTES_LIMIT:
+            raise ValueError("Python CLI arguments exceed their total limit")
+        stdin = value["stdin"]
+        if (
+            not isinstance(stdin, str)
+            or _python_utf8_size(stdin) > _PYTHON_STDIN_BYTES_LIMIT
+        ):
+            raise ValueError("Python script stdin exceeds its limit")
+        operation: dict[str, Any] = {
+            "mode": "script",
+            "script_path": script_path,
+            "arguments": list(arguments),
+            "stdin": stdin,
+        }
+    elif mode == "unittest":
+        expected = common | {"test_targets"}
+        if set(value) != expected:
+            raise ValueError("Python unittest arguments are invalid")
+        targets = value["test_targets"]
+        if (
+            not isinstance(targets, list)
+            or not 1 <= len(targets) <= 16
+            or any(
+                not isinstance(item, str)
+                or len(item) > 256
+                or _PYTHON_MODULE_ID.fullmatch(item) is None
+                for item in targets
+            )
+            or len(set(targets)) != len(targets)
+        ):
+            raise ValueError("Python unittest targets are invalid")
+        operation = {"mode": "unittest", "test_targets": list(targets)}
+    else:
+        raise ValueError("Python sandbox mode is unsupported")
+
+    cwd = _python_relative_path(value["cwd"], allow_dot=True)
+    timeout = value["timeout_seconds"]
+    if type(timeout) is not int or not 1 <= timeout <= 60:
+        raise ValueError("Python sandbox timeout is invalid")
+    return {**operation, "cwd": cwd, "timeout_seconds": timeout}
+
+
+def _python_relative_path(
+    value: Any, *, suffix: str | None = None, allow_dot: bool = False
+) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or _python_utf8_size(value) > _PYTHON_PATH_BYTES_LIMIT
+        or "\x00" in value
+        or "\\" in value
+        or value.startswith(("/", "~"))
+        or ":" in value
+    ):
+        raise ValueError("Python sandbox path must be relative")
+    if allow_dot and value == ".":
+        return "."
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("Python sandbox path is not canonical")
+    path = PurePosixPath(*parts).as_posix()
+    if path != value or (suffix is not None and not path.endswith(suffix)):
+        raise ValueError("Python sandbox path is not canonical")
+    return path
+
+
+def validate_python_sandbox_payload(payload: Any) -> dict[str, Any]:
+    """Validate the public tool envelope and return its normalized arguments."""
+    if (
+        not isinstance(payload, Mapping)
+        or set(payload) != {"tool_id", "tool_call_id", "arguments"}
+        or payload.get("tool_id") != "python_sandbox_execute"
+        or not isinstance(payload.get("tool_call_id"), str)
+        or _PYTHON_TOOL_CALL_ID.fullmatch(payload.get("tool_call_id", "")) is None
+    ):
+        raise ValueError("Python sandbox tool payload is invalid")
+    return {
+        "tool_id": "python_sandbox_execute",
+        "tool_call_id": payload["tool_call_id"],
+        "arguments": validate_python_sandbox_arguments(payload["arguments"]),
+    }
 
 
 @dataclass(frozen=True)
@@ -141,8 +269,14 @@ class SavedToolConsentExecution:
         ) != "tobkiri.service.tool.local.operation.v1" or execution.get("operation") not in {
             "rumi_default_tools_pack.files-read-operation",
             "rumi_default_tools_pack.calculator-evaluate",
+            PYTHON_SANDBOX_OPERATION,
         }:
             raise PermissionError("native saved tool read route is unsupported")
+        workspace_binding = None
+        if execution["operation"] == PYTHON_SANDBOX_OPERATION:
+            frozen["payload"] = validate_python_sandbox_payload(frozen["payload"])
+            workspace_binding = require_saved_workspace_binding(invocation)
+            workspace_binding.assert_current()
         capture_digest = canonical_digest(
             {key: getattr(root, key) for key in SAVED_TOOL_CAPTURE_FIELDS}
         )
@@ -158,7 +292,13 @@ class SavedToolConsentExecution:
         )
         if execution["operation"] == "rumi_default_tools_pack.files-read-operation":
             file_arguments(frozen["payload"])
-        else:
+            workspace_binding = saved_workspace_binding(invocation)
+            if (
+                frozen["payload"]["tool_id"].startswith("coding_")
+                and workspace_binding is None
+            ):
+                raise PermissionError("saved coding workspace proof is unavailable")
+        elif execution["operation"] == "rumi_default_tools_pack.calculator-evaluate":
             if (
                 set(frozen["payload"]) != {"tool_id", "tool_call_id", "arguments"}
                 or frozen["payload"]["tool_id"] != "calculator"
@@ -322,6 +462,8 @@ class SavedToolConsentExecution:
 
                 def read_guard() -> None:
                     self._guard(invocation, root, turn, frozen, execution, payload)
+                    if workspace_binding is not None:
+                        workspace_binding.assert_current()
                     self._consent_proof.assert_current(proof)
 
                 reservation = self._admissions.admit(

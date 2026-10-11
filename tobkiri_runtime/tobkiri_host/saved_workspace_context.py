@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
+import hashlib
 from threading import RLock
 import re
-from typing import Any
+from typing import Any, Iterator
 
+from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.saved_conversation import (
     SavedWorkspaceResolution,
     validate_saved_conversation_context,
@@ -16,6 +20,9 @@ from tobkiri_protocol.saved_conversation import (
 WORKSPACE_TARGET = (
     "tobkiri.resource.workspace.v1",
     "rumi_workspace_mount_pack.workspace-resource",
+)
+_SAVED_WORKSPACE_OWNER_RECHECK: ContextVar[object | None] = ContextVar(
+    "saved_workspace_owner_recheck", default=None
 )
 
 
@@ -117,6 +124,240 @@ def same_workspace_mount(
         replace(previous, conversation_revision=current.conversation_revision)
         == current
     )
+
+
+class SavedWorkspaceExecutionLease:
+    """Single-dispatch lifetime for every inherited workspace proof."""
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self._token: object | None = None
+
+    def activate(self, token: object) -> None:
+        """Activate this binding for exactly one saved tool dispatch."""
+        with self._lock:
+            if self._token is not None:
+                raise PermissionError("saved workspace execution lease is active")
+            self._token = token
+
+    def release(self, token: object) -> None:
+        """End the exact dispatch that owns this proof."""
+        with self._lock:
+            if self._token is token:
+                self._token = None
+
+    def assert_active(self) -> None:
+        """Reject captured descendants after the saved dispatch has ended."""
+        with self._lock:
+            if self._token is None:
+                raise PermissionError("saved workspace execution lease expired")
+
+
+@dataclass(frozen=True)
+class SavedWorkspaceExecutionBinding:
+    """Private exact owner and selected-mount proof for one saved tool effect."""
+
+    saved_request_id: str
+    saved_request_digest: str
+    resolution: SavedWorkspaceResolution
+    canonical_root: str
+    selected_workspace: Callable[[], Mapping[str, Any]]
+    read_owner: Callable[[], Mapping[str, Any]]
+    owner_context: bytes
+    assert_live: Callable[[], None]
+    lease: SavedWorkspaceExecutionLease = field(
+        default_factory=SavedWorkspaceExecutionLease, compare=False, repr=False
+    )
+
+    def assert_current(self) -> None:
+        """Re-read the exact saved owner, active request and Host-selected mount."""
+        if (
+            not self.saved_request_id
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", self.saved_request_digest)
+            or type(self.resolution) is not SavedWorkspaceResolution
+            or not self.canonical_root
+            or not callable(self.assert_live)
+            or type(self.lease) is not SavedWorkspaceExecutionLease
+        ):
+            raise PermissionError("saved workspace execution binding is invalid")
+        self.lease.assert_active()
+        self.assert_live()
+        if _SAVED_WORKSPACE_OWNER_RECHECK.get() is self:
+            # The active Host owner read creates Broker descendants whose
+            # parent ancestry includes this binding. Keep those descendants'
+            # own lease, cancellation, parent, and dispatch guards live while
+            # avoiding recursively launching another owner read.
+            return
+        token = _SAVED_WORKSPACE_OWNER_RECHECK.set(self)
+        try:
+            current = self.read_owner()
+        finally:
+            _SAVED_WORKSPACE_OWNER_RECHECK.reset(token)
+        fresh = workspace_resolution(current)
+        metadata = current.get("metadata")
+        if (
+            fresh != self.resolution
+            or type(current) is not ResolvedWorkspaceConversation
+            or not isinstance(metadata, Mapping)
+            or metadata.get("workspace_id") != self.resolution.workspace_id
+            or canonical_json(
+                {
+                    "conversation_kind": current.get("conversation_kind"),
+                    "metadata_mode": metadata.get("mode"),
+                }
+            )
+            != self.owner_context
+            or current.get("conversation_revision")
+            != self.resolution.conversation_revision
+        ):
+            raise PermissionError("saved workspace owner changed before effect")
+        self.assert_live()
+        selected = self.selected_workspace()
+        self.assert_live()
+        selected_identity = {
+            "workspace_id": self.resolution.workspace_id,
+            "access": "read_only",
+            "canonical_root": self.canonical_root,
+            "mount_revision": self.resolution.mount_revision,
+            "root_st_dev": self.resolution.root_st_dev,
+            "root_st_ino": self.resolution.root_st_ino,
+        }
+        if (
+            not isinstance(selected, Mapping)
+            or any(
+                selected.get(key) != value
+                for key, value in selected_identity.items()
+            )
+            or selected.get("root_identity")
+            != hashlib.sha256(canonical_json(selected_identity)).hexdigest()
+        ):
+            raise PermissionError("saved workspace selected binding changed")
+
+
+class SavedWorkspaceExecutionRegistry:
+    """Retain one exact owner proof only while its saved tool dispatch is live."""
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self._entries: dict[
+            tuple[str, str], tuple[SavedWorkspaceExecutionBinding, object]
+        ] = {}
+
+    @contextmanager
+    def register(
+        self, binding: SavedWorkspaceExecutionBinding
+    ) -> Iterator[None]:
+        """Bind a proof to one exact Host saved request and its accepted digest."""
+        if type(binding) is not SavedWorkspaceExecutionBinding:
+            raise PermissionError("saved workspace execution binding is invalid")
+        key = (binding.saved_request_id, binding.saved_request_digest)
+        with self._lock:
+            if key in self._entries:
+                raise PermissionError("saved workspace execution is already registered")
+        token = object()
+        binding.lease.activate(token)
+        try:
+            binding.assert_current()
+            with self._lock:
+                if key in self._entries:
+                    raise PermissionError(
+                        "saved workspace execution is already registered"
+                    )
+                self._entries[key] = (binding, token)
+        except BaseException:
+            binding.lease.release(token)
+            raise
+        try:
+            yield
+        finally:
+            with self._lock:
+                current = self._entries.get(key)
+                if current is not None and current[1] is token:
+                    del self._entries[key]
+            binding.lease.release(token)
+
+    def capture(
+        self, envelope: Any, parent: Any
+    ) -> SavedWorkspaceExecutionBinding | None:
+        """Capture only through an exact saved_complete ancestor scope."""
+        if (envelope.contract_id, envelope.operation_id) not in {
+            ("tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke"),
+            (
+                "tobkiri.service.tool.local.operation.v1",
+                "rumi_tool_local_executor_pack.tool-local-execute",
+            ),
+            ("tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create"),
+        }:
+            return None
+        scopes: list[Any] = []
+        scope = parent
+        while scope is not None:
+            if len(scopes) >= 16 or any(scope is prior for prior in scopes):
+                raise PermissionError("saved workspace ancestry is invalid")
+            scope.assert_current()
+            scopes.append(scope)
+            scope = scope.parent
+        matches: list[SavedWorkspaceExecutionBinding] = []
+        with self._lock:
+            for ancestor in scopes:
+                request_id = ancestor.envelope.context.request_id
+                request_digest = ancestor.envelope.request_digest
+                entry = self._entries.get((request_id, request_digest))
+                if entry is None:
+                    continue
+                if (
+                    (ancestor.envelope.contract_id, ancestor.envelope.operation_id)
+                    != ("conversation.saved-turn.v1", "saved_complete")
+                ):
+                    raise PermissionError("saved workspace owner scope changed")
+                matches.append(entry[0])
+        if len(matches) > 1:
+            raise PermissionError("saved workspace ancestry is ambiguous")
+        if not matches:
+            return None
+        binding = matches[0]
+        if (
+            getattr(envelope.context, "profile_id", None)
+            != binding.resolution.profile_id
+        ):
+            raise PermissionError("saved workspace profile changed")
+        binding.assert_current()
+        return binding
+
+
+def require_saved_workspace_binding(invocation: Any) -> SavedWorkspaceExecutionBinding:
+    """Require the exact workspace proof inherited through captured scopes."""
+    binding = saved_workspace_binding(invocation)
+    if binding is None:
+        raise PermissionError("saved workspace proof is unavailable")
+    return binding
+
+
+def saved_workspace_binding(
+    invocation: Any,
+) -> SavedWorkspaceExecutionBinding | None:
+    """Return an inherited saved owner proof, if this call has one."""
+    invocation.assert_current()
+    found: list[SavedWorkspaceExecutionBinding] = []
+    scopes: list[Any] = []
+    scope = getattr(invocation, "parent_invocation", None)
+    while scope is not None:
+        if len(scopes) >= 16 or any(scope is prior for prior in scopes):
+            raise PermissionError("saved workspace ancestry is invalid")
+        scope.assert_current()
+        scopes.append(scope)
+        binding = getattr(scope, "saved_workspace_binding", None)
+        if binding is not None:
+            if type(binding) is not SavedWorkspaceExecutionBinding:
+                raise PermissionError("saved workspace ancestry proof is invalid")
+            found.append(binding)
+        scope = scope.parent
+    if not found:
+        return None
+    if any(item is not found[0] for item in found[1:]):
+        raise PermissionError("saved workspace ancestry proof is ambiguous")
+    found[0].assert_current()
+    return found[0]
 
 
 class SavedWorkspacePins:

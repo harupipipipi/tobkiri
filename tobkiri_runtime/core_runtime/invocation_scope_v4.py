@@ -20,6 +20,7 @@ class CapturedInvocationScopeV4:
     envelope: RequestEnvelope
     assert_current: Callable[[], None]
     parent: CapturedInvocationScopeV4 | None = None
+    saved_workspace_binding: Any = None
 
     def public_payload(self) -> dict[str, Any]:
         """Copy normalized input without Host session metadata or mutable aliases."""

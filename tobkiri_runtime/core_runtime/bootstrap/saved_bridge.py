@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from tobkiri_host.saved_workspace_context import (
-    WORKSPACE_TARGET, SavedWorkspacePins, resolve_saved_workspace,
+    WORKSPACE_TARGET, SavedWorkspaceExecutionBinding,
+    SavedWorkspaceExecutionRegistry, SavedWorkspacePins, resolve_saved_workspace,
     workspace_resolution, recheck_saved_workspace,
 )
 
@@ -393,10 +394,14 @@ class SavedBridgeCallbacks:
         dispatch: Dispatch,
         require_targets: RequireTargets,
         stream_available: Callable[[object, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
+        workspace_execution_registry: SavedWorkspaceExecutionRegistry | None = None,
+        selected_workspace: Callable[[], Mapping[str, Any]] | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
         self._stream_available = stream_available
+        self._workspace_execution_registry = workspace_execution_registry
+        self._selected_workspace = selected_workspace
 
     def _stream_ready(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
@@ -683,10 +688,17 @@ class SavedBridgeCallbacks:
         owner_revision: int | None = None
         owner_current_node_id: str | None = None
         ai_mode = "buffered"
+        workspace_execution: SavedWorkspaceExecutionBinding | None = None
+        workspace_owner: SavedWorkspacePins | None = None
+        saved_request_id: str | None = None
+        saved_request_digest: str | None = None
         if isinstance(frame, SavedToolFrame):
             owner_revision = frame.expected_conversation_revision
             owner_current_node_id = frame.expected_current_node_id
             ai_mode = frame.ai_mode
+            workspace_owner = frame.workspace_context_owner
+            saved_request_id = frame.saved_request_id
+            saved_request_digest = frame.saved_request_digest
             stage = frame.stage
             if enabled:
                 if frame.initial_digest != canonical_digest({"request": request}):
@@ -951,6 +963,77 @@ class SavedBridgeCallbacks:
                 conversation, owner_revision, owner_current_node_id
             )
             self._require_targets(outer, TOOL_TARGETS)
+            tool_id = payload.get("tool_id")
+            resolution = workspace_resolution(conversation)
+            if resolution is not None:
+                selected_reader = self._selected_workspace
+                if (
+                    self._workspace_execution_registry is None
+                    or not callable(selected_reader)
+                    or resolution is None
+                    or type(workspace_owner) is not SavedWorkspacePins
+                    or not isinstance(saved_request_id, str)
+                    or not isinstance(saved_request_digest, str)
+                ):
+                    raise AuthorityDenied("saved coding workspace proof is unavailable")
+                selected = selected_reader()
+                root = selected.get("canonical_root")
+                if (
+                    selected.get("workspace_id") != resolution.workspace_id
+                    or selected.get("access") != "read_only"
+                    or selected.get("mount_revision") != resolution.mount_revision
+                    or selected.get("root_st_dev") != resolution.root_st_dev
+                    or selected.get("root_st_ino") != resolution.root_st_ino
+                    or not isinstance(root, str)
+                    or not root
+                ):
+                    raise AuthorityDenied("saved coding selected workspace changed")
+
+                def read_acknowledged_owner() -> Mapping[str, Any]:
+                    pin_token = _WORKSPACE_PIN.set(workspace_owner)
+                    try:
+                        fresh = self._conversation(outer, request)
+                        self._require_acknowledged_branch(
+                            fresh, owner_revision, owner_current_node_id
+                        )
+                        return fresh
+                    finally:
+                        _WORKSPACE_PIN.reset(pin_token)
+
+                def assert_request_live() -> None:
+                    cancellation = getattr(outer, "cancellation_requested", None)
+                    is_set = getattr(cancellation, "is_set", None)
+                    deadline = getattr(outer, "deadline_monotonic", None)
+                    if (
+                        not callable(is_set)
+                        or is_set()
+                        or type(deadline) not in (int, float)
+                        or not math.isfinite(deadline)
+                        or time.monotonic() >= deadline
+                    ):
+                        raise AuthorityDenied(
+                            "saved workspace request is cancelled or expired"
+                        )
+
+                workspace_execution = SavedWorkspaceExecutionBinding(
+                    saved_request_id=saved_request_id,
+                    saved_request_digest=saved_request_digest,
+                    resolution=resolution,
+                    canonical_root=root,
+                    selected_workspace=selected_reader,
+                    read_owner=read_acknowledged_owner,
+                    owner_context=canonical_json(
+                        {
+                            "conversation_kind": conversation.get("conversation_kind"),
+                            "metadata_mode": (conversation.get("metadata") or {}).get(
+                                "mode"
+                            ),
+                        }
+                    ),
+                    assert_live=assert_request_live,
+                )
+            elif isinstance(tool_id, str) and tool_id.startswith("coding_"):
+                raise AuthorityDenied("saved coding workspace proof is unavailable")
             if ai_mode == "incremental":
                 try:
                     progress = self._dispatch(
@@ -978,6 +1061,10 @@ class SavedBridgeCallbacks:
                     # Provisional display failure cannot prevent or retry the effect.
                     pass
         self._recheck_linked_context(outer, request, conversation)
+        if stage == "tool" and workspace_execution is not None:
+            assert self._workspace_execution_registry is not None
+            with self._workspace_execution_registry.register(workspace_execution):
+                return self._dispatch(outer, target, payload)
         return self._dispatch(outer, target, payload)
 
     @staticmethod
