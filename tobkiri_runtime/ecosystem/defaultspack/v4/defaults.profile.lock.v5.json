@@ -6,19 +6,19 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:da62412f97807c6018f6c09ea02934e86a7e14ce7adabae99fe07a1df8859274",
   "profile_definition_digest": "sha256:97bc715f8881b13eeb04f872a61ced7d0300778f8f425ba653596068880b7f37",
-  "catalog_revision": "sha256:89964f1c9a1ff87af9595ab6d7839ce1cbf907346f04c54377da83f406b7dab7",
-  "bundle_digest": "sha256:4193107a3db447d97491831d4ca35a3ea1d416b84fb9b545e572947af0a7d051",
+  "catalog_revision": "sha256:60a08c12ec4798a30e6290ed0a280041164348543c632c15bf8c6fe50bd08c54",
+  "bundle_digest": "sha256:69f3d5290ae012088b0693c188a387796ae7c2ab2925f6236d5565491ce4f56d",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
-    "definition_revision": "sha256:9e35d17434de4734810f455ebc277b7cfa358f17313651be09a8585ca2b47ddf"
+    "definition_revision": "sha256:cfc39951885eb18208f1cf3aa28ec68569354999ed1a1a21f69bb86c6dace05f"
   },
   "shell": {
     "provider_id": "shell.tauri.default",
     "pack_id": "shell.tauri.default",
     "artifact_digest": "sha256:75e4452baa85b5034a50746b452d0e65055e8951aae06577921ee9f115f6d507",
     "executable_artifact_digest": "sha256:18c9dd40e572aa0c2ce68bb9391bf9ecb81bdcf5666df881eb43a2917d5d01b1",
-    "definition_revision": "sha256:5d49b942475ef85bb9bd007e8ca0a04ac0ebf580e2eaac8a68b183aba44cc593",
+    "definition_revision": "sha256:967b8654fd965725e7ba2bac5c49f01103d27cbef675afe272e7c7decf490222",
     "contract_id": "app.shell.v1",
     "platform": "macos",
     "architecture": "arm64"
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:fb614ad891291e5de030ba593d70da9d41c3f27465b9687a2ef8ab25d17dd05b"
+    "definition_digest": "sha256:6bc5ab833208f7d434983a763093bbaa2966a727f13a031f9f661f2ddddff49c"
   },
   "effective_set": [
     {
@@ -1629,8 +1629,8 @@
     }
   ],
   "requested_edges_digest": "sha256:e46a8fa1fbf532359330c9e80f15ec9912072bb087bfe350c603c41e19e473c1",
-  "constraints_digest": "sha256:34d6783625f3ebcd2accdd0f0447f9f4bf2b50a35042ccbf01c763a7b2483b90",
+  "constraints_digest": "sha256:c0ce801261cb19f30f64e9b11560a04c865bad5c7ef128c42142fe5d6536f042",
   "closure_digest": "sha256:d9f69e4629120881a8396b7480636cd5aba586f012ec27f815bf99d528db84bd",
   "provenance_digest": "sha256:552983397583f4d7a07554c226209c6c2711058f0b59247f7035904fe477454e",
-  "lock_digest": "sha256:31265eafae3bebe7750d95732035f27392dde885b6ab7cb4dde0355ba0ce9f3c"
+  "lock_digest": "sha256:c3fc3c69f7ceb4d5bf0e96ba84c7bdc1ee723cde2657db490651bf69121bffda"
 }

@@ -1233,14 +1233,14 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 60086,
-      "sha256": "4193107a3db447d97491831d4ca35a3ea1d416b84fb9b545e572947af0a7d051",
+      "sha256": "69f3d5290ae012088b0693c188a387796ae7c2ab2925f6236d5565491ce4f56d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
       "type": "regular-file",
-      "size": 2376,
-      "sha256": "22d307d1955809467babaaa9a3450d13bd9aa1a55f557d4c280753c40c65390f",
+      "size": 2348,
+      "sha256": "9b9fbd48ceba136286f91acc1c421d3c443b3b62c7792a1ab6db9d3ce7d32495",
       "executable": false
     },
     {
@@ -1254,7 +1254,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 74085,
-      "sha256": "6ec331e4105c1fed30bb2b34f66125b655dc143b8524610d3b3c6dce186ae41d",
+      "sha256": "76bba9e890d6a9360045008051c0595794518d3ea3e16dcfe304e3b0200c10c1",
       "executable": false
     },
     {
@@ -1268,14 +1268,14 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 69047,
-      "sha256": "2882a8271c494ea9ab7a4abf40c1b236ff51aa94d1fbb6f3d5b3075ed4496494",
+      "sha256": "3e2f5f296bb120207a71658833f1875b4d4fb8a5d29c12d53a3aed8775601caf",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
       "type": "regular-file",
-      "size": 2537,
-      "sha256": "d368f072cf3dd3622971bce489ab059153a5cb2ac5f1320cd35d51cc0a7d764c",
+      "size": 2509,
+      "sha256": "f725beab6491289d1a8dcd01b7f9ea090dcf340ac376ff421c27f0105e17975f",
       "executable": false
     },
     {
@@ -1295,8 +1295,8 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
       "type": "regular-file",
-      "size": 3900,
-      "sha256": "4058a5b34b0cf7a17eb38c443ed941f37b82bcf73342b9a012dd0bfecc9a02a4",
+      "size": 3872,
+      "sha256": "2516d55c328871ae719155b2fbd5f12158fb061098fcc3346f1ba2af60b2ca3a",
       "executable": false
     },
     {
@@ -3220,8 +3220,8 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
-      "size": 3937,
-      "sha256": "c9a708813b50267b1eaf1a0e03d5cdff484dc20c2bc0aca0fc4355b9c4fcfd8a",
+      "size": 3909,
+      "sha256": "7ca2c6b06b779a7b047270d0cbafc473fb20aea918e298ab9624678085ccbf47",
       "executable": false
     },
     {
@@ -3241,15 +3241,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/shell.cli.default.pack.v4.json",
       "type": "regular-file",
-      "size": 3536,
-      "sha256": "d11b36ab874f4f14850b82d77a6567f046888b244b3dc476e3ee32c8ff7cdba9",
+      "size": 3508,
+      "sha256": "f147c44cd69d195f8b48a6d1c04f29f84cf6c249366b22a3124b684ab4407f89",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/shell.tauri.default.pack.v4.json",
       "type": "regular-file",
-      "size": 4615,
-      "sha256": "61f73e751f23b8dc69fe922c6a7754a2bf25c0d402cf1e658e31f45b697826a2",
+      "size": 4587,
+      "sha256": "26307a559e859262cb45545cd1db18472ed7d6cce701c6280776b78c04c8f0a0",
       "executable": false
     },
     {
@@ -3367,15 +3367,15 @@
     {
       "path": "ecosystem/defaultspack/v4/shell.cli.default.shell.v1.json",
       "type": "regular-file",
-      "size": 2518,
-      "sha256": "8d1e0cb71257a7a867803088b64aacebf69fe0cac6b025ef4d05eced8aee9e09",
+      "size": 2490,
+      "sha256": "061a322a3167d41e528e0a1395a64da48e60686c6f7f3ef57cbb78f2624ebc23",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/shell.tauri.default.shell.v1.json",
       "type": "regular-file",
-      "size": 3368,
-      "sha256": "3448d30ce1a7dff23380ececf14650f732125415808e89712d2ab2f150382933",
+      "size": 3340,
+      "sha256": "23b8820ae8da1d2605534350bd68c91423e6261a15a65bc4bc871f610634804e",
       "executable": false
     },
     {
