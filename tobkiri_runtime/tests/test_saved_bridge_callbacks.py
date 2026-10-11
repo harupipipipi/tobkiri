@@ -617,11 +617,11 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     )
     if not missing_readiness:
         profile["requested_edges"].append(edge(saved_function, READINESS, READINESS[1]))
-    definitions.create_profile(
-        profile, profile_id="profile-saved-test", display_name="Saved callback test"
-    )
+    # Keep the exact Host-owned generation-budget Profile binding while using
+    # this isolated store to control only the saved callback edges.
+    definitions.update_profile("defaults", profile=profile)
     active = capture_profile(
-        "profile-saved-test", confirmation=prepare_profile_confirmation("profile-saved-test")
+        "defaults", confirmation=prepare_profile_confirmation("defaults")
     )
     binding = next(
         item
@@ -665,7 +665,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
                 }
             },
         )
-        store = ConversationStore("profile-saved-test", user_data_root=user_data)
+        store = ConversationStore("defaults", user_data_root=user_data)
         store.create(
             {"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0
         )
