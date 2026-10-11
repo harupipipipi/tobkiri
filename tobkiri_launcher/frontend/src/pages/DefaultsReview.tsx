@@ -13,6 +13,7 @@ type Props = {
   readonly error: string | null;
   readonly reconfirmationRequired?: boolean;
   readonly activationAllowed?: boolean;
+  readonly activationBlockedMessage?: string;
   readonly onRecover?: () => void;
   readonly onReviewedChange: (reviewed: boolean) => void;
   readonly onActivate: () => void;
@@ -26,6 +27,7 @@ export function DefaultsReview({
   error,
   reconfirmationRequired = false,
   activationAllowed = true,
+  activationBlockedMessage = 'Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.',
   onRecover = () => undefined,
   onReviewedChange,
   onActivate,
@@ -90,7 +92,7 @@ export function DefaultsReview({
       </div>}
       <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
       {!activationAllowed && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
-        Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.
+        {activationBlockedMessage}
       </p>}
       <label className="flex items-start gap-3 rounded-lg border border-border p-4 text-text-main">
         <input

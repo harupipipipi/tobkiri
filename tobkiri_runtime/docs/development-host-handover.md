@@ -7,8 +7,13 @@ normal desktop workflow described in the repository startup instructions.
 
 For a switch, quit the previous Launcher and wait for its Kernel,
 Application and guest processes to exit. Keep the previous app and checkout
-available. In the updated Launcher, enable development tools and open
-Settings → Previous development Host. The native pickers select the old
+available. In the updated Launcher's initial Setup, choose **Review and
+migrate data from a previous development Host first**, before activating a
+Profile. Choose **Start fresh without importing previous Host data** only
+when no import is needed. The destination must have no active Profile;
+activating a Profile prevents this import. Settings also exposes **Review
+previous Host data** when development tools are enabled. The native pickers
+select the old
 `.app` and its exact `user_data` folder. Review the displayed plan before
 choosing **Move storage and import data**. A browser or Pack cannot provide
 the selected paths or approve this operation. The feature rejects live
@@ -31,6 +36,10 @@ namespace. Attachments, widgets, events, tool logs and Profile content
 projections also remain there. This is not a live guest resume or a complete
 copy of all Pack data. Register credentials again and review/activate the new
 Profile through the normal approval flow before execution.
+After migration, Setup reloads the Host-owned Profile review and requires
+fresh confirmation of the imported predecessor and bundled successor.
+Migration and activation cannot run together. If the Profile registry cannot
+be verified, retry its review before starting migration or activation.
 
 If interrupted, use **Check migration recovery**. Recovery has its own exact
 native review and fresh approval. It returns the transferred storage when

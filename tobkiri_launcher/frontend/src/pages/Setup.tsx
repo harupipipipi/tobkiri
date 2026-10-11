@@ -5,6 +5,7 @@ import {useAppStore} from '@/src/store';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {PresentationSelector} from '@/src/components/presentation/PresentationSelector';
+import {DevelopmentHostHandover} from '@/src/components/advanced/DevelopmentHostHandover';
 import {TobkiriLoader, TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
 import {panelRoutes} from '@/src/lib/routes';
 import {
@@ -22,7 +23,7 @@ import {
   launchSelectedPresentation,
   selectPresentation,
 } from '@/src/lib/desktopHost';
-import {reconcileDefaultsRuntime} from '@/src/lib/hostClient';
+import {fetchNamedProfiles, reconcileDefaultsRuntime} from '@/src/lib/hostClient';
 import {refreshMountedRuntimeSurfaces} from '@/src/lib/runtimeSurfaceRefresh';
 import type {ApiPresentationSelection, ApiPresentationState} from '@/src/lib/apiTypes';
 import {
@@ -56,6 +57,13 @@ export function Setup() {
   const [activationPhase, setActivationPhase] = useState<'idle' | 'submitting' | 'verifying' | 'reconciling'>('idle');
   const [activationCommitted, setActivationCommitted] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [profileRegistryActive, setProfileRegistryActive] = useState<boolean | null>(null);
+  const [profileRegistryError, setProfileRegistryError] = useState<string | null>(null);
+  const [handoverChoice, setHandoverChoice] = useState<'fresh' | 'migrate' | null>(null);
+  const [handoverCompleted, setHandoverCompleted] = useState(false);
+  const [handoverAttempted, setHandoverAttempted] = useState(false);
+  const [handoverFlowStarted, setHandoverFlowStarted] = useState(false);
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [presentation, setPresentation] = useState<ApiPresentationState | null>(null);
   const [selection, setSelection] = useState<ApiPresentationSelection | null>(null);
@@ -65,8 +73,24 @@ export function Setup() {
   const [presentationError, setPresentationError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const activationInFlightRef = useRef(false);
+  const handoverInFlightRef = useRef(false);
   const profileReconfirmationRequired = runtimeStatus === 'profile_reconfirmation_required';
   const desktopShell = isDesktopShellAvailable();
+  const handoverEligible = desktopShell
+    && setup?.state === 'review_required'
+    && !activationCommitted
+    && !profileReconfirmationRequired
+    && profileRegistryActive === false;
+  const showHandoverChoice = handoverEligible || (handoverFlowStarted
+    && desktopShell
+    && !activationCommitted
+    && !profileReconfirmationRequired
+    && profileRegistryActive !== true);
+  const handoverChoiceComplete = (handoverChoice === 'fresh' && !handoverAttempted)
+    || (handoverChoice === 'migrate' && handoverCompleted);
+  const activationAllowed = !desktopShell
+    || profileRegistryActive === true
+    || (profileRegistryActive === false && handoverChoiceComplete && !handoverBusy);
 
   const completeBrowserSetup = useCallback(() => {
     setSetupDone(true);
@@ -112,11 +136,73 @@ export function Setup() {
           setSetupError(message(error, 'Defaults Profile could not be loaded.'));
         }
       });
+    if (desktopShell) {
+      const registryGeneration = reviewGeneration.current;
+      void fetchNamedProfiles()
+        .then((registry) => {
+          if (live && registryGeneration === reviewGeneration.current) {
+            setProfileRegistryActive(registry.active_profile_id !== null);
+            setProfileRegistryError(null);
+          }
+        })
+        .catch(() => {
+          if (live && registryGeneration === reviewGeneration.current) {
+            setProfileRegistryActive(null);
+            setProfileRegistryError('The Host Profile registry could not be verified. Retry before choosing how to start.');
+          }
+        });
+    } else {
+      setProfileRegistryActive(true);
+    }
     return () => { live = false; ++reviewGeneration.current; };
   }, [completeBrowserSetup, desktopShell, loadPresentation]);
 
+  const reloadSetupAuthority = () => {
+    const generation = ++reviewGeneration.current;
+    setSetup(null);
+    setReviewed(false);
+    setIncludeSourceAdditions(false);
+    setSetupError(null);
+    setProfileRegistryError(null);
+    setReviewLoading(true);
+    void Promise.all([fetchDefaultsSetupState(), fetchNamedProfiles()])
+      .then(([nextSetup, registry]) => {
+        if (generation !== reviewGeneration.current) return;
+        setSetup(nextSetup);
+        setProfileRegistryActive(registry.active_profile_id !== null);
+        if (nextSetup.state === 'active') setActivationCommitted(true);
+      })
+      .catch((error) => {
+        if (generation === reviewGeneration.current) {
+          const detail = message(error, 'The Host Setup state could not be refreshed.');
+          setSetupError(detail);
+          setProfileRegistryError(detail);
+          setProfileRegistryActive(null);
+        }
+      })
+      .finally(() => {
+        if (generation === reviewGeneration.current) setReviewLoading(false);
+      });
+  };
+
+  const handleHandoverBusyChange = (busy: boolean) => {
+    handoverInFlightRef.current = busy;
+    setHandoverBusy(busy);
+    if (busy) {
+      setHandoverAttempted(true);
+      ++reviewGeneration.current;
+      setReviewed(false);
+      setIncludeSourceAdditions(false);
+      setSetupError(null);
+      setReviewLoading(false);
+      return;
+    }
+
+    reloadSetupAuthority();
+  };
+
   const changeSourceAdditions = async (include: boolean) => {
-    if (activationInFlightRef.current || activationCommitted) return;
+    if (activationInFlightRef.current || handoverInFlightRef.current || activationCommitted) return;
     const generation = ++reviewGeneration.current;
     setIncludeSourceAdditions(include);
     setReviewed(false);
@@ -215,7 +301,7 @@ export function Setup() {
   }, [addToast, completeBrowserSetup, desktopShell, loadPresentation]);
 
   const recoverActivation = useCallback(async () => {
-    if (activationInFlightRef.current) return;
+    if (activationInFlightRef.current || handoverInFlightRef.current) return;
     activationInFlightRef.current = true;
     setActivating(true);
     setActivationPhase('verifying');
@@ -235,7 +321,8 @@ export function Setup() {
   }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime]);
 
   const activate = async () => {
-    if (activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
+    if (handoverInFlightRef.current || !activationAllowed
+      || activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
     if (activationInFlightRef.current) return;
     activationInFlightRef.current = true;
     setActivating(true);
@@ -344,6 +431,10 @@ export function Setup() {
 
   return <div className="min-h-screen bg-bg-main px-6 py-10"><div className="mx-auto max-w-3xl">
     <Header />
+    {desktopShell && profileRegistryError && <div role="alert" className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <p>{profileRegistryError}</p>
+      <Button className="mt-3" variant="outline" disabled={reviewLoading || activating} onClick={reloadSetupAuthority}>Retry Host Profile verification</Button>
+    </div>}
     {activating && <p role="status" className="mb-4 rounded-lg border border-border bg-bg-card p-4 text-sm text-text-muted">
       {activationPhase === 'reconciling'
         ? 'Activated Profile verified. Checking runtime health and Pack surfaces…'
@@ -357,6 +448,31 @@ export function Setup() {
       <span>Include new bundled Profile Packs and operation bindings in this review.
         Existing selections and settings are retained. Review the updated details below before activating.</span>
     </label>}
+    {showHandoverChoice && <section className="mb-6 rounded-xl border border-border bg-bg-card p-5">
+      <h2 className="font-medium text-text-main">Choose how to start this Profile</h2>
+      <p className="mt-2 text-sm text-text-muted">Choose before activation. Activating a Profile prevents importing data from a previous development Host.</p>
+      <label className="mt-4 flex items-start gap-3 text-sm text-text-main">
+        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'fresh'} disabled={activating || handoverBusy || handoverAttempted || profileRegistryActive !== false || reviewLoading}
+          onChange={() => { if (!activationInFlightRef.current) { setHandoverFlowStarted(true); setHandoverChoice('fresh'); } }} />
+        <span>Start fresh without importing previous Host data.</span>
+      </label>
+      <label className="mt-3 flex items-start gap-3 text-sm text-text-main">
+        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'migrate'} disabled={activating || handoverBusy || profileRegistryActive !== false || reviewLoading}
+          onChange={() => { if (!activationInFlightRef.current) { setHandoverFlowStarted(true); setHandoverChoice('migrate'); setReviewed(false); } }} />
+        <span>Review and migrate data from a previous development Host first.</span>
+      </label>
+      {handoverChoice === 'migrate' && <div className="mt-4">
+        <DevelopmentHostHandover
+          disabled={activating || activationCommitted || profileRegistryActive !== false || reviewLoading}
+          recoveryDisabled={activating || activationCommitted}
+          isBlocked={(recover) => activationInFlightRef.current || activationCommitted
+            || (!recover && (profileRegistryActive !== false || reviewLoading))}
+          onBusyChange={handleHandoverBusyChange}
+          onCompleted={() => setHandoverCompleted(true)}
+          onSafeCancellation={() => { setHandoverAttempted(false); setHandoverChoice(null); }}
+        />
+      </div>}
+    </section>}
     <DefaultsReview
       setup={setup}
       reviewed={reviewed}
@@ -364,7 +480,10 @@ export function Setup() {
       activationCommitted={activationCommitted}
       error={setupError}
       reconfirmationRequired={profileReconfirmationRequired}
-      activationAllowed={!profileReconfirmationRequired || includeSourceAdditions}
+      activationAllowed={(!profileReconfirmationRequired || includeSourceAdditions) && activationAllowed}
+      activationBlockedMessage={showHandoverChoice
+        ? 'Choose to start fresh or review the previous Host migration before activation.'
+        : undefined}
       onRecover={() => void recoverActivation()}
       onReviewedChange={setReviewed}
       onActivate={() => void activate()}

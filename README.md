@@ -180,6 +180,9 @@ open "tobkiri_launcher/src-tauri/target/aarch64-apple-darwin/debug/bundle/macos/
 Keep the checkout and its `.venv` in place; this development app uses them.
 
 For a reviewed switch that reuses an existing verified base VM image, see [Development Host handover](./tobkiri_runtime/docs/development-host-handover.md).
+In initial Setup, choose the previous Host migration before activating a
+Profile. Activation prevents importing previous Host data; Setup reloads the
+review after migration so you can confirm the new Profile separately.
 After source changes, commit them and run `npm run desktop` again.
 The raw `npm run tauri -- dev` command is for Launcher
 UI development; it does not bundle the PackVM helper needed to run Defaults.

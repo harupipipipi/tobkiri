@@ -41,17 +41,17 @@
     ],
     "name": "circle-question-mark"
   },
-  "_useRuntimeOperationInvocation-C3OGqIjF.js": {
-    "file": "assets/useRuntimeOperationInvocation-C3OGqIjF.js",
+  "_useRuntimeOperationInvocation-DTDWRdbY.js": {
+    "file": "assets/useRuntimeOperationInvocation-DTDWRdbY.js",
     "imports": [
       "_Card-UNm5UBSI.js",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "name": "useRuntimeOperationInvocation"
   },
-  "_useRuntimeSurface-DS8Y0pDV.js": {
-    "file": "assets/useRuntimeSurface-DS8Y0pDV.js",
+  "_useRuntimeSurface-Bh0hKZTm.js": {
+    "file": "assets/useRuntimeSurface-Bh0hKZTm.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html"
@@ -75,7 +75,7 @@
       "src/pages/ApiMap.tsx",
       "src/pages/NodeManager.tsx"
     ],
-    "file": "assets/index-D-6GmDkP.js",
+    "file": "assets/index-Xzi5TjHa.js",
     "imports": [
       "_Card-UNm5UBSI.js"
     ],
@@ -90,24 +90,24 @@
     "src": "node_modules/@tauri-apps/api/core.js"
   },
   "src/pages/AiInput.tsx": {
-    "file": "assets/AiInput-CjWCjJ7x.js",
+    "file": "assets/AiInput-CHNurIf2.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
       "_circle-question-mark-BAS_V24J.js",
-      "_useRuntimeSurface-DS8Y0pDV.js",
-      "_useRuntimeOperationInvocation-C3OGqIjF.js"
+      "_useRuntimeSurface-Bh0hKZTm.js",
+      "_useRuntimeOperationInvocation-DTDWRdbY.js"
     ],
     "isDynamicEntry": true,
     "name": "AiInput",
     "src": "src/pages/AiInput.tsx"
   },
   "src/pages/ApiMap.tsx": {
-    "file": "assets/ApiMap-DTNfOgI8.js",
+    "file": "assets/ApiMap-FeLwSFKh.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -115,12 +115,12 @@
     "src": "src/pages/ApiMap.tsx"
   },
   "src/pages/Flow.tsx": {
-    "file": "assets/Flow-BUGsOKHy.js",
+    "file": "assets/Flow-CNziKCwX.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
-      "_useRuntimeSurface-DS8Y0pDV.js",
-      "_useRuntimeOperationInvocation-C3OGqIjF.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
+      "_useRuntimeOperationInvocation-DTDWRdbY.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -128,11 +128,11 @@
     "src": "src/pages/Flow.tsx"
   },
   "src/pages/Graph.tsx": {
-    "file": "assets/Graph-BZywrUfH.js",
+    "file": "assets/Graph-IcJSPE3d.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -140,19 +140,19 @@
     "src": "src/pages/Graph.tsx"
   },
   "src/pages/NodeManager.tsx": {
-    "file": "assets/NodeManager-5R5NRQeP.js",
+    "file": "assets/NodeManager-nr0wpA8F.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
       "_circle-question-mark-BAS_V24J.js",
-      "_useRuntimeSurface-DS8Y0pDV.js"
+      "_useRuntimeSurface-Bh0hKZTm.js"
     ],
     "isDynamicEntry": true,
     "name": "NodeManager",
     "src": "src/pages/NodeManager.tsx"
   },
   "src/pages/PackDetail.tsx": {
-    "file": "assets/PackDetail-BqLIAhOl.js",
+    "file": "assets/PackDetail-BQDryhoF.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
@@ -166,7 +166,7 @@
     "src": "src/pages/PackDetail.tsx"
   },
   "src/pages/Packs.tsx": {
-    "file": "assets/Packs-Sl7OjNKt.js",
+    "file": "assets/Packs-G9smenOm.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
@@ -180,13 +180,13 @@
     "src": "src/pages/Packs.tsx"
   },
   "src/pages/Profile.tsx": {
-    "file": "assets/Profile-Bckx4YSc.js",
+    "file": "assets/Profile-EuyV5NjW.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
       "_check-DAH1tX4q.js",
       "_circle-question-mark-BAS_V24J.js",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -194,10 +194,10 @@
     "src": "src/pages/Profile.tsx"
   },
   "src/pages/ProfileFiles.tsx": {
-    "file": "assets/ProfileFiles-DI0Jy3My.js",
+    "file": "assets/ProfileFiles-Bj8sIKg5.js",
     "imports": [
       "_Card-UNm5UBSI.js",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -205,11 +205,11 @@
     "src": "src/pages/ProfileFiles.tsx"
   },
   "src/pages/ProfileWiring.tsx": {
-    "file": "assets/ProfileWiring-uYy-p0r7.js",
+    "file": "assets/ProfileWiring-DmMv-3Zd.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Input-x59PNENz.js"
     ],
     "isDynamicEntry": true,
@@ -217,12 +217,12 @@
     "src": "src/pages/ProfileWiring.tsx"
   },
   "src/pages/Settings.tsx": {
-    "file": "assets/Settings-CJf_ixPL.js",
+    "file": "assets/Settings-DeL2DKqY.js",
     "imports": [
       "_Card-UNm5UBSI.js",
       "index.html",
       "_check-DAH1tX4q.js",
-      "_useRuntimeSurface-DS8Y0pDV.js",
+      "_useRuntimeSurface-Bh0hKZTm.js",
       "_Switch-DcbSTE-5.js"
     ],
     "isDynamicEntry": true,
