@@ -2743,7 +2743,9 @@ def capture_production_dispatch(
                 if saved_tool_entry_guard is not None:
                     saved_tool_entry_guard()
                 if saved_workspace_binding is not None:
-                    saved_workspace_binding.assert_current()
+                    # Fresh owner/mount reads remain at workspace authority
+                    # and effect boundaries, rather than ambient ancestry checks.
+                    saved_workspace_binding.assert_execution_live()
                 if parent is not None:
                     parent.assert_current()
                 if not dispatch_holder:

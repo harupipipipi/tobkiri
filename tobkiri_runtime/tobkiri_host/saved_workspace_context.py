@@ -26,6 +26,14 @@ _SAVED_WORKSPACE_OWNER_RECHECK: ContextVar[object | None] = ContextVar(
 )
 
 
+@dataclass
+class _SavedWorkspaceOwnerRecheck:
+    """Revocable Host-local owner-read lifetime shared by copied contexts."""
+
+    binding: SavedWorkspaceExecutionBinding
+    active: bool = True
+
+
 class ResolvedWorkspaceConversation(dict[str, Any]):
     """Private owner projection, never serialized into a saved request."""
 
@@ -169,8 +177,8 @@ class SavedWorkspaceExecutionBinding:
         default_factory=SavedWorkspaceExecutionLease, compare=False, repr=False
     )
 
-    def assert_current(self) -> None:
-        """Re-read the exact saved owner, active request and Host-selected mount."""
+    def assert_execution_live(self) -> None:
+        """Fence the private dispatch lease and original request lifetime."""
         if (
             not self.saved_request_id
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", self.saved_request_digest)
@@ -182,16 +190,27 @@ class SavedWorkspaceExecutionBinding:
             raise PermissionError("saved workspace execution binding is invalid")
         self.lease.assert_active()
         self.assert_live()
-        if _SAVED_WORKSPACE_OWNER_RECHECK.get() is self:
+
+    def assert_current(self) -> None:
+        """Re-read the exact saved owner, active request and Host-selected mount."""
+        self.assert_execution_live()
+        recheck = _SAVED_WORKSPACE_OWNER_RECHECK.get()
+        if (
+            type(recheck) is _SavedWorkspaceOwnerRecheck
+            and recheck.active
+            and recheck.binding is self
+        ):
             # The active Host owner read creates Broker descendants whose
             # parent ancestry includes this binding. Keep those descendants'
             # own lease, cancellation, parent, and dispatch guards live while
             # avoiding recursively launching another owner read.
             return
-        token = _SAVED_WORKSPACE_OWNER_RECHECK.set(self)
+        recheck = _SavedWorkspaceOwnerRecheck(self)
+        token = _SAVED_WORKSPACE_OWNER_RECHECK.set(recheck)
         try:
             current = self.read_owner()
         finally:
+            recheck.active = False
             _SAVED_WORKSPACE_OWNER_RECHECK.reset(token)
         fresh = workspace_resolution(current)
         metadata = current.get("metadata")

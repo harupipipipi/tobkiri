@@ -262,7 +262,15 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
             self._CONTRACT_ID,
             self._OPERATION_ID,
         )
-        self._saved_preflight(request)
+        from tobkiri_host.operation_cancellation import (
+            _active_nested_cancellation_proof,
+        )
+
+        proof = _active_nested_cancellation_proof.get()
+        assert proof is not None and proof.matches_invocation(
+            request, proof._owner_principal, proof._owner_session
+        )
+        self._saved_preflight(request, proof)
         payload = {"request": dict(request.payload["request"])}
         request_id, domain = request.context.request_id, request.target_domain.value
         binding = canonical_digest(
@@ -313,7 +321,7 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
             if pending.get("state") != "pending":
                 break
             frame = host.accept(pending["host_bridge_request"])
-            result = self._saved_callback(request, host.callback_frame(frame))
+            result = self._saved_callback(request, host.callback_frame(frame), proof)
             pending = guest.resume(domain, request_id, host.result(result), execute)
         assert pending.get("state") != "pending"
         host.finish(pending["outcome"])

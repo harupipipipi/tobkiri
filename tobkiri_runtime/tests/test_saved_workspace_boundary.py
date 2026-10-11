@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from contextvars import copy_context
 import hashlib
 import os
 from pathlib import Path
@@ -380,6 +381,7 @@ def _production_capture_fixture(*, cancel_parent_during_owner_read: bool = False
     owner = _resolve()
 
     def read_owner():
+        counts["owner_reads"] = counts.get("owner_reads", 0) + 1
         if state["tool_scope"] is None:
             return owner
         if cancel_parent_during_owner_read:
@@ -406,7 +408,7 @@ def _production_capture_fixture(*, cancel_parent_during_owner_read: bool = False
     )
 
 
-def test_production_guard_rechecks_owner_without_recursing_through_parent():
+def test_ambient_guard_checks_liveness_and_effect_guard_rechecks_owner():
     counts, parents, registry, capture, envelope, binding, state = (
         _production_capture_fixture()
     )
@@ -422,11 +424,21 @@ def test_production_guard_rechecks_owner_without_recursing_through_parent():
         assert tool_scope.saved_workspace_binding is binding
         state["tool_scope"] = tool_scope
         parents.retain("tool-to-owner-read", tool_scope)
+        owner_reads_before_guard = counts.get("owner_reads", 0)
         tool_scope.assert_current()
-        assert counts["lease"].get("owner-read-request", 0) >= 1
+        assert counts.get("owner_reads", 0) == owner_reads_before_guard
+        assert counts["lease"].get("owner-read-request", 0) == 0
         assert counts["lease"].get("tool-request", 0) >= 1
-        assert counts["dispatch"] >= 4
+        assert counts["dispatch"] >= 2
         assert counts["capture"] == 2
+
+        # The explicit effect-boundary check still performs a fresh owner
+        # read. Its nested Broker capture must validate the owner-read lease
+        # and the active saved-tool parent before returning.
+        binding.assert_current()
+        assert counts.get("owner_reads", 0) == owner_reads_before_guard + 1
+        assert counts["lease"].get("owner-read-request", 0) >= 1
+        assert counts["lease"].get("tool-request", 0) >= 2
         parents.release("tool-to-owner-read")
     parents.release("saved-to-tool")
 
@@ -446,12 +458,69 @@ def test_owner_recheck_still_observes_parent_cancellation():
         tool_scope = capture(tool_envelope)
         state["tool_scope"] = tool_scope
         parents.retain("tool-to-owner-read", tool_scope)
+        owner_reads_before_guard = counts.get("owner_reads", 0)
+        tool_scope.assert_current()
+        assert counts.get("owner_reads", 0) == owner_reads_before_guard
+        assert counts["lease"].get("tool-request", 0) >= 1
         with pytest.raises(PermissionError, match="cancelled"):
-            tool_scope.assert_current()
+            binding.assert_current()
         assert tool_envelope.cancellation_requested.is_set()
+        assert counts.get("owner_reads", 0) == owner_reads_before_guard + 1
         assert counts["lease"].get("tool-request", 0) >= 1
         parents.release("tool-to-owner-read")
     parents.release("saved-to-tool")
+
+
+def test_ambient_workspace_guard_rejects_cancel_without_owner_io():
+    counts, parents, registry, capture, envelope, binding, state = (
+        _production_capture_fixture()
+    )
+    with registry.register(binding):
+        tool_envelope = envelope(
+            "tool-request", "saved-to-tool",
+            "tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke",
+        )
+        state["tool_envelope"] = tool_envelope
+        tool_scope = capture(tool_envelope)
+        owner_reads = counts["owner_reads"]
+        tool_envelope.cancellation_requested.set()
+        with pytest.raises(PermissionError, match="cancelled"):
+            tool_scope.assert_current()
+        assert counts["owner_reads"] == owner_reads
+    parents.release("saved-to-tool")
+
+
+@pytest.mark.parametrize("failed_owner_read", [False, True])
+def test_copied_owner_recheck_context_does_not_skip_later_fresh_read(
+    failed_owner_read: bool,
+):
+    """A copied ContextVar must expire with its dynamic owner-read scope."""
+    state: dict[str, Any] = {"reads": 0, "context": None, "fail_next": False}
+
+    def read_owner() -> ResolvedWorkspaceConversation:
+        state["reads"] += 1
+        state["context"] = copy_context()
+        if state["fail_next"]:
+            state["fail_next"] = False
+            raise ValueError("owner read failed")
+        return _resolve()
+
+    binding = _execution_binding(read_owner=read_owner)
+    registry = SavedWorkspaceExecutionRegistry()
+    with registry.register(binding):
+        # register() validates the binding with one full owner read. The
+        # copied context was captured while that read's private recheck scope
+        # was active, but the dispatch lease is still live here.
+        assert state["reads"] == 1
+        if failed_owner_read:
+            state["fail_next"] = True
+            with pytest.raises(ValueError, match="owner read failed"):
+                binding.assert_current()
+        copied_context = state["context"]
+        assert copied_context is not None
+        reads_before = state["reads"]
+        copied_context.run(binding.assert_current)
+        assert state["reads"] == reads_before + 1
 
 
 def test_python_sandbox_consent_validator_closes_modes_and_tool_envelope():
