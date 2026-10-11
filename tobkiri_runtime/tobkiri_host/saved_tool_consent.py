@@ -466,6 +466,12 @@ class SavedToolConsentExecution:
                         workspace_binding.assert_current()
                     self._consent_proof.assert_current(proof)
 
+                def read_liveness_guard() -> None:
+                    self._guard(invocation, root, turn, frozen, execution, payload)
+                    if workspace_binding is not None:
+                        workspace_binding.assert_execution_live()
+                    self._consent_proof.assert_current(proof)
+
                 reservation = self._admissions.admit(
                     reservation,
                     {
@@ -482,8 +488,10 @@ class SavedToolConsentExecution:
                     raise PermissionError("saved tool retained read changed")
                 read_guard()
                 self._admissions.claim(reservation, read_digest)
-                with self._entry_guards.register(read.context, snapshot.request_digest, read_guard):
-                    return self._broker.invoke_prepared(
+                with self._entry_guards.register(
+                    read.context, snapshot.request_digest, read_liveness_guard
+                ):
+                    result = self._broker.invoke_prepared(
                         snapshot,
                         read.context,
                         read.ceiling,
@@ -495,6 +503,8 @@ class SavedToolConsentExecution:
                         execution_guard=read_guard,
                         parent_deadline_monotonic=invocation.envelope.deadline_monotonic,
                     )
+                    read_guard()
+                    return result
             finally:
                 consent.release()
         finally:

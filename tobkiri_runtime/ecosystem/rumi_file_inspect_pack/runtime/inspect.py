@@ -83,9 +83,11 @@ class FileInspectService:
         client: Any,
         *,
         guard: Callable[[], None] | None = None,
+        effect_guard: Callable[[], None] | None = None,
     ) -> None:
         self.client = client
         self._guard = guard or (lambda: None)
+        self._effect_guard = effect_guard or (lambda: None)
 
     def invoke(self, name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Dispatch one read-only file operation."""
@@ -93,6 +95,7 @@ class FileInspectService:
         _check_lifecycle(payload)
         root, root_fd, binding = self._workspace(payload)
         try:
+            self._effect_guard()
             if name == "read":
                 result = self._read(root, payload, root_fd=root_fd)
             elif name == "stat":
@@ -109,6 +112,7 @@ class FileInspectService:
                 binding,
                 payload,
             )
+            self._effect_guard()
             return result
         finally:
             os.close(root_fd)
@@ -529,9 +533,21 @@ class FileInspectHostFactoryV4:
                 consumer_pack_id=PACK_ID,
                 include_credentials=False,
             )
+            from tobkiri_host.saved_workspace_context import saved_workspace_binding
+
+            workspace_binding = saved_workspace_binding(invocation)
+            if workspace_binding is not None and (
+                payload.get("workspace_id") != workspace_binding.resolution.workspace_id
+                or payload.get("profile_id") != workspace_binding.resolution.profile_id
+            ):
+                raise PermissionError("saved file inspection workspace changed")
             result = FileInspectService(
                 client,
                 guard=invocation.assert_current,
+                effect_guard=(
+                    workspace_binding.assert_current
+                    if workspace_binding is not None else None
+                ),
             ).invoke(str(name), payload)
             invocation.assert_current()
             if closed.is_set():

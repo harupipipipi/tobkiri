@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:dd542d4a7cdd03b926bb47d4bfef02dff0d3e7e0263680700be510f9553f08db",
+      "digest": "sha256:97569e31a635c7fa6ce98ef5a770eaa83196151404a5996e115ee23cd2eee728",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
       "kind": "executable",
       "path": "runtime/inspect.py"
     }
@@ -25,7 +25,7 @@
     {
       "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
       "id": "rumi_file_inspect_pack.file-inspect.media",
-      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_file_inspect_pack.file-inspect.for-media"
@@ -35,7 +35,7 @@
     {
       "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
       "id": "rumi_file_inspect_pack.file-inspect.service",
-      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_file_inspect_pack.file-inspect"
@@ -44,8 +44,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:66f73a6d6367bd9522d12c288894f6323383229a8b07b55f6a519b3d8b3a9a95",
-    "artifact_set_digest": "sha256:ff277c8a4d2e96c24ecf3873199a45bd9c87f886b492ff5df3aa6337ecdac61b",
+    "source_identity": "sha256:2a4537af8331460e1087954c0846807e9f84cc30763dc95da2bbca83887b7c9b",
+    "artifact_set_digest": "sha256:eba39d7b00f10c3a1c0bd6459992fd4a8aefaf4d21be28fccd9a4ed9f83dc985",
     "contract_catalog_digest": "sha256:efa04be33aa79b838411ccb66308a53152ab811aadc45bc474bc5e3f3440ceff"
   },
   "migration": {
@@ -77,7 +77,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8",
+    "artifact_digest": "sha256:8cbdde6fcd20008c509c3b834585ebe6c82ab2e1f706902dae0facbd44ca7f15",
     "display_name": "Rumi File Inspect",
     "id": "rumi_file_inspect_pack",
     "kind": "host_extension",
@@ -88,15 +88,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_file_inspect_pack/pack.v4.json",
-    "source_digest": "sha256:66f73a6d6367bd9522d12c288894f6323383229a8b07b55f6a519b3d8b3a9a95",
+    "source_digest": "sha256:2a4537af8331460e1087954c0846807e9f84cc30763dc95da2bbca83887b7c9b",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:06e7f063bbbe2d76e17af0378e392fefbc8056cfcdb101df78dd96f795c8a2b1",
+    "content_root_digest": "sha256:d887fd335bb3d4261976ee6f10e99be8973c01dce8357b3a9c002633d1dd9c32",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
-    "input_inventory_digest": "sha256:0f6642216d5abd2119107727f87bac7ff2c76e6960d2f15b6c23ec7399822c18",
+    "input_inventory_digest": "sha256:4da368e8ac1d4007dd0a5f5fb11d26edc25c0b1333e0e37dc1b6b65179235798",
     "normative": true,
     "evidence": [
       {
@@ -107,7 +107,7 @@
       {
         "path": "ecosystem/rumi_file_inspect_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:66f73a6d6367bd9522d12c288894f6323383229a8b07b55f6a519b3d8b3a9a95"
+        "digest": "sha256:2a4537af8331460e1087954c0846807e9f84cc30763dc95da2bbca83887b7c9b"
       }
     ]
   },

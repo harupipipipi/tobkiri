@@ -10,6 +10,7 @@ import pytest
 
 from ecosystem.rumi_file_inspect_pack.runtime import inspect
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_host import saved_workspace_context
 
 
 def _binding(operation_id: str) -> SimpleNamespace:
@@ -659,3 +660,256 @@ def test_each_factory_rejects_other_public_operation(tmp_path, function_id):
     other.function.function_id = function_id
     with pytest.raises(PermissionError, match="incomplete"):
         factory.capture(_context(tmp_path, (other,)))
+
+
+def test_effect_guard_failure_before_file_read_prevents_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed saved-owner check must stop before the file read begins."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "proof.txt").write_text("verified", encoding="utf-8")
+    reads: list[str] = []
+    effect_checks = 0
+
+    def reject_effect() -> None:
+        nonlocal effect_checks
+        effect_checks += 1
+        raise PermissionError("saved owner changed")
+
+    service = inspect.FileInspectService(
+        _WorkspaceClient(root),
+        effect_guard=reject_effect,
+    )
+
+    def record_read(*_args: object, **_kwargs: object) -> dict[str, str]:
+        reads.append("read")
+        return {"content": "verified"}
+
+    monkeypatch.setattr(service, "_read", record_read)
+
+    with pytest.raises(PermissionError, match="saved owner changed"):
+        service.invoke("read", _service_payload(root, path="proof.txt"))
+
+    assert effect_checks == 1
+    assert reads == []
+
+
+def test_effect_guard_failure_after_file_read_withholds_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed post-read owner check must prevent returning read contents."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "proof.txt").write_text("verified", encoding="utf-8")
+    reads: list[str] = []
+    effect_checks = 0
+
+    def reject_after_read() -> None:
+        nonlocal effect_checks
+        effect_checks += 1
+        if effect_checks == 2:
+            raise PermissionError("saved owner changed after read")
+
+    service = inspect.FileInspectService(
+        _WorkspaceClient(root),
+        effect_guard=reject_after_read,
+    )
+
+    def record_read(*_args: object, **_kwargs: object) -> dict[str, str]:
+        reads.append("read")
+        return {"content": "verified"}
+
+    monkeypatch.setattr(service, "_read", record_read)
+
+    with pytest.raises(PermissionError, match="after read"):
+        service.invoke("read", _service_payload(root, path="proof.txt"))
+
+    assert effect_checks == 2
+    assert reads == ["read"]
+
+
+def test_effect_guard_brackets_io_while_ambient_guard_stays_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full owner checks bracket I/O; cheaper ancestry guards still run."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "proof.txt").write_text("verified", encoding="utf-8")
+    ordinary_checks = 0
+    events: list[str] = []
+
+    def ordinary_guard() -> None:
+        nonlocal ordinary_checks
+        ordinary_checks += 1
+
+    def effect_guard() -> None:
+        events.append("effect")
+
+    service = inspect.FileInspectService(
+        _WorkspaceClient(root),
+        guard=ordinary_guard,
+        effect_guard=effect_guard,
+    )
+
+    def observe_read(
+        _root: Path,
+        _payload: dict[str, object],
+        *,
+        root_fd: int,
+    ) -> dict[str, str]:
+        assert os.fstat(root_fd).st_ino == root.stat().st_ino
+        events.append("io")
+        return {"content": "verified"}
+
+    monkeypatch.setattr(service, "_read", observe_read)
+    result = service.invoke("read", _service_payload(root, path="proof.txt"))
+
+    assert result["content"] == "verified"
+    assert events == ["effect", "io", "effect"]
+    assert ordinary_checks > 2
+
+
+def test_factory_uses_saved_binding_only_for_effect_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Host provider wires saved owner checks around the actual operation."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "proof.txt").write_text("verified", encoding="utf-8")
+    binding = _binding("rumi_file_inspect_pack.file-inspect")
+    context = _context(tmp_path, (binding,))
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
+        context
+    )
+    client = _WorkspaceClient(root)
+    payload = _service_payload(root, name="read", path="proof.txt")
+    invocation = _Invocation(context, binding, payload, client)
+    events: list[str] = []
+
+    class _SavedOwnerBinding:
+        resolution = SimpleNamespace(
+            profile_id="defaults",
+            workspace_id="workspace-1",
+        )
+
+        def assert_current(self) -> None:
+            events.append("owner")
+
+    owner_binding = _SavedOwnerBinding()
+    monkeypatch.setattr(
+        saved_workspace_context,
+        "saved_workspace_binding",
+        lambda candidate: owner_binding if candidate is invocation else None,
+    )
+
+    def observe_read(
+        _service: object,
+        _root: Path,
+        _payload: dict[str, object],
+        *,
+        root_fd: int,
+    ) -> dict[str, str]:
+        assert os.fstat(root_fd).st_ino == root.stat().st_ino
+        events.append("io")
+        return {"content": "verified"}
+
+    monkeypatch.setattr(inspect.FileInspectService, "_read", observe_read)
+    result = captured.contributions[0].invoke(
+        binding.operation.operation_id,
+        payload,
+        invocation,
+    )
+
+    assert result["content"] == "verified"
+    assert events == ["owner", "io", "owner"]
+    assert invocation.current_checks >= 6
+    captured.close()
+
+
+@pytest.mark.parametrize(
+    ("binding_profile", "binding_workspace"),
+    [
+        ("another-profile", "workspace-1"),
+        ("defaults", "another-workspace"),
+    ],
+)
+def test_factory_rejects_payload_outside_saved_binding_before_workspace_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    binding_profile: str,
+    binding_workspace: str,
+) -> None:
+    """Saved file inspection cannot redirect profile or workspace identity."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    binding = _binding("rumi_file_inspect_pack.file-inspect")
+    context = _context(tmp_path, (binding,))
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
+        context
+    )
+    client = _WorkspaceClient(root)
+    payload = _service_payload(root, name="list")
+    invocation = _Invocation(context, binding, payload, client)
+    owner_binding = SimpleNamespace(
+        resolution=SimpleNamespace(
+            profile_id=binding_profile,
+            workspace_id=binding_workspace,
+        ),
+        assert_current=lambda: None,
+    )
+    monkeypatch.setattr(
+        saved_workspace_context,
+        "saved_workspace_binding",
+        lambda _candidate: owner_binding,
+    )
+
+    with pytest.raises(PermissionError, match="saved file inspection workspace"):
+        captured.contributions[0].invoke(
+            binding.operation.operation_id,
+            payload,
+            invocation,
+        )
+
+    assert client.calls == []
+    captured.close()
+
+
+@pytest.mark.parametrize("failure", ["malformed", "ambiguous"])
+def test_factory_propagates_saved_binding_resolution_errors_before_workspace_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Invalid or ambiguous saved ancestry never falls back to generic reads."""
+    binding = _binding("rumi_file_inspect_pack.file-inspect")
+    context = _context(tmp_path, (binding,))
+    captured = inspect.HOST_PROVIDER_FACTORY[binding.function.function_id].capture(
+        context
+    )
+    client = _WorkspaceClient(tmp_path)
+    payload = _service_payload(tmp_path, name="list")
+    invocation = _Invocation(context, binding, payload, client)
+
+    def reject_saved_ancestry(_candidate: object) -> None:
+        raise PermissionError(f"saved binding {failure}")
+
+    monkeypatch.setattr(
+        saved_workspace_context,
+        "saved_workspace_binding",
+        reject_saved_ancestry,
+    )
+
+    with pytest.raises(PermissionError, match=f"saved binding {failure}"):
+        captured.contributions[0].invoke(
+            binding.operation.operation_id,
+            payload,
+            invocation,
+        )
+
+    assert client.calls == []
+    captured.close()

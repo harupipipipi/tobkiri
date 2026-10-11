@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_file_inspect_pack",
-  "source_identity": "sha256:66f73a6d6367bd9522d12c288894f6323383229a8b07b55f6a519b3d8b3a9a95",
+  "source_identity": "sha256:2a4537af8331460e1087954c0846807e9f84cc30763dc95da2bbca83887b7c9b",
   "variants": [
     {
       "variant_id": "rumi_file_inspect_pack.file-inspect.media.python",
       "function_id": "rumi_file_inspect_pack.file-inspect.media",
       "implementation_path": "runtime/inspect.py",
-      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -112,7 +112,7 @@
       "variant_id": "rumi_file_inspect_pack.file-inspect.service.python",
       "function_id": "rumi_file_inspect_pack.file-inspect.service",
       "implementation_path": "runtime/inspect.py",
-      "implementation_digest": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -214,6 +214,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:3750577260ce87760e90276ff6dee7fca4ff2cf657adaadd4f74a5841b7d7f0f",
-  "catalog_digest": "sha256:abd590e7d0d52e66c1ce92d6646e8784aa8e06432587a5c5ba845ee61cc6cc8c"
+  "materialization_catalog_digest": "sha256:f27d84d71cec8cd9192e38c215a3dccc930c3485623112c9490c3ec1d1383c60",
+  "catalog_digest": "sha256:fed747daf7b40c20762b8b02661c560d8ba9181afb88fcdec1525c1433ee77f3"
 }
