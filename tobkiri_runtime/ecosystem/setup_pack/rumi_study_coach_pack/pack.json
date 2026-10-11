@@ -33,7 +33,7 @@
     "spaced_review_queue": "owned_by_rumi_study_coach_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Study Coach Pack is a declarative setup pack. Promotion requires owner-pack integration evidence, local-first audit receipts, and real-world success cases before any defaultspack inclusion.",
     "criteria": [

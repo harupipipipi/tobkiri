@@ -1,0 +1,59 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.file.inspect.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Read-only workspace-jailed file inspection.",
+  "display_name": "Rumi File Inspect",
+  "host_execution": true,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:4142d3d55110c0d283b1495d253d14c2b53ff0c3ccc1a886d64e8ab438fe93d8",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:289a8b1bfdd0971076045a691106d338c563979095966c535e4fffa15c7afddf"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:289a8b1bfdd0971076045a691106d338c563979095966c535e4fffa15c7afddf"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_file_inspect_pack",
+  "pack_identity": "rumi:ecosystem/rumi_file_inspect_pack",
+  "provenance": {
+    "build_identity": "rumi_file_inspect_pack:1.0.0",
+    "content_hash": "sha256:4e477657259017f17e057591339615947be7fa554c63745959a71310640c4261",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "file.inspect",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

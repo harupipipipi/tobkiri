@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import NAMESPACE_DNS, uuid5
 
 from .base_provider import RetryPolicy
@@ -13,6 +13,18 @@ from .base_provider import RetryPolicy
 
 def _model_uuid(provider_id: str, model_name: str) -> str:
     return str(uuid5(NAMESPACE_DNS, f"{provider_id}:{model_name}"))
+
+
+def _float_or_default(value: object, default: float) -> float:
+    """Return a finite numeric setting or its validated default."""
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+    return default
 
 
 @dataclass
@@ -222,10 +234,24 @@ class ModelProfileManager:
                 if isinstance(value, RetryPolicy):
                     profile.retry_policy = value
                 elif isinstance(value, dict):
+                    backoff_value = value.get("backoff_seconds")
+                    if backoff_value is None:
+                        backoff_value = value.get(
+                            "wait_seconds", profile.retry_policy.backoff_seconds
+                        )
+                    wait_value = value.get("wait_seconds")
+                    if wait_value is None:
+                        wait_value = value.get(
+                            "backoff_seconds", profile.retry_policy.wait_seconds
+                        )
                     profile.retry_policy = RetryPolicy(
                         max_retries=int(value.get("max_retries", profile.retry_policy.max_retries)),
-                        backoff_seconds=float(value.get("backoff_seconds", value.get("wait_seconds", profile.retry_policy.backoff_seconds))),
-                        wait_seconds=float(value.get("wait_seconds", value.get("backoff_seconds", profile.retry_policy.wait_seconds))),
+                        backoff_seconds=_float_or_default(
+                            backoff_value, profile.retry_policy.backoff_seconds
+                        ),
+                        wait_seconds=_float_or_default(
+                            wait_value, profile.retry_policy.wait_seconds
+                        ),
                         failover_providers=list(value.get("failover_providers", profile.retry_policy.failover_providers)),
                         retryable_errors=list(value.get("retryable_errors", profile.retry_policy.retryable_errors)),
                         tool_fallback=value.get("tool_fallback", profile.retry_policy.tool_fallback),

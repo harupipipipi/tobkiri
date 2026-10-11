@@ -1,0 +1,120 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:ccfb729364b49e75f035a06f20d9b7a2e739857d5aed417d80719eaf5a830ec4",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:620f3c4bcfdc56e28f43dfa236a8582f9f648b9d75e3b0f8c4cc937f7d0e165d",
+      "kind": "executable",
+      "path": "runtime/validator.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.arguments.validate.v1",
+      "operations": [
+        "rumi_tool_validation_pack.tool-arguments-validate"
+      ],
+      "revision_digest": "sha256:2a557f2eed95894d8ebcdb4223265c7f087a88f298290ff31952cede9584c588"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:2a557f2eed95894d8ebcdb4223265c7f087a88f298290ff31952cede9584c588",
+      "id": "rumi_tool_validation_pack.tool-validation.arguments",
+      "implementation_digest": "sha256:620f3c4bcfdc56e28f43dfa236a8582f9f648b9d75e3b0f8c4cc937f7d0e165d",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_validation_pack.tool-arguments-validate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:ecdc53ee2e70a5fdd64c34481c1a32146eb72071afe89a577f0e1443ba2d0273",
+    "artifact_set_digest": "sha256:17dd7bb0670600c0b34ee28a4f1918588e07291852135c390a4b56e726aeaf9a",
+    "contract_catalog_digest": "sha256:8cda2761eea6e939385911ff8d917b517fda908f2c28e3431b3ecb8b8232b1e7"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.arguments.validate.v1",
+      "rumi:ecosystem/rumi_tool_validation_pack",
+      "rumi_tool_validation_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_validation_pack.tool-arguments-validate",
+      "owner": "rumi_tool_validation_pack",
+      "contract_reference": "tobkiri.service.tool.arguments.validate.v1",
+      "provider_id": "rumi_tool_validation_pack.tool-validation.arguments",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:26e1daa22c394be9662e5044b3ff93664804076d65a222b8d9705e77d0b57fb7",
+    "display_name": "Rumi Tool Validation",
+    "id": "rumi_tool_validation_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_validation_pack/pack.v4.json",
+    "source_digest": "sha256:ecdc53ee2e70a5fdd64c34481c1a32146eb72071afe89a577f0e1443ba2d0273",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:c3e84dde52c6af9969b06a719da2125ac6e1e72dadec28da212d53bc85f0c98b",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:74e211a5bcd0f95dea2959f2cfe15dfcd1f2d31938e5a265c0ebad6a7386ede5",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_tool_validation_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:ecdc53ee2e70a5fdd64c34481c1a32146eb72071afe89a577f0e1443ba2d0273"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_validation_pack.tool-validation.arguments",
+      "owner": "rumi_tool_validation_pack",
+      "contract_reference": "tobkiri.service.tool.arguments.validate.v1",
+      "operations": [
+        "rumi_tool_validation_pack.tool-arguments-validate"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.arguments.validate"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

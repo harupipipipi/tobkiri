@@ -1,0 +1,42 @@
+{
+  "artifact_set_digest": "sha256:7ee2b1f4e9b075181c1d56099c6dbb0ae1623aa47f3e920fbc467ed4bd6e21e9",
+  "artifacts": [
+    {
+      "digest": "sha256:c26c893fa54d8be6833cd2827a98643f58bd1490db67da63677f3a311d84f184",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:ca8ade0536608d4a575ded8b04d5b7f6d10ea905113255102aca1be7b8c18287",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:f154e13b626fad3c427ad178e6326f2105e3bee907dddc810db29dce73b926d4",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:99779c627cd7a1ee6667657a0b88d7abfdae2eb07007c017cbf30ad6306ca724",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a62455474e2598ce57cb692e4fec1eef8b71d2f17d1542543ded4cd66de43934",
+      "path": "runtime/adapter.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6",
+      "path": "runtime/streaming.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:b2f0a57fe084ac227173790857c560f68b576b99d72f2c15511567747deb76f7"
+  },
+  "pack_id": "rumi_provider_adapters_pack",
+  "source_identity": "sha256:8b4e953d9dad0d0e36b699379c622c0fb5fe6e8537e273fa6deac5348d59e15f"
+}

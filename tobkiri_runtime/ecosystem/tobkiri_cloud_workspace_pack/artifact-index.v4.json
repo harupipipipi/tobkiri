@@ -1,0 +1,112 @@
+{
+  "artifact_set_digest": "sha256:cf1076fc89310b103cc49cff49121416b92606af64a82e3a086d27ca89541b37",
+  "artifacts": [
+    {
+      "digest": "sha256:60fa57140cb083f7a83b83423bca9e738eebca7b6eef4eb2d4039fa0ba4df270",
+      "path": "container/Dockerfile",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e8e672fe5fe0d5f0a759df85e900a89ec56259e27454cba99c6e5c8ba9f4fa4d",
+      "path": "container/recipe.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7",
+      "path": "container/runtime.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4120b09164a3789e2635f6541a615f11dbfbb6266cdfff62ac04c36a6c101dc2",
+      "path": "container/task-recipe.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7",
+      "path": "container/task_runner.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
+      "path": "container/workspace_capsule_v1.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
+      "path": "container/workspace_tree_v1.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1d360819f177f708b4c3473709295bdccd7265432ac4fbd6a2868d0a7f671105",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:c204b770cf098f3475b9fe4e01fc22632e2771bb38ecd2bbf9648a6827e9f2be",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:6a7d975de095f827d22a6cf8541e52242dfa7983da0e1c25107afa4c18699ae5",
+      "path": "frontend/contributions/composer.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1d7cd3f5ababd755aecbe4063081c8444bc60331cd979738db2bb99b5f55ba28",
+      "path": "frontend/contributions/workspace.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
+      "path": "pack-source.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:910cc0f8e10a8ac7885161e16afb7955b7714bc41a00d7ef7a7a1d341c65a4b3",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:0b0afddeded6cae8379e760270af0457f1b3e963809e1f2049c7c50fe4630787",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:87db32b4880940d02f82b206bc7785972982796bd170b96cd82ff0dc2cd0ef7d",
+      "path": "runtime/capsule.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
+      "path": "runtime/host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a6c16abec9e1d27b5a01e240d166763fad04cba486733c35789778bf46e2164e",
+      "path": "runtime/recipe.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:8e88be48e6e007abe71df6278784cad1561c50d92bc9efa24b065e0f75f4ddbb",
+      "path": "runtime/service.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:8916aeef71db86c83315d209b6b070b2050153147352749dd08b5e7f417cf366",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f47759f5195e3f6c75457973e2a615ff9eb9cf77672744213ca459dcad3fccfa",
+      "path": "runtime/task.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:af89d478dbe1b53d21e6e26224b927600afd4f4d3f56b06329274dcbee68cd8c"
+  },
+  "pack_id": "tobkiri_cloud_workspace_pack",
+  "source_identity": "sha256:e798da3c20bdcc8d0048aa13f6702a00f89e2812737e111f8810c79938118262"
+}

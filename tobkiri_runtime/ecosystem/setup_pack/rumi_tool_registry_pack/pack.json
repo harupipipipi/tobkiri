@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_tool_registry_pack",
+  "display_name": "Rumi Tool Registry Pack",
+  "description": "Authoritative tool definitions, schemas, widgets, and aliases.",
+  "target_pack_id": "rumi_tool_registry_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "high",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": ["tool.definition.read", "tool.definition.manage", "tool.definition.migrate", "tool.definition.contribution.read"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.tool_registry", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "tool-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Stores definitions only and never executes tools.", "Mutations are revision guarded and approval-required by profile permissions.", "Explicit profile contributions are composed with collision fail-closed semantics."]
+}
+

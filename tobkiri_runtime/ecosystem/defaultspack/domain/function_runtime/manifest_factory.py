@@ -359,13 +359,16 @@ CODING_FUNCTIONS: tuple[FunctionSpec, ...] = tuple(
         ("coding_git_status", "Get git status.", "low", "blocks.coding.git_status"),
         ("coding_git_diff", "Get git diff.", "low", "blocks.coding.git_diff"),
         ("coding_git_branch_get", "Get the current git branch.", "low", "blocks.coding.git_branch",),
-        ("coding_git_branch_create", "Create a git branch.", "high", "blocks.coding.git_branch"),
+        ("coding_git_branch_create", "Unavailable: Git branch create/switch requires a Host workspace mutation lease.", "high", "blocks.coding.git_branch"),
         ("coding_git_commit", "Create a git commit.", "high", "blocks.coding.git_commit"),
         ("coding_git_push", "Push git changes.", "high", "blocks.coding.git_push"),
         ("coding_rumi_log", "List or append local .rumi coding history.", "medium", "blocks.coding.rumi_log"),
         ("coding_approval_list", "List pending coding approvals.", "low", "blocks.coding.approval_list"),
         ("coding_approval_approve", "Approve a pending coding operation.", "medium", "blocks.coding.approval_approve"),
         ("coding_approval_deny", "Deny a pending coding operation.", "medium", "blocks.coding.approval_deny"),
+        ("coding_approval_resume", "Resume one exact delegated coding approval.", "high", "blocks.coding.approval_resume"),
+        ("coding_pack_approval_request", "Request approval for one exact Pack snapshot.", "medium", "blocks.coding.pack_approval_request"),
+        ("coding_pack_status", "Read Pack approval and verification status.", "low", "blocks.coding.pack_status"),
         ("coding_github_pr_create", "Create a GitHub pull request for a pushed branch.", "high", "blocks.coding.github_pr_create"),
         ("coding_github_pr_read", "Read GitHub pull request metadata.", "medium", "blocks.coding.github_pr_read"),
         ("coding_github_issue_read", "Read GitHub issue metadata.", "medium", "blocks.coding.github_issue_read"),
@@ -810,12 +813,6 @@ REMOTE_FUNCTIONS: tuple[FunctionSpec, ...] = (
 )
 
 
-_PROMPT_WORKSPACE_DEFAULT_ARGS: dict[str, dict[str, Any]] = {
-    "prompt_editor_save": {"action": "save"},
-    "prompt_create_override": {"action": "override"},
-}
-
-
 DATA_FUNCTIONS: tuple[FunctionSpec, ...] = tuple(
     _spec(
         function_id,
@@ -823,31 +820,16 @@ DATA_FUNCTIONS: tuple[FunctionSpec, ...] = tuple(
         tags,
         risk=risk,
         block=block,
-        default_args=_PROMPT_WORKSPACE_DEFAULT_ARGS.get(function_id),
     )
     for function_id, description, tags, risk, block in (
         ("prompt_render", "Render a prompt.", ("prompt",), "low", "blocks.prompt.render"),
         ("prompt_list", "List prompts.", ("prompt",), "low", "blocks.prompt.list"),
-        ("prompt_create", "Create a prompt.", ("prompt",), "medium", "blocks.prompt.create"),
         ("prompt_system_get", "Get the system prompt.", ("prompt",), "low", "blocks.prompt.system"),
-        ("prompt_system_set", "Set the system prompt.", ("prompt",), "medium", "blocks.prompt.system"),
-        ("prompt_update", "Update a prompt.", ("prompt",), "medium", "blocks.prompt.update"),
-        ("prompt_delete", "Delete a prompt.", ("prompt",), "high", "blocks.prompt.delete"),
-        ("prompt_convert", "Convert a prompt.", ("prompt",), "low", "blocks.prompt.convert"),
         ("prompt_validate_template", "Validate a prompt template.", ("prompt",), "low", None),
         ("prompt_resolve_for_conversation", "Resolve prompt context for a conversation.", ("prompt",), "low", None),
-        ("prompt_active", "Summarize active prompt segments for a profile or chat.", ("prompt",), "low", "blocks.prompt.active"),
-        ("prompt_trace_list", "List saved prompt usage traces.", ("prompt", "trace"), "low", "blocks.prompt.trace"),
-        ("prompt_trace_get", "Get a saved prompt usage trace.", ("prompt", "trace"), "low", "blocks.prompt.trace"),
-        ("prompt_toggle", "Enable or disable a prompt edge through AI Input Graph disabled_edges.", ("prompt",), "medium", "blocks.prompt.toggle"),
-        ("prompt_preview_toggle", "Preview enabling or disabling a prompt edge without saving.", ("prompt",), "low", "blocks.prompt.preview_toggle"),
-        ("prompt_editor_load", "Load Prompt Studio data for prompts, source chains, and versions.", ("prompt", "editor"), "low", "blocks.prompt.editor_load"),
-        ("prompt_editor_save", "Save an editable prompt or create a profile override for a read-only prompt.", ("prompt", "editor"), "medium", "blocks.prompt.editor"),
-        ("prompt_create_override", "Create a profile prompt override.", ("prompt", "editor"), "medium", "blocks.prompt.editor"),
-        ("prompt_test", "Run a local Prompt Studio test for prompt, skill, and tool-schema activation.", ("prompt", "editor"), "low", "blocks.prompt.test"),
-        ("prompt_diff", "Diff prompt base, effective, and draft text.", ("prompt", "editor"), "low", "blocks.prompt.diff"),
-        ("prompt_versions", "List prompt versions recorded by Prompt Studio.", ("prompt", "editor"), "low", "blocks.prompt.versions"),
-        ("prompt_rollback", "Roll back a prompt to a recorded Prompt Studio version.", ("prompt", "editor"), "medium", "blocks.prompt.rollback"),
+        ("prompt_active", "Summarize active authored prompts.", ("prompt",), "low", "blocks.prompt.active"),
+        ("prompt_trace_list", "List prompt traces.", ("prompt", "trace"), "low", "blocks.prompt.trace"),
+        ("prompt_trace_get", "Get a prompt trace.", ("prompt", "trace"), "low", "blocks.prompt.trace"),
         ("memory_store", "Store memory.", ("memory",), "medium", "blocks.memory.store"),
         ("memory_recall", "Recall memory.", ("memory",), "low", "blocks.memory.recall"),
         ("memory_project_context", "Get project memory context.", ("memory",), "low", "blocks.memory.project_context"),
@@ -929,8 +911,6 @@ RESEARCH_MEDIA_UI_DEV_FUNCTIONS: tuple[FunctionSpec, ...] = tuple(
         ("media_image_analyze", "Analyze an image.", ("media",), "medium", None),
         ("media_image_generate", "Generate an image.", ("media",), "medium", None),
         ("vision_describe_images", "Describe attached images for non-vision models.", ("vision", "ai"), "medium", "blocks.vision.describe_images"),
-        ("prompt_lint_prompt", "Lint prompt redundancy and budget risk.", ("prompt",), "low", "blocks.prompt.lint_prompt"),
-        ("prompt_compact_prompt", "Suggest a safe compacted prompt.", ("prompt",), "medium", "blocks.prompt.compact_prompt"),
         ("ui_catalog", "Build the UI catalog.", ("ui",), "low", "blocks.ui.catalog"),
         ("ui_settings_get", "Get UI settings.", ("ui",), "low", "blocks.ui.settings",),
         ("ui_settings_update", "Update UI settings.", ("ui",), "medium", "blocks.ui.settings",),

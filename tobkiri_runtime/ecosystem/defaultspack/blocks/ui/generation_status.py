@@ -1,7 +1,4 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.tool.ui_compiler_tools import ui_generation_status
 

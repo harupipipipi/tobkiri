@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:c119ad0045ed44daf37f611d5adee6360fb886ecf861e2888f895ac0472c747d",
+  "artifacts": [
+    {
+      "digest": "sha256:dbc1b2d2a8a00d44d2063177f6cca91767ad8333e4971aed3e1daedc005c1330",
+      "path": "catalog/pr_acceptance_rubric.yaml",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:146b8c584b3041870041fd0254320731f8e1a09c9e6059ede63d1ef15ae584a7",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:c47e9a2fc760bcad0d15ce684edc891d7968ecbfcbe5da5824d82b0ec1592f00",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:04d28da4f03e032d2c070d935f560c927468674f9386eb6e9b91abef1b8bdfca",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:e49697939bb91cb6ef8bfbb43833a39227c0f3c1bc70cfc8797da4456aaf594c"
+  },
+  "pack_id": "rumi_subagent_pr_manager_pack",
+  "source_identity": "sha256:ac0a67f56a0b82234a652ce79003ee236814371013bda7f2c02c13314f0c4d9b"
+}

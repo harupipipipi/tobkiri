@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 import threading
 
 # エコシステムが初期化されているかどうか

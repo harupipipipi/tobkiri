@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/subagent-placement-patch/v1.json",
+  "title": "Tobkiri Subagent Placement Patch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "placement_map_id",
+    "expected_revision",
+    "operations"
+  ],
+  "properties": {
+    "schema_version": {"const": "tobkiri.subagent-placement-patch/v1"},
+    "placement_map_id": {"type": "string", "minLength": 1},
+    "expected_revision": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op", "target", "key"],
+        "properties": {
+          "op": {"enum": ["add", "replace", "remove"]},
+          "target": {
+            "enum": ["placement", "team_binding", "main"]
+          },
+          "key": {"type": "string"},
+          "value": {"type": "object"}
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existing_runs": {"const": "pin_current_revision"},
+        "new_runs": {"const": "use_new_revision"}
+      }
+    }
+  }
+}

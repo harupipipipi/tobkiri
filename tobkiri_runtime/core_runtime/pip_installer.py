@@ -27,7 +27,6 @@ import hashlib
 import json
 import subprocess
 import threading
-import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -37,8 +36,6 @@ from .paths import (
     ECOSYSTEM_DIR,
     PACK_DATA_BASE_DIR,
     discover_pack_locations,
-    find_ecosystem_json,
-    PackLocation,
 )
 
 
@@ -1171,7 +1168,7 @@ class PipInstaller:
                 event_type=event_type,
                 success=success,
                 details=details,
-                error=details.get("error"),
+                error=str(details.get("error") or ""),
             )
         except Exception:
             pass
@@ -1195,7 +1192,8 @@ def get_pip_installer() -> PipInstaller:
     return _global_pip_installer
 
 
-def reset_pip_installer(requests_dir: str = None, ecosystem_dir: str = None) -> PipInstaller:
+def reset_pip_installer(requests_dir: str | None = None,
+                        ecosystem_dir: str | None = None) -> PipInstaller:
     """PipInstaller をリセット（テスト用）"""
     global _global_pip_installer
     with _pip_lock:

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-launch-selected-presentation"
+description = "Enables the launch_selected_presentation command without any pre-configured scope."
+commands.allow = ["launch_selected_presentation"]
+
+[[permission]]
+identifier = "deny-launch-selected-presentation"
+description = "Denies the launch_selected_presentation command without any pre-configured scope."
+commands.deny = ["launch_selected_presentation"]

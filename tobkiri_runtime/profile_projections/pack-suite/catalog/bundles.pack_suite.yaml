@@ -1,0 +1,18 @@
+catalog_id: rumi_pack_suite.bundles
+schema_version: 1
+bundles:
+  - bundle_id: coding_operator
+    packs: [defaultspack, rumi_default_tools_pack, rumi_model_catalog_pack]
+    content_projections: [tobkiri.profile-content.local-agent.v1]
+  - bundle_id: research_workspace
+    packs: [defaultspack, rumi_model_catalog_pack]
+    content_projections: [tobkiri.profile-content.local-agent.v1, tobkiri.ui-projection.reference.v1]
+  - bundle_id: browser_operator
+    packs: [defaultspack, rumi_default_tools_pack]
+    content_projections: [tobkiri.ui-projection.reference.v1]
+  - bundle_id: personal_agent_os
+    packs: [defaultspack, rumi_default_tools_pack, rumi_model_catalog_pack]
+    content_projections: [tobkiri.profile-content.local-agent.v1, tobkiri.ui-projection.reference.v1]
+  - bundle_id: integration_gateway
+    packs: [defaultspack, rumi_default_tools_pack, rumi_operations_company_pack]
+    content_projections: [tobkiri.ui-projection.reference.v1]

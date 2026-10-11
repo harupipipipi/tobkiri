@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { buildVisibleModelOptions, SettingsModalRenderer } from "./SettingsModalRenderer";
+import { buildVisibleModelOptions, SettingsModalRenderer, sectionPreludeIsVisible, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
+import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
+import { TaskPetNotificationSettings } from "../components/TaskPetNotificationSettings";
+import { PromptProfileField } from "./settings/renderers/promptProfileField";
+import { buildControlCenterSections, filterControlCenterSections, taskPetNotificationSettingsSearchResult } from "../settings/controlCenter";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
 import {
@@ -14,8 +18,80 @@ import {
 } from "./settings/renderers/slashCommandsField";
 import { allowCleartextMobileQr } from "../lib/mobileCleartextQr";
 import { apiKeySetupTargetFieldId } from "./settings/renderers/settingsFieldRendererUtils";
+import { shortcutFromKeyEvent } from "./settings/renderers/shortcutRecorderField";
+import { shortcutSpecMatchesEvent } from "../lib/keyboardShortcuts";
+import { SettingsStatusBar } from "./settings/SettingsStatusBar";
+import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
+import { ModelSearchPicker } from "../features/models/ModelSearchPicker";
 import type { TemplateSettingsField } from "./template/settingsFieldMetadata";
 import type { SettingsSection } from "../lib/api";
+
+test("pet notification settings remain available with empty backend Features and use the runtime Profile", () => {
+  const render = (settingsSections: SettingsSection[], runtimeProfileId: string | undefined) => renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "features",
+    runtimeProfileId,
+    activeModelProfileId: "model-profile-b",
+    catalog: null,
+    health: null,
+    previewsCount: 0,
+    settingsSections,
+    settingsValues: {},
+    locale: "en",
+    onClose: () => undefined,
+    onSettingChange: () => assert.fail("local notification settings must not write backend settings"),
+  }));
+  for (const settingsSections of [[], [{ id: "features", label: "Features", fields: [] }]]) {
+    const html = render(settingsSections, "runtime-profile-a");
+    assert.match(html, /data-task-pet-profile="runtime-profile-a"/);
+    assert.doesNotMatch(html, /data-task-pet-profile="model-profile-b"/);
+    assert.match(html, /role="switch"/);
+    assert.match(html, /Pet task completion notifications/);
+    assert.doesNotMatch(html, /Loading built-in settings|Pack or provider contributions for this section/);
+  }
+  assert.doesNotMatch(render([], undefined), /data-task-pet-profile/);
+  assert.doesNotMatch(render([], "unavailable"), /data-task-pet-profile/);
+});
+
+test("pet notification searches return a local Features result in either language without backend fields", () => {
+  const sections = buildControlCenterSections([], "en");
+  assert.equal(sections.find((section) => section.id === "features")?.fields.length, 0);
+  for (const query of ["pet", "completion notifications", "ペット", "完了通知"]) {
+    assert.equal(filterControlCenterSections(sections, query).some((section) => section.id === "features"), true);
+    assert.deepEqual(taskPetNotificationSettingsSearchResult("runtime-profile-a", query, "en"), {
+      sectionId: "features",
+      label: "Tobkiri pet completion notifications",
+    });
+    assert.deepEqual(taskPetNotificationSettingsSearchResult("runtime-profile-a", query, "ja"), {
+      sectionId: "features",
+      label: "Tobkiri ペットの完了通知",
+    });
+  }
+  assert.equal(taskPetNotificationSettingsSearchResult(undefined, "pet"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("unavailable", "pet"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("runtime-profile-a", "model"), null);
+  assert.equal(taskPetNotificationSettingsSearchResult("runtime-profile-a", ""), null);
+});
+
+test("rendering pet notification settings never requests desktop notification permission", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let permissionRequests = 0;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { Notification: { permission: "default", requestPermission: () => { permissionRequests++; return Promise.resolve("granted"); } } },
+  });
+  try {
+    const html = renderToStaticMarkup(createElement(TaskPetNotificationSettings, {
+      profileId: "runtime-profile-a",
+      locale: "ja",
+    }));
+    assert.match(html, /ペットのタスク完了通知/);
+    assert.equal(permissionRequests, 0);
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
 
 function makeModelOption(index: number) {
   return {
@@ -26,6 +102,101 @@ function makeModelOption(index: number) {
     model_id: `model-${index}`,
   };
 }
+
+test("settings error surfaces keep severity glyphs separate from stable copy controls", () => {
+  const statusHtml = renderToStaticMarkup(createElement(SettingsStatusBar, {
+    backendNote: "Kernel is unreachable.",
+    backendState: "offline",
+    loadState: { status: "error", message: "Settings refresh failed." },
+    locale: "en",
+    saveState: {
+      dirtyKeys: ["profiles.active_profile"],
+      message: "Profile save failed.",
+      status: "error",
+    },
+  }));
+  const profileHtml = renderToStaticMarkup(createElement(ProfileSettingsPanel, {
+    loadState: { status: "error", message: "Profiles could not load." },
+    locale: "en",
+    onSettingChange: () => undefined,
+    workspace: {
+      activeProfileId: "",
+      defaultProfileId: "",
+      editableCollection: null,
+      modelRoutesText: "",
+      profiles: [],
+    },
+  }));
+  const modelHtml = renderToStaticMarkup(createElement(ModelSearchPicker, {
+    error: "Model search failed.",
+    showTrigger: false,
+    onChange: () => undefined,
+    onOpenChange: () => undefined,
+    onQueryChange: () => undefined,
+    open: true,
+    query: "demo",
+    value: "",
+  }));
+
+  assert.equal((statusHtml.match(/data-copy-action=""/g) ?? []).length, 3);
+  assert.match(statusHtml, /data-error-icon="error"/);
+  assert.match(profileHtml, /aria-label="Copy profile load error"/);
+  assert.match(profileHtml, /data-copy-action=""/);
+  assert.match(modelHtml, /aria-label="モデル検索エラーをコピー"/);
+  assert.match(modelHtml, /data-error-icon="warning"/);
+  assert.match(modelHtml, /data-copy-action=""/);
+});
+
+
+test("settings close guard allows in-flight autosaves and guards only failed dirty changes", () => {
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saving", dirtyKeys: [] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saving", dirtyKeys: ["profiles.active_profile"] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "error", dirtyKeys: ["profiles.active_profile"] }), true);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "error", dirtyKeys: [] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saved", dirtyKeys: [], lastSavedAt: Date.now() }), false);
+});
+
+test("settings row selection clears when the selected row is clicked again", () => {
+  assert.equal(toggleSettingsRowSelection("provider:token", "provider:token"), "");
+  assert.equal(toggleSettingsRowSelection("provider:token", "provider:other"), "provider:other");
+  assert.equal(toggleSettingsRowSelection("", "provider:token"), "provider:token");
+});
+
+test("settings AI surface launches the normal chat with the Settings skill", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "quick_setup",
+    catalog: {
+      sidebar: { filters: [], items: [{ id: "browser", label: "Browser", category: "tool", description: "Inspect pages" }] },
+      settings: { sections: [], values: {} },
+      skills: [{ id: "review", label: "Review", description: "Review settings" }],
+      chat_rendering: { renderers: [] },
+      extension_points: [],
+    },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [{
+      id: "personalization",
+      label: "Personalization",
+      fields: [{ id: "default_system_prompt_id", label: "Response guidance", type: "text" }],
+    }],
+    settingsValues: {},
+    saveState: { status: "idle", dirtyKeys: [] },
+    locale: "ja",
+    onClose: () => undefined,
+    onStartSettingsChat: () => undefined,
+    onSettingChange: () => undefined,
+  }));
+
+  assert.match(html, /AIアシスタント/);
+  assert.match(html, /応答の方針/);
+  assert.match(html, /AIと設定する/);
+  assert.ok(html.indexOf("応答の方針") < html.indexOf("AIと設定する"));
+  assert.match(html, /Settings Modeを開く/);
+  assert.match(html, /@Settings/);
+  assert.doesNotMatch(html, /設定について相談する/);
+  assert.doesNotMatch(html, /設定ホーム/);
+});
 
 test("CredentialTransferModal never renders cleartext credentials or a legacy QR payload", () => {
   const html = renderToStaticMarkup(createElement(CredentialTransferModal, {
@@ -223,7 +394,7 @@ test("SettingsModalRenderer renders template model_select with searchable model 
   assert.doesNotMatch(html, /type="text"[^>]*google\/gemini-2\.5-flash/);
 });
 
-test("SettingsModalRenderer shows simple main and lightweight model slots", () => {
+test("SettingsModalRenderer keeps everyday model slots visible and hides internal roles in standard mode", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
@@ -279,8 +450,8 @@ test("SettingsModalRenderer shows simple main and lightweight model slots", () =
   assert.match(html, /Lightweight Model/);
   assert.match(html, /Main Choice/);
   assert.match(html, /Fast Choice/);
-  assert.match(html, /Advanced/);
-  assert.match(html, /Utility Models/);
+  assert.doesNotMatch(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Utility Models/);
   assert.equal((html.match(/data-settings-renderer="model_select"/g) ?? []).length, 2);
 });
 
@@ -330,7 +501,7 @@ test("SettingsModalRenderer renders template slash command registration field", 
   assert.match(html, /YOLO/);
 });
 
-test("SettingsModalRenderer constrains long readonly paths inside settings cards", () => {
+test("SettingsModalRenderer keeps internal extension paths out of standard Pack settings", () => {
   const longTemplatePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/templates/very/deep/path/with/no-natural-breaks/ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns";
   const longProfilePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/profiles/another/very/deep/path/with/no-natural-breaks/ExternalCustomProfileExtensionThatWouldOtherwiseOverlap";
   const html = renderToStaticMarkup(
@@ -379,15 +550,145 @@ test("SettingsModalRenderer constrains long readonly paths inside settings cards
     }),
   );
 
-  assert.match(html, /External Custom/);
-  assert.match(html, /Template Extension Path/);
-  assert.match(html, /Profile Extension Paths/);
-  assert.match(html, /min-w-0 rounded-lg border border-zinc-800 bg-zinc-950\/50 p-4/);
-  assert.match(html, /group\/readonly flex min-w-0/);
-  assert.match(html, /min-w-0 flex-1 whitespace-pre-wrap break-all/);
-  assert.match(html, /ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns/);
-  assert.match(html, /ExternalCustomProfileExtensionThatWouldOtherwiseOverlap/);
-  assert.match(html, /title="Copy"/);
+  assert.doesNotMatch(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Template Extension Path/);
+  assert.doesNotMatch(html, /Profile Extension Paths/);
+  assert.doesNotMatch(html, /ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns/);
+  assert.doesNotMatch(html, /ExternalCustomProfileExtensionThatWouldOtherwiseOverlap/);
+});
+
+test("shortcut recorder saves keyboard combinations instead of accepting raw text", () => {
+  assert.equal(shortcutFromKeyEvent({ key: "k", ctrlKey: true, altKey: false, metaKey: false, shiftKey: false }), "Ctrl+K");
+  assert.equal(shortcutFromKeyEvent({ key: "p", ctrlKey: false, altKey: true, metaKey: true, shiftKey: false }), "Cmd+Alt+P");
+  assert.equal(shortcutFromKeyEvent({ key: "Shift", ctrlKey: false, altKey: false, metaKey: false, shiftKey: true }), null);
+  assert.equal(shortcutFromKeyEvent({ key: "k", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false }), null);
+
+  const recordedArrow = shortcutFromKeyEvent({ key: "ArrowUp", ctrlKey: true, altKey: false, metaKey: false, shiftKey: false });
+  assert.equal(recordedArrow, "Ctrl+ArrowUp");
+  assert.equal(shortcutSpecMatchesEvent(recordedArrow, { key: "ArrowUp", ctrlKey: true }), true);
+  const recordedFunctionKey = shortcutFromKeyEvent({ key: "F6", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false });
+  assert.equal(recordedFunctionKey, "F6");
+  assert.equal(shortcutSpecMatchesEvent(recordedFunctionKey, { key: "F6" }), true);
+});
+
+test("Settings Profiles presents active/default routing and keeps profile secrets out of markup", () => {
+  const rawSecret = ["profile", "plain", "secret"].join("-");
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "profiles",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "profiles",
+          label: "Profiles",
+          fields: [
+            { id: "profiles", label: "Profiles", type: "json" },
+            { id: "active_profile", label: "Active profile", type: "text" },
+            { id: "default_profile", label: "Default profile", type: "text" },
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: {
+        profiles: {
+          profiles: [
+            {
+              profile_id: "work/deep-focus",
+              display_name: "Deep Focus",
+              description: "Research and synthesis",
+              role: "Long-form analysis",
+              preferred_model: "openai/gpt-4.1",
+              api_key: rawSecret,
+              credential_ref: "RUMIAPI_OPENAI_PRIMARY",
+              editable: true,
+            },
+            {
+              profile_id: "work/fast",
+              display_name: "Fast Draft",
+              preferred_model: "local/qwen",
+              editable: true,
+            },
+          ],
+          active_profile: "work/deep-focus",
+          default_profile: "work/fast",
+        },
+        models: {
+          model_api_routes: "openai/gpt-4.1: openai/primary\n",
+        },
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              apis: [{ api_id: "primary", credential_ref: "RUMIAPI_OPENAI_PRIMARY" }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-settings-profile-panel/);
+  assert.match(html, /Profile workspace/);
+  assert.match(html, /Deep Focus/);
+  assert.match(html, /Fast Draft/);
+  assert.match(html, /Active profile route/);
+  assert.match(html, /openai\/gpt-4\.1/);
+  assert.match(html, /openai\/primary/);
+  assert.match(html, /Create profile/);
+  assert.match(html, /Duplicate/);
+  assert.match(html, /Rename/);
+  assert.doesNotMatch(html, new RegExp(rawSecret));
+  assert.doesNotMatch(html, /data-settings-field="profiles\.(?:profiles|active_profile|default_profile)"/);
+});
+
+test("Settings keeps the modal header compact", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "profiles",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [],
+      settingsValues: {},
+      backendConnectionState: "offline",
+      backendConnectionNote: "Backend reconnect is pending.",
+      saveState: {
+        status: "error",
+        dirtyKeys: ["profiles.profiles"],
+        message: "Profile changes were not confirmed.",
+      },
+      loadState: {
+        status: "error",
+        message: "Settings refresh failed.",
+      },
+      onRetryLoad: () => undefined,
+      onRetrySave: () => undefined,
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /id="rumi-settings-dialog-title"/);
+  assert.match(html, />Settings</);
+  assert.doesNotMatch(html, /rumi-settings-dialog-description/);
+  assert.doesNotMatch(html, /Backend reconnect is pending/);
 });
 
 test("slash command settings keep unsaved empty rows with stable row ids", () => {
@@ -519,8 +820,295 @@ test("SettingsModalRenderer renders template api_key_setup with setup control", 
 
   assert.match(html, /data-settings-renderer="api_key_setup"/);
   assert.match(html, /openai:main:\*\*\*/);
+  assert.doesNotMatch(html, />APIキーを追加</);
   assert.match(html, /placeholder="openai API key"/);
   assert.match(html, />Save</);
+});
+
+test("custom LLM API setup exposes only supported protocol choices", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "APIs",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Key Setup",
+          type: "api_key_setup",
+          provider_id: "acme-ai",
+          api_keys: [{
+            provider_id: "acme-ai",
+            label: "Acme AI",
+            kind: "llm",
+          }],
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: { apis: { api_keys: [] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /aria-label="Custom LLM protocol"/);
+  assert.match(html, /value="openai-compatible"/);
+  assert.match(html, /value="anthropic"/);
+});
+
+test("local OpenAI-compatible setup asks for a loopback URL and no API key", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "APIs",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Key Setup",
+          type: "api_key_setup",
+          provider_id: "openai_compatible",
+          protocol: "local-openai-compatible",
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: { apis: { api_keys: [] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Local OpenAI-compatible \(認証なし\)/);
+  assert.match(html, /ローカル接続先 URL/);
+  assert.match(html, /placeholder="http:\/\/127\.0\.0\.1:1234\/v1"/);
+  assert.match(html, /placeholder="接続名 \(例: gemma3-1b\)"/);
+  assert.doesNotMatch(html, /placeholder="openai_compatible API key"/);
+});
+
+test("Connections external-token setup omits LLM endpoint and model-route controls", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "Connections",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Keys / Tokens",
+          type: "api_key_setup",
+          provider_id: "cloudflare",
+          provider_scope: "non_llm",
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: {
+        apis: {
+          api_keys: [{
+            provider_id: "cloudflare",
+            label: "Cloudflare",
+            kind: "custom",
+          }],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="non_llm"/);
+  assert.match(html, /placeholder="cloudflare token"/);
+  assert.doesNotMatch(html, /Custom LLM protocol/);
+  assert.doesNotMatch(html, /Provider HTTPS base URL/);
+  assert.doesNotMatch(html, /接続先は選んだAIプロバイダーに合わせて自動で設定されます/);
+  assert.doesNotMatch(html, /モデルルート作成/);
+});
+
+test("Connections API credential template excludes AI provider keys", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "apis",
+          label: "Connections",
+          fields: [
+            {
+              id: "api_key_setup_template",
+              label: "API Keys / Tokens",
+              type: "api_key_setup",
+              provider_id: "line",
+              provider_scope: "non_llm",
+            } as unknown as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: {
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              label: "OpenAI",
+              kind: "llm",
+              apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+            },
+            {
+              provider_id: "line",
+              label: "LINE",
+              kind: "custom",
+              apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="non_llm"/);
+  assert.match(html, /line:channel:\*\*\*/);
+  assert.doesNotMatch(html, /openai:main:\*\*\*/);
+  assert.match(html, /placeholder="line token"/);
+  assert.match(html, /外部サービス用トークンとして保存します/);
+  assert.doesNotMatch(html, /loopback endpoint only/);
+  assert.doesNotMatch(html, /Provider HTTPS base URL/);
+});
+
+test("Models shows one API registration route and hides legacy overrides in standard", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "models",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "models",
+          label: "Models",
+          fields: [
+            {
+              id: "main_model",
+              label: "Main Model",
+              type: "select",
+              options: [{ value: "openai/gpt-4.1", label: "GPT-4.1" }],
+            },
+            {
+              id: "model_api_routes",
+              label: "Model API Variants",
+              type: "model_api_routes",
+              renderer: "model_routing",
+              options: [{ value: "openai/gpt-4.1", label: "GPT-4.1", provider_id: "openai" }],
+              api_keys: [
+                {
+                  provider_id: "openai",
+                  label: "OpenAI",
+                  kind: "llm",
+                  apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+                },
+              ],
+            } as TemplateSettingsField,
+          ],
+        },
+        {
+          id: "apis",
+          label: "APIs",
+          fields: [
+            {
+              id: "api_keys",
+              label: "API Keys / Tokens",
+              type: "api_key_setup",
+              renderer: "api_key_setup",
+              provider_scope: "non_llm",
+              api_keys: [
+                {
+                  provider_id: "openai",
+                  label: "OpenAI",
+                  kind: "llm",
+                  apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+                },
+                {
+                  provider_id: "line",
+                  label: "LINE",
+                  kind: "custom",
+                  apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+                },
+              ],
+            } as unknown as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ] as SettingsSection[],
+      settingsValues: {
+        models: {
+          main_model: "openai/gpt-4.1",
+          model_api_routes: "openai/gpt-4.1: openai/main",
+        },
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              label: "OpenAI",
+              kind: "llm",
+              apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+            },
+            {
+              provider_id: "line",
+              label: "LINE",
+              kind: "custom",
+              apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="llm"/);
+  assert.match(html, /openai:main:\*\*\*/);
+  assert.doesNotMatch(html, /line:channel:\*\*\*/);
+  assert.match(html, /data-settings-field="apis.api_keys"/);
+  assert.doesNotMatch(html, /data-settings-field="models.model_api_routes"/);
+  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
 });
 
 test("CredentialTransferModal keeps transfer device-bound and credential-free", () => {
@@ -594,9 +1182,13 @@ test("SettingsModalRenderer renders template model_api_routes through registered
     }),
   );
 
-  assert.match(html, /data-settings-renderer="model_routing"/);
-  assert.match(html, /Gemini 2\.5 Flash/);
-  assert.match(html, /google\/main/);
+  assert.doesNotMatch(html, /data-settings-renderer="model_routing"/);
+  assert.doesNotMatch(html, /1\. 設定するモデル|2\. 使用するAPIキー|API keyを追加/);
+  assert.match(html, /使いたいモデルを選ぶ/);
+  assert.match(html, /aria-label="使用するAPI"/);
+  assert.match(html, /登録済みの接続がありません/);
+  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
+
 });
 
 test("SettingsModalRenderer renders continuity handoff controls", () => {
@@ -699,7 +1291,7 @@ test("SettingsModalRenderer renders continuity handoff controls", () => {
   assert.doesNotMatch(html, /COMPLETED/);
 });
 
-test("Settings > Tools contains tool experience settings tabs", () => {
+test("Settings > Tools keeps selector internals out of standard mode", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
@@ -732,6 +1324,7 @@ test("Settings > Tools contains tool experience settings tabs", () => {
           id: "tools",
           label: "機能と接続",
           fields: [
+            { id: "mcp_servers", label: "MCPサーバー管理", type: "text", renderer: "mcp_servers" } as unknown as SettingsSection["fields"][number],
             { id: "default_mode", label: "既定の使い方", type: "select", default: "auto", options: [{ value: "auto", label: "自動で選ぶ" }] },
           ],
         },
@@ -751,9 +1344,89 @@ test("Settings > Tools contains tool experience settings tabs", () => {
   assert.match(html, /基本/);
   assert.match(html, /権限/);
   assert.match(html, /接続/);
-  assert.match(html, /高度な設定/);
-  assert.match(html, /既定の使い方/);
+  assert.doesNotMatch(html, /高度な設定/);
+  assert.match(html, /普段のツールの選び方/);
   assert.match(html, /自動で選ぶ/);
+  assert.ok(html.indexOf(">基本<") < html.indexOf("普段のツールの選び方"));
+  assert.doesNotMatch(html, /MCPサーバーを追加/);
+  assert.equal([...html.matchAll(/普段のツールの選び方/g)].length, 1);
+  assert.equal([...html.matchAll(/送信後も選んだ機能を保持/g)].length, 1);
+});
+
+test("Tools connection tab contains connection controls and keeps the basic editor hidden", () => {
+  const html = renderToStaticMarkup(createElement(ToolExperienceSettingsPanel, {
+    tools: [],
+    settingsValues: { tools: { default_mode: "review" } },
+    onSettingChange: () => undefined,
+    requestedTab: { id: "connections", version: 1 },
+    connectionSettings: createElement("div", null, "MCPサーバー管理", "Codex App Server"),
+  }));
+
+  assert.ok(html.indexOf(">接続<") < html.indexOf("MCPサーバー管理"));
+  assert.match(html, /Codex App Server/);
+  assert.doesNotMatch(html, /普段のツールの選び方/);
+});
+
+test("Connections groups reply choices and keeps paths and empty sources separate", () => {
+  const fields: SettingsSection["fields"] = [
+    { id: "input_provider", label: "Input Provider", type: "select", default: "line", options: [{ value: "line", label: "LINE" }] },
+    { id: "provider_route_copy", label: "Route Paths", type: "readonly", default: "Discord: /api/integrations/discord/events" },
+    { id: "default_response_mode", label: "Default Response", type: "select", default: "same_response", options: [{ value: "same_response", label: "Reply" }] },
+    { id: "saved_sources_summary", label: "Saved Sources", type: "readonly", default: "No saved sources" },
+    { id: "input_response_preset", label: "Response Preset", type: "select", default: "same_source_reply", options: [{ value: "same_source_reply", label: "Reply" }] },
+  ];
+  const connections = buildControlCenterSections([{ id: "external_input", label: "External Input", fields }], "ja")
+    .find((section) => section.id === "accounts_connections");
+  const inputIds = connections?.fields
+    .filter((field) => field.sourceSectionId === "external_input")
+    .map((field) => field.id);
+  assert.deepEqual(inputIds, [
+    "input_provider",
+    "default_response_mode",
+    "input_response_preset",
+    "provider_route_copy",
+    "saved_sources_summary",
+  ]);
+});
+
+test("Response guidance keeps selection and editing in one card without an editability badge", () => {
+  const html = renderToStaticMarkup(createElement(PromptProfileField, {
+    sectionId: "personalization",
+    field: { id: "default_system_prompt_id", label: "応答の方針", type: "prompt_profile" },
+    value: "",
+    onChange: () => undefined,
+  }));
+
+  assert.equal([...html.matchAll(/rounded-xl border border-zinc-800/g)].length, 1);
+  assert.match(html, /<select/);
+  assert.doesNotMatch(html, /新しい会話の応答の方針|編集できます/);
+});
+
+test("Calendar toggles use compact side-by-side rows under one source heading", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "calendar",
+    locale: "ja",
+    catalog: { sidebar: { filters: [], items: [] }, settings: { sections: [], values: {} }, chat_rendering: { renderers: [] }, extension_points: [] },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [{ id: "calendar", label: "Calendar", fields: [
+      { id: "quick_add_enabled", label: "Quick Add", type: "toggle", default: true, help: "日付から追加します。" },
+      { id: "dim_weekends", label: "Dim Weekends", type: "toggle", default: false, help: "週末を控えめに表示します。" },
+    ] }],
+    settingsValues: {},
+    onClose: () => undefined,
+    onSettingChange: () => undefined,
+  }));
+  const main = html.slice(html.indexOf('<main class="min-w-0 space-y-7'));
+  const nav = html.slice(html.indexOf('<nav '), html.indexOf('</nav>'));
+  assert.ok(nav.indexOf("Tobkiri共通") < nav.indexOf("Defaultspack"));
+  assert.match(nav, />カレンダー<\/span>/);
+  assert.match(main, />カレンダー<\/h3>/);
+  assert.equal([...main.matchAll(/>カレンダー<\/h4>/g)].length, 0);
+  assert.match(main, /data-settings-field="calendar.quick_add_enabled"[^>]*py-3/);
+  assert.match(main, /flex min-w-0 items-center justify-between gap-4/);
+  assert.match(main, /日付から追加します。/);
 });
 
 test("Settings > Tools defaults to the tool experience overview", () => {
@@ -807,7 +1480,7 @@ test("Settings > Tools defaults to the tool experience overview", () => {
 
   assert.match(html, /基本/);
   assert.match(html, /権限/);
-  assert.match(html, /1件/);
+  assert.doesNotMatch(html, />1件</);
   assert.match(html, /選んだ機能を回答内に表示/);
   assert.doesNotMatch(html, /Tool details/);
 });
@@ -913,11 +1586,12 @@ test("operations company model allowlist renders as an addable selection list", 
   assert.doesNotMatch(html, /<textarea[^>]*>stub\/default/);
 });
 
-test("settings system info renders viewer version and macOS permissions", () => {
+test("MiMo model allowlist also uses the catalog picker instead of raw model IDs", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
-      activeSectionId: "system_info",
+      activeSectionId: "mimo_coding_company",
+      locale: "ja",
       catalog: {
         sidebar: { filters: [], items: [] },
         settings: { sections: [], values: {} },
@@ -926,132 +1600,57 @@ test("settings system info renders viewer version and macOS permissions", () => 
       },
       health: null,
       previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: {
-        source: "viewer_tauri",
-        reliable: true,
-        app_name: "Tobkiri",
-        display_version: "beta 1.0.0",
-        viewer_version: "1.0.0-beta.1",
-        build_channel: "beta",
-        platform: "macos",
-        platform_release: "15.0",
-        permission_subject: "Tobkiri Launcher",
-        host_broker: {
-          enabled: true,
-          available: true,
-          status: "running",
+      settingsSections: [{
+        id: "mimo_coding_company",
+        label: "MiMo Coding Company",
+        fields: [{
+          id: "model_allowlist",
+          label: "Model Allowlist",
+          type: "textarea",
+          default: "xiaomi-token-plan-sgp/mimo-v2.5-pro\nstub/default",
+        }],
+      }],
+      settingsValues: {
+        mimo_coding_company: {
+          model_allowlist: "xiaomi-token-plan-sgp/mimo-v2.5-pro\nstub/default",
         },
-        permissions: [
-          {
-            id: "screen_recording",
-            label: "Screen Recording",
-            status: "missing",
-            granted: false,
-            detail: "Allows screen capture.",
-            settings_hint: "System Settings > Privacy & Security > Screen Recording",
-          },
-        ],
       },
       onClose: () => undefined,
-      onOpenSection: () => undefined,
       onSettingChange: () => undefined,
     }),
   );
 
-  assert.match(html, /beta 1\.0\.0/);
-  assert.match(html, /1\.0\.0-beta\.1/);
-  assert.match(html, /macOSの承認対象は Tobkiri Launcher です/);
-  assert.match(html, /macOS Permissions/);
-  assert.match(html, /Screen Recording/);
-  assert.match(html, /Missing/);
+  assert.match(html, /MiMo Coding/);
+  assert.match(html, /モデルを追加/);
+  assert.match(html, /xiaomi-token-plan-sgp\/mimo-v2.5-pro/);
+  assert.doesNotMatch(html, /<textarea[^>]*>xiaomi-token-plan-sgp/);
 });
 
-test("settings system info does not show missing permissions when viewer state is unreliable", () => {
-  const html = renderToStaticMarkup(
-    createElement(SettingsModalRenderer, {
-      isOpen: true,
-      activeSectionId: "system_info",
-      catalog: {
-        sidebar: { filters: [], items: [] },
-        settings: { sections: [], values: {} },
-        chat_rendering: { renderers: [] },
-        extension_points: [],
-      },
-      health: null,
-      previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: {
-        source: "fallback",
-        reliable: false,
-        app_name: "Tobkiri",
-        display_version: "",
-        viewer_version: "",
-        build_channel: "beta",
-        platform: "darwin",
-        platform_release: "15.0",
-        permission_subject: "Tobkiri Launcher",
-        host_broker: {
-          enabled: false,
-          available: false,
-          status: "unavailable",
-        },
-        permissions: [
-          {
-            id: "viewer_host",
-            label: "Tobkiri Launcher",
-            status: "missing",
-            granted: false,
-            detail: "Fallback row should not be rendered.",
-            settings_hint: "Open Tobkiri Launcher.",
-          },
-        ],
-      },
-      onClose: () => undefined,
-      onOpenSection: () => undefined,
-      onSettingChange: () => undefined,
-    }),
-  );
+test("Automation settings include Computer Use display controls without host permission panels", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "computer_automation",
+    locale: "ja",
+    catalog: { sidebar: { filters: [], items: [] }, settings: { sections: [], values: {} }, chat_rendering: { renderers: [] }, extension_points: [] },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [
+      { id: "computer_use_haze", label: "Computer Use", fields: [
+        { id: "preset", label: "Preset", type: "select", options: [{ value: "aurora", label: "Aurora" }] },
+        { id: "start_color", label: "Start Color", type: "text" },
+      ] },
+      { id: "continuity", label: "Continuity", fields: [{ id: "cloud_handoff_enabled", label: "Cloud Handoff", type: "toggle" }] },
+    ],
+    settingsValues: { computer_use_haze: { preset: "aurora", start_color: "#6EE7F9" } },
+    onClose: () => undefined,
+    onSettingChange: () => undefined,
+  }));
 
-  assert.match(html, /Viewer permission status is unverified/);
-  assert.doesNotMatch(html, /macOS Permissions/);
-  assert.doesNotMatch(html, /Missing/);
-  assert.doesNotMatch(html, /Fallback row should not be rendered/);
-});
-
-test("settings system info shows browser context message when info is null", () => {
-  const html = renderToStaticMarkup(
-    createElement(SettingsModalRenderer, {
-      isOpen: true,
-      activeSectionId: "system_info",
-      catalog: {
-        sidebar: { filters: [], items: [] },
-        settings: { sections: [], values: {} },
-        chat_rendering: { renderers: [] },
-        extension_points: [],
-      },
-      health: null,
-      previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: null,
-      onClose: () => undefined,
-      onOpenSection: () => undefined,
-      onSettingChange: () => undefined,
-    }),
-  );
-
-  assert.match(html, /権限状態を取得できませんでした/);
-  assert.match(html, /Tobkiri Launcherを起動し/);
-  assert.doesNotMatch(html, /Rumi Defaultspack\.app/);
+  assert.match(html, /cloud_handoff_enabled/);
+  assert.match(html, /data-settings-field="computer_use_haze\.preset"/);
+  assert.match(html, /data-settings-field="computer_use_haze\.start_color"/);
+  assert.match(html, /操作中に表示する配色/);
+  assert.doesNotMatch(html, /Computer actions are high-impact|Permission Host|macOS Permissions/);
 });
 
 test("settings accounts prelude renders actionable Google and disabled Cloudflare states", () => {
@@ -1191,6 +1790,7 @@ test("settings accounts prelude renders actionable Google and disabled Cloudflar
   assert.match(html, /Set RUMI_WRANGLER_COMMAND/);
   assert.match(html, /node_modules\/\.bin\/wrangler/);
   assert.match(html, /Cloudflare Containers require the Workers Paid plan/);
+  assert.match(html, /src="data:image\/svg\+xml,%3Csvg/);
   assert.doesNotMatch(html, />Not connected</);
 });
 
@@ -1242,7 +1842,7 @@ test("settings accounts prelude renders Codex token credential without raw token
   assert.doesNotMatch(html, new RegExp(rawToken));
 });
 
-test("settings tools prelude renders Codex App Server status and controls", () => {
+test("settings tools hides technical Codex App Server controls in standard mode", () => {
   const rawToken = ["codex", "hidden", "token"].join("-");
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -1307,18 +1907,21 @@ test("settings tools prelude renders Codex App Server status and controls", () =
     }),
   );
 
-  assert.match(html, /Codex App Server/);
-  assert.match(html, /Tool source/);
-  assert.match(html, /Automation/);
-  assert.match(html, /http:\/\/127\.0\.0\.1:7331/);
-  assert.match(html, /ws:\/\/127\.0\.0\.1:7331\/ws/);
-  assert.match(html, /websocket_loopback/);
-  assert.match(html, /ws_token via file/);
-  assert.match(html, /Connected Codex provider via ChatGPT account: rumi-user@example.test/);
-  assert.match(html, /Save config/);
-  assert.match(html, /Probe/);
+  assert.doesNotMatch(html, /Codex App Server/);
+  assert.doesNotMatch(html, /http:\/\/127\.0\.0\.1:7331/);
+  assert.doesNotMatch(html, /ws:\/\/127\.0\.0\.1:7331\/ws/);
+  assert.doesNotMatch(html, /websocket_loopback/);
+  assert.doesNotMatch(html, /ws_token via file/);
+  assert.doesNotMatch(html, /Save config/);
+  assert.doesNotMatch(html, /Probe/);
   assert.doesNotMatch(html, new RegExp(rawToken));
   assert.doesNotMatch(html, /Connected ChatGPT account/);
+});
+
+test("settings tools keeps technical Codex App Server setup in advanced mode", () => {
+  assert.equal(sectionPreludeIsVisible("tools_mcp", "standard"), false);
+  assert.equal(sectionPreludeIsVisible("tools_mcp", "advanced"), true);
+  assert.equal(sectionPreludeIsVisible("computer_automation", "standard"), true);
 });
 
 test("settings help pane uses reported active profile with fallback when absent", () => {
@@ -1367,6 +1970,59 @@ test("settings help pane uses reported active profile with fallback when absent"
   assert.doesNotMatch(withoutProfile, />default</);
 });
 
+test("SettingsModalRenderer normalizes object profile references for the active profile route", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "models",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "profiles",
+          label: "Profiles",
+          fields: [
+            { id: "profiles", label: "Profiles", type: "json" },
+            { id: "active_profile", label: "Active profile", type: "text" },
+          ] as unknown as SettingsSection["fields"],
+        },
+        { id: "models", label: "Models", fields: [] },
+      ],
+      settingsValues: {
+        profiles: {
+          profiles: [
+            { profile_id: "work/base", display_name: "Base", preferred_model: "local/base" },
+            { profile_id: "work/deep-focus", display_name: "Deep Focus", preferred_model: "openai/gpt-4.1" },
+          ],
+          active_profile: { profile_id: "work/deep-focus", display_name: "Deep Focus" },
+        },
+        models: {
+          model_api_routes: "openai/gpt-4.1: openai/primary",
+        },
+        apis: {
+          api_keys: [
+            { provider_id: "openai", apis: [{ api_id: "primary", credential_ref: "RUMIAPI_OPENAI_PRIMARY" }] },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Active profile route/);
+  assert.match(html, /Deep Focus/);
+  assert.match(html, /work\/deep-focus/);
+  assert.doesNotMatch(html, /\[object Object\]/);
+});
+
 test("Settings modal exposes localized dialog semantics and task-oriented Japanese copy", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -1395,10 +2051,10 @@ test("Settings modal exposes localized dialog semantics and task-oriented Japane
   assert.match(html, /role="dialog"/);
   assert.match(html, /aria-modal="true"/);
   assert.match(html, /aria-labelledby="rumi-settings-dialog-title"/);
-  assert.match(html, /aria-describedby="rumi-settings-dialog-description"/);
+  assert.doesNotMatch(html, /aria-describedby="rumi-settings-dialog-description"/);
   assert.match(html, /aria-label="設定を閉じる"/);
   assert.match(html, />設定<\/h2>/);
-  assert.match(html, /入力欄の案内文/);
+  assert.doesNotMatch(html, /入力欄の案内文/);
   assert.doesNotMatch(html, />Composer Placeholder</);
   assert.doesNotMatch(html, /バックエンド登録情報/);
 });
@@ -1428,7 +2084,8 @@ test("Japanese Accounts modal does not expose English connection implementation 
     }),
   );
 
-  assert.match(html, /ログイン、認証情報、権限を分けて管理します/);
+  assert.match(html, /aria-label="接続の概要"/);
+  assert.doesNotMatch(html, /ログイン、認証情報、権限を分けて管理します/);
   assert.match(html, /Gmailの検索とメタデータ/);
   assert.match(html, /認証情報を読み込んで保存/);
   assert.match(html, /設定の提供元/);
@@ -1466,4 +2123,18 @@ test("English Settings empty section keeps registry contribution guidance", () =
 
   assert.match(html, /Pack or provider contributions for this section will appear here after registry validation\./);
   assert.doesNotMatch(html, /パックや外部サービスから追加される設定/);
+});
+
+
+test("Settings modal renders installed Pack settings inside its dialog content", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true, catalog: null, health: null, previewsCount: 0,
+    settingsSections: [], settingsValues: {}, onClose: () => undefined,
+    onSettingChange: () => undefined,
+    extensionSettings: createElement("div", { "data-test-pack-settings": true }, "Captured scheduler controls"),
+  }));
+  const contentIndex = html.indexOf('id="settings-content"');
+  assert.ok(contentIndex >= 0);
+  assert.ok(html.indexOf('aria-label="Pack settings"', contentIndex) > contentIndex);
+  assert.match(html, /Captured scheduler controls/);
 });

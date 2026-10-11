@@ -29,6 +29,7 @@ class MacSwiftHostDriver(ComputerDriver):
             can_semantic_action=True,
             can_background_click=False,
             can_background_type=False,
+            can_background_set_text_control=True,
             can_background_key=False,
             can_background_scroll=False,
             can_pid_event=False,
@@ -79,6 +80,42 @@ class MacSwiftHostDriver(ComputerDriver):
     def type_text(self, target: ComputerTarget, text: str = "") -> ActionResult:
         result = self._run("computer.type", {**self._target_args(target), "text": text})
         return self._action_result("type_text", target, result, uses_physical_input=True)
+
+    def set_text_control(
+        self,
+        target: ComputerTarget,
+        text: str = "",
+        selector: dict[str, Any] | None = None,
+    ) -> ActionResult:
+        result = self._run(
+            "computer.set_text_control",
+            {**self._target_args(target), "text": text, "selector": dict(selector or {})},
+        )
+        return self._action_result(
+            "set_text_control",
+            target,
+            result,
+            uses_physical_input=False,
+            background_semantic=True,
+        )
+
+    def probe_text_control(
+        self,
+        target: ComputerTarget,
+        selector: dict[str, Any] | None = None,
+    ) -> ActionResult:
+        """Resolve a background semantic text control without mutating it."""
+        result = self._run(
+            "computer.probe_text_control",
+            {**self._target_args(target), "selector": dict(selector or {})},
+        )
+        return self._action_result(
+            "probe_text_control",
+            target,
+            result,
+            uses_physical_input=False,
+            background_semantic=True,
+        )
 
     def key(self, target: ComputerTarget, key_combo: str = "") -> ActionResult:
         result = self._run("computer.key", {**self._target_args(target), "key_combo": key_combo})
@@ -175,6 +212,12 @@ class MacSwiftHostDriver(ComputerDriver):
                 args[key] = value
         if target.window_title:
             args["title"] = target.window_title
+        bounds = target.window_bounds
+        if isinstance(bounds, dict):
+            for key in ("x", "y", "width", "height"):
+                value = bounds.get(key)
+                if value is not None:
+                    args[f"window_{key}"] = value
         return args
 
     @staticmethod
@@ -196,19 +239,29 @@ class MacSwiftHostDriver(ComputerDriver):
         result: dict[str, Any],
         *,
         uses_physical_input: bool,
+        background_semantic: bool = False,
     ) -> ActionResult:
-        executed = bool(result.get("executed")) and not bool(result.get("is_error"))
+        data = {k: v for k, v in result.items() if k not in {"executed", "action"}}
+        reported_executed = bool(result.get("executed")) and not bool(result.get("is_error"))
+        completion_verified = result.get("completion_verified") is True
+        verifies_text = action in {"type_text", "set_text_control"}
+        if verifies_text and reported_executed and not completion_verified:
+            data.setdefault("input_dispatched", True)
+        executed = reported_executed and (not verifies_text or completion_verified)
+        failure_reason = str(result.get("reason") or "macOS Swift host did not execute the action.")
+        if verifies_text and reported_executed and not completion_verified:
+            failure_reason = "macOS Swift host returned before text-entry completion was verified."
         return ActionResult(
             action=action,
             driver=self.name,
             executed=executed,
-            confidence="best_effort" if executed else "failed",
+            confidence="verified" if executed and background_semantic else "best_effort" if executed else "failed",
             target_kind=target.kind,
-            can_parallel_user_work=False,
-            requires_foreground=True,
+            can_parallel_user_work=background_semantic,
+            requires_foreground=not background_semantic,
             uses_physical_input=uses_physical_input,
-            data={k: v for k, v in result.items() if k not in {"executed", "action"}},
-            notes=[] if executed else [str(result.get("reason") or "macOS Swift host did not execute the action.")],
+            data=data,
+            notes=[] if executed else [failure_reason],
         )
 
     @staticmethod

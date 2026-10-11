@@ -3,12 +3,14 @@ import { cn } from '@/src/lib/utils';
 import { viewerLayers } from '@/src/lib/layers';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
+import {CopyErrorButton} from './CopyErrorButton';
+
 export function ToastContainer() {
   const toasts = useAppStore(state => state.toasts);
 
   return (
     <div
-      className={cn("fixed bottom-4 right-4 flex flex-col gap-2", viewerLayers.toast)}
+      className={cn("pointer-events-none fixed inset-x-4 top-4 mx-auto flex w-auto max-w-xl flex-col gap-2", viewerLayers.toast)}
       aria-live="polite"
       aria-atomic="false"
       role="status"
@@ -17,13 +19,21 @@ export function ToastContainer() {
         <div
           key={toast.id}
           className={cn(
-            "flex items-center gap-2 rounded-md px-4 py-3 text-sm font-medium text-white shadow-lg transition-all animate-in slide-in-from-bottom-5",
-            toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+            "toast-notice pointer-events-auto flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium shadow-[var(--shadow-lg)]",
+            toast.type === 'success'
+              ? 'border-success/35 bg-bg-card text-success'
+              : 'border-destructive/35 bg-bg-card text-destructive'
           )}
           role="alert"
         >
-          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-          {toast.message}
+          {toast.type === 'success' ? <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0" /> : <XCircle aria-hidden="true" className="h-4 w-4 shrink-0" />}
+          <span className="min-w-0 flex-1 break-words">{toast.message}</span>
+          {toast.type === 'error' ? (
+            <CopyErrorButton
+              label="Copy error notification"
+              text={toast.message}
+            />
+          ) : null}
         </div>
       ))}
     </div>

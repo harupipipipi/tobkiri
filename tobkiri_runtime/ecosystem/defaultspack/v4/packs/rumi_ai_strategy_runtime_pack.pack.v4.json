@@ -1,0 +1,167 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:a4966ed8955cc52c26d7397e7efb0e99665ab5082487f9a72a07d70fef857df4",
+      "kind": "executable",
+      "path": "__init__.py"
+    },
+    {
+      "digest": "sha256:fb8585f5cbcb95c14ffae94d6425d3d0b80941615c23f3256b773132570ca578",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:61d811396f00b7e99a4cbca1e183f0f61b6b51d7d10a506aab884401af6d219f",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+      "kind": "executable",
+      "path": "runtime/strategy.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.strategy.dispatch.v1",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch"
+      ],
+      "revision_digest": "sha256:275128dd43a7021f715d389badff32ef30fa3820bf1f5e563462ba8281da486c"
+    },
+    {
+      "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
+      ],
+      "revision_digest": "sha256:21cc37f4ce63fdef6dd4b377f9c42bfe3f85d05659c4e8b3fd8f8748c30286bc"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:21cc37f4ce63fdef6dd4b377f9c42bfe3f85d05659c4e8b3fd8f8748c30286bc",
+      "id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+      "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:275128dd43a7021f715d389badff32ef30fa3820bf1f5e563462ba8281da486c",
+      "id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+      "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:952433cef9102ba746ab0403334779228d0d8f31092fa5e47bc940402e86e6b6",
+    "artifact_set_digest": "sha256:f11ff8973478dcabbe05bcbfea040624946e06d8f9beeaac4fd29f83d0b03538",
+    "contract_catalog_digest": "sha256:d1438b81191c5184cfba988d616f872857755c421a63dcdf70bd182f10ac857f"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+      "owner": "rumi_ai_strategy_runtime_pack",
+      "contract_reference": "tobkiri.resource.ai.strategy.catalog.v1",
+      "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+      "owner": "rumi_ai_strategy_runtime_pack",
+      "contract_reference": "tobkiri.service.ai.strategy.dispatch.v1",
+      "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
+    "display_name": "Tobkiri AI Strategy Runtime",
+    "id": "rumi_ai_strategy_runtime_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_ai_strategy_runtime_pack/pack.v4.json",
+    "source_digest": "sha256:952433cef9102ba746ab0403334779228d0d8f31092fa5e47bc940402e86e6b6",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:dedf25bcb3481dc93ed580f75ab88fb66f1f2c1e7f5cd99b4e60dd2445b066fb",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:980b113b7c36e0a3c90b88bdef7e5c27238f70ee9d97fe246729dfba4ead666a",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_ai_strategy_runtime_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:952433cef9102ba746ab0403334779228d0d8f31092fa5e47bc940402e86e6b6"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+      "owner": "rumi_ai_strategy_runtime_pack",
+      "contract_reference": "tobkiri.resource.ai.strategy.catalog.v1",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
+      ]
+    },
+    {
+      "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+      "owner": "rumi_ai_strategy_runtime_pack",
+      "contract_reference": "tobkiri.service.ai.strategy.dispatch.v1",
+      "operations": [
+        "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.strategy.catalog.read",
+      "ai.strategy.dispatch"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.strategy.execute.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "none"
+  }
+}

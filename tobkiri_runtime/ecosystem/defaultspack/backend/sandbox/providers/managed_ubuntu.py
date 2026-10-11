@@ -35,6 +35,13 @@ from ..models import (
     model_to_dict,
 )
 from ..policy import validate_workspace_relative_path
+from ..isolation.lima_runtime import (
+    LIMA_GUEST_WORKSPACE_ROOT,
+    LIMA_GUEST_PACK_DATA_ROOT,
+    build_guest_bwrap_argv,
+    resolve_limactl_path,
+    save_lima_runtime_state,
+)
 from .base import ProgressSink
 
 
@@ -50,9 +57,32 @@ MANAGED_UBUNTU_CAPABILITIES = frozenset(
         "sandbox.snapshot",
     }
 )
-GUEST_WORKDIR = "/workspace"
-GUEST_DEPS = ("Xvfb", "openbox", "xdotool", "import", "python3", "xterm", "unshare")
-APT_PACKAGES = ("xvfb", "openbox", "xdotool", "imagemagick", "python3", "xterm", "x11-utils", "ca-certificates", "util-linux")
+GUEST_WORKDIR = LIMA_GUEST_WORKSPACE_ROOT
+GUEST_DEPS = (
+    "Xvfb",
+    "openbox",
+    "xdotool",
+    "import",
+    "python3",
+    "xterm",
+    "unshare",
+    "bwrap",
+    "prlimit",
+    "timeout",
+)
+APT_PACKAGES = (
+    "xvfb",
+    "openbox",
+    "xdotool",
+    "imagemagick",
+    "python3",
+    "xterm",
+    "x11-utils",
+    "ca-certificates",
+    "coreutils",
+    "util-linux",
+    "bubblewrap",
+)
 DEFAULT_DISPLAY = ":98"
 GUEST_DISPLAY_MIN = 98
 GUEST_DISPLAY_MAX = 199
@@ -174,7 +204,11 @@ class ManagedUbuntuProvider:
             )
         elif platform_ok:
             version_result = self._version(command_path)
-            version = version_result.stdout.strip().splitlines()[0] if version_result.stdout.strip() else None
+            version = (
+                version_result.stdout.strip().splitlines()[0]
+                if version_result.stdout.strip()
+                else None
+            )
 
         guest_ready = False
         missing_deps: tuple[str, ...] = ()
@@ -251,9 +285,23 @@ class ManagedUbuntuProvider:
             )
 
         try:
-            progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-ensure", stage="guest", message="Creating or starting managed Ubuntu guest", percent=15))
+            progress.emit(
+                ProgressEvent(
+                    operation_id=f"{self.provider_id}-ensure",
+                    stage="guest",
+                    message="Creating or starting managed Ubuntu guest",
+                    percent=15,
+                )
+            )
             self._ensure_guest(command_path)
-            progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-ensure", stage="packages", message="Installing managed runtime guest packages", percent=55))
+            progress.emit(
+                ProgressEvent(
+                    operation_id=f"{self.provider_id}-ensure",
+                    stage="packages",
+                    message="Installing managed runtime guest packages",
+                    percent=55,
+                )
+            )
             self._install_guest_packages(command_path)
             status = self.doctor(request.requirements)
         except SandboxContractError as exc:
@@ -262,14 +310,30 @@ class ManagedUbuntuProvider:
                 provider_id=self.provider_id,
                 operation_id=f"{self.provider_id}-ensure",
                 status="failed",
-                diagnostics=(Diagnostic(code=exc.code, message=exc.message, severity="error", details=exc.details),),
+                diagnostics=(
+                    Diagnostic(
+                        code=exc.code, message=exc.message, severity="error", details=exc.details
+                    ),
+                ),
                 requires_user_action=True,
                 user_action=exc.message,
             )
 
         if status.ready:
-            progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-ensure", stage="ready", message="Managed Ubuntu runtime is ready", percent=100))
-            return OperationResult(ok=True, provider_id=self.provider_id, operation_id=f"{self.provider_id}-ensure", status="completed")
+            progress.emit(
+                ProgressEvent(
+                    operation_id=f"{self.provider_id}-ensure",
+                    stage="ready",
+                    message="Managed Ubuntu runtime is ready",
+                    percent=100,
+                )
+            )
+            return OperationResult(
+                ok=True,
+                provider_id=self.provider_id,
+                operation_id=f"{self.provider_id}-ensure",
+                status="completed",
+            )
         return OperationResult(
             ok=False,
             provider_id=self.provider_id,
@@ -283,20 +347,53 @@ class ManagedUbuntuProvider:
     def update(self, request: UpdateRuntimeRequest, progress: ProgressSink) -> OperationResult:
         del request
         command_path = self._require_command()
-        progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-update", stage="packages", message="Updating managed Ubuntu guest packages", percent=50))
+        progress.emit(
+            ProgressEvent(
+                operation_id=f"{self.provider_id}-update",
+                stage="packages",
+                message="Updating managed Ubuntu guest packages",
+                percent=50,
+            )
+        )
         self._install_guest_packages(command_path, update=True)
-        progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-update", stage="ready", message="Managed Ubuntu runtime packages are current", percent=100))
-        return OperationResult(ok=True, provider_id=self.provider_id, operation_id=f"{self.provider_id}-update", status="completed")
+        progress.emit(
+            ProgressEvent(
+                operation_id=f"{self.provider_id}-update",
+                stage="ready",
+                message="Managed Ubuntu runtime packages are current",
+                percent=100,
+            )
+        )
+        return OperationResult(
+            ok=True,
+            provider_id=self.provider_id,
+            operation_id=f"{self.provider_id}-update",
+            status="completed",
+        )
 
-    def uninstall(self, request: UninstallRuntimeRequest, progress: ProgressSink) -> OperationResult:
+    def uninstall(
+        self, request: UninstallRuntimeRequest, progress: ProgressSink
+    ) -> OperationResult:
         command_path = self._require_command()
         for instance in list(self._instances.values()):
             self.destroy(instance)
         self._stop_guest(command_path)
         if request.remove_state:
             self._delete_guest(command_path)
-        progress.emit(ProgressEvent(operation_id=f"{self.provider_id}-uninstall", stage="stopped", message="Stopped managed Ubuntu runtime", percent=100))
-        return OperationResult(ok=True, provider_id=self.provider_id, operation_id=f"{self.provider_id}-uninstall", status="completed")
+        progress.emit(
+            ProgressEvent(
+                operation_id=f"{self.provider_id}-uninstall",
+                stage="stopped",
+                message="Stopped managed Ubuntu runtime",
+                percent=100,
+            )
+        )
+        return OperationResult(
+            ok=True,
+            provider_id=self.provider_id,
+            operation_id=f"{self.provider_id}-uninstall",
+            status="completed",
+        )
 
     def create(self, spec: SandboxCreateSpec) -> ProviderInstance:
         command_path = self._require_ready(spec.template.provider_requirements)
@@ -314,11 +411,14 @@ class ManagedUbuntuProvider:
             "width": width,
             "height": height,
             "desktop_enabled": desktop is not None and desktop.enabled,
-            "display": self._allocate_guest_display(command_path) if desktop is not None and desktop.enabled else "",
+            "display": self._allocate_guest_display(command_path)
+            if desktop is not None and desktop.enabled
+            else "",
             "workspace_binding": model_to_dict(spec.workspace_binding),
             "network_policy": model_to_dict(spec.template.network),
             "network_approved": network_approved,
-            "network_disabled": _guest_network_disabled(spec.template.network) and not network_approved,
+            "network_disabled": _guest_network_disabled(spec.template.network)
+            and not network_approved,
             "resource_limits": model_to_dict(spec.template.resources),
             "template_packages": [model_to_dict(package) for package in spec.template.packages],
             "desktop_provisioning": spec.metadata.get("desktop_provisioning") or {},
@@ -338,7 +438,10 @@ class ManagedUbuntuProvider:
         return instance
 
     def start(self, instance: ProviderInstance) -> ProviderInstance:
-        command_path = str(instance.opaque_state.get("command_path") or self._require_ready(MANAGED_UBUNTU_CAPABILITIES))
+        command_path = str(
+            instance.opaque_state.get("command_path")
+            or self._require_ready(MANAGED_UBUNTU_CAPABILITIES)
+        )
         self._seed_workspace(command_path, instance)
         self._provision_instance(command_path, instance)
         if instance.opaque_state.get("desktop_enabled") is True:
@@ -351,12 +454,18 @@ class ManagedUbuntuProvider:
                     _positive_int(instance.opaque_state.get("height"), 900),
                     str(instance.opaque_state.get("display") or DEFAULT_DISPLAY),
                     _instance_network_disabled(instance),
-                    instance.opaque_state.get("startup") if isinstance(instance.opaque_state.get("startup"), Mapping) else {},
+                    instance.opaque_state.get("startup")
+                    if isinstance(instance.opaque_state.get("startup"), Mapping)
+                    else {},
                 ),
                 timeout=30,
             )
         else:
-            self._guest_shell(command_path, f"mkdir -p {shlex.quote(_instance_workspace_dir_for(instance))}", timeout=15)
+            self._guest_shell(
+                command_path,
+                f"mkdir -p {shlex.quote(_instance_workspace_dir_for(instance))}",
+                timeout=15,
+            )
         started = ProviderInstance(
             provider_id=instance.provider_id,
             provider_instance_id=instance.provider_instance_id,
@@ -371,8 +480,17 @@ class ManagedUbuntuProvider:
 
     def stop(self, instance: ProviderInstance, *, force: bool = False) -> None:
         del force
-        command_path = str(instance.opaque_state.get("command_path") or self._command_path() or self._launcher_command)
-        self._guest_shell(command_path, _desktop_stop_script(instance.provider_instance_id), timeout=15, check=False)
+        command_path = str(
+            instance.opaque_state.get("command_path")
+            or self._command_path()
+            or self._launcher_command
+        )
+        self._guest_shell(
+            command_path,
+            _desktop_stop_script(instance.provider_instance_id),
+            timeout=15,
+            check=False,
+        )
         stopped = ProviderInstance(
             provider_id=instance.provider_id,
             provider_instance_id=instance.provider_instance_id,
@@ -385,17 +503,34 @@ class ManagedUbuntuProvider:
         self._instances[stopped.provider_instance_id] = stopped
 
     def destroy(self, instance: ProviderInstance) -> None:
-        command_path = str(instance.opaque_state.get("command_path") or self._command_path() or self._launcher_command)
+        command_path = str(
+            instance.opaque_state.get("command_path")
+            or self._command_path()
+            or self._launcher_command
+        )
         self.stop(instance, force=True)
-        self._guest_shell(command_path, _instance_destroy_script(instance.provider_instance_id, _instance_workspace_dir_for(instance)), timeout=30, check=False)
+        self._guest_shell(
+            command_path,
+            _instance_destroy_script(
+                instance.provider_instance_id, _instance_workspace_dir_for(instance)
+            ),
+            timeout=30,
+            check=False,
+        )
         self._instances.pop(instance.provider_instance_id, None)
 
     def reconcile(self, persisted: ProviderInstance) -> ReconcileResult:
-        command_path = str(persisted.opaque_state.get("command_path") or self._command_path() or self._launcher_command)
+        command_path = str(
+            persisted.opaque_state.get("command_path")
+            or self._command_path()
+            or self._launcher_command
+        )
         if persisted.opaque_state.get("desktop_enabled") is True:
             running = self._desktop_running(command_path, persisted.provider_instance_id)
         else:
-            running = self._instance_exists(command_path, persisted.provider_instance_id, _instance_workspace_dir_for(persisted))
+            running = self._instance_exists(
+                command_path, persisted.provider_instance_id, _instance_workspace_dir_for(persisted)
+            )
         state = "ready" if running else "stopped"
         current = ProviderInstance(
             provider_id=persisted.provider_id,
@@ -410,8 +545,16 @@ class ManagedUbuntuProvider:
         return ReconcileResult(instance=current, changed=current.state != persisted.state)
 
     def connect_agent(self, instance: ProviderInstance) -> "ManagedUbuntuGuestAgent":
-        command_path = str(instance.opaque_state.get("command_path") or self._require_ready(MANAGED_UBUNTU_CAPABILITIES))
-        resources = instance.opaque_state.get("resource_limits") if isinstance(instance.opaque_state.get("resource_limits"), Mapping) else {}
+        command_path = str(
+            instance.opaque_state.get("command_path")
+            or self._require_ready(MANAGED_UBUNTU_CAPABILITIES)
+        )
+        resources_value = (
+            instance.opaque_state.get("resource_limits")
+            if isinstance(instance.opaque_state.get("resource_limits"), Mapping)
+            else {}
+        )
+        resources = dict(resources_value) if isinstance(resources_value, Mapping) else {}
         display = self._client_display(command_path, instance)
         return ManagedUbuntuGuestAgent(
             provider_id=self.provider_id,
@@ -459,7 +602,11 @@ class ManagedUbuntuProvider:
 
     def _require_ready(self, required_capabilities: frozenset[str]) -> str:
         command_path = self._require_command()
-        status = self.doctor(RuntimeRequirements(provider_id=self.provider_id, required_capabilities=required_capabilities))
+        status = self.doctor(
+            RuntimeRequirements(
+                provider_id=self.provider_id, required_capabilities=required_capabilities
+            )
+        )
         if not status.ready:
             raise SandboxContractError(
                 RUNTIME_PROVIDER_UNAVAILABLE,
@@ -472,7 +619,9 @@ class ManagedUbuntuProvider:
     def _version(self, command_path: str) -> GuestCommandResult:
         return self._run(self._version_command(command_path), timeout=5)
 
-    def _run(self, command: Sequence[str], input_text: str | None = None, timeout: float | None = None) -> GuestCommandResult:
+    def _run(
+        self, command: Sequence[str], input_text: str | None = None, timeout: float | None = None
+    ) -> GuestCommandResult:
         try:
             return self._runner(tuple(command), input_text, timeout)
         except TimeoutError as exc:
@@ -489,7 +638,9 @@ class ManagedUbuntuProvider:
         timeout: float | None = None,
         check: bool = True,
     ) -> GuestCommandResult:
-        result = self._run((*self._guest_prefix(command_path), *argv), input_text=input_text, timeout=timeout)
+        result = self._run(
+            (*self._guest_prefix(command_path), *argv), input_text=input_text, timeout=timeout
+        )
         if check and result.returncode != 0:
             raise SandboxContractError(
                 RUNTIME_PROVIDER_UNAVAILABLE,
@@ -508,10 +659,18 @@ class ManagedUbuntuProvider:
         timeout: float | None = None,
         check: bool = True,
     ) -> GuestCommandResult:
-        return self._guest_command(command_path, ("bash", "-lc", script), input_text=input_text, timeout=timeout, check=check)
+        return self._guest_command(
+            command_path,
+            ("bash", "-lc", script),
+            input_text=input_text,
+            timeout=timeout,
+            check=check,
+        )
 
     def _missing_guest_deps(self, command_path: str) -> tuple[str, ...]:
-        script = "\n".join(f"command -v {name} >/dev/null 2>&1 || echo {name}" for name in GUEST_DEPS)
+        script = "\n".join(
+            f"command -v {name} >/dev/null 2>&1 || echo {name}" for name in GUEST_DEPS
+        )
         result = self._guest_shell(command_path, script, timeout=10, check=False)
         if result.returncode != 0:
             return GUEST_DEPS
@@ -525,6 +684,14 @@ class ManagedUbuntuProvider:
             f"{SUDO_BOOTSTRAP_SCRIPT}"
             "$RUMI_SUDO apt-get update\n"
             f"$RUMI_SUDO apt-get install -y {packages}\n"
+            'RUMI_GUEST_USER="$(id -un)"\n'
+            'RUMI_GUEST_GROUP="$(id -gn)"\n'
+            "$RUMI_SUDO install -d -m 0755 /workspace\n"
+            "$RUMI_SUDO install -d -m 0755 /data\n"
+            f'$RUMI_SUDO install -d -m 0711 -o "$RUMI_GUEST_USER" '
+            f'-g "$RUMI_GUEST_GROUP" {GUEST_WORKDIR}\n'
+            f'$RUMI_SUDO install -d -m 0711 -o "$RUMI_GUEST_USER" '
+            f'-g "$RUMI_GUEST_GROUP" {LIMA_GUEST_PACK_DATA_ROOT}\n'
         )
         if update:
             script += f"$RUMI_SUDO apt-get install --only-upgrade -y {packages} || true\n"
@@ -554,15 +721,29 @@ class ManagedUbuntuProvider:
         mcp_servers = _guest_provisioning_mcp_servers(provisioning)
         if not apt_packages and not mcp_servers:
             return
-        script = _guest_provisioning_script(instance.provider_instance_id, _instance_workspace_dir_for(instance), apt_packages, mcp_servers)
+        script = _guest_provisioning_script(
+            instance.provider_instance_id,
+            _instance_workspace_dir_for(instance),
+            apt_packages,
+            mcp_servers,
+        )
         self._guest_shell(command_path, script, timeout=900)
 
     def _desktop_running(self, command_path: str, provider_instance_id: str) -> bool:
-        result = self._guest_shell(command_path, _desktop_running_script(provider_instance_id), timeout=10, check=False)
+        result = self._guest_shell(
+            command_path, _desktop_running_script(provider_instance_id), timeout=10, check=False
+        )
         return result.returncode == 0
 
-    def _instance_exists(self, command_path: str, provider_instance_id: str, workspace_dir: str) -> bool:
-        result = self._guest_shell(command_path, _instance_exists_script(provider_instance_id, workspace_dir), timeout=10, check=False)
+    def _instance_exists(
+        self, command_path: str, provider_instance_id: str, workspace_dir: str
+    ) -> bool:
+        result = self._guest_shell(
+            command_path,
+            _instance_exists_script(provider_instance_id, workspace_dir),
+            timeout=10,
+            check=False,
+        )
         return result.returncode == 0
 
     def _allocate_guest_display(self, command_path: str | None = None) -> str:
@@ -586,7 +767,9 @@ class ManagedUbuntuProvider:
         )
 
     def _guest_used_displays(self, command_path: str) -> set[str]:
-        result = self._guest_shell(command_path, _guest_used_displays_script(), timeout=5, check=False)
+        result = self._guest_shell(
+            command_path, _guest_used_displays_script(), timeout=5, check=False
+        )
         if result.returncode != 0:
             return set()
         return {
@@ -596,7 +779,9 @@ class ManagedUbuntuProvider:
             if display
         }
 
-    def _setup_message(self, *, launcher_missing: bool = False, missing_capabilities: Sequence[str] = ()) -> str:
+    def _setup_message(
+        self, *, launcher_missing: bool = False, missing_capabilities: Sequence[str] = ()
+    ) -> str:
         if missing_capabilities:
             return (
                 "Select a provider that supports "
@@ -674,7 +859,9 @@ class BwrapHostProvider:
             diagnostics.append(
                 Diagnostic(
                     code=str(check.get("code") or "SANDBOX_RUNTIME_UNAVAILABLE"),
-                    message=str(check.get("message") or "Managed sandbox requirement is not satisfied"),
+                    message=str(
+                        check.get("message") or "Managed sandbox requirement is not satisfied"
+                    ),
                     severity="warning",
                     details={
                         "check": name,
@@ -704,12 +891,22 @@ class BwrapHostProvider:
             installed=command_path is not None,
             ready=platform.system().lower() == "linux" and command_path is not None and not missing,
             version=_command_version(command_path) if command_path else None,
-            capabilities=frozenset({"sandbox.exec", "sandbox.files", "sandbox.overlay_workspace", "sandbox.network_policy", "sandbox.resource_limits"})
+            capabilities=frozenset(
+                {
+                    "sandbox.exec",
+                    "sandbox.files",
+                    "sandbox.overlay_workspace",
+                    "sandbox.network_policy",
+                    "sandbox.resource_limits",
+                }
+            )
             if command_path
             else frozenset(),
             missing_requirements=tuple(missing),
             requires_user_action=bool(missing),
-            user_action=None if not missing else "Install Bubblewrap/systemd user scope and configure RUMI_SANDBOX_IMMUTABLE_ROOT.",
+            user_action=None
+            if not missing
+            else "Install Bubblewrap/systemd user scope and configure RUMI_SANDBOX_IMMUTABLE_ROOT.",
             diagnostics=tuple(diagnostics),
         )
 
@@ -732,9 +929,64 @@ class MacLimaProvider(ManagedUbuntuProvider):
     _host_platform = "darwin"
     _launcher_command = "limactl"
 
+    def _command_path(self) -> str | None:
+        if self._configured_command_path:
+            return self._configured_command_path
+        return resolve_limactl_path()
+
+    def _setup_message(
+        self,
+        *,
+        launcher_missing: bool = False,
+        missing_capabilities: Sequence[str] = (),
+    ) -> str:
+        if launcher_missing:
+            return (
+                "Install Lima with `brew install lima`, then open runtime setup "
+                "to provision Tobkiri's hardened Ubuntu guest."
+            )
+        return super()._setup_message(
+            launcher_missing=launcher_missing,
+            missing_capabilities=missing_capabilities,
+        )
+
+    def ensure(self, request: EnsureRuntimeRequest, progress: ProgressSink) -> OperationResult:
+        result = super().ensure(request, progress)
+        if not result.ok:
+            return result
+        command_path = self._require_command()
+        try:
+            save_lima_runtime_state(
+                command_path,
+                self._runtime_name,
+                runner=self._runner,
+            )
+        except (OSError, ValueError) as exc:
+            return OperationResult(
+                ok=False,
+                provider_id=self.provider_id,
+                operation_id=f"{self.provider_id}-ensure",
+                status="failed",
+                diagnostics=(
+                    Diagnostic(
+                        code=RUNTIME_PROVIDER_UNAVAILABLE,
+                        message=f"Lima sandbox config attestation failed: {exc}",
+                        severity="error",
+                    ),
+                ),
+                requires_user_action=True,
+                user_action=(
+                    "Recreate the Tobkiri managed Lima runtime with the current "
+                    "hardened configuration."
+                ),
+            )
+        return result
+
     def _guest_exists(self, command_path: str) -> bool:
         result = self._run((command_path, "list", "--format", "{{.Name}}"), timeout=10)
-        return result.returncode == 0 and self._runtime_name in {line.strip() for line in result.stdout.splitlines()}
+        return result.returncode == 0 and self._runtime_name in {
+            line.strip() for line in result.stdout.splitlines()
+        }
 
     def _ensure_guest(self, command_path: str) -> None:
         if self._guest_exists(command_path):
@@ -742,7 +994,9 @@ class MacLimaProvider(ManagedUbuntuProvider):
             return
         config_path = _write_lima_config()
         try:
-            result = self._run((command_path, "start", "--name", self._runtime_name, config_path), timeout=900)
+            result = self._run(
+                (command_path, "start", "--name", self._runtime_name, config_path), timeout=900
+            )
         finally:
             _unlink(config_path)
         if result.returncode != 0:
@@ -787,7 +1041,9 @@ class WindowsWslProvider(ManagedUbuntuProvider):
         super().__init__(command_path=command_path, runner=runner, runtime_name=runtime_name)
         self._configured_rootfs_path = str(rootfs_path).strip() if rootfs_path else None
         self._configured_install_dir = str(install_dir).strip() if install_dir else None
-        self._configured_rootfs_cache_dir = str(rootfs_cache_dir).strip() if rootfs_cache_dir else None
+        self._configured_rootfs_cache_dir = (
+            str(rootfs_cache_dir).strip() if rootfs_cache_dir else None
+        )
         self._configured_rootfs_url = str(rootfs_url).strip() if rootfs_url else None
         self._rootfs_downloader = rootfs_downloader or _download_file
         self._checksum_fetcher = checksum_fetcher or _fetch_text
@@ -807,11 +1063,26 @@ class WindowsWslProvider(ManagedUbuntuProvider):
                 RUNTIME_PROVIDER_UNAVAILABLE,
                 "RumiUbuntu WSL rootfs tarball is not available.",
                 status_code=503,
-                details={"env": WSL_ROOTFS_ENV, "runtime_name": self._runtime_name, "download_url": self._rootfs_url()},
+                details={
+                    "env": WSL_ROOTFS_ENV,
+                    "runtime_name": self._runtime_name,
+                    "download_url": self._rootfs_url(),
+                },
             )
         install_dir = self._install_dir()
         os.makedirs(install_dir, exist_ok=True)
-        result = self._run((command_path, "--import", self._runtime_name, install_dir, rootfs_path, "--version", "2"), timeout=900)
+        result = self._run(
+            (
+                command_path,
+                "--import",
+                self._runtime_name,
+                install_dir,
+                rootfs_path,
+                "--version",
+                "2",
+            ),
+            timeout=900,
+        )
         if result.returncode != 0:
             raise SandboxContractError(
                 RUNTIME_PROVIDER_UNAVAILABLE,
@@ -871,7 +1142,9 @@ class WindowsWslProvider(ManagedUbuntuProvider):
             )
         cache_dir = self._rootfs_cache_dir()
         os.makedirs(cache_dir, exist_ok=True)
-        filename = os.path.basename(urllib.parse.urlparse(url).path) or "rumi-ubuntu-wsl.rootfs.tar.gz"
+        filename = (
+            os.path.basename(urllib.parse.urlparse(url).path) or "rumi-ubuntu-wsl.rootfs.tar.gz"
+        )
         destination = os.path.join(cache_dir, filename)
         sidecar_path = f"{destination}.sha256"
         cached_sha256 = _read_verified_sha256_sidecar(sidecar_path)
@@ -880,6 +1153,13 @@ class WindowsWslProvider(ManagedUbuntuProvider):
             if actual_sha256.casefold() == cached_sha256.casefold():
                 return destination
         expected_sha256 = self._rootfs_expected_sha256(url, filename)
+        if expected_sha256 is None:
+            raise SandboxContractError(
+                RUNTIME_PROVIDER_UNAVAILABLE,
+                "Ubuntu SHA256SUMS did not provide a checksum for the selected rootfs.",
+                status_code=503,
+                details={"url": url, "filename": filename},
+            )
         if os.path.isfile(destination) and os.path.getsize(destination) > 0:
             actual_sha256 = _sha256_file(destination)
             if actual_sha256.casefold() == expected_sha256.casefold():
@@ -1009,18 +1289,25 @@ class ManagedUbuntuGuestAgent:
 
     def exec(self, sandbox_id: str, payload: Mapping[str, object]) -> dict[str, object]:
         request = GuestExecRequest.from_payload(payload)
-        timeout_ms = min(request.timeout_ms, self._timeout_ms) if self._timeout_ms else request.timeout_ms
+        timeout_ms = (
+            min(request.timeout_ms, self._timeout_ms) if self._timeout_ms else request.timeout_ms
+        )
         argv = _exec_argv(
-            self._workspace_dir,
+            "/workspace",
             request.cwd,
             request.env,
             request.argv,
             sandbox_id=sandbox_id,
             provider_instance_id=self._provider_instance_id,
         )
-        argv = _resource_limited_argv(argv, memory_mb=self._memory_mb, cpu_count=self._cpu_count, pids=self._pids)
-        if self._network_disabled:
-            argv = _network_disabled_argv(argv)
+        argv = _resource_limited_argv(
+            argv, memory_mb=self._memory_mb, cpu_count=self._cpu_count, pids=self._pids
+        )
+        argv = self._sandbox_argv(
+            sandbox_id,
+            argv,
+            network_enabled=not self._network_disabled,
+        )
         result = self._run(argv, input_text=request.stdin, timeout=max(1, timeout_ms / 1000))
         stdout, stdout_truncated = _bounded_output(result.stdout, self._output_bytes)
         stderr, stderr_truncated = _bounded_output(result.stderr, self._output_bytes)
@@ -1045,20 +1332,51 @@ class ManagedUbuntuGuestAgent:
         for operation in operations:
             path = str(operation["path"])
             content = operation["content"]
-            parent = _container_parent(self._workspace_dir, path)
+            if not isinstance(content, bytes):
+                raise SandboxContractError(
+                    "INVALID_EXEC_REQUEST",
+                    "Sandbox file patch content must be bytes.",
+                    status_code=400,
+                )
+            parent = _container_parent("/workspace", path)
             if parent:
-                mkdir = self._run(("mkdir", "-p", parent), timeout=30)
+                mkdir = self._run(
+                    self._sandbox_argv(
+                        sandbox_id,
+                        ("mkdir", "-p", parent),
+                        network_enabled=False,
+                    ),
+                    timeout=30,
+                )
                 if mkdir.returncode != 0:
-                    return _guest_error(sandbox_id, "SANDBOX_FILES_FAILED", "Sandbox file patch could not create parent directory.", mkdir)
+                    return _guest_error(
+                        sandbox_id,
+                        "SANDBOX_FILES_FAILED",
+                        "Sandbox file patch could not create parent directory.",
+                        mkdir,
+                    )
             encoded = base64.b64encode(content).decode("ascii")
             script = (
                 "import base64, pathlib, sys\n"
                 "path = pathlib.Path(sys.argv[1])\n"
                 "path.write_bytes(base64.b64decode(sys.stdin.read().encode('ascii')))\n"
             )
-            write = self._run(("python3", "-c", script, _container_path(self._workspace_dir, path)), input_text=encoded, timeout=60)
+            write = self._run(
+                self._sandbox_argv(
+                    sandbox_id,
+                    ("python3", "-c", script, _container_path("/workspace", path)),
+                    network_enabled=False,
+                ),
+                input_text=encoded,
+                timeout=60,
+            )
             if write.returncode != 0:
-                return _guest_error(sandbox_id, "SANDBOX_FILES_FAILED", "Sandbox file patch could not write content.", write)
+                return _guest_error(
+                    sandbox_id,
+                    "SANDBOX_FILES_FAILED",
+                    "Sandbox file patch could not write content.",
+                    write,
+                )
             applied.append({"path": path, "bytes": len(content)})
         return {
             "ok": True,
@@ -1078,7 +1396,11 @@ class ManagedUbuntuGuestAgent:
         port = _port_number(payload.get("port"))
         protocol = str(payload.get("protocol") or "http").strip().lower()
         if protocol not in {"http", "https", "tcp"}:
-            raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port protocol must be http, https, or tcp.", status_code=400)
+            raise SandboxContractError(
+                "INVALID_SANDBOX_PORT",
+                "Sandbox port protocol must be http, https, or tcp.",
+                status_code=400,
+            )
         probe = self._run(_port_probe_argv(port), timeout=5)
         if probe.returncode != 0:
             return _guest_error(
@@ -1106,13 +1428,28 @@ class ManagedUbuntuGuestAgent:
         }
 
     def capture_frame(self, sandbox_id: str, seat_id: str) -> dict[str, object]:
-        result = self._run(("env", f"DISPLAY={self._display}", "bash", "-lc", "import -window root png:- | base64 -w0"), timeout=30)
+        result = self._run(
+            (
+                "env",
+                f"DISPLAY={self._display}",
+                "bash",
+                "-lc",
+                "import -window root png:- | base64 -w0",
+            ),
+            timeout=30,
+        )
         if result.returncode != 0:
-            return _guest_error(sandbox_id, "SANDBOX_SCREENSHOT_FAILED", "Desktop frame capture failed.", result)
+            return _guest_error(
+                sandbox_id, "SANDBOX_SCREENSHOT_FAILED", "Desktop frame capture failed.", result
+            )
         try:
             data = base64.b64decode(result.stdout.strip(), validate=True)
         except Exception as exc:
-            raise SandboxContractError("SANDBOX_SCREENSHOT_FAILED", "Desktop frame capture returned invalid image data.", status_code=502) from exc
+            raise SandboxContractError(
+                "SANDBOX_SCREENSHOT_FAILED",
+                "Desktop frame capture returned invalid image data.",
+                status_code=502,
+            ) from exc
         return {
             "ok": True,
             "sandbox_id": sandbox_id,
@@ -1132,7 +1469,9 @@ class ManagedUbuntuGuestAgent:
         *,
         actor: str = "human",
     ) -> dict[str, object]:
-        request = DesktopInputRequest.from_payload(payload, width=self._width, height=self._height, require_lease=False)
+        request = DesktopInputRequest.from_payload(
+            payload, width=self._width, height=self._height, require_lease=False
+        )
         result = self._dispatch_input(request)
         return {
             "ok": result.returncode == 0,
@@ -1147,24 +1486,96 @@ class ManagedUbuntuGuestAgent:
     def _dispatch_input(self, request: DesktopInputRequest) -> GuestCommandResult:
         prefix = ("env", f"DISPLAY={self._display}", "xdotool")
         if request.action == "move":
-            return self._run((*prefix, "mousemove", str(int(request.x)), str(int(request.y))), timeout=10)
+            return self._run(
+                (*prefix, "mousemove", str(int(request.x or 0)), str(int(request.y or 0))), timeout=10
+            )
         if request.action == "click":
-            return self._run((*prefix, "mousemove", str(int(request.x)), str(int(request.y)), "click", _button(request.button)), timeout=10)
+            return self._run(
+                (
+                    *prefix,
+                    "mousemove",
+                    str(int(request.x or 0)),
+                    str(int(request.y or 0)),
+                    "click",
+                    _button(request.button),
+                ),
+                timeout=10,
+            )
         if request.action == "double_click":
-            return self._run((*prefix, "mousemove", str(int(request.x)), str(int(request.y)), "click", "--repeat", "2", _button(request.button)), timeout=10)
+            return self._run(
+                (
+                    *prefix,
+                    "mousemove",
+                    str(int(request.x or 0)),
+                    str(int(request.y or 0)),
+                    "click",
+                    "--repeat",
+                    "2",
+                    _button(request.button),
+                ),
+                timeout=10,
+            )
         if request.action == "drag":
-            return self._run((*prefix, "mousemove", str(int(request.x)), str(int(request.y)), "mousedown", _button(request.button), "mousemove", str(int(request.to_x)), str(int(request.to_y)), "mouseup", _button(request.button)), timeout=15)
+            return self._run(
+                (
+                    *prefix,
+                    "mousemove",
+                    str(int(request.x or 0)),
+                    str(int(request.y or 0)),
+                    "mousedown",
+                    _button(request.button),
+                    "mousemove",
+                    str(int(request.to_x or 0)),
+                    str(int(request.to_y or 0)),
+                    "mouseup",
+                    _button(request.button),
+                ),
+                timeout=15,
+            )
         if request.action == "scroll":
             clicks = max(1, abs(int(request.delta_y or request.delta_x or 1)))
             button = "5" if int(request.delta_y or 0) >= 0 else "4"
-            return self._run((*prefix, "mousemove", str(int(request.x or 0)), str(int(request.y or 0)), "click", "--repeat", str(clicks), button), timeout=10)
+            return self._run(
+                (
+                    *prefix,
+                    "mousemove",
+                    str(int(request.x or 0)),
+                    str(int(request.y or 0)),
+                    "click",
+                    "--repeat",
+                    str(clicks),
+                    button,
+                ),
+                timeout=10,
+            )
         if request.action == "type_text":
             return self._run((*prefix, "type", "--", str(request.text or "")), timeout=30)
         if request.action == "key":
             return self._run((*prefix, "key", str(request.key or "")), timeout=10)
         return GuestCommandResult(returncode=1, stderr="Unsupported desktop input action.")
 
-    def _run(self, argv: Sequence[str], input_text: str | None = None, timeout: float | None = None) -> GuestCommandResult:
+    def _sandbox_argv(
+        self,
+        sandbox_id: str,
+        argv: Sequence[str],
+        *,
+        network_enabled: bool,
+    ) -> tuple[str, ...]:
+        return build_guest_bwrap_argv(
+            workspace=self._workspace_dir,
+            cwd="/workspace",
+            argv=argv,
+            env={
+                "HOME": "/home",
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "RUMI_SANDBOX_ID": sandbox_id,
+            },
+            network_enabled=network_enabled,
+        )
+
+    def _run(
+        self, argv: Sequence[str], input_text: str | None = None, timeout: float | None = None
+    ) -> GuestCommandResult:
         try:
             return self._runner((*self._command_prefix, *argv), input_text, timeout)
         except TimeoutError as exc:
@@ -1173,7 +1584,9 @@ class ManagedUbuntuGuestAgent:
             return GuestCommandResult(returncode=127, stderr=str(exc))
 
 
-def _subprocess_runner(command: Sequence[str], input_text: str | None, timeout: float | None) -> GuestCommandResult:
+def _subprocess_runner(
+    command: Sequence[str], input_text: str | None, timeout: float | None
+) -> GuestCommandResult:
     try:
         completed = run_cancellable_subprocess(
             command,
@@ -1191,13 +1604,8 @@ def _subprocess_runner(command: Sequence[str], input_text: str | None, timeout: 
 
 def _command_version(command_path: str) -> str | None:
     try:
-        result = subprocess.run(
-            [command_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except Exception:
+        result = run_cancellable_subprocess((command_path, "--version"), timeout=2)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
     text = (result.stdout or result.stderr or "").strip()
     return text.splitlines()[0] if text else None
@@ -1213,13 +1621,30 @@ def _unprivileged_userns_available() -> bool:
 
 
 def _write_lima_config() -> str:
-    content = """images:
+    content = """minimumLimaVersion: "2.0.0"
+vmType: vz
+images:
 - location: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
   arch: x86_64
 - location: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-arm64.img
   arch: aarch64
 mounts: []
 networks: []
+containerd:
+  system: false
+  user: false
+ssh:
+  forwardAgent: false
+  forwardX11: false
+  forwardX11Trusted: false
+propagateProxyEnv: false
+hostResolver:
+  enabled: false
+portForwards:
+- guestIP: 0.0.0.0
+  guestPortRange: [1, 65535]
+  proto: any
+  ignore: true
 provision:
 - mode: system
   script: |
@@ -1227,7 +1652,13 @@ provision:
     set -e
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get install -y xvfb openbox xdotool imagemagick python3 xterm x11-utils ca-certificates
+    apt-get install -y \
+      xvfb openbox xdotool imagemagick python3 xterm x11-utils \
+      ca-certificates coreutils util-linux bubblewrap
+    install -d -m 0755 /workspace
+    install -d -m 0755 /data
+    install -d -m 0711 -o {{.User}} -g {{.User}} /var/lib/rumi/workspaces
+    install -d -m 0711 -o {{.User}} -g {{.User}} /var/lib/rumi/pack-data
 """
     handle = tempfile.NamedTemporaryFile(prefix="rumi-lima-", suffix=".yaml", delete=False)
     try:
@@ -1329,7 +1760,9 @@ def _workspace_seed_payload(root: str) -> str:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
-            dirnames[:] = sorted(name for name in dirnames if not os.path.islink(os.path.join(dirpath, name)))
+            dirnames[:] = sorted(
+                name for name in dirnames if not os.path.islink(os.path.join(dirpath, name))
+            )
             rel_dir = os.path.relpath(dirpath, root_path)
             if rel_dir != ".":
                 info = archive.gettarinfo(dirpath, arcname=rel_dir)
@@ -1422,13 +1855,13 @@ def _desktop_start_script(
         f"RUMI_NETWORK_DISABLED={network_flag!r}\n"
         f"RUMI_SANDBOX_INSTANCE={shlex.quote(provider_instance_id)}\n"
         f"RUMI_SANDBOX_WORKSPACE={quoted_workspace}\n"
-        "DISPLAY_NUM=\"${DISPLAY_ID#:}\"\n"
+        'DISPLAY_NUM="${DISPLAY_ID#:}"\n'
         "rumi_run() {\n"
         "  if [ \"$RUMI_NETWORK_DISABLED\" = '1' ]; then\n"
         "    command -v unshare >/dev/null 2>&1 || { echo 'unshare is required for sandbox network policy' >&2; return 126; }\n"
-        "    unshare --user --map-root-user --net -- \"$@\"\n"
+        '    unshare --user --map-root-user --net -- "$@"\n'
         "  else\n"
-        "    \"$@\"\n"
+        '    "$@"\n'
         "  fi\n"
         "}\n"
         "if [ \"$RUMI_NETWORK_DISABLED\" = '1' ]; then rumi_run true; fi\n"
@@ -1436,64 +1869,64 @@ def _desktop_start_script(
         "mkdir -p /tmp/.X11-unix\n"
         "chmod 1777 /tmp/.X11-unix 2>/dev/null || RUMI_X11_TCP=1\n"
         "XVFB_TRANSPORT_ARGS='-nolisten tcp'\n"
-        "CLIENT_DISPLAY=\"$DISPLAY_ID\"\n"
+        'CLIENT_DISPLAY="$DISPLAY_ID"\n'
         "if [ \"$RUMI_X11_TCP\" = '1' ]; then\n"
         "  XVFB_TRANSPORT_ARGS='-nolisten local -listen tcp'\n"
-        "  CLIENT_DISPLAY=\"127.0.0.1:${DISPLAY_NUM}.0\"\n"
+        '  CLIENT_DISPLAY="127.0.0.1:${DISPLAY_NUM}.0"\n'
         "fi\n"
         "run_ui() {\n"
-        "  if [ \"$RUMI_X11_TCP\" = '1' ] && [ \"$RUMI_NETWORK_DISABLED\" != '1' ]; then \"$@\"; else rumi_run \"$@\"; fi\n"
+        '  if [ "$RUMI_X11_TCP" = \'1\' ] && [ "$RUMI_NETWORK_DISABLED" != \'1\' ]; then "$@"; else rumi_run "$@"; fi\n'
         "}\n"
         "run_display_service() {\n"
-        "  if [ \"$RUMI_X11_TCP\" = '1' ]; then \"$@\"; else rumi_run \"$@\"; fi\n"
+        '  if [ "$RUMI_X11_TCP" = \'1\' ]; then "$@"; else rumi_run "$@"; fi\n'
         "}\n"
         "run_detached() {\n"
-        "  pidfile=\"$1\"\n"
+        '  pidfile="$1"\n'
         "  shift\n"
-        "  run_ui setsid -f sh -c 'echo $$ > \"$1\"; shift; exec \"$@\"' rumi-detached \"$pidfile\" \"$@\"\n"
+        '  run_ui setsid -f sh -c \'echo $$ > "$1"; shift; exec "$@"\' rumi-detached "$pidfile" "$@"\n'
         "}\n"
         "rumi_process_matches_instance() {\n"
-        "  pid=\"$1\"\n"
-        "  command_name=\"$2\"\n"
+        '  pid="$1"\n'
+        '  command_name="$2"\n'
         "  case \"$pid\" in ''|*[!0-9]*) return 1;; esac\n"
-        "  kill -0 \"$pid\" >/dev/null 2>&1 || return 1\n"
-        "  [ \"$(cat \"/proc/$pid/comm\" 2>/dev/null || true)\" = \"$command_name\" ] || return 1\n"
+        '  kill -0 "$pid" >/dev/null 2>&1 || return 1\n'
+        '  [ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" = "$command_name" ] || return 1\n'
         "  tr '\\0' '\\n' < \"/proc/$pid/environ\" 2>/dev/null | grep -qx \"RUMI_SANDBOX_INSTANCE=$RUMI_SANDBOX_INSTANCE\"\n"
         "}\n"
         "rumi_pidfile_alive() {\n"
-        "  pidfile=\"$1\"\n"
-        "  command_name=\"$2\"\n"
-        "  [ -f \"$pidfile\" ] || return 1\n"
-        "  pid=\"$(cat \"$pidfile\" 2>/dev/null || true)\"\n"
-        "  rumi_process_matches_instance \"$pid\" \"$command_name\"\n"
+        '  pidfile="$1"\n'
+        '  command_name="$2"\n'
+        '  [ -f "$pidfile" ] || return 1\n'
+        '  pid="$(cat "$pidfile" 2>/dev/null || true)"\n'
+        '  rumi_process_matches_instance "$pid" "$command_name"\n'
         "}\n"
         "rumi_find_instance_pid() {\n"
-        "  command_name=\"$1\"\n"
+        '  command_name="$1"\n'
         "  for envfile in /proc/[0-9]*/environ; do\n"
-        "    [ -r \"$envfile\" ] || continue\n"
-        "    pid=\"${envfile#/proc/}\"\n"
-        "    pid=\"${pid%/environ}\"\n"
-        "    rumi_process_matches_instance \"$pid\" \"$command_name\" || continue\n"
-        "    echo \"$pid\"\n"
+        '    [ -r "$envfile" ] || continue\n'
+        '    pid="${envfile#/proc/}"\n'
+        '    pid="${pid%/environ}"\n'
+        '    rumi_process_matches_instance "$pid" "$command_name" || continue\n'
+        '    echo "$pid"\n'
         "    return 0\n"
         "  done\n"
         "  return 1\n"
         "}\n"
         "if [ ! -s /etc/machine-id ] && [ -w /etc ]; then\n"
         "  RUMI_MACHINE_ID=\"$(tr -d '-' < /proc/sys/kernel/random/uuid | head -c 32)\"\n"
-        "  if [ -n \"$RUMI_MACHINE_ID\" ]; then printf '%s' \"$RUMI_MACHINE_ID\" > /etc/machine-id; fi\n"
+        '  if [ -n "$RUMI_MACHINE_ID" ]; then printf \'%s\' "$RUMI_MACHINE_ID" > /etc/machine-id; fi\n'
         "fi\n"
-        f"echo \"$CLIENT_DISPLAY\" > {runtime_dir}/display.env\n"
-        "if [ -n \"$DISPLAY_NUM\" ] && [ ! -S \"/tmp/.X11-unix/X$DISPLAY_NUM\" ]; then rm -f \"/tmp/.X${DISPLAY_NUM}-lock\"; fi\n"
+        f'echo "$CLIENT_DISPLAY" > {runtime_dir}/display.env\n'
+        'if [ -n "$DISPLAY_NUM" ] && [ ! -S "/tmp/.X11-unix/X$DISPLAY_NUM" ]; then rm -f "/tmp/.X${DISPLAY_NUM}-lock"; fi\n'
         f"if ! rumi_pidfile_alive {runtime_dir}/xvfb.pid Xvfb; then\n"
-        f"  existing_xvfb=\"$(rumi_find_instance_pid Xvfb || true)\"\n"
-        f"  if [ -n \"$existing_xvfb\" ]; then echo \"$existing_xvfb\" > {runtime_dir}/xvfb.pid; fi\n"
+        f'  existing_xvfb="$(rumi_find_instance_pid Xvfb || true)"\n'
+        f'  if [ -n "$existing_xvfb" ]; then echo "$existing_xvfb" > {runtime_dir}/xvfb.pid; fi\n'
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/xvfb.pid Xvfb; then\n"
-        f"  run_display_service setsid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" Xvfb {display} -screen 0 {width}x{height}x24 $XVFB_TRANSPORT_ARGS >{runtime_dir}/xvfb.log 2>&1 & echo $! > {runtime_dir}/xvfb.pid\n"
+        f'  run_display_service setsid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" Xvfb {display} -screen 0 {width}x{height}x24 $XVFB_TRANSPORT_ARGS >{runtime_dir}/xvfb.log 2>&1 & echo $! > {runtime_dir}/xvfb.pid\n'
         "  sleep 0.5\n"
-        f"  launched_xvfb=\"$(rumi_find_instance_pid Xvfb || true)\"\n"
-        f"  if [ -n \"$launched_xvfb\" ]; then echo \"$launched_xvfb\" > {runtime_dir}/xvfb.pid; fi\n"
+        f'  launched_xvfb="$(rumi_find_instance_pid Xvfb || true)"\n'
+        f'  if [ -n "$launched_xvfb" ]; then echo "$launched_xvfb" > {runtime_dir}/xvfb.pid; fi\n'
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/xvfb.pid Xvfb; then\n"
         "  echo 'Desktop Xvfb failed to stay running.' >&2\n"
@@ -1501,14 +1934,14 @@ def _desktop_start_script(
         "  exit 126\n"
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/openbox.pid openbox; then\n"
-        f"  existing_openbox=\"$(rumi_find_instance_pid openbox || true)\"\n"
-        f"  if [ -n \"$existing_openbox\" ]; then echo \"$existing_openbox\" > {runtime_dir}/openbox.pid; fi\n"
+        f'  existing_openbox="$(rumi_find_instance_pid openbox || true)"\n'
+        f'  if [ -n "$existing_openbox" ]; then echo "$existing_openbox" > {runtime_dir}/openbox.pid; fi\n'
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/openbox.pid openbox; then\n"
-        f"  run_display_service setsid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" DISPLAY=\"$CLIENT_DISPLAY\" openbox >{runtime_dir}/openbox.log 2>&1 & echo $! > {runtime_dir}/openbox.pid\n"
+        f'  run_display_service setsid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" DISPLAY="$CLIENT_DISPLAY" openbox >{runtime_dir}/openbox.log 2>&1 & echo $! > {runtime_dir}/openbox.pid\n'
         "  sleep 0.2\n"
-        f"  launched_openbox=\"$(rumi_find_instance_pid openbox || true)\"\n"
-        f"  if [ -n \"$launched_openbox\" ]; then echo \"$launched_openbox\" > {runtime_dir}/openbox.pid; fi\n"
+        f'  launched_openbox="$(rumi_find_instance_pid openbox || true)"\n'
+        f'  if [ -n "$launched_openbox" ]; then echo "$launched_openbox" > {runtime_dir}/openbox.pid; fi\n'
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/openbox.pid openbox; then\n"
         "  echo 'Desktop openbox failed to stay running.' >&2\n"
@@ -1519,7 +1952,7 @@ def _desktop_start_script(
     if starter == "terminal":
         script += (
             f"if command -v xterm >/dev/null 2>&1; then\n"
-            f"  run_detached {runtime_dir}/starter-terminal.pid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" DISPLAY=\"$CLIENT_DISPLAY\" xterm -title 'Rumi Desktop' -e bash -lc 'cd \"$1\"; exec bash' rumi-terminal {quoted_workspace} >{runtime_dir}/starter-terminal.log 2>&1\n"
+            f'  run_detached {runtime_dir}/starter-terminal.pid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" DISPLAY="$CLIENT_DISPLAY" xterm -title \'Rumi Desktop\' -e bash -lc \'cd "$1"; exec bash\' rumi-terminal {quoted_workspace} >{runtime_dir}/starter-terminal.log 2>&1\n'
             "else\n"
             f"  echo 'xterm is not installed; terminal starter skipped' >{runtime_dir}/starter-terminal.log\n"
             "fi\n"
@@ -1529,21 +1962,20 @@ def _desktop_start_script(
             script += f"echo 'browser_url starter skipped by sandbox network policy' >{runtime_dir}/starter-browser.log\n"
         else:
             script += (
-                _browser_url_assignment_script(browser_url) +
-                "BROWSER_BIN=''\n"
+                _browser_url_assignment_script(browser_url) + "BROWSER_BIN=''\n"
                 "BROWSER_CANDIDATES='google-chrome-stable google-chrome chromium chromium-browser firefox'\n"
-                "if [ -n \"$BROWSER_URL\" ]; then BROWSER_CANDIDATES=\"$BROWSER_CANDIDATES xdg-open\"; fi\n"
+                'if [ -n "$BROWSER_URL" ]; then BROWSER_CANDIDATES="$BROWSER_CANDIDATES xdg-open"; fi\n'
                 "for candidate in $BROWSER_CANDIDATES; do\n"
-                "  if command -v \"$candidate\" >/dev/null 2>&1; then BROWSER_BIN=\"$candidate\"; break; fi\n"
+                '  if command -v "$candidate" >/dev/null 2>&1; then BROWSER_BIN="$candidate"; break; fi\n'
                 "done\n"
-                "if [ -n \"$BROWSER_BIN\" ]; then\n"
+                'if [ -n "$BROWSER_BIN" ]; then\n'
                 "  mkdir -p " + runtime_dir + "/browser-profile\n"
                 "  if [ \"$BROWSER_BIN\" = 'xdg-open' ]; then\n"
-                f"    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" DISPLAY=\"$CLIENT_DISPLAY\" \"$BROWSER_BIN\" \"$BROWSER_URL\" >{runtime_dir}/starter-browser.log 2>&1\n"
-                "  elif [ -n \"$BROWSER_URL\" ]; then\n"
-                f"    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" DISPLAY=\"$CLIENT_DISPLAY\" \"$BROWSER_BIN\" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir={runtime_dir}/browser-profile \"$BROWSER_URL\" >{runtime_dir}/starter-browser.log 2>&1\n"
+                f'    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" DISPLAY="$CLIENT_DISPLAY" "$BROWSER_BIN" "$BROWSER_URL" >{runtime_dir}/starter-browser.log 2>&1\n'
+                '  elif [ -n "$BROWSER_URL" ]; then\n'
+                f'    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" DISPLAY="$CLIENT_DISPLAY" "$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir={runtime_dir}/browser-profile "$BROWSER_URL" >{runtime_dir}/starter-browser.log 2>&1\n'
                 "  else\n"
-                f"    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE=\"$RUMI_SANDBOX_INSTANCE\" RUMI_SANDBOX_WORKSPACE=\"$RUMI_SANDBOX_WORKSPACE\" DISPLAY=\"$CLIENT_DISPLAY\" \"$BROWSER_BIN\" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir={runtime_dir}/browser-profile >{runtime_dir}/starter-browser.log 2>&1\n"
+                f'    run_detached {runtime_dir}/starter-browser.pid env RUMI_SANDBOX_INSTANCE="$RUMI_SANDBOX_INSTANCE" RUMI_SANDBOX_WORKSPACE="$RUMI_SANDBOX_WORKSPACE" DISPLAY="$CLIENT_DISPLAY" "$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir={runtime_dir}/browser-profile >{runtime_dir}/starter-browser.log 2>&1\n'
                 "  fi\n"
                 "else\n"
                 f"  echo 'No browser executable found; browser starter skipped' >{runtime_dir}/starter-browser.log\n"
@@ -1573,18 +2005,18 @@ def _browser_url_assignment_script(browser_url: str) -> str:
         f"BROWSER_URL_ORIGINAL={quoted_url}\n"
         "RUMI_HOST_LOOPBACK_ALIAS=''\n"
         "for candidate in host.lima.internal host.docker.internal; do\n"
-        "  if command -v getent >/dev/null 2>&1 && getent hosts \"$candidate\" >/dev/null 2>&1; then\n"
-        "    RUMI_HOST_LOOPBACK_ALIAS=\"$candidate\"\n"
+        '  if command -v getent >/dev/null 2>&1 && getent hosts "$candidate" >/dev/null 2>&1; then\n'
+        '    RUMI_HOST_LOOPBACK_ALIAS="$candidate"\n'
         "    break\n"
         "  fi\n"
         "done\n"
-        "if [ -z \"$RUMI_HOST_LOOPBACK_ALIAS\" ] && [ -r /etc/resolv.conf ]; then\n"
+        'if [ -z "$RUMI_HOST_LOOPBACK_ALIAS" ] && [ -r /etc/resolv.conf ]; then\n'
         "  RUMI_HOST_LOOPBACK_ALIAS=\"$(awk '/^nameserver[[:space:]]+/ {print $2; exit}' /etc/resolv.conf)\"\n"
         "fi\n"
-        "BROWSER_URL=\"$(python3 - \"$BROWSER_URL_ORIGINAL\" \"$RUMI_HOST_LOOPBACK_ALIAS\" <<'PY'\n"
+        'BROWSER_URL="$(python3 - "$BROWSER_URL_ORIGINAL" "$RUMI_HOST_LOOPBACK_ALIAS" <<\'PY\'\n'
         f"{rewrite_script}"
         "PY\n"
-        ")\"\n"
+        ')"\n'
     )
 
 
@@ -1592,31 +2024,36 @@ def _guest_used_displays_script() -> str:
     return (
         "set +e\n"
         "rumi_emit_display() {\n"
-        "  value=\"$1\"\n"
-        "  value=\"${value#:}\"\n"
-        "  value=\"${value#.X}\"\n"
-        "  value=\"${value#X}\"\n"
-        "  value=\"${value%-lock}\"\n"
-        "  value=\"${value%%.*}\"\n"
+        '  value="$1"\n'
+        '  value="${value#:}"\n'
+        '  value="${value#.X}"\n'
+        '  value="${value#X}"\n'
+        '  value="${value%-lock}"\n'
+        '  value="${value%%.*}"\n'
         "  case \"$value\" in ''|*[!0-9]*) return 0;; esac\n"
-        "  echo \":$value\"\n"
+        '  echo ":$value"\n'
         "}\n"
         "for path in /tmp/.X11-unix/X* /tmp/.X[0-9]*-lock; do\n"
-        "  [ -e \"$path\" ] || continue\n"
-        "  rumi_emit_display \"$(basename \"$path\")\"\n"
+        '  [ -e "$path" ] || continue\n'
+        '  rumi_emit_display "$(basename "$path")"\n'
         "done\n"
         "for cmdline in /proc/[0-9]*/cmdline; do\n"
-        "  [ -r \"$cmdline\" ] || continue\n"
+        '  [ -r "$cmdline" ] || continue\n'
         "  args=\"$(tr '\\0' ' ' < \"$cmdline\" 2>/dev/null || true)\"\n"
-        "  case \"$args\" in *Xvfb*) ;; *) continue;; esac\n"
+        '  case "$args" in *Xvfb*) ;; *) continue;; esac\n'
         "  for arg in $args; do\n"
-        "    case \"$arg\" in :[0-9]*|:[0-9]*.*) rumi_emit_display \"$arg\";; esac\n"
+        '    case "$arg" in :[0-9]*|:[0-9]*.*) rumi_emit_display "$arg";; esac\n'
         "  done\n"
         "done | sort -u\n"
     )
 
 
-def _guest_provisioning_script(provider_instance_id: str, workspace_dir: str, apt_packages: Sequence[str], mcp_servers: Sequence[str]) -> str:
+def _guest_provisioning_script(
+    provider_instance_id: str,
+    workspace_dir: str,
+    apt_packages: Sequence[str],
+    mcp_servers: Sequence[str],
+) -> str:
     runtime_dir = _runtime_dir(provider_instance_id)
     quoted_workspace = shlex.quote(workspace_dir)
     package_list = " ".join(shlex.quote(package) for package in apt_packages)
@@ -1630,13 +2067,13 @@ def _guest_provisioning_script(provider_instance_id: str, workspace_dir: str, ap
         f"mkdir -p {quoted_workspace}/.rumi {runtime_dir}\n"
         f"PROVISION_MARKER={runtime_dir}/provisioning.key\n"
         f"PROVISION_KEY={marker_key}\n"
-        "if [ \"$(cat \"$PROVISION_MARKER\" 2>/dev/null || true)\" != \"$PROVISION_KEY\" ]; then\n"
+        'if [ "$(cat "$PROVISION_MARKER" 2>/dev/null || true)" != "$PROVISION_KEY" ]; then\n'
     )
     if apt_packages:
         script += (
             f"  RUMI_APT_PACKAGES={shlex.quote(package_list)}\n"
             "  if printf '%s\n' \"$RUMI_APT_PACKAGES\" | grep -qw google-chrome-stable; then\n"
-            "    if [ \"$(dpkg --print-architecture 2>/dev/null || true)\" = amd64 ]; then\n"
+            '    if [ "$(dpkg --print-architecture 2>/dev/null || true)" = amd64 ]; then\n'
             "      $RUMI_SUDO apt-get update\n"
             "      $RUMI_SUDO apt-get install -y ca-certificates wget gnupg\n"
             "      wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | $RUMI_SUDO tee /usr/share/keyrings/google-linux-signing-keyring.gpg >/dev/null\n"
@@ -1653,13 +2090,12 @@ def _guest_provisioning_script(provider_instance_id: str, workspace_dir: str, ap
         script += (
             f"  printf '%s\n' {mcp_payload} > {quoted_workspace}/.rumi/mcp_servers.txt\n"
             f"  if grep -qx playwright {quoted_workspace}/.rumi/mcp_servers.txt && command -v npm >/dev/null 2>&1; then\n"
-            "    $RUMI_SUDO npm install -g @playwright/mcp || echo 'playwright mcp install failed' >>" + runtime_dir + "/provisioning.log\n"
+            "    $RUMI_SUDO npm install -g @playwright/mcp || echo 'playwright mcp install failed' >>"
+            + runtime_dir
+            + "/provisioning.log\n"
             "  fi\n"
         )
-    script += (
-        "  printf '%s\n' \"$PROVISION_KEY\" > \"$PROVISION_MARKER\"\n"
-        "fi\n"
-    )
+    script += '  printf \'%s\n\' "$PROVISION_KEY" > "$PROVISION_MARKER"\nfi\n'
     return script
 
 
@@ -1729,31 +2165,31 @@ def _desktop_stop_script(provider_instance_id: str) -> str:
     return (
         "set +e\n"
         "rumi_kill_pidfile() {\n"
-        "  signal=\"$1\"\n"
-        "  pidfile=\"$2\"\n"
-        "  [ -f \"$pidfile\" ] || return 0\n"
-        "  pid=\"$(cat \"$pidfile\" 2>/dev/null || true)\"\n"
-        "  case \"$pid\" in ''|*[!0-9]*) rm -f \"$pidfile\"; return 0;; esac\n"
-        "  kill -\"$signal\" -- \"-$pid\" >/dev/null 2>&1 || kill -\"$signal\" \"$pid\" >/dev/null 2>&1 || true\n"
-        "  rm -f \"$pidfile\"\n"
+        '  signal="$1"\n'
+        '  pidfile="$2"\n'
+        '  [ -f "$pidfile" ] || return 0\n'
+        '  pid="$(cat "$pidfile" 2>/dev/null || true)"\n'
+        '  case "$pid" in \'\'|*[!0-9]*) rm -f "$pidfile"; return 0;; esac\n'
+        '  kill -"$signal" -- "-$pid" >/dev/null 2>&1 || kill -"$signal" "$pid" >/dev/null 2>&1 || true\n'
+        '  rm -f "$pidfile"\n'
         "}\n"
         f"for pidfile in {runtime_dir}/starter-browser.pid {runtime_dir}/starter-terminal.pid {runtime_dir}/openbox.pid {runtime_dir}/xvfb.pid {runtime_dir}/procs/*.pid; do\n"
-        "  rumi_kill_pidfile TERM \"$pidfile\"\n"
+        '  rumi_kill_pidfile TERM "$pidfile"\n'
         "done\n"
         "sleep 0.2\n"
         f"for pidfile in {runtime_dir}/starter-browser.pid {runtime_dir}/starter-terminal.pid {runtime_dir}/openbox.pid {runtime_dir}/xvfb.pid {runtime_dir}/procs/*.pid; do\n"
-        "  rumi_kill_pidfile KILL \"$pidfile\"\n"
+        '  rumi_kill_pidfile KILL "$pidfile"\n'
         "done\n"
         f"RUMI_SANDBOX_INSTANCE={instance}\n"
         "rumi_kill_instance_processes() {\n"
-        "  signal=\"$1\"\n"
+        '  signal="$1"\n'
         "  for envfile in /proc/[0-9]*/environ; do\n"
-        "    [ -r \"$envfile\" ] || continue\n"
-        "    pid=\"${envfile#/proc/}\"\n"
-        "    pid=\"${pid%/environ}\"\n"
-        "    [ \"$pid\" = \"$$\" ] && continue\n"
+        '    [ -r "$envfile" ] || continue\n'
+        '    pid="${envfile#/proc/}"\n'
+        '    pid="${pid%/environ}"\n'
+        '    [ "$pid" = "$$" ] && continue\n'
         "    tr '\\0' '\\n' < \"$envfile\" 2>/dev/null | grep -qx \"RUMI_SANDBOX_INSTANCE=$RUMI_SANDBOX_INSTANCE\" || continue\n"
-        "    kill -\"$signal\" \"$pid\" >/dev/null 2>&1 || true\n"
+        '    kill -"$signal" "$pid" >/dev/null 2>&1 || true\n'
         "  done\n"
         "}\n"
         "rumi_kill_instance_processes TERM\n"
@@ -1776,39 +2212,39 @@ def _desktop_running_script(provider_instance_id: str) -> str:
         "set +e\n"
         f"RUMI_SANDBOX_INSTANCE={instance}\n"
         "rumi_process_matches_instance() {\n"
-        "  pid=\"$1\"\n"
-        "  command_name=\"$2\"\n"
+        '  pid="$1"\n'
+        '  command_name="$2"\n'
         "  case \"$pid\" in ''|*[!0-9]*) return 1;; esac\n"
-        "  kill -0 \"$pid\" >/dev/null 2>&1 || return 1\n"
-        "  [ \"$(cat \"/proc/$pid/comm\" 2>/dev/null || true)\" = \"$command_name\" ] || return 1\n"
+        '  kill -0 "$pid" >/dev/null 2>&1 || return 1\n'
+        '  [ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" = "$command_name" ] || return 1\n'
         "  tr '\\0' '\\n' < \"/proc/$pid/environ\" 2>/dev/null | grep -qx \"RUMI_SANDBOX_INSTANCE=$RUMI_SANDBOX_INSTANCE\"\n"
         "}\n"
         "rumi_pidfile_alive() {\n"
-        "  pidfile=\"$1\"\n"
-        "  command_name=\"$2\"\n"
-        "  [ -f \"$pidfile\" ] || return 1\n"
-        "  pid=\"$(cat \"$pidfile\" 2>/dev/null || true)\"\n"
-        "  rumi_process_matches_instance \"$pid\" \"$command_name\"\n"
+        '  pidfile="$1"\n'
+        '  command_name="$2"\n'
+        '  [ -f "$pidfile" ] || return 1\n'
+        '  pid="$(cat "$pidfile" 2>/dev/null || true)"\n'
+        '  rumi_process_matches_instance "$pid" "$command_name"\n'
         "}\n"
         "rumi_find_instance_pid() {\n"
-        "  command_name=\"$1\"\n"
+        '  command_name="$1"\n'
         "  for envfile in /proc/[0-9]*/environ; do\n"
-        "    [ -r \"$envfile\" ] || continue\n"
-        "    pid=\"${envfile#/proc/}\"\n"
-        "    pid=\"${pid%/environ}\"\n"
-        "    rumi_process_matches_instance \"$pid\" \"$command_name\" || continue\n"
-        "    echo \"$pid\"\n"
+        '    [ -r "$envfile" ] || continue\n'
+        '    pid="${envfile#/proc/}"\n'
+        '    pid="${pid%/environ}"\n'
+        '    rumi_process_matches_instance "$pid" "$command_name" || continue\n'
+        '    echo "$pid"\n'
         "    return 0\n"
         "  done\n"
         "  return 1\n"
         "}\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/xvfb.pid Xvfb; then\n"
-        f"  pid=\"$(rumi_find_instance_pid Xvfb || true)\"\n"
-        f"  [ -n \"$pid\" ] && echo \"$pid\" > {runtime_dir}/xvfb.pid\n"
+        f'  pid="$(rumi_find_instance_pid Xvfb || true)"\n'
+        f'  [ -n "$pid" ] && echo "$pid" > {runtime_dir}/xvfb.pid\n'
         "fi\n"
         f"if ! rumi_pidfile_alive {runtime_dir}/openbox.pid openbox; then\n"
-        f"  pid=\"$(rumi_find_instance_pid openbox || true)\"\n"
-        f"  [ -n \"$pid\" ] && echo \"$pid\" > {runtime_dir}/openbox.pid\n"
+        f'  pid="$(rumi_find_instance_pid openbox || true)"\n'
+        f'  [ -n "$pid" ] && echo "$pid" > {runtime_dir}/openbox.pid\n'
         "fi\n"
         f"rumi_pidfile_alive {runtime_dir}/xvfb.pid Xvfb && rumi_pidfile_alive {runtime_dir}/openbox.pid openbox\n"
     )
@@ -1916,17 +2352,26 @@ def _resource_limited_argv(
         return tuple(argv)
     script = (
         "set -e\n"
-        "if [ \"$1\" != '0' ]; then ulimit -v \"$1\"; fi\n"
-        "if [ \"$2\" != '0' ]; then ulimit -u \"$2\"; fi\n"
-        "RUMI_CPUSET=\"$3\"\n"
+        'if [ "$1" != \'0\' ]; then ulimit -v "$1"; fi\n'
+        'if [ "$2" != \'0\' ]; then ulimit -u "$2"; fi\n'
+        'RUMI_CPUSET="$3"\n'
         "shift 3\n"
-        "if [ -n \"$RUMI_CPUSET\" ]; then\n"
+        'if [ -n "$RUMI_CPUSET" ]; then\n'
         "  command -v taskset >/dev/null 2>&1 || { echo 'taskset is required for sandbox CPU limits' >&2; exit 126; }\n"
-        "  exec taskset -c \"$RUMI_CPUSET\" \"$@\"\n"
+        '  exec taskset -c "$RUMI_CPUSET" "$@"\n'
         "fi\n"
-        "exec \"$@\"\n"
+        'exec "$@"\n'
     )
-    return ("bash", "-lc", script, "rumi-resource-limit", str(memory_kb), str(pids_limit), cpu_affinity, *argv)
+    return (
+        "bash",
+        "-lc",
+        script,
+        "rumi-resource-limit",
+        str(memory_kb),
+        str(pids_limit),
+        cpu_affinity,
+        *argv,
+    )
 
 
 def _cpu_affinity_list(cpu_count: float | None) -> str:
@@ -1945,7 +2390,17 @@ def _instance_network_disabled(instance: ProviderInstance) -> bool:
 
 
 def _guest_network_disabled(policy: object) -> bool:
-    open_modes = {"open", "on", "allow", "allowed", "bridge", "host_shared", "shared", "internet", "full"}
+    open_modes = {
+        "open",
+        "on",
+        "allow",
+        "allowed",
+        "bridge",
+        "host_shared",
+        "shared",
+        "internet",
+        "full",
+    }
     if isinstance(policy, Mapping):
         mode = str(policy.get("mode") or "off").strip().lower()
         approval_required = bool(policy.get("approval_required") or policy.get("requires_approval"))
@@ -1967,7 +2422,9 @@ def _container_path(workspace_dir: str, path: str) -> str:
 
 def _container_parent(workspace_dir: str, path: str) -> str | None:
     parent = PurePosixPath(_container_path(workspace_dir, path)).parent
-    return None if parent.as_posix() == PurePosixPath(workspace_dir).as_posix() else parent.as_posix()
+    return (
+        None if parent.as_posix() == PurePosixPath(workspace_dir).as_posix() else parent.as_posix()
+    )
 
 
 def _file_patch_operations(payload: Mapping[str, object]) -> list[dict[str, object]]:
@@ -1977,21 +2434,37 @@ def _file_patch_operations(payload: Mapping[str, object]) -> list[dict[str, obje
     if raw_items is None:
         raw_items = [payload]
     if not isinstance(raw_items, list) or not raw_items:
-        raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "Sandbox file patch requires at least one file operation.", status_code=400)
+        raise SandboxContractError(
+            "INVALID_SANDBOX_FILE_PATCH",
+            "Sandbox file patch requires at least one file operation.",
+            status_code=400,
+        )
 
     operations: list[dict[str, object]] = []
     total_bytes = 0
     for raw in raw_items:
         if not isinstance(raw, Mapping):
-            raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "Sandbox file patch operations must be objects.", status_code=400)
+            raise SandboxContractError(
+                "INVALID_SANDBOX_FILE_PATCH",
+                "Sandbox file patch operations must be objects.",
+                status_code=400,
+            )
         path = validate_workspace_relative_path(raw.get("path"), field="path")
         op = str(raw.get("op") or raw.get("operation") or "write").strip().lower()
         if op not in {"write", "replace", "create", "upsert"}:
-            raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "Sandbox file patch only supports write-style operations.", status_code=400)
+            raise SandboxContractError(
+                "INVALID_SANDBOX_FILE_PATCH",
+                "Sandbox file patch only supports write-style operations.",
+                status_code=400,
+            )
         content = _patch_content(raw)
         total_bytes += len(content)
         if total_bytes > MAX_FILE_PATCH_BYTES:
-            raise SandboxContractError("SANDBOX_FILE_PATCH_TOO_LARGE", "Sandbox file patch payload is too large.", status_code=413)
+            raise SandboxContractError(
+                "SANDBOX_FILE_PATCH_TOO_LARGE",
+                "Sandbox file patch payload is too large.",
+                status_code=413,
+            )
         operations.append({"path": path, "content": content})
     return operations
 
@@ -2000,28 +2473,42 @@ def _patch_content(raw: Mapping[str, object]) -> bytes:
     if "content_base64" in raw:
         value = raw.get("content_base64")
         if not isinstance(value, str):
-            raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "content_base64 must be a string.", status_code=400)
+            raise SandboxContractError(
+                "INVALID_SANDBOX_FILE_PATCH", "content_base64 must be a string.", status_code=400
+            )
         try:
             return base64.b64decode(value, validate=True)
         except Exception as exc:
-            raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "content_base64 is invalid.", status_code=400) from exc
+            raise SandboxContractError(
+                "INVALID_SANDBOX_FILE_PATCH", "content_base64 is invalid.", status_code=400
+            ) from exc
     value = raw.get("content")
     if isinstance(value, bytes):
         return value
     if isinstance(value, str):
         return value.encode("utf-8")
-    raise SandboxContractError("INVALID_SANDBOX_FILE_PATCH", "Sandbox file patch requires content or content_base64.", status_code=400)
+    raise SandboxContractError(
+        "INVALID_SANDBOX_FILE_PATCH",
+        "Sandbox file patch requires content or content_base64.",
+        status_code=400,
+    )
 
 
 def _port_number(value: object) -> int:
     if isinstance(value, bool):
-        raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400)
+        raise SandboxContractError(
+            "INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400
+        )
     try:
-        port = int(value or 0)
+        port = int(_numeric_value(value) or 0)
     except (TypeError, ValueError) as exc:
-        raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400) from exc
+        raise SandboxContractError(
+            "INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400
+        ) from exc
     if port < 1 or port > 65535:
-        raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port must be between 1 and 65535.", status_code=400)
+        raise SandboxContractError(
+            "INVALID_SANDBOX_PORT", "Sandbox port must be between 1 and 65535.", status_code=400
+        )
     return port
 
 
@@ -2037,7 +2524,7 @@ def _port_probe_argv(port: int) -> tuple[str, ...]:
 
 def _positive_int(value: object, fallback: int) -> int:
     try:
-        parsed = int(value or 0)
+        parsed = int(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return fallback
     return parsed if parsed > 0 else fallback
@@ -2045,7 +2532,7 @@ def _positive_int(value: object, fallback: int) -> int:
 
 def _optional_positive_int(value: object) -> int | None:
     try:
-        parsed = int(value or 0)
+        parsed = int(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
@@ -2053,10 +2540,14 @@ def _optional_positive_int(value: object) -> int | None:
 
 def _optional_positive_float(value: object) -> float | None:
     try:
-        parsed = float(value or 0)
+        parsed = float(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _numeric_value(value: object) -> int | float | str:
+    return value if isinstance(value, (int, float, str)) else 0
 
 
 def _bounded_output(value: str, max_bytes: int | None) -> tuple[str, bool]:

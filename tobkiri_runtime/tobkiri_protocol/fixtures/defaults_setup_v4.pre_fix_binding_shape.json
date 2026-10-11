@@ -1,0 +1,31 @@
+{
+  "description": "Binding shape accepted by the pre-fix frontend but rejected by the canonical v4 contract because executable placement was omitted.",
+  "expected_error": "Defaults binding has unknown or missing fields",
+  "missing_canonical_fields": [
+    "executable_catalog_digest",
+    "variant_id",
+    "platform",
+    "architecture",
+    "runtime_abi",
+    "backend",
+    "execution_kind"
+  ],
+  "binding": {
+    "caller_function_id": "shell.tauri.default",
+    "pack_id": "defaultspack",
+    "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "function_principal": {
+      "parent_artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "function_implementation_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "function_id": "defaultspack.conversation",
+      "contract_revision_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "operation_id": "complete"
+    },
+    "contract_id": "conversation.turn.v1",
+    "operation_id": "complete",
+    "domain_kind": "pack_vm",
+    "authority_reference": "authority-ref:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "requested_scope_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "adapter_digests": []
+  }
+}

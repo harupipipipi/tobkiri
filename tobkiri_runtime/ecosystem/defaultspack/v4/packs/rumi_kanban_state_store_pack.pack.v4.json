@@ -1,0 +1,172 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:3fa9ae37dca349a87983c9d63d4f1a4246bc13278af63409cb9d64e9c88453c6",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.kanban.v1",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-action"
+      ],
+      "revision_digest": "sha256:86050860cfda62f07e3e804099a00b355961c45dd1aa47c13a2196c84f9df358"
+    },
+    {
+      "contract_id": "tobkiri.resource.kanban.v1",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-resource"
+      ],
+      "revision_digest": "sha256:4ee7bfd57d713906001cbfcce93458898d53e7574955d903b899079d1caf049e"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:86050860cfda62f07e3e804099a00b355961c45dd1aa47c13a2196c84f9df358",
+      "id": "rumi_kanban_state_store_pack.kanban-state.action",
+      "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-action"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:4ee7bfd57d713906001cbfcce93458898d53e7574955d903b899079d1caf049e",
+      "id": "rumi_kanban_state_store_pack.kanban-state.resource",
+      "implementation_digest": "sha256:19bf8410ea1bda77d82c0e8b2e0aa563f9d7b7dffc5fe92277e1359f2f6088f0",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-resource"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:e90f9e04f5076b9e712855261fe1e824db4d28cc86073bc5a9d571cb510e9755",
+    "artifact_set_digest": "sha256:d03c9a7d06a2aea34ccae32b692f892896ee663083522162cdc69437e18fd43d",
+    "contract_catalog_digest": "sha256:a51eac87d822de82d45646ac7ad7a6477340b407df4cbf539fbf284eed6202f6"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.kanban.v1",
+      "rumi.resource.kanban.v1",
+      "rumi:ecosystem/rumi_kanban_state_store_pack",
+      "rumi_kanban_state_store_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+      "owner": "rumi_kanban_state_store_pack",
+      "contract_reference": "tobkiri.action.kanban.v1",
+      "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+      "owner": "rumi_kanban_state_store_pack",
+      "contract_reference": "tobkiri.resource.kanban.v1",
+      "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:2f73023d03a22e062d24a8f54dbd00f72d2360f0bc7d69e48bfb8e6aebcc7d13",
+    "display_name": "Tobkiri Kanban State Store",
+    "id": "rumi_kanban_state_store_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_kanban_state_store_pack/pack.v4.json",
+    "source_digest": "sha256:e90f9e04f5076b9e712855261fe1e824db4d28cc86073bc5a9d571cb510e9755",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:1303974f71efd2b3a519b06ec66437b89ff4b3c5eb2b5af3f1cecdde68cb99f6",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:354585a56b7b34dfc61aa3c55bc7cc39d710c97343097e1923648be3f6d80385",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_kanban_state_store_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:e90f9e04f5076b9e712855261fe1e824db4d28cc86073bc5a9d571cb510e9755"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
+      "owner": "rumi_kanban_state_store_pack",
+      "contract_reference": "tobkiri.action.kanban.v1",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-action"
+      ]
+    },
+    {
+      "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+      "owner": "rumi_kanban_state_store_pack",
+      "contract_reference": "tobkiri.resource.kanban.v1",
+      "operations": [
+        "rumi_kanban_state_store_pack.kanban-state-resource"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "host.authority.consume",
+      "kanban.state.manage",
+      "kanban.state.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

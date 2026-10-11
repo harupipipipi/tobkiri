@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-drag-task-pet"
+description = "Enables the drag_task_pet command without any pre-configured scope."
+commands.allow = ["drag_task_pet"]
+
+[[permission]]
+identifier = "deny-drag-task-pet"
+description = "Denies the drag_task_pet command without any pre-configured scope."
+commands.deny = ["drag_task_pet"]

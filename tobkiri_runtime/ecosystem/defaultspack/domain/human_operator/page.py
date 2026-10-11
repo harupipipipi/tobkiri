@@ -17,7 +17,7 @@ from domain.chat.run_request import (
 )
 from domain.chat.store import ChatStore
 from domain.prompt.manager import get_manager
-from domain.prompt.prompt_compactor import compact_prompt
+from domain.prompt.studio_client import compact_prompt_via_owner
 
 from .session_store import session_route_path
 
@@ -786,7 +786,7 @@ def _prompt_variant(prompt_text: str, prompt_view: str) -> str:
     if prompt_view == "rough_ja":
         return "<pre>{}</pre>".format(html.escape(_rough_translate_prompt_text(text)))
     if prompt_view == "compact":
-        compacted = compact_prompt(text)
+        compacted = compact_prompt_via_owner(text)
         return "<pre>{}</pre>".format(
             html.escape(str(compacted.get("suggested_prompt") or text or "(none)"))
         )

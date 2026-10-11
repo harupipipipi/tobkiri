@@ -1,39 +1,113 @@
+import { anchorComposerMentionWidget, updateConfirmedComposerWidgets } from "../lib/composerMentionAnchors";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
+import { CalendarAgentPromptEditor } from "../features/composer/CalendarAgentPromptEditor";
+import { installKeyboardOnlyFocusRings } from "../lib/focusModality";
+import { useToolSelectionController } from "../features/tools/useToolSelectionController";
+import type { ConversationToolPreferences } from "../features/tools/types";
+import { composerToolMentionGroups } from "../lib/composerToolMentions";
 import {
+  composerMenuCommands,
+  composerEntityMentionCandidates,
+  composerReferencesForSelection,
+  composerReferenceInsertionIsCurrent,
+  validComposerHistoryDropTarget,
+  composerSkillMentionWidget,
+  replaceConfirmedComposerWidget,
+  composerMentionSkills,
+  COMPOSER_ATTACH_COMMAND_ID,
+  COMPOSER_ATTACH_IMAGE_COMMAND_ID,
   atMentionMenuKeyAction,
-  AtMentionMenu,
+  atomicComposerMentionEdit,
+  atMentionPalettePayload,
+  commandPalettePayload,
+  commandArgumentPalettePayload,
+  JsonListPanel,
+  jsonListPanelPayload,
+  dismissActiveAtMentionText,
   filterAtMentionFiles,
   insertAtMentionText,
   composerChromeWidgetStyle,
+  composerMentionSectionForToolGroup,
+  composerMentionSectionForTool,
+  orderComposerAtMentionCandidates,
+  prepareComposerAttachments,
+  composerClipboardFiles,
   composerHelperCopy,
   composerModelControlWidth,
   composerPlaceholderCopy,
+  composerModelSearchPayload,
   modelDropdownPlacementClassName,
+  modelPickerPage,
+  nextModelPickerOpenState,
+  isModelPickerToggleCommand,
   modelCandidateMenuKeyAction,
   modelCandidatePopupStyleForAnchor,
+  modelProviderOptions,
+  modelProviderSearchState,
+  modelSearchKeyAction,
   nextModelCandidateIndex,
   profileNeedsApiKey,
   ComposerRenderer,
   composerToolMentionWidget,
+  composerAtMentionCandidateWidget,
+  filterComposerSkillMentions,
   filterComposerToolMentions,
   filterModelProfilesBySearch,
   resolveComposerWidgetDrop,
   shouldFocusComposerForSlashKey,
   toolMentionIdsFromText,
+  composerSubmissionSignature,
+  composerInlineMentionParts,
+  isDuplicateComposerSubmission,
+  isComposerImeEvent,
+  commandShowsToggleState,
+  commandArgumentEntryPrefix,
+  commandArgumentGuideForInput,
+  persistentComposerToggleCommands,
+  protocolStaticSelectMatch,
+  shouldShowComposerAtMentionSuggestions,
+  shouldShowComposerCommandSuggestions,
 } from "./ComposerRenderer";
 import { COMPOSER_BUTTON_DROP, COMPOSER_PANEL_DROP, COMPOSER_SELECTOR_DROP, COMPOSER_TOGGLE_DROP } from "../lib/toolUi";
 import type { ComposerCommandItem } from "../lib/api";
+import type { ComposerAtMentionCandidate } from "./ComposerRenderer";
+import type { ComposerExtensionItem, ComposerRendererProps, ComposerSkillItem, ToolGroup } from "./types";
 
 test("composer file mention filters string context files", () => {
   const files = ["README.md", "src/App.tsx", "docs/context.md"];
 
   assert.deepEqual(filterAtMentionFiles(files, "md"), ["README.md", "docs/context.md"]);
   assert.equal(typeof filterAtMentionFiles(files, "")[0], "string");
+});
+
+test("composer accepts only saved-turn compatible inline images", () => {
+  const image = (name: string, type: string, size = 16) => new File([
+    new Uint8Array(size),
+  ], name, { type });
+  const currentImage = {
+    id: "existing",
+    name: "existing.png",
+    size: 16,
+    type: "image/png",
+  };
+
+  const result = prepareComposerAttachments([
+    image("diagram.png", "image/png"),
+    image("photo.jpg", "image/jpeg"),
+    image("diagram.svg", "image/svg+xml"),
+    image("too-large.webp", "image/webp", 1024 * 1024 + 1),
+    image("notes.gif", "image/gif"),
+  ], [currentImage]);
+
+  assert.deepEqual(result.files.map((file) => file.name), ["diagram.png"]);
+  assert.match(result.error ?? "", /画像は1メッセージに最大2枚/);
+  assert.match(result.error ?? "", /PNG、JPEG、WebP、GIFのみ対応/);
+  assert.match(result.error ?? "", /1 MB以下/);
 });
 
 test("composer file mention insertion keeps @ text for workspace attachment flow", () => {
@@ -124,6 +198,177 @@ test("composer tool mentions resolve searchable tools and JSON metadata", () => 
       },
     },
   });
+});
+
+test("composer mention candidates always retain Settings Mode", () => {
+  const skills = composerMentionSkills([]);
+
+  assert.deepEqual(skills, [{
+    id: "settings_assistant",
+    label: "Settings",
+    description: "Inspect, explain, and safely change Tobkiri settings through normal chat.",
+    aliases: ["setting", "settings", "setting_mode", "settings_mode"],
+  }]);
+  assert.deepEqual(filterComposerSkillMentions(skills, "setting").map((skill) => skill.id), ["settings_assistant"]);
+
+  const configured: ComposerSkillItem = {
+    id: "settings_assistant",
+    label: "Configure",
+    aliases: ["configure"],
+  };
+  assert.deepEqual(composerMentionSkills([configured])[0]?.aliases, [
+    "setting",
+    "settings",
+    "setting_mode",
+    "settings_mode",
+    "configure",
+  ]);
+});
+
+test("composer mentions separate catalog-backed plugins from built-in and added tools", () => {
+  const builtIn: ComposerExtensionItem = {
+    id: "web_search",
+    label: "Web Search",
+    sourcePackId: "defaultspack",
+  };
+  const github: ComposerExtensionItem = {
+    id: "github.search",
+    label: "GitHub Search",
+    sourcePackId: "defaultspack",
+    serviceId: "github",
+  };
+  const cloudflare: ComposerExtensionItem = {
+    id: "cloudflare.workers",
+    label: "Cloudflare Workers",
+    sourcePackId: "cloudflare",
+  };
+  const custom: ComposerExtensionItem = {
+    id: "user.tool",
+    label: "My Tool",
+    sourcePackId: "user_dynamic",
+  };
+
+  assert.equal(composerMentionSectionForTool(builtIn).id, "builtin-tool");
+  assert.equal(composerMentionSectionForTool(github).id, "plugin");
+  assert.equal(composerMentionSectionForTool(cloudflare).id, "plugin");
+  assert.equal(composerMentionSectionForTool(custom).id, "custom-tool");
+
+  const candidates: ComposerAtMentionCandidate[] = [github, builtIn, custom].map((item) => ({
+    kind: "tool",
+    id: `tool:${item.id}`,
+    label: item.label,
+    item,
+    section: composerMentionSectionForTool(item),
+  }));
+  const payload = atMentionPalettePayload(candidates);
+  assert.deepEqual(payload.items.map((item) => item.section?.id), ["plugin", "builtin-tool", "custom-tool"]);
+
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload,
+    activeIndex: 0,
+    onActiveIndexChange: () => undefined,
+    onSelect: () => undefined,
+  }));
+  assert.match(html, /プラグイン・接続/);
+  assert.match(html, /内蔵ツール/);
+  assert.match(html, /追加したツール/);
+});
+
+test("composer service mentions inherit a homogeneous catalog section and isolate mixed groups", () => {
+  const builtIn: ComposerExtensionItem = {
+    id: "web_search",
+    label: "Web Search",
+    sourcePackId: "defaultspack",
+  };
+  const github: ComposerExtensionItem = {
+    id: "github.issues",
+    label: "GitHub Issues",
+    sourcePackId: "defaultspack",
+    serviceId: "github",
+  };
+  const cloudflare: ComposerExtensionItem = {
+    id: "cloudflare.workers",
+    label: "Cloudflare Workers",
+    sourcePackId: "cloudflare",
+  };
+  const custom: ComposerExtensionItem = {
+    id: "user.tool",
+    label: "My Tool",
+    sourcePackId: "user_dynamic",
+  };
+
+  assert.equal(composerMentionSectionForToolGroup([github, cloudflare]).id, "plugin");
+  assert.equal(composerMentionSectionForToolGroup([builtIn]).id, "builtin-tool");
+  assert.equal(composerMentionSectionForToolGroup([custom]).id, "custom-tool");
+  assert.equal(composerMentionSectionForToolGroup([github, builtIn]).id, "service");
+
+  const githubGroup: ToolGroup = {
+    id: "github",
+    label: "GitHub",
+    description: "GitHub の操作",
+    items: [github],
+  };
+  const mixedGroup: ToolGroup = {
+    id: "mixed",
+    label: "まとめて実行",
+    description: "複数の種類のツール",
+    items: [github, builtIn],
+  };
+  const candidates: ComposerAtMentionCandidate[] = [
+    {
+      kind: "service",
+      id: "service:mixed",
+      label: mixedGroup.label,
+      displayLabel: "まとめて実行（まとめ）",
+      description: "複数の種類のツール · 2件のツールをまとめて選択",
+      service: mixedGroup,
+      section: composerMentionSectionForToolGroup(mixedGroup.items),
+    },
+    {
+      kind: "tool",
+      id: `tool:${builtIn.id}`,
+      label: builtIn.label,
+      item: builtIn,
+      section: composerMentionSectionForTool(builtIn),
+    },
+    {
+      kind: "service",
+      id: "service:github",
+      label: githubGroup.label,
+      displayLabel: "GitHub（まとめ）",
+      description: "GitHub の操作 · 1件のツールをまとめて選択",
+      service: githubGroup,
+      section: composerMentionSectionForToolGroup(githubGroup.items),
+    },
+    {
+      kind: "tool",
+      id: `tool:${github.id}`,
+      label: github.label,
+      item: github,
+      section: composerMentionSectionForTool(github),
+    },
+  ];
+
+  const payload = atMentionPalettePayload(orderComposerAtMentionCandidates(candidates));
+  assert.deepEqual(payload.items.map((item) => item.section?.id), [
+    "plugin",
+    "plugin",
+    "builtin-tool",
+    "service",
+  ]);
+  assert.match(payload.items[0]?.description ?? "", /まとめて選択/);
+  assert.equal(payload.items[0]?.title, "GitHub（まとめ）");
+  assert.equal(payload.items[1]?.title, "GitHub Issues");
+
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload,
+    activeIndex: 0,
+    onActiveIndexChange: () => undefined,
+    onSelect: () => undefined,
+  }));
+  assert.equal((html.match(/プラグイン・接続/g) ?? []).length, 1);
+  assert.equal((html.match(/内蔵ツール/g) ?? []).length, 1);
+  assert.equal((html.match(/ツールのまとまり/g) ?? []).length, 1);
 });
 
 test("composer mention filters retain known tools and files while typing", () => {
@@ -227,13 +472,27 @@ test("composer mention Enter selects candidates and does not submit raw unmatche
   assert.deepEqual(atMentionMenuKeyAction("Tab", true, 0, 2), { handled: false });
 });
 
+test("composer mention Escape removes only the unfinished mention without changing normal input", () => {
+  assert.deepEqual(dismissActiveAtMentionText("@", 1), {
+    value: "",
+    cursor: 0,
+  });
+  assert.deepEqual(dismissActiveAtMentionText("確認 @README.md を続ける", "確認 @README.md".length), {
+    value: "確認  を続ける",
+    cursor: "確認 ".length,
+  });
+  assert.deepEqual(dismissActiveAtMentionText("通常入力", "通常".length), {
+    value: "通常入力",
+    cursor: "通常".length,
+  });
+});
+
 test("empty mention listbox is visible and announced", () => {
-  const html = renderToStaticMarkup(createElement(AtMentionMenu, {
-    candidates: [],
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload: atMentionPalettePayload([]),
     activeIndex: 0,
     onActiveIndexChange: () => undefined,
     onSelect: () => undefined,
-    onClose: () => undefined,
   }));
 
   assert.match(html, /role="listbox"/);
@@ -241,9 +500,255 @@ test("empty mention listbox is visible and announced", () => {
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /一致する候補はありません/);
   assert.doesNotMatch(html, /role="option"/);
+  assert.match(html, /data-composer-mention-menu="true"/);
+  assert.match(html, /rumi-composer-mention-menu absolute bottom-full left-0 mb-2/);
+  assert.doesNotMatch(html, /fixed rumi-layer-modal/);
 });
 
-test("selected references render inline while explicit drops keep the widget row", () => {
+test("JSON list panel renders trigger-neutral payload data", () => {
+  const payload = jsonListPanelPayload({
+    id: "sample-picker",
+    listboxId: "sample-picker-listbox",
+    ariaLabel: "Sample picker",
+    testId: "sample-picker",
+    maxHeightRem: 20,
+    header: { label: "Actions", icon: "wrench" },
+    empty: { message: "No actions" },
+    item: { prefix: "/" },
+    items: [{
+      id: "ship",
+      title: "ship",
+      description: "Deploy the current build",
+      icon: "wrench",
+      fallbackIcon: "tool",
+      badges: [{ label: "command", tone: "sky" }],
+    }],
+  });
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload,
+    activeIndex: 0,
+    onActiveIndexChange: () => undefined,
+    onSelect: () => undefined,
+  }));
+
+  assert.match(html, /data-json-list-template="sample-picker"/);
+  assert.match(html, /aria-label="Sample picker"/);
+  assert.match(html, /Actions/);
+  assert.match(html, /\/ship/);
+  assert.match(html, /Deploy the current build/);
+  assert.match(html, /command/);
+  assert.match(html, /--rumi-json-list-max-height:20rem/);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)), payload);
+});
+
+test("slash commands use the same JSON palette contract as mentions", () => {
+  const command: ComposerCommandItem = {
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    description: "Toggle this Pack's focus mode.",
+    category: "tools",
+    visibility: "default",
+    risk: "medium",
+    active: false,
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
+    protocol_presentation: {
+      label: { fallback: "Focus Mode" },
+      category: "tools",
+      visibility: "default",
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
+      mounts: [],
+    },
+  };
+  const mentionPayload = atMentionPalettePayload([]);
+  const commandPayload = commandPalettePayload([command]);
+
+  assert.equal(commandPayload.maxHeightRem, mentionPayload.maxHeightRem);
+  assert.equal(commandPayload.item.showDescription, mentionPayload.item.showDescription);
+  assert.equal(commandPayload.item.prefix, "/");
+  assert.equal(commandPayload.items[0]?.title, "focus");
+  assert.deepEqual(commandPayload.items[0]?.badges, [
+    { label: "medium", tone: "amber" },
+    { label: "オフ", tone: "neutral" },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(commandPayload)), commandPayload);
+});
+
+test("composer runtime state hides persistent toggle indicators while they are off", () => {
+  const focusMode: ComposerCommandItem = {
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
+    visibility: "default",
+    risk: "medium",
+    active: false,
+    enabled: false,
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
+    protocol_presentation: {
+      label: { fallback: "Focus Mode" },
+      category: "tools",
+      visibility: "default",
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
+      mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
+    },
+  };
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Rumi...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+      supports_thinking: true,
+      thinking_levels: ["low", "medium", "high"],
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    commands: [focusMode],
+    manualRuntimeModeSelectionEnabled: true,
+    mode: "agent",
+    thinkingLevel: "high",
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.deepEqual(persistentComposerToggleCommands([focusMode]), [focusMode]);
+  assert.match(html, /data-composer-widget="runtime-option-states"/);
+  assert.match(html, /aria-label="実行モード: 自律エージェント"/);
+  assert.match(html, /aria-label="思考レベル: 高"/);
+  assert.match(html, /lucide-bot/);
+  assert.doesNotMatch(html, /aria-label="Focus Mode: オフ"/);
+  assert.doesNotMatch(html, /data-state="off"/);
+});
+
+test("custom composer chips retain notification icons while tool chips stay hidden", () => {
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    droppedWidgets: [
+      { id: "enabled", type: "tool", label: "Enabled", icon: "notification", enabled: true },
+      { id: "disabled", type: "tool", label: "Disabled", icon: "notifications", enabled: false },
+      { id: "button", type: "widget", widgetKind: "button", label: "Button", icon: "notify" },
+      { id: "panel", type: "widget", widgetKind: "panel", label: "Panel", icon: "bell" },
+      { id: "selector", type: "widget", widgetKind: "selector", label: "Selector", icon: "bell_ring" },
+    ],
+    selectedToolIds: ["enabled"],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.equal((html.match(/lucide-bell-ring/g) ?? []).length, 3);
+  assert.doesNotMatch(html, /Enabled/);
+  assert.doesNotMatch(html, /Disabled/);
+  assert.match(html, /Button/);
+  assert.match(html, /Panel/);
+  assert.match(html, /Selector/);
+  assert.match(html, /border-white\/\[0\.08\]/);
+});
+
+test("composer runtime state renders enabled Pack toggle icons from presentation metadata", () => {
+  const focusMode: ComposerCommandItem = {
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
+    visibility: "default",
+    risk: "medium",
+    active: true,
+    enabled: true,
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
+    protocol_presentation: {
+      label: { fallback: "Focus Mode" },
+      category: "tools",
+      visibility: "default",
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
+      mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
+    },
+  };
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Rumi...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    commands: [focusMode],
+    manualRuntimeModeSelectionEnabled: true,
+    mode: "chat",
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.match(html, /aria-label="Focus Mode: オン"/);
+  assert.match(html, /data-state="on"/);
+  assert.match(html, /lucide-brain-circuit/);
+  assert.match(html, /drop-shadow-/);
+  assert.match(html, /role="tooltip"[^>]*>Focus Mode: オン</);
+  assert.match(html, /group-focus\/runtime:opacity-100/);
+});
+
+test("composer hides runtime mode state until manual selection is explicitly enabled", () => {
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    mode: "agent",
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, /data-composer-widget="runtime-option-states"/);
+  assert.doesNotMatch(html, /aria-label="現在の実行オプション"/);
+});
+
+test("selected mentions render inline while tool and service chip rows remain hidden", () => {
   const baseProps = {
     input: "Use @web_search then review",
     placeholder: "Message Rumi...",
@@ -266,23 +771,183 @@ test("selected references render inline while explicit drops keep the widget row
   };
   const referenceHtml = renderToStaticMarkup(createElement(ComposerRenderer, {
     ...baseProps,
-    entityReferences: [{ kind: "tool", id: "web_search", syntax: "@web_search" }],
+    input: "Use @Web Search then review",
+    entityReferences: [{ kind: "tool", id: "web_search", syntax: "@Web Search" }],
+    droppedWidgets: [composerToolMentionWidget({ id: "web_search", label: "Web Search", category: "tool" })],
+    selectedToolIds: ["web_search"],
   }));
 
-  assert.match(referenceHtml, /data-composer-inline-reference="tool:web_search"/);
-  assert.match(referenceHtml, />Web Search</);
-  assert.match(referenceHtml, /text-sky-200/);
-  assert.match(referenceHtml, /text-transparent caret-transparent/);
+  assert.match(referenceHtml, /data-composer-inline-mentions="true"/);
+  assert.match(referenceHtml, /rumi-composer-inline-mention[^>]*>@Web Search<\/span>/);
+  assert.match(referenceHtml, />Use @Web Search then review<\/textarea>/);
+  assert.match(referenceHtml, /rumi-composer-textarea-highlighted text-transparent/);
+  assert.doesNotMatch(referenceHtml, /rumi-composer-context-strip[\s\S]*Web Search/);
+  assert.doesNotMatch(referenceHtml, /今回指定を解除/);
   assert.doesNotMatch(referenceHtml, /metadata=|composer_at_mention/);
 
   const droppedHtml = renderToStaticMarkup(createElement(ComposerRenderer, {
     ...baseProps,
     entityReferences: [],
-    droppedWidgets: [{ id: "web_search", type: "tool", label: "Web Search", enabled: true }],
+    droppedWidgets: [
+      { id: "web_search", type: "tool", label: "Web Search", enabled: true },
+      { id: "service:web", type: "service", label: "Web Service", enabled: true },
+      { id: "custom-context", type: "setting", label: "Custom Context", enabled: true },
+    ],
+    attachedFiles: [{ id: "retained-image", name: "retained.png", type: "image/png", size: 16, dataUrl: "data:image/png;base64,AAAA" }],
     selectedToolIds: ["web_search"],
   }));
   assert.doesNotMatch(droppedHtml, /data-composer-inline-reference/);
-  assert.match(droppedHtml, /border-emerald-600\/50[^>]*>[\s\S]*Web Search/);
+  assert.match(droppedHtml, /rumi-composer-context-strip[\s\S]*Custom Context/);
+  assert.doesNotMatch(droppedHtml, /rumi-composer-context-strip[\s\S]*Web Search/);
+  assert.doesNotMatch(droppedHtml, /Web Service/);
+  assert.match(droppedHtml, /retained.png/);
+  assert.match(droppedHtml, /data-composer-attachment-region/);
+  assert.doesNotMatch(droppedHtml, /今回指定を解除/);
+  assert.doesNotMatch(droppedHtml, />今回</);
+});
+
+test("service mention candidates retain authenticated ids independently of UI grouping", () => {
+  const items = [
+    { id: "files_read", label: "Read", ui: { group_id: "coding/read", service_id: "files" } },
+    { id: "files_write", label: "Write", ui: { group_id: "coding/write", service_id: "files" } },
+    { id: "files_disabled", label: "Disabled", disabled: true, ui: { group_id: "coding/read", service_id: "files" } },
+  ];
+  const services = composerToolMentionGroups(items);
+  const service = services.find((group) => group.id === "files");
+  assert.ok(service);
+  assert.deepEqual(service.items.map((item) => item.id), ["files_read", "files_write"]);
+  assert.ok(services.some((group) => group.id === "coding/read"));
+  const candidate: ComposerAtMentionCandidate = {
+    kind: "service", id: `service:${service.id}`, label: service.label, service,
+    section: composerMentionSectionForToolGroup(service.items),
+  };
+  assert.deepEqual(composerAtMentionCandidateWidget(candidate).metadata?.service, {
+    id: "files", label: service.label, tool_ids: ["files_read", "files_write"],
+  });
+});
+
+test("negative tool and service candidates retain semantic intent and enabled member ids", () => {
+  const item = { id: "web_search", label: "Web Search" };
+  const tool: ComposerAtMentionCandidate = {
+    kind: "tool", id: "tool:web_search", label: item.label, item,
+    section: composerMentionSectionForTool(item),
+  };
+  assert.deepEqual(insertAtMentionText("Use @-web now", 9, "-Web Search", ["Web Search"]), {
+    value: "Use @-Web Search  now", cursor: 17,
+  });
+  const toolWidget = composerAtMentionCandidateWidget(tool, true);
+  assert.equal(toolWidget.enabled, true);
+  assert.deepEqual(toolWidget.metadata?.mention, {
+    id: "web_search", kind: "tool", label: "Web Search", syntax: "@-Web Search",
+    tool_id: "web_search", intent: "exclude",
+  });
+  assert.deepEqual(composerInlineMentionParts("Use @-Web Search now", [toolWidget]), [
+    { mention: false, text: "Use " }, { mention: true, text: "@-Web Search" }, { mention: false, text: " now" },
+  ]);
+  assert.deepEqual(atomicComposerMentionEdit("Use @-Web Search now", 15, 15, "Backspace", [toolWidget]), {
+    value: "Use  now", cursor: 4,
+  });
+  const service: ComposerAtMentionCandidate = {
+    kind: "service", id: "service:web", label: "Web",
+    service: { id: "web", label: "Web", description: "Web tools", items: [item, { id: "disabled", label: "Disabled", disabled: true }] },
+    section: composerMentionSectionForToolGroup([item]),
+  };
+  const serviceWidget = composerAtMentionCandidateWidget(service, true);
+  assert.equal(serviceWidget.enabled, true);
+  assert.deepEqual(serviceWidget.metadata?.mention, {
+    id: "web", kind: "service", label: "Web", syntax: "@-Web", intent: "exclude",
+  });
+  assert.deepEqual(serviceWidget.metadata?.service, { id: "web", label: "Web", tool_ids: ["web_search"] });
+  assert.deepEqual(composerAtMentionCandidateWidget(service).metadata?.service, serviceWidget.metadata?.service);
+  const skill = { id: "settings_assistant", label: "Settings" };
+  const skillCandidate: ComposerAtMentionCandidate = {
+    kind: "skill", id: "skill:settings_assistant", label: "Settings", skill,
+    section: tool.section,
+  };
+  const fileCandidate: ComposerAtMentionCandidate = {
+    kind: "file", id: "file:README.md", label: "README.md", file: "README.md", section: tool.section,
+  };
+  for (const candidate of [skillCandidate, fileCandidate]) {
+    assert.deepEqual(composerAtMentionCandidateWidget(candidate, true), composerAtMentionCandidateWidget(candidate));
+  }
+});
+
+test("inline mention parts color only active exact semantic mentions", () => {
+  const widget = composerToolMentionWidget({ id: "browser_companion", label: "Browser Companion", category: "tool" });
+  assert.deepEqual(
+    composerInlineMentionParts("Use @Browser Companion now", [widget]),
+    [
+      { mention: false, text: "Use " },
+      { mention: true, text: "@Browser Companion" },
+      { mention: false, text: " now" },
+    ],
+  );
+  assert.deepEqual(
+    composerInlineMentionParts("\\@Browser Companion and @Browser CompanionX", [widget]),
+    [{ mention: false, text: "\\@Browser Companion and @Browser CompanionX" }],
+  );
+});
+
+test("semantic mentions delete atomically from either edge or a partial selection", () => {
+  const widget = composerToolMentionWidget({ id: "browser_companion", label: "Browser Companion", category: "tool" });
+  const input = "Use @Browser Companion now";
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 22, 22, "Backspace", [widget]),
+    { value: "Use  now", cursor: 4 },
+  );
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 4, 4, "Delete", [widget]),
+    { value: "Use  now", cursor: 4 },
+  );
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 8, 12, "Backspace", [widget]),
+    { value: "Use  now", cursor: 4 },
+  );
+});
+
+test("composer textarea keeps pointer focus visually quiet while leaving keyboard focus to the global modality rule", () => {
+  const focusClasses = new Set<string>();
+  const documentTarget = Object.assign(new EventTarget(), {
+    documentElement: {
+      classList: {
+        add: (value: string) => focusClasses.add(value),
+        remove: (value: string) => focusClasses.delete(value),
+      },
+    },
+  }) as unknown as Document;
+  const cleanupFocusModality = installKeyboardOnlyFocusRings(documentTarget);
+  documentTarget.dispatchEvent(Object.assign(new Event("keydown"), { key: "Tab" }));
+  assert.equal(focusClasses.has("rumi-keyboard-focus"), true);
+  documentTarget.dispatchEvent(new Event("pointerdown"));
+  assert.equal(focusClasses.has("rumi-keyboard-focus"), false);
+  cleanupFocusModality();
+
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+  const textareaMarkup = html.match(/<textarea[^>]*>/)?.[0] ?? "";
+
+  assert.match(textareaMarkup, /outline-none/);
+  assert.doesNotMatch(textareaMarkup, /focus-visible/);
 });
 
 test("model candidate menu keyboard helpers cycle and select", () => {
@@ -330,6 +995,17 @@ test("model candidate menu keyboard helpers cycle and select", () => {
 test("new conversation model dropdown opens below and offset to the right", () => {
   assert.equal(modelDropdownPlacementClassName("below"), "top-full -right-44 mt-2 max-[900px]:right-0");
   assert.equal(modelDropdownPlacementClassName("above"), "bottom-full right-0 mb-2");
+});
+
+test("model slash command toggles the already-open picker closed", () => {
+  assert.equal(nextModelPickerOpenState(false, "open_model_picker", false), true);
+  assert.equal(nextModelPickerOpenState(true, "open_model_picker", false), false);
+  assert.equal(nextModelPickerOpenState(true, "open_model_picker", true), null);
+  assert.equal(nextModelPickerOpenState(true, "open_tool_picker", false), null);
+  assert.equal(isModelPickerToggleCommand(true, "/model"), true);
+  assert.equal(isModelPickerToggleCommand(true, "  /MODEL  "), true);
+  assert.equal(isModelPickerToggleCommand(false, "/model"), false);
+  assert.equal(isModelPickerToggleCommand(true, "/model openrouter"), false);
 });
 
 test("model picker width follows the compact model name only", () => {
@@ -398,11 +1074,120 @@ test("model dropdown search supports @provider filters", () => {
       provider_display_name: "OpenAI",
       model_id: "gpt-4.1",
     },
+    {
+      profile_id: "openrouter/tencent/hy3",
+      qualified_model_id: "openrouter/tencent/hy3",
+      display_name: "Tencent: Hy3",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+      model_id: "tencent/hy3",
+    },
   ];
 
   assert.deepEqual(filterModelProfilesBySearch(profiles, "@google").map((profile) => profile.profile_id), ["google/gemini-2.5-flash"]);
   assert.deepEqual(filterModelProfilesBySearch(profiles, "@opencode qwen").map((profile) => profile.profile_id), ["opencode-go/qwen3.5-plus"]);
   assert.deepEqual(filterModelProfilesBySearch(profiles, "@openai 4.1").map((profile) => profile.profile_id), ["openai/gpt-4.1"]);
+  assert.deepEqual(filterModelProfilesBySearch(profiles, "hy3 free").map((profile) => profile.profile_id), ["openrouter/tencent/hy3"]);
+});
+
+test("model dropdown sends provider-qualified remote searches separately", () => {
+  const providerSearch = modelProviderSearchState("@openrouter gemini");
+
+  assert.deepEqual(composerModelSearchPayload(
+    "@openrouter gemini",
+    providerSearch,
+    30,
+  ), {
+    query: "gemini",
+    provider_id: "openrouter",
+    max_results: 30,
+    offset: 0,
+  });
+  assert.deepEqual(composerModelSearchPayload(
+    "gemini",
+    modelProviderSearchState("gemini"),
+    30,
+  ), {
+    query: "gemini",
+    max_results: 30,
+    offset: 0,
+  });
+});
+
+test("composer model picker pages through deduplicated remote profiles", () => {
+  const profiles = Array.from({ length: 62 }, (_, index) => ({
+    profile_id: `openrouter/model-${index}`,
+    display_name: `Model ${index}`,
+  }));
+
+  const firstPage = modelPickerPage(profiles, [], null, false, 30);
+  assert.equal(firstPage.visible.length, 30);
+  assert.equal(firstPage.total, 62);
+
+  const allProfiles = modelPickerPage(profiles, [profiles[0]], null, false, 90);
+  assert.equal(allProfiles.visible.length, 62);
+  assert.equal(allProfiles.visible.at(-1)?.profile_id, "openrouter/model-61");
+});
+
+test("model dropdown exposes provider-first Tab confirmation", () => {
+  const profiles = [
+    {
+      profile_id: "openrouter/tencent/hy3",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+      model_id: "tencent/hy3",
+      display_name: "Tencent: Hy3",
+    },
+    {
+      profile_id: "openrouter/tencent/hy3-preview",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+      model_id: "tencent/hy3-preview",
+      display_name: "Tencent: Hy3 preview",
+    },
+    {
+      profile_id: "google/gemini-2.5-flash",
+      provider_id: "google",
+      provider_display_name: "Google",
+      model_id: "gemini-2.5-flash",
+      display_name: "Gemini 2.5 Flash",
+    },
+  ];
+
+  assert.deepEqual(modelProviderSearchState("@"), {
+    active: true,
+    confirmedProviderId: "",
+    highlightPrefix: "@",
+    providerQuery: "",
+  });
+  assert.deepEqual(modelProviderSearchState("@openrouter "), {
+    active: false,
+    confirmedProviderId: "openrouter",
+    highlightPrefix: "@openrouter",
+    providerQuery: "openrouter",
+  });
+  assert.deepEqual(modelProviderOptions(profiles), [
+    { id: "google", label: "Google", modelCount: 1 },
+    { id: "openrouter", label: "OpenRouter", modelCount: 2 },
+  ]);
+  assert.deepEqual(modelSearchKeyAction({
+    key: "Tab",
+    shiftKey: false,
+    providerMode: true,
+    providerCount: 2,
+    providerIndex: 0,
+    modelCount: 3,
+    modelIndex: 0,
+  }), { handled: true, type: "confirm_provider", index: 0 });
+  assert.deepEqual(modelSearchKeyAction({
+    key: "Tab",
+    shiftKey: false,
+    providerMode: false,
+    providerCount: 2,
+    providerIndex: 0,
+    modelCount: 3,
+    modelIndex: 1,
+  }), { handled: true, type: "confirm_model", index: 1 });
 });
 
 test("slash key focuses composer only for plain document shortcuts", () => {
@@ -465,7 +1250,7 @@ test("composer chrome widgets declare layout widths separately from actions", ()
   assert.doesNotMatch(html, />thinking</);
 });
 
-test("composer renders template-provided slash command suggestions", () => {
+test("composer only renders template-provided slash command suggestions while focused", () => {
   const commands: ComposerCommandItem[] = [
     {
       id: "context_txt",
@@ -503,9 +1288,155 @@ test("composer renders template-provided slash command suggestions", () => {
     }),
   );
 
-  assert.match(html, /Commands/);
-  assert.match(html, /\/context-txt/);
-  assert.match(html, /Write a context handoff file/);
+  assert.equal(shouldShowComposerCommandSuggestions({
+    focused: true,
+    slashCommandsEnabled: true,
+    hasModelCandidates: false,
+    matchCount: 1,
+  }), true);
+  assert.equal(shouldShowComposerCommandSuggestions({
+    focused: false,
+    slashCommandsEnabled: true,
+    hasModelCandidates: false,
+    matchCount: 1,
+  }), false);
+  assert.doesNotMatch(html, /Commands/);
+  assert.doesNotMatch(html, /Write a context handoff file/);
+});
+
+test("composer command and at-mention palettes are mutually exclusive", () => {
+  assert.equal(shouldShowComposerAtMentionSuggestions({
+    atMentionOpen: true,
+    commandMenuOpen: false,
+    commandSuggestionsOpen: false,
+  }), true);
+  assert.equal(shouldShowComposerAtMentionSuggestions({
+    atMentionOpen: true,
+    commandMenuOpen: true,
+    commandSuggestionsOpen: true,
+  }), false);
+  assert.equal(shouldShowComposerAtMentionSuggestions({
+    atMentionOpen: true,
+    commandMenuOpen: false,
+    commandSuggestionsOpen: true,
+  }), false);
+});
+
+test("stateful slash commands expose explicit on/off state", () => {
+  assert.equal(commandShowsToggleState({
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
+    visibility: "default",
+    risk: "medium",
+    active: false,
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
+    protocol_presentation: {
+      label: { fallback: "Focus Mode" },
+      category: "tools",
+      visibility: "default",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
+      mounts: [],
+    },
+  }), true);
+  assert.equal(commandShowsToggleState({
+    id: "help",
+    name: "help",
+    label: "Help",
+    category: "chat",
+    visibility: "default",
+    risk: "low",
+    execution: { type: "frontend", action: "open_command_help" },
+  }), false);
+});
+
+test("form commands with text arguments enter argument mode on Tab completion", () => {
+  const titleCommand: ComposerCommandItem = {
+    id: "home_title",
+    name: "title",
+    label: "Home Title",
+    category: "settings",
+    visibility: "default",
+    risk: "low",
+    args: [{ name: "value", type: "string", greedy: true }],
+    execution: { type: "frontend", action: "set_home_title" },
+    protocol_presentation: {
+      label: { fallback: "Home Title" },
+      category: "settings",
+      visibility: "default",
+      input: { kind: "form" },
+      mounts: [],
+    },
+  };
+  const toggleCommand: ComposerCommandItem = {
+    ...titleCommand,
+    id: "custompack.focus_mode",
+    name: "focus",
+    args: [{ name: "enabled", type: "boolean" }],
+    protocol_presentation: {
+      ...titleCommand.protocol_presentation!,
+      input: { kind: "form" },
+    },
+  };
+
+  assert.equal(commandArgumentEntryPrefix(titleCommand), "/title ");
+  assert.equal(commandArgumentEntryPrefix(toggleCommand), null);
+  titleCommand.args![0].placeholder = "表示したい文字を入力";
+  assert.deepEqual(commandArgumentGuideForInput("/title ", [titleCommand]), {
+    command: "/title",
+    arguments: ["表示したい文字を入力"],
+    accessibleText: "/title <表示したい文字を入力>",
+  });
+  assert.deepEqual(commandArgumentGuideForInput("/title 新しい名前", [titleCommand]), {
+    command: "/title",
+    arguments: ["表示したい文字を入力"],
+    accessibleText: "/title <表示したい文字を入力>",
+  });
+  const guide = commandArgumentGuideForInput("/title ", [titleCommand]);
+  assert.ok(guide);
+  const payload = commandArgumentPalettePayload(guide);
+  assert.equal(payload.header.label, "Commands");
+  assert.equal(payload.item.prefix, "/");
+  assert.equal(payload.items[0]?.title, "title <表示したい文字を入力>");
+  assert.deepEqual(payload.items[0]?.badges, [{ label: "入力中", tone: "sky" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)), payload);
+});
+
+test("protocol static select options are rendered without command-id branches", () => {
+  const command: ComposerCommandItem = {
+    id: "quality",
+    name: "quality",
+    label: "Quality",
+    category: "settings",
+    visibility: "default",
+    risk: "low",
+    execution: { type: "frontend", action: "set_quality" },
+    protocol_presentation: {
+      label: { fallback: "Quality" },
+      category: "settings",
+      visibility: "default",
+      input: {
+        kind: "select",
+        argument: "level",
+        selection: "single",
+        options: [
+          { value: "balanced", label: { fallback: "Balanced" } },
+          { value: "rich", label: { fallback: "Rich" } },
+        ],
+      },
+      mounts: [],
+    },
+  };
+
+  assert.deepEqual(protocolStaticSelectMatch("/quality ri", [command]), {
+    command,
+    query: "ri",
+    options: [
+      { value: "balanced", label: "Balanced" },
+      { value: "rich", label: "Rich" },
+    ],
+  });
 });
 
 test("composer suppresses slash command suggestions when template disables slash commands", () => {
@@ -618,6 +1549,8 @@ test("composer renders action approval control and review card", () => {
       contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
       selectedToolIds: ["github.search_code"],
       actionApprovalMode: "ask",
+      projects: [{ id: "group-main", title: "Main Repo", workspaceRoot: "/repo/main" }],
+      selectedProjectId: "group-main",
       toolSelectionReview: {
         previewId: "sel_1",
         expiresAt: "2026-01-01T00:05:00Z",
@@ -644,10 +1577,154 @@ test("composer renders action approval control and review card", () => {
   );
 
   assert.match(html, /data-composer-widget="action-approval-control"/);
+  assert.match(html, /data-composer-widget="project-picker"/);
+  assert.match(html, /aria-label="Project: Main Repo"/);
+  assert.match(html, />Main Repo</);
   assert.match(html, /アクションの承認方法/);
+  assert.doesNotMatch(html, /Codex アクションの承認方法/);
   assert.match(html, /承認/);
   assert.match(html, /使用する機能を確認/);
   assert.match(html, /この内容で続ける/);
+});
+
+function renderToolModeComposer(overrides: Partial<ComposerRendererProps> = {}): string {
+  return renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "Tool mode draft",
+    showToolSelectionControl: true,
+    placeholder: "Message Tobkiri",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+    onToolSelectionModeChange: () => undefined,
+    onActionApprovalModeChange: () => undefined,
+    ...overrides,
+  }));
+}
+
+test("composer renders the effective tool mode independently of action approval", () => {
+  const modes = [
+    ["auto", "機能 自動"],
+    ["manual", "機能 手動"],
+    ["none", "機能 なし"],
+  ] as const;
+
+  for (const [toolSelectionMode, label] of modes) {
+    const html = renderToolModeComposer({ toolSelectionMode, actionApprovalMode: "ask" });
+    assert.match(html, /data-composer-widget="tool-selection-control"/);
+    assert.match(html, /aria-label="機能の使い方"/);
+    assert.ok(html.includes(label));
+    assert.match(html, /data-composer-widget="action-approval-control"/);
+    assert.match(html, /アクションの承認方法/);
+    assert.match(html, />承認</);
+  }
+});
+
+test("composer displays persistent tool selection count in manual mode", () => {
+  const html = renderToolModeComposer({
+    toolSelectionMode: "manual",
+    selectedToolIds: ["web_search", "github_issue_search"],
+  });
+
+  const modeButton = html.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(modeButton, "The manual mode button must be rendered");
+  assert.match(modeButton, />2<\/span>/);
+});
+
+test("composer disables changing tool mode while generating", () => {
+  const html = renderToolModeComposer({ isGenerating: true });
+  const modeButton = html.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>/)?.[0];
+  assert.ok(modeButton, "The mode button remains visible while generating");
+  assert.match(modeButton, /\bdisabled=""/);
+
+  const idleHtml = renderToolModeComposer();
+  const idleModeButton = idleHtml.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>/)?.[0];
+  assert.ok(idleModeButton);
+  assert.doesNotMatch(idleModeButton, /\bdisabled=/);
+});
+
+test("composer hides the tool mode control when the surface cannot change modes", () => {
+  const html = renderToolModeComposer({ onToolSelectionModeChange: undefined });
+  assert.doesNotMatch(html, /data-composer-widget="tool-selection-control"/);
+  assert.doesNotMatch(html, /aria-label="機能の使い方"/);
+});
+
+test("new draft reset clears the actual controller mode and exclusions without clearing selected tools", () => {
+  const settingsValues = { tools: { default_mode: "auto" } };
+  const conversationPreferences: ConversationToolPreferences = {
+    mode: "manual",
+    include: [{ kind: "service", id: "github" }],
+    exclude: [{ kind: "tool", id: "computer_control" }],
+  };
+  const snapshots: Array<{
+    state: ReturnType<typeof useToolSelectionController>["state"];
+    selectedToolIds: string[];
+    request: ReturnType<ReturnType<typeof useToolSelectionController>["buildRequest"]>;
+  }> = [];
+
+  // Server rendering supports render-phase state transitions. Each pass uses
+  // the real hook state, rather than a source-string or mocked-setter assertion.
+  function Harness() {
+    const [phase, setPhase] = useState(0);
+    const [selectedToolIds, setSelectedToolIds] = useState(["web_search"]);
+    const controller = useToolSelectionController({
+      settingsValues,
+      selectedToolIds,
+      setSelectedToolIds,
+      conversationPreferences,
+    });
+    snapshots.push({
+      state: controller.state,
+      selectedToolIds: [...selectedToolIds],
+      request: controller.buildRequest({ toolIds: selectedToolIds }),
+    });
+    if (phase === 0) {
+      controller.setTurnMode("none");
+      const pinnedTarget = controller.state.overrideChips.find((chip) => chip.id === "github");
+      assert.ok(pinnedTarget);
+      controller.removeTarget(pinnedTarget);
+      setPhase(1);
+    } else if (phase === 1) {
+      controller.resetDraft();
+      setPhase(2);
+    }
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Harness));
+  assert.equal(snapshots.length, 3);
+  assert.equal(snapshots[1].state.effectiveMode, "none");
+  assert.deepEqual(snapshots[1].state.turnExclude.map(({ kind, id }) => ({ kind, id })), [
+    { kind: "service", id: "github" },
+  ]);
+  assert.deepEqual(snapshots[1].request.include, []);
+
+  const reset = snapshots[2];
+  assert.equal(reset.state.effectiveMode, "manual");
+  assert.equal(reset.state.turnModeOverride, null);
+  assert.deepEqual(reset.state.turnExclude, []);
+  assert.deepEqual(reset.selectedToolIds, ["web_search"]);
+  assert.deepEqual(reset.state.conversationPreferences, conversationPreferences);
+  assert.deepEqual(reset.request, {
+    mode: "manual",
+    include: [{ kind: "service", id: "github" }, { kind: "tool", id: "web_search" }],
+    exclude: [{ kind: "tool", id: "computer_control" }],
+    scope: "turn",
+    must_use: true,
+  });
+  assert.deepEqual(settingsValues, { tools: { default_mode: "auto" } });
 });
 
 test("new conversation composer input is not locked to one visual line", () => {
@@ -680,12 +1757,59 @@ test("new conversation composer input is not locked to one visual line", () => {
   );
 
   assert.doesNotMatch(html, /rumi-composer-input-new-overlay/);
-  assert.match(html, /rumi-composer-input-new[^"]*min-h-\[24px\]/);
-  assert.match(html, /rumi-composer-input-new[^"]*max-h-\[150px\]/);
+  assert.match(html, /rumi-composer-input-new[^"]*min-h-\[44px\]/);
+  assert.match(html, /rumi-composer-input-new[^"]*max-h-\[240px\]/);
   assert.match(html, /rumi-composer-input-new[^"]*text-zinc-100/);
   assert.doesNotMatch(html, /rumi-composer-input-new[^"]*text-transparent/);
   assert.doesNotMatch(html, /rumi-composer-input-new[^"]*\sh-\[22px\]/);
   assert.match(html, /style="[^"]*flex:0 1 9ch;min-width:5.5rem;max-width:12rem/);
+  assert.match(html, /rumi-composer-main-panel[^"]*justify-between/);
+  assert.match(html, /rumi-composer-toolbar/);
+});
+
+test("full access uses only the approval control without a duplicate YOLO chip", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      commands: [{
+        id: "yolo",
+        name: "yolo",
+        label: "Full Access (YOLO)",
+        description: "Toggle Full Access.",
+        category: "mode",
+        visibility: "default",
+        risk: "medium",
+        active: true,
+        enabled: true,
+        execution: { type: "frontend", action: "toggle_ultra_yolo" },
+      }],
+      actionApprovalMode: "full",
+      onActionApprovalModeChange: () => undefined,
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-composer-widget="action-approval-control"/);
+  assert.match(html, />フル</);
+  assert.doesNotMatch(html, /data-composer-widget="active-command-state"/);
+  assert.doesNotMatch(html, /data-composer-widget="yolo-status"/);
+  assert.doesNotMatch(html, /Full Access \(YOLO\).*オン/);
 });
 
 test("composer renders model status indicators beside the model picker", () => {
@@ -720,7 +1844,6 @@ test("composer renders model status indicators beside the model picker", () => {
           },
         },
       ],
-      yoloMode: true,
       onInputChange: () => undefined,
       onSubmit: () => undefined,
       onModelProfileSelect: () => undefined,
@@ -748,12 +1871,13 @@ test("composer model drop selects the model instead of creating a widget chip", 
   assert.deepEqual(action, { type: "select_model", profileId: "openai/gpt-4.1" });
 });
 
-test("composer uses the main input as steer while generating", () => {
+test("ordinary generating composer keeps steer controls when saved registration is not pending", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {
       input: "次は短くして",
       placeholder: "メッセージを入力...",
       isGenerating: true,
+      steerControlsReady: true,
       selectedProfile: {
         profile_id: "stub/default",
         display_name: "Stub Default",
@@ -774,13 +1898,103 @@ test("composer uses the main input as steer while generating", () => {
   );
 
   assert.match(html, /追加の指示を入力/);
-  assert.match(html, /Enterで追加指示を送信/);
+  assert.doesNotMatch(html, /Enterで追加指示を送信/);
   assert.match(html, /title="追加指示を送る"/);
+  assert.doesNotMatch(html, /data-composer-controls="preparing"/);
+  assert.doesNotMatch(html, /aria-label="Tobkiriにメッセージを送信"[^>]*disabled=""/);
   assert.doesNotMatch(html, /実行中のAIへステアを入力/);
   assert.doesNotMatch(html, /AI実行中/);
   assert.doesNotMatch(html, /textarea[^>]*disabled/);
   assert.doesNotMatch(html, /これがステア/);
   assert.doesNotMatch(html, /フォローアップの変更を求める/);
+});
+
+test("composer stays visible but disables input and steer controls before a saved root is registered", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "次の入力",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      steerControlsReady: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+      onSteerSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-composer-controls="preparing"/);
+  assert.match(html, /会話を準備しています。/);
+  assert.match(html, /aria-label="会話を準備中"/);
+  assert.match(html, /aria-label="Tobkiriにメッセージを送信"[^>]*disabled=""/);
+  assert.doesNotMatch(html, /追加の指示を入力/);
+  assert.doesNotMatch(html, /追加指示を送る/);
+});
+
+test("unknown send recovery allows drafting while send and owner controls remain gated", () => {
+  for (const isNewConversation of [false, true]) {
+    const html = renderToolModeComposer({
+      input: "次の下書き",
+      isNewConversation,
+      isGenerating: true,
+      steerControlsReady: false,
+      pendingRecovery: {
+        message: "送信結果を確認できません。下書きは編集できます。",
+        entries: [{ id: "request-3", label: "結果未確認", submittedText: "使えるtool教えて" }],
+        onDetach: () => undefined,
+      },
+    });
+
+    assert.match(html, /data-composer-controls="recovery"/);
+    assert.match(html, /記録を残して待機を解除/);
+    assert.match(html, /元の送信の停止・再送は行いません。/);
+    assert.match(html, /使えるtool教えて/);
+    assert.match(html, />次の下書き<\/textarea>/);
+    assert.doesNotMatch(html, /textarea[^>]*(?:disabled|readonly)=/);
+    assert.match(html, /<button[^>]*aria-label="送信結果が未確認"[^>]*disabled=""/);
+    assert.doesNotMatch(html, /data-composer-controls="preparing"/);
+    assert.doesNotMatch(html, /aria-label="(?:追加指示を送る|生成を停止)"/);
+  }
+});
+
+test("retained requests from another store do not disable a current draft or expose untrusted markup", () => {
+  const html = renderToolModeComposer({
+    pendingRecovery: {
+      message: "以前の送信記録を保持しています。",
+      entries: [{ id: "old-request", label: "以前の環境", submittedText: "<script>sendAgain()</script>" }],
+    },
+  });
+
+  assert.match(html, /未確認の送信記録（1件）/);
+  assert.match(html, /&lt;script&gt;sendAgain\(\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.doesNotMatch(html, /textarea[^>]*disabled=/);
+  assert.match(html, /<button[^>]*aria-label="メッセージを送信"(?![^>]*disabled=)/);
+  assert.doesNotMatch(html, /記録を残して待機を解除/);
+});
+
+test("retained recovery records do not change controls for an observed active turn", () => {
+  const html = renderToolModeComposer({
+    isGenerating: true,
+    steerControlsReady: true,
+    pendingRecovery: { message: "以前の送信記録", entries: [{ id: "old-request", label: "以前の環境" }] },
+  });
+
+  assert.match(html, /aria-label="追加指示を送る"/);
+  assert.doesNotMatch(html, /textarea[^>]*disabled=/);
+  assert.doesNotMatch(html, /aria-label="送信結果が未確認"/);
 });
 
 test("composer renders the current steer above the main input", () => {
@@ -800,7 +2014,7 @@ test("composer renders the current steer above the main input", () => {
       belowExtensions: [],
       thinkingLevel: null,
       contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
-      steerStatus: "ステアを反映しました",
+      steerStatus: { kind: "success", message: "ステアを反映しました" },
       steerPreviewItems: [
         {
           id: "steer_1",
@@ -821,6 +2035,97 @@ test("composer renders the current steer above the main input", () => {
   assert.match(html, /反映済み/);
   assert.match(html, /結論を先にして、短く返して/);
   assert.doesNotMatch(html, /フォローアップの変更を求める/);
+});
+
+test("steer errors use an assertive error notice with a separate copy action", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: { kind: "error", message: "Steer queue failed" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /aria-live="assertive"/);
+  assert.match(html, /data-error-icon="conversation-steer"/);
+  assert.match(html, /aria-label="ステアエラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /Steer queue failed/);
+  assert.doesNotMatch(html, /text-zinc-500[^>]*>Steer queue failed/);
+});
+
+test("passive steering reconciliation does not render a redundant status row", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: {
+        kind: "pending",
+        message: "送信状況を確認しています。",
+      },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.doesNotMatch(html, /data-steer-pending=""/);
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /送信状況を確認しています/);
+  assert.doesNotMatch(html, /追加指示を送信できませんでした/);
+  assert.doesNotMatch(html, /role="alert"/);
+});
+
+test("passive unavailable steering does not add a status row or error", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: {
+        kind: "pending",
+        message: "接続を待っています。送信結果はまだ確認できていません。",
+      },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.doesNotMatch(html, /data-steer-pending=""/);
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /接続を待っています。送信結果はまだ確認できていません/);
+  assert.doesNotMatch(html, /追加指示を送信できませんでした/);
+  assert.doesNotMatch(html, /role="alert"/);
 });
 
 test("vision unsupported banner appears when image input exists and selected model lacks vision", () => {
@@ -859,9 +2164,157 @@ test("vision unsupported banner appears when image input exists and selected mod
     }),
   );
 
-  assert.match(html, /現在のモデルはVision非対応です/);
+  assert.match(html, /画像を送信するにはVision対応モデルを選んでください/);
+  assert.match(html, /画像対応モデルが必要/);
+  assert.doesNotMatch(html, /Vision Bridge/);
   assert.match(html, /Visionモデルへ切替/);
   assert.match(html, /Model設定/);
+});
+
+test("audio attachment card exposes focusable transcript replacement action", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isNewConversation: true,
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "opencode-zen/mimo-v2.5-free",
+        display_name: "MiMo",
+        provider_id: "opencode-zen",
+        model_id: "mimo-v2.5-free",
+        supports_audio_input: false,
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      attachedFiles: [{
+        id: "voice-1",
+        name: "voice.webm",
+        size: 19_000,
+        type: "audio/webm",
+        dataUrl: "data:audio/webm;base64,AAAA",
+      }],
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+      onFileAttach: () => undefined,
+      onFileRemove: () => undefined,
+    }),
+  );
+
+  assert.match(html, /h-24 w-24/);
+  assert.match(html, /tabindex="0"/);
+  assert.match(html, /文字起こしを作成/);
+  assert.match(html, /group-focus-within\/file:opacity-100/);
+});
+
+test("new and existing conversation composers keep square attachments inside the composer frame above the input", () => {
+  const commonProps = {
+    input: "",
+    placeholder: "メッセージを入力...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    attachedFiles: [
+      {
+        id: "image-1",
+        name: "reference.png",
+        size: 68,
+        type: "image/png",
+        dataUrl: "data:image/png;base64,AAAA",
+      },
+      {
+        id: "file-1",
+        name: "manifest.json",
+        size: 2048,
+        type: "application/json",
+        content: "{\n  \"name\": \"example\"\n}",
+      },
+    ],
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+    onFileRemove: () => undefined,
+  };
+  const newConversationHtml = renderToStaticMarkup(
+    createElement(ComposerRenderer, { ...commonProps, isNewConversation: true }),
+  );
+  const existingConversationHtml = renderToStaticMarkup(
+    createElement(ComposerRenderer, { ...commonProps, isNewConversation: false }),
+  );
+
+  const newPanelIndex = newConversationHtml.indexOf("rumi-composer-main-panel");
+  const newAttachmentIndex = newConversationHtml.indexOf("data-composer-attachment-region");
+  const newInputIndex = newConversationHtml.indexOf('aria-label="Tobkiriにメッセージを送信"');
+  assert.ok(newPanelIndex >= 0 && newPanelIndex < newAttachmentIndex);
+  assert.ok(newAttachmentIndex < newInputIndex);
+  assert.match(newConversationHtml, /data-attachment-state="expanded"/);
+  assert.match(newConversationHtml, /type="file" accept="image\/\*"/);
+  assert.equal((newConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
+
+  const existingFrameIndex = existingConversationHtml.indexOf("rumi-composer-frame");
+  const existingAttachmentIndex = existingConversationHtml.indexOf("data-composer-attachment-region");
+  const existingInputIndex = existingConversationHtml.indexOf('aria-label="Tobkiriにメッセージを送信"');
+  assert.ok(existingFrameIndex >= 0 && existingFrameIndex < existingAttachmentIndex);
+  assert.ok(existingAttachmentIndex < existingInputIndex);
+  assert.match(existingConversationHtml, /type="file" accept="image\/\*"/);
+  assert.equal((existingConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
+});
+
+test("composer attachment region stays mounted and collapsed when empty for animated removal", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isNewConversation: true,
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-composer-attachment-region/);
+  assert.match(html, /data-attachment-state="collapsed"/);
+  assert.match(html, /aria-hidden="true"/);
+});
+
+test("clipboard file fallback reads DataTransfer items when files is empty", () => {
+  const file = new File(["voice"], "voice.webm", { type: "audio/webm" });
+  const files = composerClipboardFiles({
+    files: [] as unknown as FileList,
+    items: [{
+      kind: "file",
+      getAsFile: () => file,
+    }] as unknown as DataTransferItemList,
+  });
+  assert.deepEqual(files, [file]);
 });
 
 test("composer asks for an API key when an unconfigured Gemini model is selected", () => {
@@ -988,4 +2441,340 @@ test("composer copy resolver suppresses internal template implementation copy", 
     fileAttachments: true,
     templateHelp: "Template-composed composer: slash commands, mentions, files",
   }), "Enterで送信 · ファイル添付対応");
+});
+
+
+test("composer blocks Enter submission while an IME composition is active", () => {
+  assert.equal(isComposerImeEvent({ nativeEvent: { isComposing: true } }), true);
+  assert.equal(isComposerImeEvent({ keyCode: 229, nativeEvent: { isComposing: false } }), true);
+  assert.equal(isComposerImeEvent({ keyCode: 13, nativeEvent: { isComposing: false } }), false);
+});
+
+test("composer suppresses duplicate submissions without blocking a changed draft", () => {
+  const signature = composerSubmissionSignature("hello", ["file-b", "file-a"]);
+  const lock = { signature, submittedAt: 1_000 };
+  assert.equal(isDuplicateComposerSubmission(lock, signature, 1_450), true);
+  assert.equal(isDuplicateComposerSubmission(lock, signature, 1_701), false);
+  assert.equal(isDuplicateComposerSubmission(lock, composerSubmissionSignature("hello again", ["file-a", "file-b"]), 1_100), false);
+});
+
+
+test("the shared composer menu adds attachment locally and respects template capabilities", () => {
+  const command: ComposerCommandItem = {
+    id: "help", name: "help", label: "Help", category: "chat", visibility: "default", risk: "low",
+    execution: { type: "frontend", action: "open_command_help" },
+  };
+  const both = composerMenuCommands([command], true, true);
+  assert.equal(both[0].id, COMPOSER_ATTACH_IMAGE_COMMAND_ID);
+  assert.equal(both[0].execution.type, "frontend");
+  assert.equal(both[0].name, "image");
+  assert.equal(both[1].id, COMPOSER_ATTACH_COMMAND_ID);
+  assert.equal(both[1].name, "attach");
+  assert.deepEqual(both.slice(2), [command]);
+  assert.deepEqual(composerMenuCommands([command], false, true), [command]);
+  assert.deepEqual(composerMenuCommands([command], true, false).map((item) => item.id), [
+    COMPOSER_ATTACH_IMAGE_COMMAND_ID,
+    COMPOSER_ATTACH_COMMAND_ID,
+  ]);
+  assert.deepEqual(composerMenuCommands([command], false, false), []);
+});
+
+
+test("captured thread composer keeps text/send while hiding model, grant, tool and attachment overrides", () => {
+  const html = renderToolModeComposer({ surfaceMode: "thread", voiceInputEnabled: false });
+  assert.match(html, /data-composer-widget="send"/);
+  for (const control of ["model-picker", "action-approval-control", "tool-selection-control", "file-attach", "project-picker", "runtime-option-states"]) {
+    assert.doesNotMatch(html, new RegExp('data-composer-widget="' + control + '"'));
+  }
+  assert.match(html, /Tool mode draft/);
+  assert.doesNotMatch(html, /aria-label="メッセージを送信" disabled=""/);
+  const pending = renderToolModeComposer({ surfaceMode: "thread", isGenerating: true, input: "retained draft", voiceInputEnabled: false });
+  assert.match(pending, /readonly=""/i);
+  assert.match(pending, /aria-label="生成を停止"/);
+  assert.doesNotMatch(pending, /aria-label="追加指示を送る"/);
+  const disabled = renderToolModeComposer({ surfaceMode: "thread", submissionDisabled: true, voiceInputEnabled: false });
+  assert.match(disabled, /aria-label="メッセージを送信" disabled=""/);
+});
+
+
+test("composer exposes fixed policy explanation when approval mutation is unavailable", () => {
+  const html = renderToolModeComposer({ actionApprovalMode: "full", onActionApprovalModeChange: undefined });
+  assert.match(html, />ポリシー</);
+  assert.match(html, /aria-description="この会話の承認は設定された権限に従います。ここで代理承認やフルアクセスに変更する機能は未対応です。"/);
+  assert.doesNotMatch(html, />フル</);
+});
+
+test("ordinary and resolved pet remain enabled action suggestions in the command palette", () => {
+  const pet: ComposerCommandItem = {
+    id: "pet", name: "pet", label: "Pet", category: "chat", visibility: "default",
+    risk: "low", modes: ["chat", "coding", "agent"],
+    execution: { type: "frontend", action: "open_task_pet" },
+  };
+  for (const command of [pet, { ...pet, canonical_id: "defaultspack:pet", availability: { status: "available" as const } }]) {
+    const menu = composerMenuCommands([command], false, true);
+    assert.deepEqual(menu, [command]);
+    const payload = commandPalettePayload(menu);
+    assert.equal(payload.items[0].title, "pet");
+    assert.equal(payload.items[0].disabled, false);
+    assert.equal(commandShowsToggleState(command), false);
+    assert.equal(commandArgumentEntryPrefix(command), null);
+  }
+});
+
+test("pet contextual send stays available through chat gates without enabling normal submissions", () => {
+  const render = (input: string, localHandler = true) => renderToStaticMarkup(createElement(ComposerRenderer, {
+    input, placeholder: "メッセージを入力...", isGenerating: true,
+    steerControlsReady: false, submissionDisabled: true,
+    pendingMentionAttachmentPaths: ["waiting.txt"],
+    selectedProfile: { profile_id: "missing", display_name: "Missing key", provider_id: "openai" },
+    favoriteProfiles: [], inlineExtensions: [], belowExtensions: [], thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined, onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined, onThinkingLevelChange: () => undefined,
+    ...(localHandler ? { onLocalCommandSubmit: () => true } : {}),
+  }));
+  const petHtml = render("/pet");
+  const sendTag = petHtml.match(/<button[^>]*aria-label="\/pet を実行"[^>]*>/)?.[0];
+  assert.ok(sendTag);
+  assert.doesNotMatch(sendTag, /disabled=/);
+  assert.match(sendTag, /title="ペットを表示"/);
+  for (const html of [render("other text"), render("//pet"), render("/pet", false)]) {
+    assert.doesNotMatch(html, /aria-label="\/pet を実行"/);
+    const ordinarySendTag = html.match(/<button[^>]*aria-label="会話を準備中"[^>]*>/)?.[0];
+    assert.ok(ordinarySendTag);
+    assert.match(ordinarySendTag, /disabled=""/);
+  }
+});
+
+
+test("unimplemented slash commands remain unavailable while references use @", () => {
+  const command: ComposerCommandItem = {
+    id: "missing", name: "missing", label: "Missing", category: "tools",
+    visibility: "default", risk: "low",
+    execution: { type: "frontend", action: "missing_handler" },
+    availability: { status: "unavailable", reason: "Handler unavailable" },
+  };
+  const operation = commandPalettePayload([command]);
+  assert.equal(operation.item?.prefix, "/");
+  assert.equal(operation.items[0].disabled, true);
+  assert.equal(operation.items[0].description, "Handler unavailable");
+  const reference = atMentionPalettePayload([{
+    kind: "tool", id: "tool:web_search", label: "Web Search",
+    item: { id: "web_search", label: "Web Search" },
+    section: composerMentionSectionForTool({ id: "web_search", label: "Web Search" }),
+  }]);
+  assert.equal(reference.item?.prefix, "@");
+  assert.equal(reference.items[0].id, "tool:web_search");
+});
+
+
+test("tool control starts hidden and approval control starts visible", () => {
+  const defaults = renderToolModeComposer({ showToolSelectionControl: undefined });
+  assert.doesNotMatch(defaults, /data-composer-widget="tool-selection-control"/);
+  assert.match(defaults, /data-composer-widget="action-approval-control"/);
+  const shown = renderToolModeComposer({ showToolSelectionControl: true });
+  assert.match(shown, /data-composer-widget="tool-selection-control"/);
+  const hidden = renderToolModeComposer({ showToolSelectionControl: false, showActionApprovalControl: false });
+  assert.doesNotMatch(hidden, /data-composer-widget="(?:tool-selection-control|action-approval-control)"/);
+  assert.match(hidden, /data-composer-widget="send"/);
+});
+
+test("IME confirmation Enter cannot select a reference or submit", () => {
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { active: true }), true);
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { endedAt: 1_000, now: 1_020 }), true);
+  assert.equal(isComposerImeEvent({ key: "Enter" }, { endedAt: 1_000, now: 1_051 }), false);
+  assert.equal(isComposerImeEvent({ key: "Tab", nativeEvent: { keyCode: 229 } }), true);
+  assert.deepEqual(atMentionMenuKeyAction("Enter", false, 0, 2, { isComposing: true }), { handled: false });
+  assert.deepEqual(atMentionMenuKeyAction("Tab", false, 0, 2, { keyCode: 229 }), { handled: false });
+  assert.deepEqual(atMentionMenuKeyAction("Enter", false, 1, 2), { handled: true, type: "select", index: 1 });
+  assert.deepEqual(atMentionMenuKeyAction("Tab", false, 1, 2), { handled: true, type: "select", index: 1 });
+  assert.deepEqual(atMentionMenuKeyAction("Enter", true, 1, 2), { handled: false });
+});
+
+
+test("running composer removes helper-row space while keeping steer and stop controls", () => {
+  const html = renderToolModeComposer({
+    isGenerating: true, input: "次の指示", steerQueuedCount: 2,
+    steerStatus: { kind: "pending", message: "送信状況を確認しています。" },
+    onSteerSubmit: () => undefined,
+  });
+  assert.doesNotMatch(html, /送信状況を確認しています|実行中の応答へ追加指示できます|data-steer-pending/);
+  assert.doesNotMatch(html, /class="flex min-h-6 flex-wrap items-center/);
+  assert.match(html, /aria-label="追加指示を送る"/);
+  assert.match(html, />次の指示<\/textarea>/);
+  const emptyHtml = renderToolModeComposer({ isGenerating: true, input: "", onSteerSubmit: () => undefined });
+  assert.match(emptyHtml, /aria-label="生成を停止"/);
+});
+
+
+test("only the explicitly confirmed duplicate occurrence is blue and atomic", () => {
+  const input = "@Settings Mode and @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 19);
+  assert.deepEqual(composerInlineMentionParts(input, [widget]), [
+    { mention: false, text: "@Settings Mode and " },
+    { mention: true, text: "@Settings Mode" },
+  ]);
+  assert.equal(atomicComposerMentionEdit(input, 5, 5, "Backspace", [widget]), null);
+  assert.equal(atomicComposerMentionEdit(input, input.length, input.length, "Backspace", [widget])?.value, "@Settings Mode and ");
+});
+
+test("deleting a confirmed duplicate never transfers its styling to typed identical text", () => {
+  const input = "@Settings Mode @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 0);
+  const next = "@Settings Mode";
+  const widgets = updateConfirmedComposerWidgets(input, next, [widget], { start: 0, end: 15 });
+  assert.deepEqual(composerInlineMentionParts(next, widgets), [{ mention: false, text: next }]);
+});
+
+test("native prefix edits retain only the shifted confirmed occurrence", () => {
+  const input = "@Settings Mode @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 15);
+  const next = `X ${input}`;
+  const widgets = updateConfirmedComposerWidgets(input, next, [widget], { start: 0, end: 0 });
+  assert.deepEqual(composerInlineMentionParts(next, widgets), [
+    { mention: false, text: "X @Settings Mode " }, { mention: true, text: "@Settings Mode" },
+  ]);
+});
+
+
+test("explicit confirmation retains every independently confirmed occurrence", () => {
+  const input = "@Settings Mode @Other";
+  const first = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 0);
+  const other = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "other", label: "Other" }), input, 15);
+  const next = `${input} @Settings Mode`;
+  const updated = updateConfirmedComposerWidgets(input, next, [first, other], { start: input.length, end: input.length });
+  const replacement = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), next, input.length + 1);
+  const merged = replaceConfirmedComposerWidget(updated, replacement);
+  assert.equal(merged.length, 3);
+  assert.equal(replaceConfirmedComposerWidget(merged, replacement).length, 3);
+  assert.deepEqual(composerInlineMentionParts(next, merged), [
+    { mention: true, text: "@Settings Mode" }, { mention: false, text: " " }, { mention: true, text: "@Other" },
+    { mention: false, text: " " }, { mention: true, text: "@Settings Mode" },
+  ]);
+});
+
+
+test("five repeated explicit selections retain anchors when inserted before between and after", () => {
+  const widget = composerSkillMentionWidget({ id: "settings", label: "Settings" });
+  let input = "";
+  let widgets: typeof widget[] = [];
+  for (const position of [0, 10, 0, 10, 40]) {
+    const insertion = "@Settings ";
+    const next = input.slice(0, position) + insertion + input.slice(position);
+    widgets = replaceConfirmedComposerWidget(
+      updateConfirmedComposerWidgets(input, next, widgets, { start: position, end: position }),
+      anchorComposerMentionWidget(widget, next, position),
+    );
+    input = next;
+    assert.equal(composerInlineMentionParts(input, widgets).filter((part) => part.mention).length, widgets.length);
+  }
+  assert.equal(widgets.length, 5);
+  assert.equal(new Set(widgets.map((item) => item.id)).size, 1);
+  const rawDuplicate = `${input}@Settings`;
+  const retained = updateConfirmedComposerWidgets(input, rawDuplicate, widgets, { start: input.length, end: input.length });
+  assert.equal(composerInlineMentionParts(rawDuplicate, retained).filter((part) => part.mention).length, 5);
+  assert.deepEqual(composerInlineMentionParts(rawDuplicate, retained).at(-1), { mention: false, text: " @Settings" });
+});
+
+test("entity mention queries retain real catalog identities and filter explicit kinds", () => {
+  const candidates = [
+    { kind: "chat" as const, id: "c1", label: "Project chat", profileId: "p", syntax: "@chat:c1", available: true },
+    { kind: "group" as const, id: "g1", label: "Project group", profileId: "p", syntax: "@group:g1", available: true },
+    { kind: "mcp" as const, id: "server", label: "Project MCP", syntax: "@mcp:server", available: false, status: "disconnected", toolIds: [] },
+  ];
+  assert.deepEqual(composerEntityMentionCandidates(candidates, "chat:").map((candidate) => candidate.id), ["chat:c1"]);
+  assert.deepEqual(composerEntityMentionCandidates(candidates, "group g1").map((candidate) => candidate.id), ["group:g1"]);
+  assert.equal(composerEntityMentionCandidates(candidates, "Project").length, 3);
+  assert.equal(composerEntityMentionCandidates(candidates, "imaginary").length, 0);
+  const palette = atMentionPalettePayload(composerEntityMentionCandidates(candidates, "mcp:server"));
+  assert.equal(palette.items[0].disabled, true);
+});
+
+test("async reference insertion rejects edited drafts, changed profiles, caret movement and IME activity", () => {
+  const snapshot = { input: "@chat:", value: "@chat:", start: 6, end: 6, droppedWidgets: [], entityReferences: [], profileId: "p", modelProfile: null, imeGeneration: 0, blocked: false };
+  assert.equal(composerReferenceInsertionIsCurrent(snapshot, { ...snapshot }), true);
+  for (const changed of [
+    { input: "edited" }, { value: "edited" }, { start: 0 }, { end: 0 },
+    { profileId: "other" }, { droppedWidgets: [] }, { entityReferences: [] },
+    { imeGeneration: 1 }, { blocked: true },
+    { modelProfile: { profile_id: "changed", display_name: "Changed" } },
+  ]) assert.equal(composerReferenceInsertionIsCurrent(snapshot, { ...snapshot, ...changed }), false);
+});
+
+test("clipboard references retain the confirmed duplicate's selected coordinates", () => {
+  const input = "@Settings Mode and @Settings Mode";
+  const widget = anchorComposerMentionWidget(composerSkillMentionWidget({ id: "settings", label: "Settings Mode" }), input, 19);
+  const reference = { kind: "skill" as const, id: "settings", syntax: "@Settings Mode" };
+  assert.deepEqual(composerReferencesForSelection(input, 0, 14, [widget], [reference]), []);
+  assert.deepEqual(composerReferencesForSelection(input, 19, input.length, [widget], [reference]), [
+    { ...reference, confirmedRange: { value: "@Settings Mode", start: 0, end: 14 } },
+  ]);
+  assert.deepEqual(composerReferencesForSelection(input, 20, input.length, [widget], [reference]), []);
+});
+
+test("history reference release targets only a connected topmost visible composer", () => {
+  const top = {};
+  const target = { id: "composer-unique", isConnected: true, getBoundingClientRect: () => ({ left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100 }), contains: (element: unknown) => element === top } as unknown as HTMLElement;
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, target.id, top as Element), true);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, "other-composer", top as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 50, y: 50 }, target.id, {} as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: 500, y: 50 }, target.id, top as Element), false);
+  assert.equal(validComposerHistoryDropTarget(target, { x: NaN, y: 50 }, target.id, top as Element), false);
+});
+
+
+test("reconfirmation namespaces MCP and service identities even when registry IDs match", () => {
+  const service = { id: "service:shared", type: "service" as const, label: "Service", sourceItemId: "shared", metadata: { source: "composer_at_mention", mention: { kind: "service", id: "shared", label: "Service", syntax: "@Service" } } };
+  const mcp = { ...service, id: "mcp:shared", metadata: { source: "composer_at_mention", mention: { kind: "mcp", id: "shared", label: "MCP", syntax: "@mcp:shared" } } };
+  assert.equal(replaceConfirmedComposerWidget([service], mcp).length, 2);
+});
+
+
+test("async freshness rejects a changed connection behind the same saved profile ID", () => {
+  const profile = { profile_id: "saved", display_name: "Saved", provider_id: "openai", model_id: "model", metadata: { connection_id: "personal" } };
+  const captured = { input: "@chat:", value: "@chat:", start: 6, end: 6, droppedWidgets: [], entityReferences: [], profileId: "p", modelProfile: profile, imeGeneration: 0, blocked: false };
+  assert.equal(composerReferenceInsertionIsCurrent(captured, { ...captured, modelProfile: { ...profile, metadata: { connection_id: "work" } } }), false);
+  assert.equal(composerReferenceInsertionIsCurrent(captured, { ...captured, modelProfile: { ...profile } }), true);
+});
+
+test("scheduled Composer stays inside one calendar form and exposes the calendar save action", () => {
+  const html = renderToStaticMarkup(createElement("form", {}, createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "Run this task", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: false, mode: "auto", showApprovalControl: true, showToolControl: false,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  })));
+  assert.equal((html.match(/<form\b/g) ?? []).length, 1);
+  assert.match(html, /type="button"[^>]*aria-label="Agentタスクを保存"/);
+  assert.match(html, /data-composer-widget="action-approval-control"/);
+  assert.doesNotMatch(html, /data-composer-widget="(?:file-attach|project-picker|voice-input|tool-selection-control)"/);
+});
+
+test("calendar Composer obeys hidden policy display and blocks a save while references are resolving", () => {
+  const html = renderToStaticMarkup(createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "@chat:raw", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: true, mode: "none", showApprovalControl: false, showToolControl: true,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  }));
+  assert.doesNotMatch(html, /<form\b|data-composer-widget="action-approval-control"/);
+  assert.match(html, /data-composer-widget="tool-selection-control"/);
+  assert.match(html, /aria-label="Agentタスクを保存"[^>]*disabled=""/);
+  assert.doesNotMatch(html, /rumi-composer-textarea-highlighted/);
+});
+
+test("calendar displays the selected available approval mode through the shared control", () => {
+  const html = renderToStaticMarkup(createElement(CalendarAgentPromptEditor, {
+    Composer: ComposerRenderer, input: "Run this task", widgets: [], profileId: "local", modelId: "stub/default",
+    models: [{ profile_id: "stub/default", display_name: "Stub", provider_id: "stub", model_id: "default" }],
+    tools: [], busy: false, mode: "auto", showApprovalControl: true, showToolControl: false,
+    actionApprovalMode: "full", actionApprovalModes: ["ask", "full"], onActionApprovalModeChange: () => undefined,
+    onInputChange: () => undefined, onWidgetsChange: () => undefined, onModelChange: () => undefined,
+    onModeChange: () => undefined, onPendingChange: () => undefined, onSubmit: () => undefined,
+  }));
+  assert.match(html, />フル<\/span>/);
+  assert.doesNotMatch(html, /disabled=""[^>]*aria-label="アクションの承認方法"/);
+  assert.doesNotMatch(html, /この会話の承認は設定された権限に従います/);
 });

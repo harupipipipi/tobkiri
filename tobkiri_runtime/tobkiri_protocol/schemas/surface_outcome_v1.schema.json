@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "tobkiri.ui.surface-outcome.v1"
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "intent_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "event": {
+      "enum": [
+        "activate",
+        "retry",
+        "dismiss",
+        "cancel",
+        "submit",
+        "select",
+        "confirm",
+        "decline",
+        "close"
+      ]
+    },
+    "status": {
+      "enum": [
+        "accepted",
+        "rejected",
+        "pending"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 4096
+    }
+  },
+  "required": [
+    "version",
+    "template_id",
+    "node_id",
+    "intent_id",
+    "event",
+    "status"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tobkiri.ui.surface-outcome.v1"
+}

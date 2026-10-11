@@ -10,6 +10,7 @@ import type {
   McpServerRecord,
 } from "../../lib/api";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { ChangeReviewPanel } from "./ChangeReviewPanel";
 import { CheckpointPanel, type ApprovedCheckpointDecision } from "./CheckpointPanel";
@@ -84,6 +85,7 @@ export function CodingCockpit({
   const [sessions, setSessions] = useState<CodingAgentSession[]>([]);
   const [sessionTask, setSessionTask] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [approvedTerminalDecision, setApprovedTerminalDecision] = useState<ApprovedTerminalDecision | null>(null);
   const [approvedCheckpointDecision, setApprovedCheckpointDecision] = useState<ApprovedCheckpointDecision | null>(null);
   const [approvalRefreshSignal, setApprovalRefreshSignal] = useState(0);
@@ -100,6 +102,7 @@ export function CodingCockpit({
 
   const loadSidecarState = useCallback(async () => {
     setStatus(null);
+    setError(null);
     try {
       const [mcp, artifacts] = await Promise.all([
         codingResources.listMcpServers(),
@@ -108,7 +111,7 @@ export function CodingCockpit({
       setMcpServers(mcp.servers);
       setBrowserArtifacts(artifacts.artifacts);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
@@ -120,12 +123,13 @@ export function CodingCockpit({
     if (!pendingMcp) return;
     if (!sameMcpDraft(pendingMcp.draft, {
       serverId: mcpServerId.trim(), command: mcpCommand.trim(), args: parseMcpArgs(mcpArgs), workspaceId: activeWorkspaceId,
-    })) setStatus("MCP configuration or workspace changed. The pending review is stale; connect again for a new review.");
+    })) setError("MCP configuration or workspace changed. The pending review is stale; connect again for a new review.");
   }, [activeWorkspaceId, mcpArgs, mcpCommand, mcpServerId, pendingMcp]);
 
   const createSession = async () => {
     const task = sessionTask.trim() || "Inspect workspace changes";
     setStatus(null);
+    setError(null);
     try {
       const result = await codingResources.createCodingAgentSession({
         task,
@@ -135,7 +139,7 @@ export function CodingCockpit({
       setSessions((items) => [result.session, ...items].slice(0, 8));
       setSessionTask("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -157,6 +161,7 @@ export function CodingCockpit({
   });
 
   const rememberPendingMcp = (requestId: string, draft: McpConnectionDraft) => {
+    setError(null);
     setPendingMcp({ requestId, draft });
     setApprovalRefreshSignal((value) => value + 1);
     setActiveCockpitTab("workspace");
@@ -164,6 +169,7 @@ export function CodingCockpit({
   };
 
   const finishMcpConnection = async (serverId: string, tools: unknown[]) => {
+    setError(null);
     setPendingMcp(null);
     setMcpServerId(""); setMcpCommand(""); setMcpArgs("");
     await loadSidecarState();
@@ -192,7 +198,7 @@ export function CodingCockpit({
     if (!isMcpApprovalRequest(request)) return;
     const draft = currentMcpDraft();
     const retryReason = approvedMcpRetryReason(pendingMcp, draft, decision);
-    if (retryReason) { setPendingMcp(null); setApprovalRefreshSignal((value) => value + 1); setStatus(retryReason); return; }
+    if (retryReason) { setPendingMcp(null); setApprovalRefreshSignal((value) => value + 1); setError(retryReason); return; }
     if (!pendingMcp || !decision.token || mcpBusy) return;
     const approvedAttempt = pendingMcp;
     setPendingMcp(null);
@@ -208,14 +214,14 @@ export function CodingCockpit({
       await finishMcpConnection(approvedAttempt.draft.serverId, Array.isArray(result.tools) ? result.tools : []);
     } catch (err) {
       setApprovalRefreshSignal((value) => value + 1);
-      setStatus(`MCP start or reconnect failed. Review the configuration and try again. ${err instanceof Error ? err.message : String(err)}`);
+      setError(`MCP start or reconnect failed. Review the configuration and try again. ${err instanceof Error ? err.message : String(err)}`);
     } finally { setMcpBusy(false); }
   };
 
   const handleApprovalDenied = (request: CodingApprovalRequest) => {
     if (!isMcpApprovalRequest(request) || pendingMcp?.requestId !== request.request_id) return;
     setPendingMcp(null);
-    setStatus("MCP connection denied. You can edit the configuration and connect again.");
+    setError("MCP connection denied. You can edit the configuration and connect again.");
   };
 
   const handleCodingActionResult = useCallback((result: unknown) => {
@@ -230,6 +236,7 @@ export function CodingCockpit({
     if (!serverId || !command || mcpBusy) return;
     setMcpBusy(true);
     setStatus(null);
+    setError(null);
     try {
       const draft = currentMcpDraft();
       const config = {
@@ -249,7 +256,7 @@ export function CodingCockpit({
       }
       await finishMcpConnection(serverId, Array.isArray(result.tools) ? result.tools : []);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setMcpBusy(false);
     }
@@ -263,6 +270,7 @@ export function CodingCockpit({
       : null;
     setMcpBusy(true);
     setStatus(null);
+    setError(null);
     try {
       const result = await codingResources.manageMcpServer({
         action,
@@ -283,7 +291,7 @@ export function CodingCockpit({
       await loadSidecarState();
       setStatus(action === "remove" ? `MCP registration removed: ${serverId}` : `MCP ${action}ed: ${serverId}`);
     } catch (err) {
-      setStatus(`MCP ${action} failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`MCP ${action} failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setMcpBusy(false);
     }
@@ -349,7 +357,15 @@ export function CodingCockpit({
             <span className="truncate">{selectedWorkspace?.trusted ? "Trusted" : "Trust"}</span>
           </button>
         </div>
-        {status && <p className="mt-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{status}</p>}
+        {error ? (
+          <ErrorNotice
+            className="mt-2 px-2 py-1 text-[11px]"
+            copyLabel="コーディングワークスペースエラーをコピー"
+            message={error}
+          />
+        ) : status ? (
+          <p role="status" className="mt-2 rounded border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-[11px] text-zinc-300">{status}</p>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

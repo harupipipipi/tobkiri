@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import ok, error
+from blocks._common import ok, error
 
 
 def _applescript_string(value: str) -> str:

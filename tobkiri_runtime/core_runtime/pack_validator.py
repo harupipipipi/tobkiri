@@ -18,13 +18,14 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Collection, Dict, List, Optional, Set, Tuple
 
 from .paths import (
     PackLocation,
     discover_pack_locations,
     get_pack_flow_dirs,
 )
+from .pack_boundary import finite_children, finite_files
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,10 @@ def validate_packs(ecosystem_dir: Optional[str] = None) -> ValidationReport:
     return report
 
 
-def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
+def validate_host_execution(
+    ecosystem_dir: Optional[str] = None,
+    pack_ids: Optional[Collection[str]] = None,
+) -> List[str]:
     """
     W19-A: host_execution: true の Pack を検出し、未承認なら起動を拒否する。
 
@@ -116,6 +120,7 @@ def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
 
     Args:
         ecosystem_dir: エコシステムルート。None なら paths.ECOSYSTEM_DIR を使用。
+        pack_ids: 起動対象の Pack ID。指定時は、選択された Pack だけを検証する。
 
     Returns:
         host_execution: true の Pack ID リスト
@@ -131,9 +136,12 @@ def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
         logger.warning("Failed to discover packs for host_execution check: %s", exc)
         return []
 
+    selected_pack_ids = None if pack_ids is None else {str(pack_id) for pack_id in pack_ids}
     host_exec_packs: List[str] = []
 
     for loc in locations:
+        if selected_pack_ids is not None and loc.pack_id not in selected_pack_ids:
+            continue
         try:
             with open(loc.ecosystem_json_path, "r", encoding="utf-8") as f:
                 eco_data = json.load(f)
@@ -449,7 +457,9 @@ def _check_ctx_references(
 
     for flow_dir in flow_dirs:
         try:
-            flow_files = sorted(flow_dir.rglob("*"))
+            flow_files = finite_files(
+                flow_dir, (".json", ".yaml", ".yml"), recursive=True
+            )
         except OSError:
             continue
 
@@ -503,15 +513,10 @@ def _validate_functions(
         return warnings, errors
 
     try:
-        func_dirs = sorted(
-            (
-                d
-                for d in functions_dir.iterdir()
-                if d.is_dir()
-                and not d.name.startswith(".")
-                and not d.name.startswith("__")
-            ),
-            key=lambda d: d.name,
+        func_dirs = tuple(
+            d
+            for d in finite_children(functions_dir, directories_only=True)
+            if not d.name.startswith(".") and not d.name.startswith("__")
         )
     except OSError:
         return warnings, errors

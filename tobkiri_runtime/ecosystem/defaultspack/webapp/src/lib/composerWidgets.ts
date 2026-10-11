@@ -1,4 +1,10 @@
-import type { ComposerWidgetAction, ComposerWidgetKind } from "./api";
+import {
+  defaultspackCanonicalRouteKey,
+  isDefaultspackRouteKey,
+  type ComposerWidgetAction,
+  type ComposerWidgetKind,
+  type SidebarItem,
+} from "./api";
 import type { ComposerExtensionItem, ComposerSkillItem, DroppedWidget } from "../renderers/types";
 import { extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
 import { supportedComposerDropKind, supportsComposerToggleDrop } from "./toolUi";
@@ -10,7 +16,9 @@ export type ComposerDropAction =
 
 export type ComposerMentionMetadata = {
   id: string;
-  kind: "file" | "service" | "skill" | "tool";
+  kind: "file" | "service" | "skill" | "tool" | "chat" | "group" | "mcp";
+  profileId?: string;
+  memberIds?: string[];
   label: string;
   syntax: string;
 };
@@ -20,15 +28,44 @@ export type ReconciledComposerSemanticDraft = {
   selectedToolIds: string[];
 };
 
-const COMPOSER_ENDPOINT_ACTION_ALLOWLIST = new Set(["GET /api/coding/git/status"]);
+/** Keep setup eligibility visible in every Composer catalog projection. */
+export function composerExtensionNeedsSetup(item: SidebarItem): boolean {
+  return item.tool_info?.setup_state?.status === "missing";
+}
+
+export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+  return items
+    .filter((item) => item.category === "tool" || item.category === "capability")
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      category: item.category,
+      description: item.description,
+      tags: item.tags ?? [],
+      ui: item.tool_info?.service_id
+        ? { ...item.ui, service_id: item.tool_info.service_id } : item.ui,
+      ...(composerExtensionNeedsSetup(item) ? { disabled: true } : {}),
+      presentation: item.presentation,
+    }));
+}
+
+const COMPOSER_ENDPOINT_ACTION_ALLOWLIST = new Set([
+  `GET ${defaultspackCanonicalRouteKey("api/coding/git/status")}`,
+]);
 
 function composerWidgetTypeForKind(kind: ComposerWidgetKind): DroppedWidget["type"] {
   return kind === "tool_toggle" ? "tool" : kind;
 }
 
+function presentationFromItem(item: ComposerExtensionItem): DroppedWidget["presentation"] {
+  const iconAttention = item.presentation?.icon_attention ?? item.ui?.icon_attention;
+  return iconAttention === undefined ? undefined : { icon_attention: iconAttention };
+}
+
 function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: ComposerWidgetKind, enabled = true): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: composerWidgetTypeForKind(kind),
@@ -39,6 +76,7 @@ function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: Compos
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_catalog_drop",
       tool: {
@@ -109,9 +147,10 @@ export function composerToolMentionDisplay(item: ComposerExtensionItem): { label
   return { label, description: description && description !== label ? description : undefined };
 }
 
-export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedWidget {
+export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOverride?: string): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: "tool",
@@ -122,13 +161,14 @@ export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedW
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_at_mention",
       mention: {
         id: item.id,
         kind: "tool",
         label,
-        syntax: `@${label}`,
+        syntax: syntaxOverride || `@${label}`,
         tool_id: item.id,
       },
       tool: {
@@ -140,6 +180,19 @@ export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedW
         ui: item.ui ?? null,
       },
     },
+  };
+}
+
+export function widgetWithCurrentPresentation(
+  widget: DroppedWidget,
+  items: ComposerExtensionItem[],
+): DroppedWidget {
+  if (widget.type !== "tool" && widget.widgetKind !== "tool_toggle") return widget;
+  const itemId = widget.sourceItemId || widget.id;
+  const current = items.find((item) => item.id === itemId);
+  return {
+    ...widget,
+    presentation: current ? presentationFromItem(current) : undefined,
   };
 }
 
@@ -168,7 +221,7 @@ export function composerSkillMentionDisplay(item: ComposerSkillItem): { label: s
   };
 }
 
-export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidget {
+export function composerSkillMentionWidget(item: ComposerSkillItem, syntaxOverride?: string): DroppedWidget {
   const label = item.label || item.id;
   return {
     id: item.id,
@@ -184,7 +237,7 @@ export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidg
         id: item.id,
         kind: "skill",
         label,
-        syntax: `@${label}`,
+        syntax: syntaxOverride || `@${label}`,
         skill_id: item.id,
       },
       skill: {
@@ -199,7 +252,7 @@ export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidg
   };
 }
 
-export function composerFileMentionWidget(file: string): DroppedWidget {
+export function composerFileMentionWidget(file: string, syntaxOverride?: string): DroppedWidget {
   return {
     id: `mention-file:${file}`,
     type: "file",
@@ -215,7 +268,7 @@ export function composerFileMentionWidget(file: string): DroppedWidget {
         id: file,
         kind: "file",
         label: file,
-        syntax: `@${file}`,
+        syntax: syntaxOverride || `@${file}`,
       },
     },
   };
@@ -293,6 +346,14 @@ export function composerKnownMentionValues(
   return [...uniqueMentionLookup(items).keys()];
 }
 
+function historyMentionFields(record: Record<string, unknown>): { profileId: string; memberIds: string[] } | null {
+  if (record.kind !== "chat" && record.kind !== "group") return null;
+  if (typeof record.profileId !== "string" || !record.profileId.trim()) return null;
+  if (!Array.isArray(record.memberIds) || record.memberIds.some((id) => typeof id !== "string" || !id.trim())) return null;
+  if (new Set(record.memberIds).size !== record.memberIds.length) return null;
+  return { profileId: record.profileId, memberIds: [...record.memberIds] as string[] };
+}
+
 export function composerMentionMetadataFromWidgets(
   widgets: DroppedWidget[],
 ): ComposerMentionMetadata[] {
@@ -304,7 +365,7 @@ export function composerMentionMetadataFromWidgets(
     if (!mention || typeof mention !== "object" || Array.isArray(mention)) continue;
     const record = mention as Record<string, unknown>;
     const kind = String(record.kind ?? widget.type);
-    if (!["file", "service", "skill", "tool"].includes(kind)) continue;
+    if (!["file", "service", "skill", "tool", "chat", "group", "mcp"].includes(kind)) continue;
     const id = String(
       record.id
       ?? record.tool_id
@@ -314,13 +375,17 @@ export function composerMentionMetadataFromWidgets(
       ?? widget.id,
     ).trim();
     const label = String(record.label ?? widget.label ?? id).trim();
-    if (!id || !label || seen.has(`${kind}:${id}`)) continue;
-    seen.add(`${kind}:${id}`);
+    const history = historyMentionFields(record);
+    if ((kind === "chat" || kind === "group") && !history) continue;
+    const key = JSON.stringify([kind, id, history?.profileId ?? null]);
+    if (!id || !label || seen.has(key)) continue;
+    seen.add(key);
     result.push({
       id,
       kind: kind as ComposerMentionMetadata["kind"],
       label,
       syntax: String(record.syntax ?? `@${label}`),
+      ...(history ?? {}),
     });
   }
   return result;
@@ -344,7 +409,7 @@ export function composerMentionToolIdsFromWidgets(widgets: DroppedWidget[]): str
   const seen = new Set<string>();
   for (const widget of widgets) {
     const mention = composerMentionRecord(widget);
-    if (!mention) continue;
+    if (!mention || mention.intent === "exclude") continue;
     const kind = String(mention.kind ?? widget.type);
     const service = widget.metadata?.service;
     const serviceRecord = service && typeof service === "object" && !Array.isArray(service)
@@ -352,7 +417,7 @@ export function composerMentionToolIdsFromWidgets(widgets: DroppedWidget[]): str
       : {};
     const ids = kind === "tool"
       ? [String(mention.tool_id ?? mention.id ?? widget.sourceItemId ?? widget.id).trim()]
-      : kind === "service"
+      : (kind === "service" || kind === "mcp")
         ? normalizedStringList(serviceRecord.tool_ids)
         : [];
     for (const id of ids) {
@@ -407,6 +472,7 @@ export function publicComposerWidgetMetadata(
   if (!metadata) return undefined;
   const result = { ...metadata };
   delete result.composer_mention_owned_tool_ids;
+  delete result.composer_confirmation;
   return result;
 }
 
@@ -448,6 +514,7 @@ function semanticMentionWidgetIsActive({
   if (widget.enabled === false || !hasUnescapedMentionSyntax(text, composerMentionSyntax(widget))) {
     return false;
   }
+  if (composerMentionRecord(widget)?.intent === "exclude") return true;
   const kind = composerMentionKind(widget);
   const toolIds = composerMentionToolIdsFromWidgets([widget]);
   if (kind === "tool") return toolIds.some((toolId) => selectedToolIds.has(toolId));
@@ -512,6 +579,7 @@ export function reconcileComposerSemanticDraft({
 
 export function normalizeComposerMentionMetadata(
   value: unknown,
+  historyCatalog?: { profileId: string; references: ComposerMentionMetadata[] },
 ): ComposerMentionMetadata[] {
   if (!Array.isArray(value)) return [];
   const result: ComposerMentionMetadata[] = [];
@@ -522,9 +590,24 @@ export function normalizeComposerMentionMetadata(
     const kind = String(record.kind ?? "");
     const id = String(record.id ?? "").trim();
     const label = String(record.label ?? "").trim();
-    if (!["file", "service", "skill", "tool"].includes(kind) || !id || !label) continue;
-    if (seen.has(`${kind}:${id}`)) continue;
-    seen.add(`${kind}:${id}`);
+    if (!["file", "service", "skill", "tool", "chat", "group", "mcp"].includes(kind) || !id || !label) continue;
+    const history = historyMentionFields(record);
+    const confirmed = kind === "chat" || kind === "group"
+      ? historyCatalog?.references.find((entry) => (
+          history && history.profileId === historyCatalog.profileId
+          && entry.profileId === historyCatalog.profileId
+          && entry.kind === kind && entry.id === id
+          && entry.syntax === String(record.syntax ?? `@${label}`)
+        ))
+      : null;
+    if ((kind === "chat" || kind === "group") && !confirmed) continue;
+    const key = JSON.stringify([kind, id, confirmed?.profileId ?? null]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (confirmed) {
+      result.push({ ...confirmed, memberIds: confirmed.memberIds ? [...confirmed.memberIds] : undefined });
+      continue;
+    }
     result.push({
       id,
       kind: kind as ComposerMentionMetadata["kind"],
@@ -566,7 +649,7 @@ export function skillMentionIdsFromText(text: string, items: ComposerSkillItem[]
 }
 
 export function isSafeLocalEndpoint(endpoint: string): boolean {
-  return endpoint.startsWith("/api/") && !endpoint.startsWith("//") && !/^https?:\/\//i.test(endpoint);
+  return isDefaultspackRouteKey(endpoint) && !endpoint.startsWith("//") && !/^https?:\/\//i.test(endpoint);
 }
 
 function composerEndpointActionKey(action: Extract<ComposerWidgetAction, { type: "call_endpoint" }>): string {

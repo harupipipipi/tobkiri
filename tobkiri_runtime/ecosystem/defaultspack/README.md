@@ -3,6 +3,22 @@
 
 ## Canonical implementation
 
+The captured full-UI conversation CRUD routes use the conversation
+owner Pack through Authority/Broker. Creation requires a stable client UUID and
+the list's `store_revision`; a stale write is rejected, not retried with a fresh
+identity. The source Profile includes the required conversation-manage edge;
+existing activations must review that addition before using it. This does not
+yet complete full-UI message sending, streaming or stopping. Record updates and
+deletion require the displayed record's revision; stale writes fail unchanged.
+See [Chat API](docs/chat.md) for the canonical/legacy distinction.
+
+The isolated saved-turn computation in `runtime/saved_conversation.py` now
+produces four bounded v2 intents: read, append user, generate, append assistant.
+It preserves stable IDs and owner revisions and reports uncertain writes without
+retrying them. It is not registered or wired into the guest runner or ChatApp;
+do not expose its resume-state ABI to HTTP callers. See
+[saved-turn integration requirements](../../docs/saved-turn-bridge-v2.md).
+
 For Tobkiri, the canonical defaultspack implementation is
 `tobkiri_runtime/ecosystem/defaultspack/`.
 
@@ -83,7 +99,11 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
-`webapp/` は `rumi DP` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+`webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+
+チャットのエラーと完了のお知らせは、会話を押し下げない画面上部の通知カードに表示します。8秒後に通知アイコンへたたみ、アイコンから内容を再表示できます。ピンボタンで通知を固定すると、自動ではたたまれません。もう一度押すと固定を解除できます。マウスやキーボードで通知を読む間も表示を維持し、エラーのコピー・再試行・閉じる操作も利用できます。
+
+Tobkiri ペットは会話画面とは別の小さなウィンドウに表示します。デスクトップ版ではキャラクターや移動ハンドルをドラッグして、画面上の好きな位置へ移動できます。タスクの状態が更新されても位置は変わりません。Pet の「非表示」は会話画面を閉じず、会話画面の「ペットを表示」から再表示できます。ブラウザ版では別の小窓で開きます。ポップアップが制限されている場合は、会話画面の表示ボタンを押してください。
 
 ## AI Agent Service Defaults
 
@@ -869,3 +889,12 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 - **VS Code Extension** — defaults の handler を呼び出す Pack で実現可能
 
 これらは全て defaultspack の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。
+
+### Hosted provider setup
+
+Open **Settings → API keys**, choose a provider, and save its API name and key.
+The connection URL and protocol are preset. Choose a model from the searchable
+list to use it in chat; model IDs and route IDs are filled automatically.
+The provider catalog is shipped as JSON, including the complete OpenRouter
+public model inventory captured during refresh. See
+[AI providers](docs/ai-providers.md) for source, license and refresh details.

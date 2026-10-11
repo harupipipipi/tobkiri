@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/cli-io.v1.schema.json",
+  "title": "Tobkiri structured CLI Shell I/O v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "type", "request_id"],
+  "properties": {
+    "protocol": {"const": "io.tobkiri.cli.io.v1"},
+    "type": {"enum": ["command", "result", "error"]},
+    "request_id": {"type": "string", "pattern": "^cli:req:[a-z0-9][a-z0-9._-]{7,127}$"},
+    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "shell_provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "command": {"type": "string", "enum": ["health", "echo", "profile.identity"]},
+    "arguments": {"type": "object"},
+    "stdin": {"type": ["string", "null"]},
+    "tty": {"type": "boolean"},
+    "output_limit": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "resize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "rows": {"type": "integer", "minimum": 1, "maximum": 10000}
+      }
+    },
+    "signal": {"type": "string", "enum": ["SIGINT", "SIGTERM", "SIGHUP"]},
+    "cancel": {"type": "boolean"},
+    "stdout": {"type": "string"},
+    "stderr": {"type": "string"},
+    "exit_status": {"type": "integer", "minimum": 0, "maximum": 255},
+    "stream": {"enum": ["complete", "cancelled"]},
+    "error": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "command"}}},
+      "then": {
+        "required": ["command", "arguments", "stdin", "tty", "output_limit"]
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "result"}}},
+      "then": {
+        "required": ["stdout", "stderr", "exit_status", "stream"]
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "error"}}},
+      "then": {
+        "required": ["error", "exit_status"]
+      }
+    }
+  ]
+}

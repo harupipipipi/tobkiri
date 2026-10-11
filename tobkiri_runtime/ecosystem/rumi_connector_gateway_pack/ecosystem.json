@@ -1,27 +1,53 @@
 {
-  "pack_id": "rumi_connector_gateway_pack",
-  "pack_identity": "rumi:ecosystem/rumi_connector_gateway_pack",
+  "components": {},
+  "dependencies": {},
   "display_name": "Rumi Connector Gateway Pack",
-  "version": "0.1.0",
-  "runtime": {
-    "type": "declarative_pack"
-  },
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:12cd5760785b0430bb4e4a7c0240e45c021fc50083fb9144c85d804f3036901f",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:da196ab85efd4ce647f52f6f953ef2d223f08f193f722bc2e0bb41db366a1c02"
+    },
     "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:da196ab85efd4ce647f52f6f953ef2d223f08f193f722bc2e0bb41db366a1c02"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "optional_integrations": [],
     "owner_surfaces": [
       "connector_namespace_policy",
       "channel_handoff_contracts",
       "scope_review_cards"
     ],
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_local_agent_pack",
-        "reason": "Route normalized connector handoffs into reusable local agent presets."
-      }
-    ]
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
   },
+  "pack_id": "rumi_connector_gateway_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_gateway_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_gateway_pack:0.1.0",
+    "content_hash": "sha256:12cd5760785b0430bb4e4a7c0240e45c021fc50083fb9144c85d804f3036901f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "0.1.0",
   "vocabulary": {
     "types": [
       "catalog",
@@ -32,10 +58,5 @@
       "example",
       "documentation"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "components": {},
-  "load_order": []
+  }
 }

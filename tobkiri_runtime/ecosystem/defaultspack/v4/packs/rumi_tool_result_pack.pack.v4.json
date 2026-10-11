@@ -1,0 +1,120 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:bea6bfb59e3d91c24e3da4b7c24ed9873e14f3bb1a90123655c8074f2c71e3fb",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
+      "kind": "executable",
+      "path": "runtime/normalizer.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.result.normalize.v1",
+      "operations": [
+        "rumi_tool_result_pack.tool-result-normalize"
+      ],
+      "revision_digest": "sha256:4d956505f690274cb444551fc9b9b1fdc89712dbb18ebbe918581c9102e9d053"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:4d956505f690274cb444551fc9b9b1fdc89712dbb18ebbe918581c9102e9d053",
+      "id": "rumi_tool_result_pack.tool-result.normalize",
+      "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_result_pack.tool-result-normalize"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:207dcf8ab9943cfc8febc92a4eae400c5b1ab237f4760c0c95c566842c8d1f3a",
+    "artifact_set_digest": "sha256:054848e063f4f696cda905546cc6c0e37b78689e10e9378fccbf1195f593e038",
+    "contract_catalog_digest": "sha256:210201b1d7cf0ed903334eecd50f493810ad24776a3c404a292941f1647888ab"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.result.normalize.v1",
+      "rumi:ecosystem/rumi_tool_result_pack",
+      "rumi_tool_result_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_result_pack.tool-result-normalize",
+      "owner": "rumi_tool_result_pack",
+      "contract_reference": "tobkiri.service.tool.result.normalize.v1",
+      "provider_id": "rumi_tool_result_pack.tool-result.normalize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:08f274f18a53a095917bbeecf0aa8f149bc0c983e55de2f11acf249b1257e362",
+    "display_name": "Rumi Tool Result",
+    "id": "rumi_tool_result_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_result_pack/pack.v4.json",
+    "source_digest": "sha256:207dcf8ab9943cfc8febc92a4eae400c5b1ab237f4760c0c95c566842c8d1f3a",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:5278ee6b0eeb375be3877950e635f1406c6c64df2044b6e37714c7e81e969d44",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:01587eb5c7c0c8f278dd9f10358934b70d6c373e6486306c015ca98981808197",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_tool_result_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:207dcf8ab9943cfc8febc92a4eae400c5b1ab237f4760c0c95c566842c8d1f3a"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_result_pack.tool-result.normalize",
+      "owner": "rumi_tool_result_pack",
+      "contract_reference": "tobkiri.service.tool.result.normalize.v1",
+      "operations": [
+        "rumi_tool_result_pack.tool-result-normalize"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.result.normalize"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

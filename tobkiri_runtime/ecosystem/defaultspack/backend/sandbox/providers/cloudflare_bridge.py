@@ -28,6 +28,7 @@ from ..models import (
     model_to_dict,
 )
 from ..policy import validate_workspace_relative_path
+from core_runtime.host_contract import host_contract_value
 from .base import ProgressSink
 
 
@@ -431,11 +432,11 @@ class CloudflareSandboxBridgeProvider:
         )
 
     def _base_url(self) -> str | None:
-        value = self._configured_base_url if self._configured_base_url is not None else os.environ.get("RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL")
+        value = self._configured_base_url if self._configured_base_url is not None else host_contract_value("cloudflare_sandbox_bridge_url", provider_id="cloudflare")
         return _normalize_base_url(value)
 
     def _api_key(self) -> str | None:
-        value = self._configured_api_key if self._configured_api_key is not None else os.environ.get("RUMI_CLOUDFLARE_SANDBOX_API_KEY")
+        value = self._configured_api_key if self._configured_api_key is not None else host_contract_value("cloudflare_sandbox_bridge_token", provider_id="cloudflare")
         clean = str(value or "").strip()
         return clean or None
 
@@ -554,6 +555,12 @@ class CloudflareSandboxBridgeGuestAgent:
         for operation in operations:
             path = str(operation["path"])
             content = operation["content"]
+            if not isinstance(content, bytes):
+                raise SandboxContractError(
+                    "INVALID_SANDBOX_FILE_PATCH",
+                    "Sandbox file patch content must be bytes.",
+                    status_code=400,
+                )
             _request_bridge(
                 self._transport,
                 self._base_url,
@@ -678,12 +685,15 @@ def _request_bridge(
             details={"error": _redact_bridge_secret_text(str(exc), api_key)[:1000]},
         ) from exc
     if response.status < 200 or response.status >= 300:
-        body = response.body.decode("utf-8", errors="replace")
+        error_body = response.body.decode("utf-8", errors="replace")
         raise SandboxContractError(
             "CLOUDFLARE_SANDBOX_BRIDGE_HTTP_ERROR",
             "Cloudflare Sandbox Bridge returned an error status.",
             status_code=502 if response.status >= 500 else 400,
-            details={"bridge_status": response.status, "body": _redact_bridge_secret_text(body, api_key)[:1000]},
+            details={
+                "bridge_status": response.status,
+                "body": _redact_bridge_secret_text(error_body, api_key)[:1000],
+            },
         )
     return response
 
@@ -765,8 +775,17 @@ def _parse_exec_sse(body: bytes, *, output_bytes: int | None = None) -> tuple[st
                     "Cloudflare Sandbox Bridge exit event was invalid.",
                     status_code=502,
                 )
+            raw_exit_code = payload.get("exit_code")
+            if isinstance(raw_exit_code, bool) or not isinstance(
+                raw_exit_code, (int, float, str)
+            ):
+                raise SandboxContractError(
+                    "CLOUDFLARE_SANDBOX_BRIDGE_INVALID_SSE",
+                    "Cloudflare Sandbox Bridge exit event did not include a numeric exit_code.",
+                    status_code=502,
+                )
             try:
-                exit_code = int(payload.get("exit_code"))
+                exit_code = int(raw_exit_code)
             except (TypeError, ValueError) as exc:
                 raise SandboxContractError(
                     "CLOUDFLARE_SANDBOX_BRIDGE_INVALID_SSE",
@@ -924,10 +943,14 @@ def _clip_chars(content: str, max_chars: int | None) -> tuple[str, bool, int]:
 
 def _positive_int(value: object) -> int | None:
     try:
-        parsed = int(value)  # type: ignore[arg-type]
+        parsed = int(_numeric_value(value))
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _numeric_value(value: object) -> int | float | str:
+    return value if isinstance(value, (int, float, str)) else 0
 
 
 def _workspace_cwd(cwd: str) -> str:

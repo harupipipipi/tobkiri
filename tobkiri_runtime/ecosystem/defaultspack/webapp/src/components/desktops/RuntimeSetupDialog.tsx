@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import type { RuntimeOperation } from "../../features/sandboxes/types";
+import { ErrorNotice } from "../ErrorNotice";
 
 type RuntimeSetupDialogProps = {
   operation: RuntimeOperation | null;
@@ -63,9 +64,11 @@ export function RuntimeSetupDialog({ operation, cancelLoading = false, onCancel 
             </p>
           )}
           {operation.error && (
-            <p className="mt-2 rounded-md border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-xs text-red-100">
-              {typeof operation.error === "string" ? operation.error : operation.error.message}
-            </p>
+            <ErrorNotice
+              className="mt-2 px-2 py-1.5 text-xs"
+              copyLabel="ランタイム設定エラーをコピー"
+              message={typeof operation.error === "string" ? operation.error : operation.error.message}
+            />
           )}
         </div>
       </div>

@@ -1,4 +1,8 @@
-import { defaultspackApiFetch } from "../lib/api";
+import {
+  defaultspackApiFetch,
+  defaultspackContractRoute,
+  type DefaultspackContractRoute,
+} from "../lib/api";
 import type { AuthorityUiOperator, ToolSelectionRequest } from "../lib/api";
 
 export type AmbientPermissionId = "host.microphone.capture" | "host.camera.capture" | "ambient.trigger.dispatch" | string;
@@ -121,14 +125,59 @@ export type AmbientEventPayload = {
   attachments?: Array<Record<string, unknown>>;
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await defaultspackApiFetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+export type AmbientAudioTranscriptionPayload = {
+  audio_data_url: string;
+  audio_mime_type?: string;
+  audio_size?: number;
+  audio_name?: string;
+  model?: string;
+  profile_id?: string;
+  params?: {
+    language?: string;
+    model?: string;
+    profile_id?: string;
+    [key: string]: unknown;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+export type AmbientAudioTranscriptionResult = {
+  transcript?: string;
+  transcription?: Record<string, unknown>;
+};
+
+export function explainAmbientNetworkFailure(error: unknown): Error {
+  if (
+    typeof DOMException !== "undefined"
+    && error instanceof DOMException
+    && error.name === "AbortError"
+  ) {
+    return new Error("文字起こしリクエストがキャンセルされました。");
+  }
+  const raw = error instanceof Error ? error.message : String(error || "");
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(raw)) {
+    return new Error(
+      "文字起こしサーバーへ接続できません。Tobkiri Launcher が起動中か、"
+      + "この画面を開いたホスト（localhost または 127.0.0.1）がLauncherのURLと一致しているか確認してください。",
+    );
+  }
+  return error instanceof Error ? error : new Error(raw || "ambient request failed");
+}
+
+async function requestJson<T>(path: DefaultspackContractRoute, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await defaultspackApiFetch(path, {
+      ...init,
+      credentials: init?.credentials ?? "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    throw explainAmbientNetworkFailure(error);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.status === "error") {
     const message = payload?.error?.message || payload?.error || response.statusText;
@@ -139,32 +188,32 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const ambientTriggerClient = {
   status() {
-    return requestJson<AmbientStatus>("/api/ambient/status", { cache: "no-store" });
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/status"), { cache: "no-store" });
   },
 
   startMonitor(options?: { voice_wake?: boolean; gesture_pinch?: boolean }) {
-    return requestJson<AmbientStatus>("/api/ambient/monitor/start", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/monitor/start"), {
       method: "POST",
       body: JSON.stringify(options ?? {}),
     });
   },
 
   stopMonitor() {
-    return requestJson<AmbientStatus>("/api/ambient/monitor/stop", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/monitor/stop"), {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
   configure(routing: AmbientRoutingConfig) {
-    return requestJson<AmbientStatus>("/api/ambient/config", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/config"), {
       method: "POST",
       body: JSON.stringify({ routing }),
     });
   },
 
   grantPermission(permissionId: AmbientPermissionId, options?: { osStatus?: string; uiOperator?: AuthorityUiOperator }) {
-    return requestJson<AmbientStatus>("/api/ambient/permissions/grant", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/permissions/grant"), {
       method: "POST",
       body: JSON.stringify({
         permission_id: permissionId,
@@ -175,35 +224,42 @@ export const ambientTriggerClient = {
   },
 
   revokePermission(permissionId: AmbientPermissionId, options?: { uiOperator?: AuthorityUiOperator }) {
-    return requestJson<AmbientStatus>("/api/ambient/permissions/revoke", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/permissions/revoke"), {
       method: "POST",
       body: JSON.stringify({ permission_id: permissionId, ui_operator: options?.uiOperator }),
     });
   },
 
   checkOsPermissions(statuses: Record<AmbientPermissionId, string>) {
-    return requestJson<AmbientStatus>("/api/ambient/permissions/check", {
+    return requestJson<AmbientStatus>(defaultspackContractRoute("api/ambient/permissions/check"), {
       method: "POST",
       body: JSON.stringify({ statuses }),
     });
   },
 
   submitEvent(payload: AmbientEventPayload) {
-    return requestJson<Record<string, unknown>>("/api/ambient/events", {
+    return requestJson<Record<string, unknown>>(defaultspackContractRoute("api/ambient/events"), {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  transcribeAudio(payload: AmbientAudioTranscriptionPayload) {
+    return requestJson<AmbientAudioTranscriptionResult>(defaultspackContractRoute("api/ambient/transcriptions"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   approvePendingApproval(requestId: string) {
-    return requestJson<Record<string, unknown>>("/api/ambient/approval/approve", {
+    return requestJson<Record<string, unknown>>(defaultspackContractRoute("api/ambient/approval/approve"), {
       method: "POST",
       body: JSON.stringify({ request_id: requestId }),
     });
   },
 
   denyPendingApproval(requestId: string, reason?: string) {
-    return requestJson<Record<string, unknown>>("/api/ambient/approval/deny", {
+    return requestJson<Record<string, unknown>>(defaultspackContractRoute("api/ambient/approval/deny"), {
       method: "POST",
       body: JSON.stringify({ request_id: requestId, reason }),
     });

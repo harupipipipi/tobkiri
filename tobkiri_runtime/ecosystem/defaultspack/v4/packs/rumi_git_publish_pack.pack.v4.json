@@ -1,0 +1,165 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:208afa0a24bbdfbbc1e9bc648f3fdc91b4082d3fc8e39796bb90af6170b520ac",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "kind": "executable",
+      "path": "runtime/publish.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.git.publish.v1",
+      "operations": [
+        "rumi_git_publish_pack.git-push-prepare",
+        "rumi_git_publish_pack.git-push"
+      ],
+      "revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
+      "id": "rumi_git_publish_pack.git-publish.service",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_git_publish_pack.git-push"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
+      "id": "rumi_git_publish_pack.git-push-prepare.service",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_git_publish_pack.git-push-prepare"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e",
+    "artifact_set_digest": "sha256:e9b2366a06ea4561313844b565219df693eeee33ca4115b56dd643b79f44adbd",
+    "contract_catalog_digest": "sha256:1e03af36c66ac1509ab78425b6b803980cb91da5dee25733cc6525ee702bc77a"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.git.publish.v1",
+      "rumi:ecosystem/rumi_git_publish_pack",
+      "rumi_git_publish_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_git_publish_pack.git-push",
+      "owner": "rumi_git_publish_pack",
+      "contract_reference": "tobkiri.service.git.publish.v1",
+      "provider_id": "rumi_git_publish_pack.git-publish.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_git_publish_pack.git-push-prepare",
+      "owner": "rumi_git_publish_pack",
+      "contract_reference": "tobkiri.service.git.publish.v1",
+      "provider_id": "rumi_git_publish_pack.git-push-prepare.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
+    "display_name": "Rumi Git Publish",
+    "id": "rumi_git_publish_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_git_publish_pack/pack.v4.json",
+    "source_digest": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:2f54ce695f70190c6895e6346baa98a5cfcaf3f46c1d75c1395b0f3cb56958e6",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521",
+    "input_inventory_digest": "sha256:8b26f5569cb3909166f2797520ffb4c20322bda8120032616c962e689123600c",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:402e6af6bf4abc5beb502ff35ed5ac68ab23d5c087bf8e627ea41099510d6521"
+      },
+      {
+        "path": "ecosystem/rumi_git_publish_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_git_publish_pack.git-publish.service",
+      "owner": "rumi_git_publish_pack",
+      "contract_reference": "tobkiri.service.git.publish.v1",
+      "operations": [
+        "rumi_git_publish_pack.git-push"
+      ]
+    },
+    {
+      "provider_id": "rumi_git_publish_pack.git-push-prepare.service",
+      "owner": "rumi_git_publish_pack",
+      "contract_reference": "tobkiri.service.git.publish.v1",
+      "operations": [
+        "rumi_git_publish_pack.git-push-prepare"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "git.publish",
+      "git.read",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.git.read.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_git_read_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

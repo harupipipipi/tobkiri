@@ -10,7 +10,8 @@ PACK_ROOT = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
 
 
 @pytest.fixture()
-def isolated_stores(tmp_path, monkeypatch):
+def isolated_stores(tmp_path, monkeypatch, defaultspack_conversation_owner):
+    del defaultspack_conversation_owner
     monkeypatch.syspath_prepend(str(PACK_ROOT))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_SHARE_STORE_PATH", str(tmp_path / "shares"))
@@ -148,9 +149,16 @@ def test_share_api_create_read_import_and_reject_revoked(isolated_stores):
     assert rejected["error"]["code"] == "NOT_FOUND"
 
 
-def test_raw_history_import_and_model_notice(isolated_stores):
+def test_raw_history_import_and_model_notice(isolated_stores, monkeypatch):
+    from blocks.chat import _context_helpers
     from blocks.chat._context_helpers import enrich_messages
     from blocks.share.import_bundle import run
+
+    monkeypatch.setattr(
+        _context_helpers,
+        "_materialize_context",
+        lambda *_args: {"sections": [], "digest": "test-context"},
+    )
 
     history = {"schema_version": 1, "updated_at": 100, "conversation": _source_conversation()}
     response = run({"history": history})
@@ -205,9 +213,27 @@ def test_untrusted_wrapper_is_resanitized_and_source_auth_is_not_persisted(isola
 
 
 def test_share_landing_and_import_routes_are_in_standalone_transport(isolated_stores):
-    from transport.registry import canonical_http_route_specs
+    from blocks.share.setup import run
+    from transport.registry import _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS
 
-    routes = {(spec.method, spec.pattern) for spec in canonical_http_route_specs(include_always_available=True)}
+    class Registry:
+        def __init__(self):
+            self.entries = []
+
+        def register(self, key, value, meta=None):
+            self.entries.append((key, value, meta))
+
+    registry = Registry()
+    run({"interface_registry": registry})
+    routes = {
+        (entry["method"], entry["pattern"])
+        for key, entry, _meta in registry.entries
+        if key == "io.http.route"
+    }
+    routes.update(
+        (spec.method, spec.pattern)
+        for spec in _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS
+    )
     assert ("GET", "/share/{token}") in routes
     assert ("POST", "/api/share/{token}/import") in routes
     assert ("POST", "/api/share/{token}/export") in routes

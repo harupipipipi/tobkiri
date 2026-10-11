@@ -1,18 +1,24 @@
+import type { ComposerEntityCandidate } from "../lib/composerEntityCandidates";
+import type { ProjectDirectorySelection, ProjectDirectorySelectionSet, ProjectWorkspaceSet } from "../lib/projectWorkspaceMount";
+import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
-import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
+import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
-import type { ComposerCommandItem } from "../lib/api";
+import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
-import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
+import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
-import type { WorkspaceTab, WorkspaceTabKind } from "../components/WorkspaceTabs";
+import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
 import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
-import type { PendingToolReview, ToolSelectionChip } from "../features/tools/types";
+import type { PendingToolReview, ToolSelectionMode } from "../features/tools/types";
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
+import type { ModelSelectorSchema } from "../features/models";
+import type { ProjectInfo } from "../features/projects/projectStorage";
 
 export type { ComposerCommandItem } from "../lib/api";
 
@@ -25,6 +31,9 @@ export type ChatUiMessage = {
   rawText: string;
   widget?: Record<string, unknown> | null;
   metadata?: {
+    deliveryState?: "pending";
+    /** Durable owner turn binding preserved from canonical user-message metadata. */
+    turn_id?: string;
     executionTime?: string;
     toolUsed?: string;
     modelName?: string;
@@ -56,7 +65,12 @@ export type ComposerExtensionItem = {
   description?: string;
   tags?: string[];
   disabled?: boolean;
+  /** Catalog provenance used only to organize mention suggestions. */
+  sourcePackId?: string;
+  /** Explicit catalog service identifier, when this tool belongs to an integration. */
+  serviceId?: string;
   ui?: SidebarItem["ui"];
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
 };
 
 export type ComposerSkillItem = {
@@ -91,7 +105,30 @@ export type ComposerModelStatusIndicator = {
   action?: ComposerModelStatusIndicatorAction | null;
 };
 
+export type ComposerSteerStatus = {
+  kind: "success";
+  message: string;
+} | {
+  kind: "pending";
+  message: string;
+} | {
+  kind: "error";
+  message: string;
+};
+
 export type SettingChangeHandler = (sectionId: string, fieldId: string, value: unknown) => void;
+
+export type SettingsLoadState = {
+  status: "idle" | "loading" | "ready" | "error";
+  message?: string | null;
+};
+
+export type SettingsSaveState = {
+  status: "idle" | "saving" | "saved" | "error";
+  dirtyKeys?: string[];
+  lastSavedAt?: number | null;
+  message?: string | null;
+};
 
 export type TitleBarRendererProps = {
   appName?: string;
@@ -99,6 +136,7 @@ export type TitleBarRendererProps = {
 };
 
 export type HistoryBoardRendererProps = {
+  profileId?: string;
   activeChatId: string | null;
   chatItems: ChatItem[];
   account?: NonNullable<UICatalog["app"]>["account"];
@@ -113,14 +151,16 @@ export type HistoryBoardRendererProps = {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
+  onChatGroupMove?: (conversationId: string, targetProjectId: string | null) => Promise<void>;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onSearchOpen?: () => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
-  onCodingWorkspaceCreate?: (rootPath: string) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onDirectorySelect?: () => Promise<string | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
   onGroupDataPathPrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
   onCodingWorkspacesRefresh?: () => void | Promise<void>;
 };
@@ -135,6 +175,11 @@ export type ChatHeaderRendererProps = {
 };
 
 export type ChatMessagesRendererProps = {
+  completionNotice?: {
+    message: string;
+    title: string;
+    tone: "success" | "warning";
+  } | null;
   error: string | null;
   isMessagesRegionVisible: boolean;
   isLoading: boolean;
@@ -146,6 +191,8 @@ export type ChatMessagesRendererProps = {
   pendingToolStartedAt?: Record<string, number>;
   messages: ChatUiMessage[];
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
+  messagesScrollRef?: MutableRefObject<HTMLDivElement | null>;
+  onMessagesScroll?: () => void;
   unknownBlockStrategy: string;
   showActivityInMessages: boolean;
   showWidgets: boolean;
@@ -153,9 +200,14 @@ export type ChatMessagesRendererProps = {
   onSuggestionClick: (text: string) => void;
   onOpenToolPreview?: (previewId: string) => void;
   onLoadPromptTrace?: (traceId: string, profileId?: string) => Promise<PromptUsageSummary>;
+  onRetry?: () => void;
+  onDismissCompletionNotice?: () => void;
+  onDismissError?: () => void;
 };
 
 export type ComposerRendererProps = {
+  surfaceMode?: "standard" | "thread" | "scheduled";
+  submissionDisabled?: boolean;
   widgetContext?: WidgetConversationContext;
   input: string;
   placeholder: string;
@@ -164,6 +216,7 @@ export type ComposerRendererProps = {
   selectedProfile: ModelProfile | null;
   favoriteProfiles: ModelProfile[];
   modelProfiles?: ModelProfile[];
+  modelSelectorSchema?: ModelSelectorSchema;
   thinkingLevel: string | null;
   contextUsage: ContextUsageInfo;
   inlineExtensions: ComposerExtensionItem[];
@@ -174,38 +227,65 @@ export type ComposerRendererProps = {
   structuredInputValues?: Record<string, string>;
   modelCommandCandidates?: ModelCommandCandidate[];
   modelPickerRequestId?: number;
-  yoloMode?: boolean;
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
+  voiceScopeKey?: string;
+  manualRuntimeModeSelectionEnabled?: boolean;
   mode?: AppMode;
   codingContext?: CodingContext | null;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
+  projects?: ProjectInfo[];
+  selectedProjectId?: string | null;
   attachedFiles?: AttachedFile[];
   pendingMentionAttachmentPaths?: string[];
   droppedWidgets?: DroppedWidget[];
   entityReferences?: ComposerEntityReference[];
+  entityCandidates?: ComposerEntityCandidate[];
+  entityCandidateStatus?: string;
+  entityCandidatesHaveMore?: boolean;
+  entityCandidatesLoadMore?: () => void;
+  historyReferences?: ComposerEntityReference[];
+  historyReferenceTargetProfileId?: string;
+  onEntityCandidateConfirm?: (candidate: ComposerEntityCandidate) => Promise<{ widget: DroppedWidget; reference: ComposerEntityReference; syntax: string } | null>;
+  onReferenceConfirmationPendingChange?: (pending: boolean) => void;
+  onHistoryReferenceDrop?: (rawPayload: string) => Promise<{ widget: DroppedWidget; reference: ComposerEntityReference; syntax: string } | null>;
   selectedToolIds?: string[];
   actionApprovalMode?: ActionApprovalMode;
-  toolSelectionTargets?: ToolSelectionChip[];
+  actionApprovalModes?: readonly ActionApprovalMode[];
+  showActionApprovalControl?: boolean;
+  showToolSelectionControl?: boolean;
+  toolSelectionMode?: ToolSelectionMode;
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
-  steerStatus?: string | null;
+  steerStatus?: ComposerSteerStatus | null;
   steerBusy?: boolean;
+  steerControlsReady?: boolean;
+  pendingRecovery?: {
+    message: string;
+    entries: Array<{
+      id: string;
+      label: string;
+      operationId?: string;
+      submittedText?: string;
+    }>;
+    onDetach?: () => void;
+  };
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
   suppressPopovers?: boolean;
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
   onActionApprovalModeChange?: (mode: ActionApprovalMode) => void;
-  onToolSelectionTargetRemove?: (target: ToolTarget) => void;
+  onToolSelectionModeChange?: (mode: ToolSelectionMode) => void;
   onToolSelectionReviewApprove?: () => void;
   onToolSelectionReviewEdit?: () => void;
   onToolSelectionReviewNoTools?: () => void;
   onToolSelectionReviewCancel?: () => void;
   onSwitchToVisionModel?: () => void;
   onExtensionSelect?: (item: ComposerExtensionItem) => void;
+  onLocalCommandSubmit?: (rawInput: string) => boolean;
   onCommandSelect?: (commandId: string, rawInput?: string) => void;
   onModelCommandCandidateSelect?: (candidate: ModelCommandCandidate) => void;
   onModelCommandCandidatesClose?: () => void;
@@ -223,6 +303,7 @@ export type ComposerRendererProps = {
   onPendingMentionAttachmentRemove?: (path: string) => void;
   onFileRemove?: (fileId: string) => void;
   onDropWidget?: (widget: DroppedWidget) => void;
+  onDroppedWidgetsChange?: (widgets: DroppedWidget[]) => void;
   onEntityReferencesChange?: (references: ComposerEntityReference[]) => void;
   onWidgetAction?: (widget: DroppedWidget) => void;
   onWidgetToggle?: (widgetId: string) => void;
@@ -230,24 +311,29 @@ export type ComposerRendererProps = {
   onCodingDirectoryChange?: (directory: string) => void;
   onCodingWorkspaceSelect?: (workspaceId: string) => void;
   onCodingWorkspaceTrust?: (workspaceId: string) => void;
-  onCodingWorkspaceCreate?: () => void;
+  onCodingWorkspaceCreate?: (rootPath?: string) => Promise<CodingWorkspaceRecord | null | undefined> | void;
   onCodingWorkspacesRefresh?: () => void;
   onCodingContextRefresh?: () => void;
+  onProjectSelect?: (project: ProjectInfo | null) => void;
+  projectProfileId?: string;
+  onProjectWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onProjectDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
+  onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
 export type ToolPreviewPanelRendererProps = {
   widgetContext?: WidgetConversationContext;
   previews: ToolPreviewItem[];
   showPreview: boolean;
-  previewMode: ToolPreviewMode;
   activePreviewId: string | null;
+  activePreviewRevision?: number;
   memo?: string;
   onClose: () => void;
-  onModeChange: (mode: ToolPreviewMode) => void;
   onMemoChange?: (value: string) => void;
 };
 
 export type RightSidebarRendererProps = {
+  runtimeProfileId?: string;
   widgetContext?: WidgetConversationContext;
   items: SidebarItem[];
   activeItemId?: string | null;
@@ -256,6 +342,10 @@ export type RightSidebarRendererProps = {
   selectedToolIds?: string[];
   companyPanel?: ReactNode;
   codingPanel?: ReactNode;
+  canvasPanel?: ReactNode | ((visible: boolean) => ReactNode);
+  timelinePanel?: ReactNode;
+  onCanvasOpen?: () => void;
+  onCanvasClose?: () => void;
   keyboardButtonNavigation?: boolean;
   attachedFiles?: AttachedFile[];
   selectedProfile?: ModelProfile | null;
@@ -268,6 +358,9 @@ export type RightSidebarRendererProps = {
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  workspaceTabsEnabled?: boolean;
+  workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;
@@ -276,28 +369,41 @@ export type RightSidebarRendererProps = {
   onToggleYolo?: () => void;
   onWorkspaceTabSelect?: (tabId: string) => void;
   onWorkspaceTabClose?: (tabId: string) => void;
-  onWorkspaceTabCreate?: (kind: WorkspaceTabKind) => void;
+  onWorkspaceTabCreate?: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
-  onOpenPromptStudio?: (promptId?: string) => void;
   onToolToggle?: (item: SidebarItem) => void;
   onToolBatchSet?: (toolIds: string[], enabled: boolean) => void;
+  onConversationToolPreferencesChange?: (conversationId: string, preferences: Record<string, unknown>, toolIds: string[], enabled: boolean) => void;
   onPanelAction?: (item: SidebarItem, action: SidebarAction) => void;
 };
 
 export type SettingsModalRendererProps = {
+  actionApprovalModes?: readonly ActionApprovalMode[];
+  extensionSettings?: ReactNode;
   isOpen: boolean;
   activeSectionId?: string | null;
   catalog: UICatalog | null;
-  health: { status: string; pack: string; ts: string } | null;
+  health: RuntimeHealth | null;
   previewsCount: number;
   settingsSections: SettingsSection[];
   settingsValues: Record<string, Record<string, unknown>>;
   desktopSystemInfo?: DesktopSystemInfo | null;
+  runtimeProfileId?: string;
+  modelProfiles?: ModelProfile[];
+  activeModelProfileId?: string | null;
+  backendConnectionState?: "online" | "degraded" | "offline";
+  backendConnectionNote?: string | null;
+  saveState?: SettingsSaveState;
+  loadState?: SettingsLoadState;
+  modelProfilesLoadState?: SettingsLoadState;
   locale?: LocaleSetting;
   onClose: () => void;
+  onStartSettingsChat?: () => void;
   onOpenSection?: (sectionId: string) => void;
+  onRetryLoad?: () => void;
+  onRetrySave?: () => void;
   onSettingChange: SettingChangeHandler;
 };
 
@@ -345,5 +451,6 @@ export type DroppedWidget = {
   sourceItemId?: string;
   description?: string;
   icon?: string;
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
   metadata?: Record<string, unknown>;
 };

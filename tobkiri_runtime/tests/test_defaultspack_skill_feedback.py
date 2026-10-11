@@ -13,11 +13,19 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 def test_skill_create_from_feedback_writes_valid_skill_and_dream(monkeypatch, tmp_path):
     from blocks.skill.create_from_feedback import run as create_skill
     from domain import skill_feedback
+    from domain.extensions import runtime as extension_runtime
     from domain.extensions.runtime import get_extension_registry
 
     extensions_root = tmp_path / "user_data" / "shared" / "extensions"
     monkeypatch.setattr(skill_feedback, "_skills_root", lambda payload: extensions_root / "skills")
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTENSION_ROOTS", str(extensions_root))
+    monkeypatch.setattr(
+        extension_runtime,
+        "get_extensions_roots",
+        lambda: extension_runtime.build_extensions_roots(
+            DEFAULTSPACK_ROOT,
+            extra_roots=[extensions_root],
+        ),
+    )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_MEMORY2_DIR", str(tmp_path / "memory2"))
 
     result = create_skill(
