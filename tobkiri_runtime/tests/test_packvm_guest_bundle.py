@@ -35,6 +35,7 @@ MEMBERS = {
     "tobkiri_protocol/conversation_context.py",
     "tobkiri_protocol/saved_conversation.py",
     "tobkiri_protocol/saved_tools.py",
+    "tobkiri_protocol/turn_progress_v1.py",
 }
 
 
