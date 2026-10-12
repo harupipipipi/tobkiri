@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "485fdafbde3816edbe633c092eb77db3069a40d82a02f76d47ede117d79c7911",
+    "digest": "90a4e9d03333d2b462645c287e32be1cce39efbe116007a5bb5edf7ae8d2864f",
     "entries": [
       {
         "path": "index.html",
@@ -2854,14 +2854,19 @@
         "sha256": "8ae40731a9d789e3e03891f567382db06278c61656566a258534119e4c0c9b9c"
       },
       {
+        "path": "src/renderers/settings/renderers/apiKeySetupField.layout.test.ts",
+        "size": 3834,
+        "sha256": "8f680c5a02564716b777ba93b28951dbde9846802d784e96ef09a6b7eff37a54"
+      },
+      {
         "path": "src/renderers/settings/renderers/apiKeySetupField.test.ts",
         "size": 610,
         "sha256": "3922f09bf68775ae6355cc45028a5307dbd15d66857f526df9c3d1998bafb2c1"
       },
       {
         "path": "src/renderers/settings/renderers/apiKeySetupField.tsx",
-        "size": 18416,
-        "sha256": "c4ad64cec4fa82fc20bbec77398c9eda7804ec151d41117ce70683b1663df18c"
+        "size": 18719,
+        "sha256": "1a9a56d552cea787cc289879a5279a8e97e9f0cd62e9aa78c6b611735ad16654"
       },
       {
         "path": "src/renderers/settings/renderers/mcpServersField.tsx",
@@ -3041,12 +3046,12 @@
     ]
   },
   "bundle": {
-    "digest": "fae409e991ad6bce2aca2f68b39556642fcd3b347d930815d1590957d8e275b3",
+    "digest": "eb957f84050490274d651b2c09382c76093e5f50fe8c3494e3e7354c59478490",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 246138,
-        "sha256": "9bba16c399b37404a87f06589f63fc184f10c60df7666e6a9034f937edc06348"
+        "size": 246452,
+        "sha256": "9d44b1d8ed20fce06be193b5d704356cf471c45f4a3e534a92ec3870840d5597"
       },
       {
         "path": "shell-app.js",
@@ -3055,8 +3060,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2678693,
-        "sha256": "796731914ab20e46e6a596cde12feb6d3dd02c4c26944152d2791e2166f7bb2f"
+        "size": 2678913,
+        "sha256": "0d94bd7a80c6c97e01759aec11a08e6c4e27fc8b0d609bf082c51ab979e13748"
       },
       {
         "path": "shell-icons.js",
