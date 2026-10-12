@@ -14,6 +14,13 @@ not grant trust or replace the Host's execution-time workspace and approval
 checks. A missing selected workspace displays a selection prompt, never another
 workspace's name.
 
+The Coding tab uses the same finite v4 workspace list and exact-owner read.
+Add workspace opens the native folder picker and completes the existing Host
+mount effect through Tobkiri Launcher approval. Picker and mount failures stay
+visible in the Coding tab. Git observations, reviews, branch mutations, and the
+legacy coding side panels are unavailable until their finite captured contracts
+are provided; opening this tab does not invoke retired routes or run checks.
+
 ## Canonical implementation
 
 The captured full-UI conversation CRUD routes use the conversation

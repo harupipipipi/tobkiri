@@ -39,7 +39,7 @@ import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
 import { ErrorNotice } from "./components/ErrorNotice";
 import { ChatNotifications } from "./components/ChatNotifications";
-import { CodingCockpit } from "./components/coding/CodingCockpit";
+import { CodingWorkspaceCockpit } from "./components/coding/CodingWorkspaceCockpit";
 import { HostPermissionsPage } from "./hostPermissions/HostPermissionsPage";
 import { ConversationSpotlight } from "./components/ConversationSpotlight";
 import { DesktopMonitorWorkspace } from "./components/desktops/DesktopMonitorWorkspace";
@@ -4420,7 +4420,6 @@ export function ChatApp() {
   const effectiveGroupId = pendingNewTaskContext?.groupId
     ?? activeConversationWorkspaceContext.groupId
     ?? undefined;
-  const effectiveConsoleKey = `${effectiveGroupId ?? "ungrouped"}:${effectiveWorkspaceId ?? "no-workspace"}`;
 
   const loadCodingContext = useCallback(async (workspaceIdOverride?: string | null) => {
     const workspaceId = workspaceIdOverride ?? effectiveWorkspaceId;
@@ -8784,14 +8783,11 @@ export function ChatApp() {
   const Renderers = useMemo(() => resolveDefaultspackRenderers(catalog), [catalog]);
   const codingSidebarPanel = mode === "coding" && codingContext
     && codingContext.snapshotAvailability !== "workspace-only" ? (
-    <CodingCockpit
-      variant="sidebar"
+    <CodingWorkspaceCockpit
       workspaces={codingWorkspaces}
       selectedWorkspaceId={effectiveWorkspaceId}
-      consoleScopeKey={effectiveConsoleKey}
       onWorkspaceSelect={handleCodingWorkspaceSelect}
-      onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
-      onWorkspaceTrust={handleCodingWorkspaceTrust}
+      onWorkspaceCreate={handleCodingWorkspacePickCreate}
       onWorkspacesRefresh={refreshCodingWorkspaces}
     />
   ) : null;
@@ -9233,14 +9229,11 @@ export function ChatApp() {
               </div>
             ) : isCodingWorkspace ? (
               <div className="flex min-h-0 flex-1 p-1.5">
-                <CodingCockpit
-                  variant="sidebar"
+                <CodingWorkspaceCockpit
                   workspaces={codingWorkspaces}
                   selectedWorkspaceId={effectiveWorkspaceId}
-                  consoleScopeKey={effectiveConsoleKey}
                   onWorkspaceSelect={handleCodingWorkspaceSelect}
-                  onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
-                  onWorkspaceTrust={handleCodingWorkspaceTrust}
+                  onWorkspaceCreate={handleCodingWorkspacePickCreate}
                   onWorkspacesRefresh={refreshCodingWorkspaces}
                 />
               </div>
