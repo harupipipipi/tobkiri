@@ -573,10 +573,13 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Keep production Broker checks while supplying the sealed presentation ABI."""
+    from tobkiri_host.credential_store import host_credential_store_factory
+
     yield from _captured_production_server(
         tmp_path,
         monkeypatch,
         packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
     )
 
 
