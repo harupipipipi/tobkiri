@@ -2658,6 +2658,82 @@ def test_preferences_write_uses_captured_owner_and_preserves_private_state(
         assert storage.read_bytes() == after
 
 
+def test_manual_runtime_mode_selection_round_trips_through_real_broker(
+    settings_vertical_server,
+    tmp_path: Path,
+) -> None:
+    """Both booleans cross the captured input/output schemas and owner CAS."""
+    server, _session, _authority = settings_vertical_server
+    storage = tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
+    storage.parent.mkdir(parents=True, exist_ok=True)
+    original = {
+        "general": {"private": "owner-only"},
+        "models": {"private": "unrelated-owner-value"},
+        "_settings_revision": 7,
+    }
+    storage.write_text(json.dumps(original), encoding="utf-8")
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    route = _contract("PUT", "/api/ui/settings")
+    for revision, enabled in ((7, True), (8, False)):
+        changes = {"general": {"manual_runtime_mode_selection": enabled}}
+        body = {"changes": changes, "expected_revision": revision}
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(
+            server, "PUT", route, body=body, headers=headers,
+        )
+        assert status == 200, payload
+        assert payload["data"] == {
+            "values": changes, "document_revision": revision + 1,
+        }
+        assert payload["data"]["values"]["general"][
+            "manual_runtime_mode_selection"
+        ] is enabled
+        persisted = json.loads(storage.read_text(encoding="utf-8"))
+        assert persisted == {
+            **original,
+            "general": {"private": "owner-only", **changes["general"]},
+            "_settings_revision": revision + 1,
+        }
+        assert persisted["general"]["manual_runtime_mode_selection"] is enabled
+        before = storage.read_bytes()
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        stale_status, stale_payload, _ = _request(
+            server, "PUT", route, body=body, headers=headers,
+        )
+        assert stale_status != 200, stale_payload
+        assert storage.read_bytes() == before
+
+
+@pytest.mark.parametrize("value", ["true", "false", 1, 0, 1.0, None, {}, []])
+def test_manual_runtime_mode_selection_schema_rejects_nonboolean_without_write(
+    settings_vertical_server,
+    tmp_path: Path,
+    value: object,
+) -> None:
+    """The public Broker rejects malformed fields before owner persistence."""
+    server, _session, _authority = settings_vertical_server
+    storage = tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
+    cookie, csrf, origin = _authenticate(server)
+    status, payload, _ = _request(
+        server,
+        "PUT",
+        _contract("PUT", "/api/ui/settings"),
+        body={
+            "changes": {"general": {"manual_runtime_mode_selection": value}},
+            "expected_revision": 0,
+        },
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+    assert status != 200, payload
+    assert not storage.exists()
+
+
 def test_settings_reads_saved_values_and_models_through_real_broker(
     settings_vertical_server,
     tmp_path: Path,

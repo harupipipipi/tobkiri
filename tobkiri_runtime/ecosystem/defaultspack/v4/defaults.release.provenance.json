@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:44d862f6dd85c37d6c2ada42de3a57c8ad0e3008b801111ac0d0a14c9f478e70",
+  "profile_revision": "sha256:e8e9c7b286db47ba939d3c8b2c2263716fe51a92ddbed44b17f09606c7fc3fc2",
   "profile_definition_digest": "sha256:51dc1fc0d6f054d15e1a30e1554f6da846ff6d3739c2a1575edad7477d8699ee",
   "source_inputs": [
     {
@@ -1202,11 +1202,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
-      "digest": "sha256:8c1bb5d1a4974bccf1e6bded4a8140f3ee682385830e9c5544c2b60a64886d4d"
+      "digest": "sha256:36f31123ba978c8886e4c9cdc794e3c925794dc0aa31d5c6004f4342bd7bfda9"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
-      "digest": "sha256:8b17c4e3728ca73863429ff8bfe2c708bfdae5ed9cdf15b6c0b4382557110658"
+      "digest": "sha256:49463deb67c593ac4232ddf268c993ebb434844e45f4bdd8231065fb78e610a1"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
@@ -1421,19 +1421,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:0f0b82d1a911d308e23838ce0b8ab6589410919e50ec0aaed16b9e31700fba26",
-    "catalog_revision": "sha256:fe77e60a6edaf1cf0bde17551eb73e3fa938235516bda3e2194aaa5aa1fb3bc7",
-    "closure_digest": "sha256:3ce3ce097398af221c1cfd54ac4ed0fcfff854c68293774f54e0638e49f305e7"
+    "bundle_digest": "sha256:1b6af1f09aea7ef2f37126fa11e5b1c1bc62fa248e0be595039e491a5ad34221",
+    "catalog_revision": "sha256:7bedaec245600920e65be55bd283147301b2428f9429318ce1ad6d3a068c526e",
+    "closure_digest": "sha256:d50cec839516e6aedf50f38685773bd1ea92b139aae73789ea0768fcd570c1d3"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-      "digest": "sha256:416201fcb1a308cbb545327db978b74e9514118d3af70f5db4ce11b7ee77e991"
+      "digest": "sha256:45a80d0863e290cc971cfd7454f06ed818e557bbf90a303b67cf411f85d38ce6"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:ecc9e302e8fdf59f21762428e0bdf3e70103ef417f3e602a1dfbe65d1afeca01"
+      "digest": "sha256:e8c95e88e81ec8e2abec27d466adb0d1f214cd3eef3a50dd96f2cb8ce5a3d986"
     }
   ],
-  "release_digest": "sha256:36e7c198637b8825df471c9112eb0a7fbb675a74778ae25a4e9422d16e8f9c5c"
+  "release_digest": "sha256:80e0d94697a941014ddcf7c13df345b9b25756d8539731844b170960b2982357"
 }

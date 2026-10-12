@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "31a7636e5e0cc9c262551ec265f2e828d15753f4a8c1e482b69e26cf8049b27d",
+    "digest": "c8b6291ba32c743adde0223283973443c8c7257f17b015d49028547d564ffd56",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9658,
-        "sha256": "dcf1edee074eb6eb0182ccb46e972345c6f5b3a929e366d2c40833e667466e4b"
+        "size": 9700,
+        "sha256": "c60575eb7b6ad8407111d126ceaf2a286770bb9bc8398a7cda1f0f1e585bbe27"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -2770,13 +2770,13 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.test.tsx",
-        "size": 79657,
-        "sha256": "e36f4e496e5613f8d66ff4db23cb3bc027cd63db73b926a660d9811e23881ab5"
+        "size": 81445,
+        "sha256": "7b39132bc4e9a5f19c21337fe34e2b41e5bcb593d9644436bdcee94f839ddfa9"
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-        "size": 274267,
-        "sha256": "0c741e58be1fd116168c08521dd9fbdd1abda2d1b85404275ae8f0a69c17b06f"
+        "size": 273222,
+        "sha256": "19c278f5850164322550bfba343fca1c5988ebe02aac0fe68ca60f3b3a652ab9"
       },
       {
         "path": "src/renderers/SpotlightShortcutRecorder.test.tsx",
@@ -3031,12 +3031,12 @@
     ]
   },
   "bundle": {
-    "digest": "10df75a32e04b7816fb70b86f6dac7b83debddaf7835f6f698dec3e6ab41edce",
+    "digest": "b3941290267674d1deb1c7e484f64620d211b98ab7f9c937774211fd2f66da94",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 246320,
-        "sha256": "e42065af41b217568706aa5078b8db22c8fb3641ce116206a36da74f11e77d21"
+        "size": 246354,
+        "sha256": "cee63db9beea6a6dcd4b4c7f8aa9a7000127a48a6327a1bb10d092cdfb7b06c3"
       },
       {
         "path": "shell-app.js",
@@ -3045,8 +3045,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2767214,
-        "sha256": "815d8abca6673f905f98b16743051f15adb8c08d7188cc76bb2ce464e6534a1a"
+        "size": 2772207,
+        "sha256": "d845abc1c78041a03c78a31d160e394179a3feb7e6bb6ed4493a5f8716998df8"
       },
       {
         "path": "shell-icons.js",

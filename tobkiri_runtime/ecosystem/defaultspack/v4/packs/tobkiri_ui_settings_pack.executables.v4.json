@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:ed56abe643f5e4a786342f68c689fb9f3ed191a89ca4cbf14cd6902e273b0d58",
+  "source_identity": "sha256:12d90a6edf9ef74a90fd636a3bac5cbbf096ba0420c1c04abb3ba9116bc93365",
   "variants": [
     {
       "variant_id": "tobkiri.project.state.read.python",
@@ -399,7 +399,7 @@
         {
           "contract_id": "tobkiri.action.ui.preferences.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+          "revision_digest": "sha256:828c859e8c2712743194a9ec053fbe6e5e492baeb7ecf1c6a9ac375b08774dd3",
           "operation_id": "tobkiri_ui_settings_pack.preferences-write",
           "input_schema": {
             "additionalProperties": false,
@@ -436,6 +436,9 @@
                       "language": {
                         "maxLength": 2048,
                         "type": "string"
+                      },
+                      "manual_runtime_mode_selection": {
+                        "type": "boolean"
                       },
                       "show_activity_in_messages": {
                         "type": "boolean"
@@ -511,6 +514,9 @@
                       "language": {
                         "maxLength": 2048,
                         "type": "string"
+                      },
+                      "manual_runtime_mode_selection": {
+                        "type": "boolean"
                       },
                       "show_activity_in_messages": {
                         "type": "boolean"
@@ -789,6 +795,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:0034af80e793acb4d546c949543194a09056c17ebd0c94797040c3e020e50dd7",
-  "catalog_digest": "sha256:6df1194b440718936de68807eb2934fae5701d07a02fe11384e163bd90cb9b48"
+  "materialization_catalog_digest": "sha256:896efe2d3751ef7528e6f1ae6223dec082f08a6ee4574396fdfc8323f39805d0",
+  "catalog_digest": "sha256:46417cd9f2541fa8d220b7be65b16dc658612e3aa0a6628905e9dbfcb6190ae5"
 }

@@ -157,6 +157,36 @@ test("settings close guard allows in-flight autosaves and guards only failed dir
   assert.equal(settingsCloseRequiresConfirmation({ status: "saved", dirtyKeys: [], lastSavedAt: Date.now() }), false);
 });
 
+test("settings save feedback is visible outside the wide-screen help sidebar", () => {
+  const render = (saveState: { status: "error" | "saving" | "saved"; dirtyKeys: string[]; message?: string }) => renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "advanced",
+    catalog: null,
+    health: null,
+    previewsCount: 0,
+    settingsSections: [],
+    settingsValues: {},
+    locale: "en",
+    saveState,
+    onClose: () => undefined,
+    onRetrySave: () => undefined,
+    onSettingChange: () => assert.fail("rendering save feedback must not write settings"),
+  }));
+  const failed = render({ status: "error", dirtyKeys: ["general.manual_runtime_mode_selection"], message: "Contract rejected the setting." });
+  const statusStart = failed.indexOf("data-settings-status-bar");
+  const categoriesStart = failed.indexOf('aria-label="Settings categories"');
+  assert.ok(statusStart >= 0 && statusStart < categoriesStart);
+  const visibleFeedback = failed.slice(statusStart, categoriesStart);
+  assert.match(visibleFeedback, /Contract rejected the setting\./);
+  assert.match(visibleFeedback, /aria-label="Copy save error"/);
+  assert.match(visibleFeedback, /Retry save/);
+  assert.doesNotMatch(visibleFeedback, /(?:\s|:)hidden(?:\s|\")/);
+  assert.equal((visibleFeedback.match(/aria-label="Copy save error"/g) ?? []).length, 1);
+  assert.doesNotMatch(failed.slice(failed.indexOf("data-settings-right-help")), /Contract rejected the setting\./);
+  assert.match(render({ status: "saving", dirtyKeys: ["general.manual_runtime_mode_selection"] }), /Saving…/);
+  assert.match(render({ status: "saved", dirtyKeys: [] }), /Saved/);
+});
+
 test("settings row selection clears when the selected row is clicked again", () => {
   assert.equal(toggleSettingsRowSelection("provider:token", "provider:token"), "");
   assert.equal(toggleSettingsRowSelection("provider:token", "provider:other"), "provider:other");
@@ -689,7 +719,8 @@ test("Settings keeps the modal header compact", () => {
   assert.match(html, /id="rumi-settings-dialog-title"/);
   assert.match(html, />Settings</);
   assert.doesNotMatch(html, /rumi-settings-dialog-description/);
-  assert.doesNotMatch(html, /Backend reconnect is pending/);
+  assert.doesNotMatch(html.slice(html.indexOf("<header"), html.indexOf("</header>")), /Backend reconnect is pending/);
+  assert.match(html, /Backend reconnect is pending/);
 });
 
 test("slash command settings keep unsaved empty rows with stable row ids", () => {

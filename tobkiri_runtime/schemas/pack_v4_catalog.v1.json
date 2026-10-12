@@ -31000,6 +31000,9 @@
                           "maxLength": 2048,
                           "type": "string"
                         },
+                        "manual_runtime_mode_selection": {
+                          "type": "boolean"
+                        },
                         "show_activity_in_messages": {
                           "type": "boolean"
                         },
@@ -31074,6 +31077,9 @@
                         "language": {
                           "maxLength": 2048,
                           "type": "string"
+                        },
+                        "manual_runtime_mode_selection": {
+                          "type": "boolean"
                         },
                         "show_activity_in_messages": {
                           "type": "boolean"

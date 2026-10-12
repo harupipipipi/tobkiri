@@ -54,6 +54,7 @@ import {
 } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
 import { ModelRoutingOverview } from "./settings/ModelRoutingOverview";
+import { SettingsStatusBar } from "./settings/SettingsStatusBar";
 import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
 import { buildSettingsProfileWorkspace } from "./settings/settingsProfileModel";
 import { SpotlightShortcutRecorder } from "./SpotlightShortcutRecorder";
@@ -4633,28 +4634,6 @@ export function SettingsModalRenderer({
           </p>
         </section>
         <section className="border border-zinc-800 bg-zinc-950/50 p-4">
-          <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Save state", "保存状態")}</div>
-          <div className="mt-2 text-xs text-zinc-300">
-            {saveState.status === "saving"
-              ? localizedCopy("Saving changes…", "変更を保存中…")
-              : saveState.status === "error"
-                ? localizedCopy("Save requires attention", "保存を確認してください")
-                : (saveState.dirtyKeys?.length ?? 0) > 0
-                  ? localizedCopy(`${saveState.dirtyKeys?.length ?? 0} unsaved changes`, `未保存の変更 ${saveState.dirtyKeys?.length ?? 0}件`)
-                  : localizedCopy("All changes saved", "すべて保存済み")}
-          </div>
-          {saveState.status === "error" ? (
-            <ErrorNotice
-              className="mt-3 px-3 py-2 text-[11px] leading-5"
-              copyLabel={localizedCopy("Copy settings save error", "設定保存エラーをコピー")}
-              message={saveState.message || localizedCopy("Some changes could not be saved. Review the affected settings and retry.", "一部の変更を保存できませんでした。該当する設定を確認して再試行してください。")}
-              trailing={(saveState.dirtyKeys?.length ?? 0) > 0 && onRetrySave ? (
-                <button type="button" onClick={onRetrySave} className="shrink-0 text-xs font-medium text-red-300 hover:text-red-200">{localizedCopy("Retry save", "保存を再試行")}</button>
-              ) : undefined}
-            />
-          ) : saveState.message ? <p className="mt-2 text-[11px] leading-5 text-zinc-500">{saveState.message}</p> : null}
-        </section>
-        <section className="border border-zinc-800 bg-zinc-950/50 p-4">
           <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Source sections", "設定の提供元")}</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {(section?.sourceSections ?? []).slice(0, 8).map((source) => (
@@ -4777,6 +4756,22 @@ export function SettingsModalRenderer({
                 </button>
               </div>
             </header>
+            <div
+              data-settings-status-bar
+              className="max-h-[25dvh] shrink-0 overflow-y-auto border-b border-zinc-800 px-4 py-2 sm:px-5"
+              inert={closeConfirmationOpen ? true : undefined}
+              aria-hidden={closeConfirmationOpen || undefined}
+            >
+              <SettingsStatusBar
+                backendState={backendConnectionState}
+                backendNote={backendConnectionNote}
+                saveState={saveState}
+                loadState={loadState}
+                locale={locale}
+                onRetryLoad={onRetryLoad}
+                onRetrySave={onRetrySave}
+              />
+            </div>
             <div
               className="grid min-h-0 min-w-0 flex-1 md:grid-cols-[190px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_280px]"
               inert={closeConfirmationOpen ? true : undefined}
