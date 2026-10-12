@@ -44,6 +44,7 @@ def desktop_shutdown(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
         close_callbacks=(release_overlay,),
     )
     server = Mock()
+    server.assert_runtime_startup_ready = Mock()
     server.start.side_effect = lambda: events.append("start_server")
     server.stop.side_effect = lambda: events.append("drain_server")
     server.issue_panel_login_code.return_value = {"code": "test-login"}
