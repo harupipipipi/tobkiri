@@ -3214,7 +3214,7 @@ fn stop_managed_runtimes(
     thread::scope(|scope| {
         if let Some(defaultspack) = defaultspack {
             let _defaultspack_stop = scope.spawn(|| {
-                if let Err(error) = defaultspack.stop() {
+                if let Err(error) = defaultspack.stop_for_shutdown() {
                     error!("Failed to stop Defaultspack during shutdown: {error:#}");
                 }
             });

@@ -351,8 +351,13 @@ impl ApplicationProcessManager {
         Ok(state.child.as_ref().map(|child| child.id()))
     }
 
-    /// Stop the managed child and disable all automatic restart paths.
+    /// Stop for startup/recovery with the existing short graceful-stop bound.
     pub(crate) fn stop(&self) -> Result<()> {
+        self.stop_with_grace_period(shutdown_budget::DEFAULTSPACK_RECOVERY_GRACE)
+    }
+
+    /// Stop for Launcher exit, allowing bounded HTTP and VM capture cleanup.
+    pub(crate) fn stop_for_shutdown(&self) -> Result<()> {
         self.stop_with_grace_period(shutdown_budget::DEFAULTSPACK_GRACE)
     }
 
@@ -459,7 +464,13 @@ impl ApplicationProcessManager {
     fn monitor_once(&self) -> Result<()> {
         self.monitor_once_with(
             || self.pending_restart_port_gate(),
-            stop_adopted_defaultspack_listener,
+            |pid, port| {
+                stop_adopted_defaultspack_listener(
+                    pid,
+                    port,
+                    shutdown_budget::DEFAULTSPACK_RECOVERY_GRACE,
+                )
+            },
         )
     }
 
@@ -1921,6 +1932,41 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn launcher_shutdown_allows_cleanup_after_the_recovery_grace() {
+        use std::io::{BufRead, BufReader, Read};
+
+        let manager = test_manager();
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args([
+            "-c",
+            "trap 'sleep 2.2; printf cleaned; exit 0' TERM; printf 'ready\\n'; while :; do :; done",
+        ]);
+        command.stdout(std::process::Stdio::piped());
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let mut child = command.spawn().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+        let mut ready = String::new();
+        output.read_line(&mut ready).unwrap();
+        assert_eq!(ready, "ready\n");
+        {
+            let mut state = manager.lock_state().unwrap();
+            state
+                .owned_process_groups
+                .push(OwnedProcessGroup::record(child.id()));
+            state.child = Some(crate::python_env::PythonChild::development(child));
+        }
+
+        let started = Instant::now();
+        manager.stop_for_shutdown().unwrap();
+        assert!(started.elapsed() >= shutdown_budget::DEFAULTSPACK_RECOVERY_GRACE);
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let mut completion = String::new();
+        output.read_to_string(&mut completion).unwrap();
+        assert_eq!(completion, "cleaned");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn explicit_stop_force_kills_a_group_with_a_term_ignoring_child() {
         let manager = test_manager();
         let ready_file = std::env::temp_dir().join(format!(
@@ -1956,9 +2002,7 @@ mod tests {
         }));
 
         let started = Instant::now();
-        manager
-            .stop_with_grace_period(Duration::from_secs(2))
-            .unwrap();
+        manager.stop().unwrap();
         fs::remove_file(ready_file).ok();
 
         assert!(
@@ -2015,9 +2059,7 @@ mod tests {
         }));
 
         let started = Instant::now();
-        manager
-            .stop_with_grace_period(Duration::from_secs(2))
-            .unwrap();
+        manager.stop().unwrap();
         let elapsed = started.elapsed();
         let _ = child_b.wait();
         fs::remove_file(ready_a).ok();
