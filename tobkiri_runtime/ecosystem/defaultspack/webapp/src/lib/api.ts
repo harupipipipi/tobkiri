@@ -1,4 +1,5 @@
 import { saveModelAccessEffect, type ModelAccessSaveRequest } from "./modelAccessEffect";
+import { loadSavedCodingWorkspace } from "./savedCodingWorkspace";
 import type { ModelAccessScope, ModelAccessCatalog } from "../features/apiKeys/resources/providerModelAccessResources";
 import type { NativeDiscovery } from "../features/apiKeys/modelAccessPolicy";
 import { loadApprovalPolicyCapabilities, type ApprovalPolicyApplicability } from "../features/tools/approvalPolicyCapabilities";
@@ -6443,6 +6444,13 @@ export const api = {
       withQuery(defaultspackContractRoute("api/coding/workspaces/get"), { workspace_id: workspaceId }),
       { cache: "no-store" },
     );
+  },
+
+  getSavedCodingWorkspace(workspaceId: string) {
+    return loadSavedCodingWorkspace(workspaceId, (id) => request<unknown>(
+      withQuery(defaultspackContractRoute("api/coding/workspaces/get"), { workspace_id: id }),
+      { cache: "no-store" },
+    ));
   },
 
   createCodingWorkspace(payload: {

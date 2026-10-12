@@ -976,10 +976,17 @@ def _catalog_candidates(
         if explicit_connection is not None and not catalog_payload
         else client.providers(CATALOG_CONTRACT)
     )
+    seen_catalog_instances: set[str] = set()
     for catalog_provider in catalog_providers:
         catalog_provider_id = str(
             catalog_provider.get("provider_instance_id") or ""
         )
+        # Captured metadata has one row per operation, not per catalog owner.
+        # Query each owner once; duplicate evidence from distinct owners must
+        # still fail the exact-match capability and pricing checks below.
+        if catalog_provider_id in seen_catalog_instances:
+            continue
+        seen_catalog_instances.add(catalog_provider_id)
         result = client.invoke(
             CATALOG_CONTRACT,
             CATALOG_STREAM_OPERATION if streaming else CATALOG_GENERATE_OPERATION,

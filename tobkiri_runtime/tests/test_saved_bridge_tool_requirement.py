@@ -668,6 +668,48 @@ def test_required_calculator_uses_exact_openrouter_catalog_capability(
     ]
 
 
+def test_required_tools_query_each_catalog_owner_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-operation metadata must not duplicate one owner's exact evidence."""
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog
+
+    model = catalog._normalize_openrouter_model({
+        "id": "stepfun/step-5-preview",
+        "architecture": {
+            "input_modalities": ["text"], "output_modalities": ["text"],
+        },
+        "supported_parameters": ["tools", "tool_choice"],
+    })
+    assert model is not None
+    monkeypatch.setattr(
+        catalog, "_openrouter_inventory", lambda: ([model], "live", False),
+    )
+    _store, outer, _calls, callbacks, session = _bridge_setup(
+        tmp_path, {"mode": "manual", "include": ["calculator"]},
+        model_id="stepfun/step-5-preview", tool_name="calculator",
+    )
+    original_metadata = session.provider_metadata
+
+    def per_operation_metadata(contract_id: str) -> tuple[Mapping[str, Any], ...]:
+        if contract_id != gateway.CATALOG_CONTRACT:
+            return original_metadata(contract_id)
+        return tuple({
+            "provider_instance_id": "catalog-main", "operation_id": operation,
+        } for operation in (
+            "rumi_model_catalog_pack.model-catalog",
+            gateway.CATALOG_GENERATE_OPERATION, gateway.CATALOG_STREAM_OPERATION,
+        ))
+
+    monkeypatch.setattr(session, "provider_metadata", per_operation_metadata)
+    callbacks.preflight(outer)
+
+    assert session.catalog_requests == [{
+        "provider_id": "openrouter", "model_id": "stepfun/step-5-preview",
+    }]
+    assert not session.provider_requests
+
+
 @pytest.mark.parametrize(
     "selection",
     [

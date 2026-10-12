@@ -476,6 +476,26 @@
       "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
     },
     {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.service.ai.route.v1",
+      "operation_id": "rumi_ai_routing_pack.ai-route.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.route.v1"
+          ],
+          "operation": [
+            "rumi_ai_routing_pack.ai-route.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+    },
+    {
       "caller_function_id": "shell.tauri.default",
       "contract_id": "tobkiri.action.turn.saved.v1",
       "operation_id": "rumi_turn_runtime_pack.turn-saved",
@@ -717,6 +737,26 @@
     },
     {
       "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.service.ai.request.prepare.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.request.prepare.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "contract_id": "tobkiri.resource.ai.provider.health.v1",
       "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
       "requested_scope_template": {
@@ -727,6 +767,26 @@
           ],
           "operation": [
             "rumi_provider_registry_pack.provider-registry-health.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.resource.ai.provider.health.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-health.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.health.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-health.stream"
           ]
         },
         "quotas": {},
@@ -757,6 +817,26 @@
     },
     {
       "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.registry.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-resource.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "contract_id": "tobkiri.resource.ai.model.catalog.v1",
       "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
       "requested_scope_template": {
@@ -777,6 +857,26 @@
     },
     {
       "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.catalog.v1"
+          ],
+          "operation": [
+            "rumi_model_catalog_pack.bundled-model-catalog.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "contract_id": "tobkiri.resource.ai.model.profile.v1",
       "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
       "requested_scope_template": {
@@ -787,6 +887,26 @@
           ],
           "operation": [
             "rumi_model_registry_pack.model-profile-resource.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource.stream"
           ]
         },
         "quotas": {},

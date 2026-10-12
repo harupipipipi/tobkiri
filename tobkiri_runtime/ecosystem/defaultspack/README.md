@@ -6,6 +6,14 @@ then name prefixes, then matches in descriptions. For example, `@coding` puts
 an available `Coding` candidate first. Empty searches retain the usual category
 order, and scoped or excluded mentions retain their selection rules.
 
+The Coding workspace picker verifies the exact registered workspace before
+changing its local selection. The saved-workspace read does not include Git or
+file observations, so the composer displays those as unobserved instead of
+claiming an empty folder or missing Git repository. Selecting a workspace does
+not grant trust or replace the Host's execution-time workspace and approval
+checks. A missing selected workspace displays a selection prompt, never another
+workspace's name.
+
 ## Canonical implementation
 
 The captured full-UI conversation CRUD routes use the conversation

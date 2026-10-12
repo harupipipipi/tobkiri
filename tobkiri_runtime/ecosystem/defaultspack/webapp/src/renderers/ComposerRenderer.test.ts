@@ -1642,6 +1642,52 @@ function renderToolModeComposer(overrides: Partial<ComposerRendererProps> = {}):
   }));
 }
 
+test("workspace-only coding context keeps the exact picker without inventing Git facts", () => {
+  const html = renderToolModeComposer({
+    mode: "coding",
+    codingContext: {
+      snapshotAvailability: "workspace-only",
+      branch: null,
+      rootFolder: "/work/approved",
+      workspaceId: "workspace.approved",
+      files: [],
+    },
+    codingWorkspaces: [{
+      workspace_id: "workspace.approved",
+      root_path: "/work/approved",
+      label: "Approved workspace",
+      trusted: false,
+      metadata: {},
+    }],
+    selectedCodingWorkspaceId: "workspace.approved",
+    onCodingWorkspaceTrust: () => undefined,
+    onCodingWorkspaceCreate: () => undefined,
+  });
+  assert.match(html, /aria-label="Coding workspace"/);
+  assert.match(html, /value="workspace.approved"/);
+  assert.match(html, /Git・ファイル一覧は未取得/);
+  assert.doesNotMatch(html, />no git</);
+  assert.doesNotMatch(html, /aria-label="Approved workspace を信頼"/);
+  assert.doesNotMatch(html, /aria-label="workspace を追加"/);
+  assert.match(html, /disabled=""[^>]*title="target folder"/);
+});
+
+test("an absent explicit workspace never displays the first workspace as selected", () => {
+  const html = renderToStaticMarkup(createElement(CodingWorkspacePicker, {
+    workspaces: [{
+      workspace_id: "workspace.other",
+      label: "Other workspace",
+      root_path: "/work/other",
+      trusted: true,
+      metadata: {},
+    }],
+    selectedWorkspaceId: "workspace.missing",
+  }));
+  assert.match(html, /<option value="" selected="">workspace を選択<\/option>/);
+  assert.doesNotMatch(html, /title="\/work\/other"/);
+  assert.doesNotMatch(html, /value="workspace.other" selected/);
+});
+
 test("composer renders the effective tool mode independently of action approval", () => {
   const modes = [
     ["auto", "機能 自動"],

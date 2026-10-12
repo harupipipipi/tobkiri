@@ -419,6 +419,8 @@ export type ToolGroup = {
 export type AppMode = "chat" | "coding" | "agent";
 
 export type CodingContext = {
+  /** A verified workspace record does not include file or Git observations. */
+  snapshotAvailability?: "workspace-only";
   branch: string | null;
   rootFolder: string | null;
   workspaceId?: string | null;

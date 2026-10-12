@@ -6,7 +6,7 @@
     },
     {
       "path": "runtime/gateway.py",
-      "sha256": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
+      "sha256": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8"
     },
     {
       "path": "runtime/route_quote.py",

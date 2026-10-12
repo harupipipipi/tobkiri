@@ -10,6 +10,7 @@ import threading
 import time
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -103,6 +104,157 @@ def _resolve(catalog: BundledCatalog | None = None):
         authority_bindings=authority_bindings,
         security_epoch=7,
     )
+
+
+@pytest.mark.parametrize("delivery_mode", ["buffered", "incremental"])
+def test_route_quote_reads_are_captured_for_each_delivery_mode(
+    delivery_mode: str,
+) -> None:
+    """A quote resolves through its own signed read edges, never generation."""
+    from ecosystem.rumi_ai_gateway_pack.runtime import gateway
+    from ecosystem.rumi_ai_gateway_pack.runtime.route_quote import (
+        FUNCTION_ID,
+        _CONTRACTS,
+        _READ_OPERATIONS,
+        create_route_quote_operation,
+    )
+    from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
+        create_prepare_operation,
+    )
+    from ecosystem.rumi_ai_routing_pack.runtime.router import create_route_operation
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+
+    resolved = _resolve()
+    bindings = {
+        (item["contract_id"], item["operation_id"])
+        for item in resolved.plan["bindings"]
+        if item["caller_function_id"] == FUNCTION_ID
+    }
+    assert bindings == _READ_OPERATIONS
+    calls: list[tuple[str, str]] = []
+    streaming = delivery_mode == "incremental"
+    provider_contract = (
+        gateway.STREAM_PROVIDER_CONTRACT
+        if streaming
+        else gateway.GENERATE_PROVIDER_CONTRACT
+    )
+    provider_operation = (
+        gateway.STREAM_PROVIDER_OPERATION
+        if streaming
+        else gateway.GENERATE_PROVIDER_OPERATION
+    )
+    provider_id = "provider.quote-fixture"
+    model_id = "stepfun/step-5-preview"
+
+    class CapturedQuoteDispatch:
+        """Enforce the resolved quote caller's edges over offline read owners."""
+
+        profile_id = resolved.plan["profile_id"]
+        plan_digest = resolved.plan["plan_digest"]
+
+        def provider_metadata(
+            self, contract_id: str,
+        ) -> tuple[dict[str, Any], ...]:
+            if contract_id == provider_contract:
+                return ({
+                    "provider_instance_id": provider_id,
+                    "operation_id": provider_operation,
+                },)
+            return tuple(
+                {"provider_instance_id": f"owner:{contract_id}", "operation_id": operation}
+                for contract, operation in sorted(bindings)
+                if contract == contract_id
+                and operation.endswith(".stream" if streaming else ".generate")
+            )
+
+        def invoke(
+            self, contract_id: str, operation_id: str, payload: dict[str, Any],
+            *, version_range: str | None = None,
+        ) -> dict[str, Any]:
+            assert version_range is None
+            assert (contract_id, operation_id) in bindings
+            calls.append((contract_id, operation_id))
+            if contract_id == gateway.REQUEST_PREPARE_CONTRACT:
+                return create_prepare_operation(None)(operation_id, payload)
+            if contract_id == gateway.MODEL_PROFILE_CONTRACT:
+                return {
+                    "profile": {
+                        "model_id": model_id,
+                        "metadata": {
+                            "provider_connection_id": "connection.quote-fixture",
+                        },
+                    }
+                }
+            if contract_id == gateway.PROVIDER_REGISTRY_CONTRACT:
+                return {
+                    "revision": 1,
+                    "providers": [
+                        {
+                            "provider_instance_id": "connection.quote-fixture",
+                            "enabled": True,
+                            "adapter_id": "openai-compatible",
+                            "endpoint": "https://openrouter.ai/api/v1",
+                        }
+                    ],
+                }
+            if contract_id == gateway.HEALTH_CONTRACT:
+                return {"providers": []}
+            if contract_id == gateway.CATALOG_CONTRACT:
+                return {
+                    "models": [
+                        {
+                            "model_id": f"openrouter/{model_id}",
+                            "provider_model_id": model_id,
+                            "provider_id": "openrouter",
+                            "capabilities": ["tool_calling"],
+                            "metadata": {
+                                "capability_source": "openrouter_models_api",
+                                "capability_confidence": "provider_reported",
+                                "source_endpoint": "/models?output_modalities=all",
+                            },
+                        }
+                    ],
+                    "inventory": {
+                        "openrouter": {
+                            "source": "live",
+                            "stale": False,
+                        }
+                    },
+                }
+            if contract_id == gateway.ROUTING_CONTRACT:
+                return create_route_operation(None)(operation_id, payload)
+            raise AssertionError("quote attempted a non-read operation")
+
+    quote = create_route_quote_operation(
+        GlobalContractClient(
+            session=CapturedQuoteDispatch(),
+            allowed_contract_ids=_CONTRACTS,
+            consumer_pack_id="rumi_ai_gateway_pack",
+        )
+    )
+    result = quote(
+        FUNCTION_ID,
+        {
+            "model_profile_id": "model.quote-fixture",
+            "messages": [{"role": "user", "content": "Offline route check"}],
+            "delivery_mode": delivery_mode,
+            "requirements": {"tool_calling": True},
+        },
+    )
+    assert result["ready"] is True
+    assert result["model_id"] == model_id
+    assert result["provider_instance_id"] == provider_id
+    suffix = ".stream" if streaming else ".generate"
+    assert {contract for contract, _operation in calls} == {
+        gateway.REQUEST_PREPARE_CONTRACT,
+        gateway.MODEL_PROFILE_CONTRACT,
+        gateway.PROVIDER_REGISTRY_CONTRACT,
+        gateway.HEALTH_CONTRACT,
+        gateway.CATALOG_CONTRACT,
+        gateway.ROUTING_CONTRACT,
+    }
+    assert all(operation.endswith(suffix) for _contract, operation in calls)
+    assert not any(contract == provider_contract for contract, _operation in calls)
 
 
 def test_projected_pack_requires_exact_materialization_catalog_pin() -> None:

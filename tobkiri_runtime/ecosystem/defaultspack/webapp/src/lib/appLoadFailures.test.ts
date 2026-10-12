@@ -108,35 +108,150 @@ test("refresh button reports a failed workspace read to the App error notice", a
   assert.deepEqual(errors, ["HTTP 403"]);
 });
 
-for (const failedPart of ["context", "branch"] as const) {
-  test(`failed ${failedPart} read remains visible without fabricating context`, async () => {
-    const failure = new Error(`${failedPart} unavailable`);
-    const writes: unknown[] = [];
-    const errors: unknown[] = [];
-    const load = appExpression("loadCodingContext", {
-      api: {
-        getCodingContext: async () => {
-          if (failedPart === "context") throw failure;
-          return { branch: "main", root_folder: "/workspace", files: [] };
-        },
-        getGitBranch: async () => {
-          if (failedPart === "branch") throw failure;
-          return { branches: ["main"] };
-        },
-      },
-      codingDirectory: ".",
-      effectiveWorkspaceId: "workspace-1",
-      reportCodingLoadError: (value: unknown) => errors.push(value),
-      setCodingContext: (value: unknown) => writes.push(value),
-    }) as () => Promise<void>;
-    if (failedPart === "context") {
-      await assert.rejects(load(), (error) => error === failure);
-      assert.deepEqual(writes, [null]);
-    } else {
-      await load();
-      assert.deepEqual(errors, [failure]);
-      assert.equal(writes.length, 1);
-      assert.equal((writes[0] as { rootFolder: string }).rootFolder, "/workspace");
+const workspace = {
+  workspace_id: "workspace-1", label: "Work", root_path: "/workspace",
+  trusted: false, metadata: {},
+};
+
+function codingFixture(read: (id: string) => Promise<typeof workspace>, effectiveWorkspaceId: string | null = "workspace-1") {
+  const writes: unknown[] = [];
+  const reads: string[] = [];
+  let viewEpoch = 1;
+  const codingContextReadRevisionRef = { current: 0 };
+  const codingReadModeRef = { current: "coding" };
+  const liveTaskContextRef = { current: { profileId: "profile-1" } };
+  const savedTurnViewFenceRef = { current: {
+    capture: () => viewEpoch,
+    matches: (ticket: number) => ticket === viewEpoch,
+  } };
+  const bindings = {
+    api: { getSavedCodingWorkspace: async (id: string) => {
+      reads.push(id);
+      return read(id);
+    } },
+    effectiveWorkspaceId, codingContextReadRevisionRef, codingReadModeRef,
+    liveTaskContextRef, savedTurnViewFenceRef,
+    setCodingContext: (value: unknown) => writes.push(value),
+  };
+  const load = appExpression("loadCodingContext", bindings) as
+    (id?: string | null) => Promise<typeof workspace | null>;
+  return { load, writes, reads, bindings, codingReadModeRef, liveTaskContextRef,
+    changeView: () => { viewEpoch += 1; } };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+test("coding bootstrap reads the exact owner workspace without legacy context or git calls", async () => {
+  const fixture = codingFixture(async (id) => ({ ...workspace, workspace_id: id }));
+  assert.deepEqual(await fixture.load("workspace-2"), { ...workspace, workspace_id: "workspace-2" });
+  assert.deepEqual(fixture.reads, ["workspace-2"]);
+  assert.deepEqual(fixture.writes, [{ snapshotAvailability: "workspace-only", branch: null,
+    rootFolder: "/workspace", workspaceId: "workspace-2", directory: ".", files: [] }]);
+});
+
+test("coding bootstrap without a selected workspace clears the old display without an owner read", async () => {
+  const fixture = codingFixture(async () => assert.fail("no workspace was selected"), null);
+  assert.equal(await fixture.load(), null);
+  assert.deepEqual(fixture.writes, [null]);
+  assert.deepEqual(fixture.reads, []);
+});
+
+test("failed exact workspace read clears current display and preserves the original failure", async () => {
+  const failure = new Error("workspace unavailable");
+  const fixture = codingFixture(async () => { throw failure; });
+  await assert.rejects(fixture.load(), (error) => error === failure);
+  assert.deepEqual(fixture.writes, [null]);
+  assert.deepEqual(fixture.reads, ["workspace-1"]);
+});
+
+for (const fence of ["mode", "profile", "view"] as const) {
+  for (const outcome of ["success", "failure"] as const) {
+    test(`coding bootstrap discards a stale ${fence} ${outcome}`, async () => {
+      const owner = deferred<typeof workspace>();
+      const fixture = codingFixture(() => owner.promise);
+      const pending = fixture.load();
+      if (fence === "mode") fixture.codingReadModeRef.current = "chat";
+      if (fence === "profile") fixture.liveTaskContextRef.current.profileId = "profile-2";
+      if (fence === "view") fixture.changeView();
+      if (outcome === "success") owner.resolve(workspace);
+      else owner.reject(new Error("stale owner failure"));
+      assert.equal(await pending, null);
+      assert.deepEqual(fixture.writes, []);
+    });
+  }
+}
+
+test("a newer workspace read fences both late success and failure from the previous selection", async () => {
+  for (const lateOutcome of ["success", "failure"] as const) {
+    const first = deferred<typeof workspace>();
+    const second = deferred<typeof workspace>();
+    const fixture = codingFixture((id) => id === "workspace-1" ? first.promise : second.promise);
+    const oldRead = fixture.load("workspace-1");
+    const currentRead = fixture.load("workspace-2");
+    const current = { ...workspace, workspace_id: "workspace-2", root_path: "/second" };
+    second.resolve(current);
+    assert.deepEqual(await currentRead, current);
+    if (lateOutcome === "success") first.resolve(workspace);
+    else first.reject(new Error("old read failed"));
+    assert.equal(await oldRead, null);
+    assert.equal(fixture.writes.length, 1);
+    assert.equal((fixture.writes[0] as { workspaceId: string }).workspaceId, "workspace-2");
+  }
+});
+
+function workspaceSelectionFixture(fixture: ReturnType<typeof codingFixture>) {
+  const selected: string[] = [];
+  const modes: string[] = [];
+  const errors: string[] = [];
+  const select = appExpression("handleCodingWorkspaceSelect", {
+    ...fixture.bindings,
+    cancelPendingMentionAttachments: () => undefined,
+    loadCodingContext: fixture.load,
+    handleModeChange: (mode: string) => modes.push(mode),
+    setSelectedCodingWorkspaceId: (id: string) => selected.push(id),
+    setError: (error: string) => errors.push(error),
+  }) as (id: string) => void;
+  return { select, selected, modes, errors };
+}
+
+test("workspace selection commits local state only after the verified owner read", async () => {
+  const owner = deferred<typeof workspace>();
+  const fixture = codingFixture(() => owner.promise);
+  const selection = workspaceSelectionFixture(fixture);
+  selection.select("workspace-1");
+  assert.deepEqual(selection.selected, []);
+  owner.resolve(workspace);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(selection.selected, ["workspace-1"]);
+  assert.deepEqual(selection.modes, ["coding"]);
+  assert.deepEqual(selection.errors, []);
+});
+
+for (const fence of ["mode", "profile", "view", "newer selection"] as const) {
+  test(`workspace selection cannot commit after a ${fence} change`, async () => {
+    const first = deferred<typeof workspace>();
+    const second = deferred<typeof workspace>();
+    const fixture = codingFixture((id) => id === "workspace-1" ? first.promise : second.promise);
+    const selection = workspaceSelectionFixture(fixture);
+    selection.select("workspace-1");
+    if (fence === "mode") fixture.codingReadModeRef.current = "chat";
+    if (fence === "profile") fixture.liveTaskContextRef.current.profileId = "profile-2";
+    if (fence === "view") fixture.changeView();
+    if (fence === "newer selection") selection.select("workspace-2");
+    first.resolve(workspace);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(selection.selected, []);
+    assert.deepEqual(selection.modes, []);
+    assert.deepEqual(selection.errors, []);
+    if (fence === "newer selection") {
+      second.resolve({ ...workspace, workspace_id: "workspace-2" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepEqual(selection.selected, ["workspace-2"]);
     }
   });
 }

@@ -2932,7 +2932,10 @@ export function ComposerRenderer({
   const directoryEntries = (codingContext?.entries ?? []).filter((entry) => entry.is_dir);
   const branchOptions = codingContext?.branches?.length ? codingContext.branches : codingContext?.branch ? [codingContext.branch] : [];
   const currentDirectory = codingContext?.directory || ".";
-  const selectedCodingWorkspace = codingWorkspaces.find((workspace) => workspace.workspace_id === (selectedCodingWorkspaceId || codingContext?.workspaceId)) ?? codingWorkspaces[0] ?? null;
+  const explicitCodingWorkspaceId = selectedCodingWorkspaceId || codingContext?.workspaceId;
+  const selectedCodingWorkspace = explicitCodingWorkspaceId
+    ? codingWorkspaces.find((workspace) => workspace.workspace_id === explicitCodingWorkspaceId) ?? null
+    : codingWorkspaces[0] ?? null;
   const atMentionKnownValues = useMemo(() => [
     ...entityCandidates.map((candidate) => candidate.syntax.slice(1)),
     ...composerKnownMentionValues(toolItems),
@@ -5313,8 +5316,10 @@ export function ComposerRenderer({
                 selectedWorkspaceId={selectedCodingWorkspace?.workspace_id ?? selectedCodingWorkspaceId ?? codingContext.workspaceId ?? null}
                 disabled={isGenerating}
                 onSelect={onCodingWorkspaceSelect}
-                onTrust={onCodingWorkspaceTrust}
-                onCreate={onCodingWorkspaceCreate}
+                onTrust={codingContext.snapshotAvailability === "workspace-only"
+                  ? undefined : onCodingWorkspaceTrust}
+                onCreate={codingContext.snapshotAvailability === "workspace-only"
+                  ? undefined : onCodingWorkspaceCreate}
                 onRefresh={onCodingWorkspacesRefresh}
               />
               <span className="inline-flex min-w-0 items-center gap-1">
@@ -5334,7 +5339,9 @@ export function ComposerRenderer({
                     ))}
                   </select>
                 ) : (
-                  <span className="font-mono">{codingContext.branch ?? "no git"}</span>
+                  <span className="font-mono">{codingContext.snapshotAvailability === "workspace-only"
+                    ? "Git・ファイル一覧は未取得"
+                    : codingContext.branch ?? "no git"}</span>
                 )}
               </span>
               <span className="inline-flex items-center gap-1">
@@ -5342,7 +5349,7 @@ export function ComposerRenderer({
                 <select
                   value={currentDirectory}
                   onChange={(event) => onCodingDirectoryChange?.(event.target.value)}
-                  disabled={isGenerating}
+                  disabled={isGenerating || codingContext.snapshotAvailability === "workspace-only"}
                   className="max-w-[140px] bg-transparent font-mono text-zinc-400 outline-none hover:text-zinc-200 disabled:opacity-50"
                   title="target folder"
                 >

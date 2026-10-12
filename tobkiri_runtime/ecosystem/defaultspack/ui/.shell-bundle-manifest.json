@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "2b58e6ee1ab8e2a602008f1cfa1d8e5f8359ed1e6487f33e58dc2cc75888213d",
+    "digest": "9db4e9eb40b436b5cc061990e21c0e264456e11bead59c3ee9d668a00d03113f",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9621,
-        "sha256": "38ce6c79ea97f6a6ee5027a05a815f7e7184326df8d63f08a98b8aeef200ca43"
+        "size": 9658,
+        "sha256": "dcf1edee074eb6eb0182ccb46e972345c6f5b3a929e366d2c40833e667466e4b"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 443977,
-        "sha256": "87dc6ebe53883cec56d68a63cbcc37bd69a28bb1a3abeea8e41176662b09ba54"
+        "size": 444747,
+        "sha256": "eb919f866b9e43a40d5da25c6fb8f5bc231575875820e069d11b9d5b68839a82"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -650,8 +650,8 @@
       },
       {
         "path": "src/components/coding/CodingWorkspacePicker.tsx",
-        "size": 4551,
-        "sha256": "0a77c70442fc3670b9115388e959a0b4cc7adfb8d3b8b8dcc4eae2e4d3e2eb6b"
+        "size": 4574,
+        "sha256": "93d7796c9acd5101f9b6d1829addf98a953784a81953c775f82a56abd83abf4e"
       },
       {
         "path": "src/components/coding/DiffFileTree.tsx",
@@ -1695,13 +1695,13 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 238461,
-        "sha256": "a710a438e22fe58aa78334d98b3b1fe56e750c5d48f5db1d88ebe351ca551f4c"
+        "size": 238790,
+        "sha256": "ab058f4a8829a6634c41411e9cd8fafeba2c2e3709cbc1495e4ad858eb4b42fb"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
-        "size": 5777,
-        "sha256": "990de269bb9ca672767053be0aa14e082d21c2665f092f13f7b29526ee763388"
+        "size": 11340,
+        "sha256": "a432f95dd3739b2c2420f0c25f6dff18617d6a2ee2d1f03a99c02caff50adc1a"
       },
       {
         "path": "src/lib/approvalCapabilitiesApi.test.ts",
@@ -2439,6 +2439,16 @@
         "sha256": "63d77639d0fa30ba5a2346d8090ce131f62af8d0f7841f5ed09a369ccd4c774a"
       },
       {
+        "path": "src/lib/savedCodingWorkspace.test.ts",
+        "size": 4078,
+        "sha256": "bbec44ae1d4907e32b429267c4597f209bd2580f51eafc4d631231d48befc230"
+      },
+      {
+        "path": "src/lib/savedCodingWorkspace.ts",
+        "size": 2711,
+        "sha256": "84b926d8d4db4108af39eb804849444e616e8811d4821e27573e99347f5dec65"
+      },
+      {
         "path": "src/lib/scopedPendingChat.test.ts",
         "size": 3092,
         "sha256": "c8a86202e92ef86497a0f9454e26d9759a284fa5666fc0dc636985783d2cc121"
@@ -2730,13 +2740,13 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 113241,
-        "sha256": "4d99ed28da1780efb23ad64a006ed6c31e4851a1f43c058fadba0ec71f446f41"
+        "size": 114939,
+        "sha256": "3839e8a9e9e48d754fc08a7a82bbed28cb6e3eb5b8100c3e49b783053a0dac34"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 233924,
-        "sha256": "a5d5c8cdd48658905359e0db546df0fa7272c92fa1afa01d748643ec750e91bc"
+        "size": 234402,
+        "sha256": "4e8d9615aa7bbe85d097108f0f09ed47066b4c32b422e690a5d59d2e97d5b810"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -2895,8 +2905,8 @@
       },
       {
         "path": "src/renderers/types.ts",
-        "size": 17388,
-        "sha256": "045b539f31f16aca52807d9e9bab4bd04ff10a316cc95817eb70669b0e4dec1f"
+        "size": 17511,
+        "sha256": "5c48027ba0f60e17bf3190befe8d46f3687e072f4e5acbf5faafdb12a31db7e8"
       },
       {
         "path": "src/settings/controlCenter.test.ts",
@@ -3011,7 +3021,7 @@
     ]
   },
   "bundle": {
-    "digest": "cc47fec9e081da2c147800a8fda48cf56122187a9de3b2cd42a24b3ee83e7d35",
+    "digest": "e5048af837f0330ba0c60237b9fb1d4aceb8684b15851232310d4a2cd10c9d74",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3025,8 +3035,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2762916,
-        "sha256": "cd016b09535e9252e8e44b008a3685b75f5f39fc56a31c527414831089457725"
+        "size": 2764596,
+        "sha256": "f29713b96c5a2e44a01399c84748e9a92a1df2bdda1b15c9ce2e8f538948f8cb"
       },
       {
         "path": "shell-icons.js",

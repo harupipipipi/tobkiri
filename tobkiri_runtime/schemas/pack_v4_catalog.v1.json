@@ -2791,7 +2791,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
+              "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2824,7 +2824,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
+              "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2857,7 +2857,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf"
+              "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2967,7 +2967,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
+          "digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },

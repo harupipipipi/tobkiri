@@ -3208,7 +3208,10 @@ export function ChatApp() {
   const [ultraYoloMode, setUltraYoloMode] = useLocalStorage("rumi-ultra-yolo-mode", false);
   const [ultraYoloRestoreYoloMode, setUltraYoloRestoreYoloMode] = useLocalStorage("rumi-ultra-yolo-restore-yolo-mode", false);
   const [mode, setMode] = useLocalStorage<AppMode>("rumi-app-mode", "agent");
+  const codingReadModeRef = useRef(mode);
+  codingReadModeRef.current = mode;
   const [codingContext, setCodingContext] = useState<CodingContext | null>(null);
+  const codingContextReadRevisionRef = useRef(0);
   const [codingWorkspaces, setCodingWorkspaces] = useState<CodingWorkspaceRecord[]>([]);
   const [selectedCodingWorkspaceId, setSelectedCodingWorkspaceId] = useState<string | null>(null);
   const [pendingNewTaskContext, setPendingNewTaskContext] = useState<PendingNewTaskContext | null>(null);
@@ -4415,29 +4418,36 @@ export function ChatApp() {
 
   const loadCodingContext = useCallback(async (workspaceIdOverride?: string | null) => {
     const workspaceId = workspaceIdOverride ?? effectiveWorkspaceId;
+    const revision = ++codingContextReadRevisionRef.current;
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    const readMode = codingReadModeRef.current;
+    const profileId = liveTaskContextRef.current.profileId;
+    const isCurrentRead = () => revision === codingContextReadRevisionRef.current
+      && savedTurnViewFenceRef.current.matches(viewTicket)
+      && codingReadModeRef.current === readMode
+      && liveTaskContextRef.current.profileId === profileId;
+    if (!workspaceId) {
+      setCodingContext(null);
+      return null;
+    }
     try {
-      const [result, branchInfo] = await Promise.all([
-        api.getCodingContext({ directory: codingDirectory, workspace_id: workspaceId }),
-        api.getGitBranch({ workspace_id: workspaceId }).catch((branchError) => {
-          reportCodingLoadError(branchError);
-          return null;
-        }),
-      ]);
+      const workspace = await api.getSavedCodingWorkspace(workspaceId);
+      if (!isCurrentRead()) return null;
       setCodingContext({
-        branch: result.branch,
-        rootFolder: result.root_folder,
-        workspaceId: result.workspace_id ?? workspaceId,
-        directory: result.directory ?? codingDirectory,
-        branches: branchInfo?.branches ?? [],
-        files: result.files,
-        entries: result.entries,
-        git: result.git,
+        snapshotAvailability: "workspace-only",
+        branch: null,
+        rootFolder: workspace.root_path,
+        workspaceId: workspace.workspace_id,
+        directory: ".",
+        files: [],
       });
+      return workspace;
     } catch (contextError) {
+      if (!isCurrentRead()) return null;
       setCodingContext(null);
       throw contextError;
     }
-  }, [codingDirectory, effectiveWorkspaceId, reportCodingLoadError]);
+  }, [effectiveWorkspaceId]);
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -7221,10 +7231,17 @@ export function ChatApp() {
 
   const handleCodingWorkspaceSelect = (workspaceId: string) => {
     cancelPendingMentionAttachments();
-    handleModeChange("coding");
-    setSelectedCodingWorkspaceId(workspaceId);
-    void api.selectCodingWorkspace(workspaceId)
-      .then((selected) => loadCodingWorkspaces().then(() => loadCodingContext(selected.selected_workspace_id ?? workspaceId)))
+    const viewTicket = savedTurnViewFenceRef.current.capture();
+    const readMode = codingReadModeRef.current;
+    const profileId = liveTaskContextRef.current.profileId;
+    void loadCodingContext(workspaceId)
+      .then((workspace) => {
+        if (!workspace || !savedTurnViewFenceRef.current.matches(viewTicket)
+          || codingReadModeRef.current !== readMode
+          || liveTaskContextRef.current.profileId !== profileId) return;
+        handleModeChange("coding");
+        setSelectedCodingWorkspaceId(workspace.workspace_id);
+      })
       .catch((workspaceError) => setError(workspaceError instanceof Error ? workspaceError.message : "workspace selection failed."));
   };
 
@@ -8759,7 +8776,8 @@ export function ChatApp() {
   };
 
   const Renderers = useMemo(() => resolveDefaultspackRenderers(catalog), [catalog]);
-  const codingSidebarPanel = mode === "coding" ? (
+  const codingSidebarPanel = mode === "coding" && codingContext
+    && codingContext.snapshotAvailability !== "workspace-only" ? (
     <CodingCockpit
       variant="sidebar"
       workspaces={codingWorkspaces}

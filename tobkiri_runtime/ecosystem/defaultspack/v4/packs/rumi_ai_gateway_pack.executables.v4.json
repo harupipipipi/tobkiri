@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:c033b0f721ee6a93685ebe90f811810ce2186a045a853d8ad49e40415cb5533d",
+  "source_identity": "sha256:cb25733c59c0ae5e46bd06a323a25cb12f65680a2cd901814ef7c13a1f736ba3",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
+      "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -263,7 +263,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
+      "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -297,7 +297,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:a073d19c6a4b8bb87dafd1a8969f3486403712f9b9b4d3d8fcf9d709dc0666cf",
+      "implementation_digest": "sha256:09a41dd4ffa5eba775e1545620f923ac9fd407bce5066064a33b46e346a10bd8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -328,6 +328,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:9893f458aad85dc76dbd0543694e0012149e9c4e40ddbcf7b0a94f6980718344",
-  "catalog_digest": "sha256:8c64a7e8276a1ade7d4a50e8c102a83b2f2c8b9122b45a48a7812ed569284caa"
+  "materialization_catalog_digest": "sha256:86793d98900df180a8c4655945557ede95be7914e66c2325574318f80873e9c0",
+  "catalog_digest": "sha256:95453c4d6d98cebfd7e664e573275fe611d5ca5b739452e6d42a34741be665f5"
 }
