@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "040be03a59712166cf7edb8aaf1ce5132b4218e8c53294e0b0e27b185d666a20",
+    "digest": "3a2297ceb4782892e8bad63789d58cfbcd25ddb22f2765e502b31eacdd0daf84",
     "entries": [
       {
         "path": "index.html",
@@ -2005,13 +2005,13 @@
       },
       {
         "path": "src/lib/composerWidgets.test.ts",
-        "size": 15016,
-        "sha256": "20a50927309859c6174ba79c7200ee7b2a7362c014fe64c9962c95ba3df8bc8c"
+        "size": 16338,
+        "sha256": "2cd446cf3b69e7b1397ce6c171d8248d1b560c4dfaaefa83be37592392c67d6a"
       },
       {
         "path": "src/lib/composerWidgets.ts",
-        "size": 23107,
-        "sha256": "f54ca37dfc8001d4fbbda5a0c712c3eda81436bba3de7863ce425ee7d6ea4306"
+        "size": 23924,
+        "sha256": "bdea17e354bb27ec3559169cbfd11656e6bd0933960458dd64f460bd5f1ba4c9"
       },
       {
         "path": "src/lib/confirmedComposerReferences.test.ts",
@@ -2730,13 +2730,13 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 110807,
-        "sha256": "0bbff205f5e8d175f6e2541c088585e44b3be307a793e7cecfca722ab22743c2"
+        "size": 113241,
+        "sha256": "4d99ed28da1780efb23ad64a006ed6c31e4851a1f43c058fadba0ec71f446f41"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 232773,
-        "sha256": "4e97199ab4e33178e434a4945c63b861218fbe423630730a1f6c06e0490a9ca4"
+        "size": 233924,
+        "sha256": "a5d5c8cdd48658905359e0db546df0fa7272c92fa1afa01d748643ec750e91bc"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -3011,7 +3011,7 @@
     ]
   },
   "bundle": {
-    "digest": "83afee0b70380de718096f42bd67b011c71de9677ebdb0d0fe40b88d2df5296e",
+    "digest": "52f55b480bb596c221aa61f25ebfedfa4f0dd99aa3f217bc3912ef2f8e2649ca",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3025,8 +3025,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2761222,
-        "sha256": "e0617ff89ac4efe6198f142e619a25bdce3814749f45c7f639e24e82be37b9f1"
+        "size": 2762027,
+        "sha256": "d2d76222b6ce0d218d5eb7c76e590193aacb149d577bf36c0c4a5be66aa041d5"
       },
       {
         "path": "shell-icons.js",

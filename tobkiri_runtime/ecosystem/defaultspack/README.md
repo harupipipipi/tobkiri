@@ -1,6 +1,11 @@
 
 # defaultspack
 
+Tobkiri's `@` candidate menu prioritizes exact names, IDs, and skill aliases,
+then name prefixes, then matches in descriptions. For example, `@coding` puts
+an available `Coding` candidate first. Empty searches retain the usual category
+order, and scoped or excluded mentions retain their selection rules.
+
 ## Canonical implementation
 
 The captured full-UI conversation CRUD routes use the conversation

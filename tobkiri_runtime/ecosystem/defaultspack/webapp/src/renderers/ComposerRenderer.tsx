@@ -124,7 +124,7 @@ import {
   type ComposerVoicePhase,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
-import { composerFileMentionWidget, composerKnownMentionValues, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation, composerMentionMetadataFromWidgets } from "../lib/composerWidgets";
+import { composerFileMentionWidget, composerKnownMentionValues, composerMentionMatchRank, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation, composerMentionMetadataFromWidgets } from "../lib/composerWidgets";
 import { WidgetAttentionIcon } from "../lib/widgetAttention";
 import {
   COMPOSER_REFERENCE_MIME,
@@ -1905,13 +1905,34 @@ export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkil
   return withSettingsAssistantSkill(skills);
 }
 
-/** Keep palette section headings contiguous while preserving each section's source order. */
+/** Keep headings contiguous while promoting sections containing the closest name match. */
 export function orderComposerAtMentionCandidates(
   candidates: readonly ComposerAtMentionCandidate[],
+  query = "",
 ): ComposerAtMentionCandidate[] {
-  return COMPOSER_MENTION_SECTION_ORDER.flatMap((sectionId) => (
+  const rank = (candidate: ComposerAtMentionCandidate): number => {
+    const names = [candidate.label];
+    if (candidate.kind === "tool") names.push(candidate.item.id, candidate.item.label, candidate.item.ui?.composer_label ?? "");
+    else if (candidate.kind === "skill") names.push(candidate.skill.id, ...(candidate.skill.aliases ?? []));
+    else if (candidate.kind === "service") names.push(candidate.service.id);
+    else names.push(candidate.kind === "file" ? candidate.file : candidate.entity.id);
+    return composerMentionMatchRank(query, names);
+  };
+  return COMPOSER_MENTION_SECTION_ORDER.map((sectionId) => (
     candidates.filter((candidate) => candidate.section.id === sectionId)
-  ));
+      .sort((a, b) => rank(a) - rank(b))
+  )).filter((section) => section.length > 0)
+    .sort((a, b) => rank(a[0]) - rank(b[0]))
+    .flat();
+}
+
+/** Rank matching enabled tool groups before applying the palette limit. */
+export function filterComposerServiceMentions(groups: ToolGroup[], query: string, limit = 8): ToolGroup[] {
+  const q = query.trim().toLowerCase();
+  const rank = (group: ToolGroup) => composerMentionMatchRank(q, [group.id, group.label]);
+  return groups.filter((group) => group.items.some((item) => !item.disabled))
+    .filter((group) => !q || `${group.id} ${group.label} ${group.description}`.toLowerCase().includes(q))
+    .sort((a, b) => rank(a) - rank(b)).slice(0, limit);
 }
 
 export type JsonListPanelItem = {
@@ -2206,9 +2227,11 @@ export function commandArgumentPalettePayload(
 }
 
 export function filterAtMentionFiles(files: string[], query: string): string[] {
-  if (!query) return files.slice(0, 20);
-  const q = query.toLowerCase();
-  return files.filter((file) => file.toLowerCase().includes(q)).slice(0, 20);
+  const q = query.trim().toLowerCase();
+  if (!q) return files.slice(0, 20);
+  return files.filter((file) => file.toLowerCase().includes(q))
+    .sort((a, b) => composerMentionMatchRank(q, [a]) - composerMentionMatchRank(q, [b]))
+    .slice(0, 20);
 }
 
 export type ComposerInlineMentionPart = {
@@ -2947,16 +2970,7 @@ export function ComposerRenderer({
         section: COMPOSER_MENTION_SECTIONS.skill,
       };
     });
-    const normalizedServiceQuery = query.trim().toLowerCase();
-    const serviceCandidates = mentionToolGroups
-      .filter((service) => service.items.some((item) => !item.disabled))
-      .filter((service) => (
-        !normalizedServiceQuery
-        || `${service.id} ${service.label} ${service.description}`
-          .toLowerCase()
-          .includes(normalizedServiceQuery)
-      ))
-      .slice(0, 8)
+    const serviceCandidates = filterComposerServiceMentions(mentionToolGroups, query)
       .map((service) => {
         const availableItemCount = service.items.filter((item) => !item.disabled).length;
         return {
@@ -2982,7 +2996,7 @@ export function ComposerRenderer({
           section: COMPOSER_MENTION_SECTIONS.file,
         }))
       : [];
-    const candidates = orderComposerAtMentionCandidates([
+    const candidates: ComposerAtMentionCandidate[] = [
       ...toolsInSection("plugin"),
       ...toolsInSection("builtin-tool"),
       ...toolsInSection("custom-tool"),
@@ -2990,8 +3004,9 @@ export function ComposerRenderer({
       ...serviceCandidates,
       ...(exclude ? [] : fileCandidates),
       ...(exclude ? [] : composerEntityMentionCandidates(entityCandidates, rawQuery)),
-    ]);
-    return scope ? candidates.filter((candidate) => candidate.kind === "entity" ? candidate.entity.kind === scope : candidate.kind === scope) : candidates;
+    ];
+    const scopedCandidates = scope ? candidates.filter((candidate) => candidate.kind === "entity" ? candidate.entity.kind === scope : candidate.kind === scope) : candidates;
+    return orderComposerAtMentionCandidates(scopedCandidates, query);
   }, [entityCandidates, atMentionQuery, codingContext?.files, mentionSkills, mode, mentionToolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);

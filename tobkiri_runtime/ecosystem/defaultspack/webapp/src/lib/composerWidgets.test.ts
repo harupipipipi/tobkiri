@@ -19,6 +19,7 @@ import {
   composerToolMentionDisplay,
   composerToolMentionWidget,
   filterComposerSkillMentions,
+  filterComposerToolMentions,
   isSafeLocalEndpoint,
   reconcileComposerSemanticDraft,
   resolveComposerWidgetDrop,
@@ -235,6 +236,29 @@ test("sidebar projection keeps root widget presentation for composer surfaces", 
     ui: undefined,
     presentation: { icon_attention: attention },
   }]);
+});
+
+test("mention names outrank incidental matches before limiting results", () => {
+  const tools: ComposerExtensionItem[] = [
+    { id: "incidental", label: "Files", description: "Coding helpers" },
+    { id: "prefix", label: "Coding workspace" },
+    { id: "exact", label: "Internal", ui: { composer_label: "Coding" } },
+    { id: "coding", label: "By ID" },
+    { id: "disabled", label: "Coding", disabled: true },
+  ];
+  assert.deepEqual(filterComposerToolMentions(tools, " CoDiNg ").map(({ id }) => id), ["exact", "coding", "prefix", "incidental"]);
+  assert.equal(filterComposerToolMentions(tools, "coding", 1)[0]?.id, "exact");
+  assert.deepEqual(filterComposerToolMentions(tools, "").map(({ id }) => id), ["incidental", "prefix", "exact", "coding"]);
+
+  const skills = [
+    { id: "incidental", label: "Files", description: "Coding helpers" },
+    { id: "prefix", label: "Coding workspace" },
+    { id: "alias", label: "Workspace", aliases: ["Coding"] },
+    { id: "exact", label: "Coding" },
+  ];
+  assert.deepEqual(filterComposerSkillMentions(skills, " CoDiNg ").map(({ id }) => id), ["alias", "exact", "prefix", "incidental"]);
+  assert.equal(filterComposerSkillMentions(skills, "coding", 1)[0]?.id, "alias");
+  assert.deepEqual(filterComposerSkillMentions(skills, ""), skills);
 });
 
 test("composer skill mentions resolve aliases and create prompt widgets", () => {

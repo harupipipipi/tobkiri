@@ -35,6 +35,7 @@ import {
   composerMentionSectionForToolGroup,
   composerMentionSectionForTool,
   orderComposerAtMentionCandidates,
+  filterComposerServiceMentions,
   prepareComposerAttachments,
   composerClipboardFiles,
   composerHelperCopy,
@@ -83,6 +84,8 @@ test("composer file mention filters string context files", () => {
 
   assert.deepEqual(filterAtMentionFiles(files, "md"), ["README.md", "docs/context.md"]);
   assert.equal(typeof filterAtMentionFiles(files, "")[0], "string");
+  const codingFiles = [...Array.from({ length: 25 }, (_, index) => `src/${index}/coding.txt`), "Coding", "Coding-notes.md"];
+  assert.deepEqual(filterAtMentionFiles(codingFiles, " CoDiNg ").slice(0, 2), ["Coding", "Coding-notes.md"]);
 });
 
 test("composer accepts only saved-turn compatible inline images", () => {
@@ -369,6 +372,31 @@ test("composer service mentions inherit a homogeneous catalog section and isolat
   assert.equal((html.match(/プラグイン・接続/g) ?? []).length, 1);
   assert.equal((html.match(/内蔵ツール/g) ?? []).length, 1);
   assert.equal((html.match(/ツールのまとまり/g) ?? []).length, 1);
+});
+
+test("exact Coding match leads across sections without repeating section headings", () => {
+  const plugin: ComposerExtensionItem = { id: "plugin", label: "Files", description: "Coding tools", sourcePackId: "example" };
+  const prefix: ComposerExtensionItem = { id: "prefix", label: "Coding files", sourcePackId: "example" };
+  const skill: ComposerSkillItem = { id: "coding", label: "Coding" };
+  const candidates: ComposerAtMentionCandidate[] = [
+    { kind: "tool", id: "tool:plugin", label: plugin.label, item: plugin, section: composerMentionSectionForTool(plugin) },
+    { kind: "tool", id: "tool:prefix", label: prefix.label, item: prefix, section: composerMentionSectionForTool(prefix) },
+    { kind: "skill", id: "skill:coding", label: skill.label, skill, section: { id: "skill", label: "Skills", badge: "Skill", tone: "violet" } },
+  ];
+  assert.deepEqual(orderComposerAtMentionCandidates(candidates, " CoDiNg ").map(({ id }) => id), ["skill:coding", "tool:prefix", "tool:plugin"]);
+  assert.deepEqual(orderComposerAtMentionCandidates(candidates).map(({ id }) => id), ["tool:plugin", "tool:prefix", "skill:coding"]);
+  const exactPlugin = { ...candidates[0], label: "Coding" };
+  assert.equal(orderComposerAtMentionCandidates([exactPlugin, candidates[2]], "coding")[0]?.id, "tool:plugin");
+});
+
+test("late exact Coding service survives the result cap and excludes disabled groups", () => {
+  const enabled: ComposerExtensionItem = { id: "files", label: "Files" };
+  const groups: ToolGroup[] = Array.from({ length: 9 }, (_, index) => ({ id: `files-${index}`, label: `Files ${index}`, description: "Coding tools", items: [enabled] }));
+  const exact: ToolGroup = { id: "coding", label: "Coding", description: "Workspace", items: [enabled] };
+  const disabled: ToolGroup = { ...exact, id: "disabled", items: [{ ...enabled, disabled: true }] };
+  assert.equal(filterComposerServiceMentions([...groups, disabled, exact], "coding")[0]?.id, "coding");
+  assert.equal(filterComposerServiceMentions([...groups, disabled, exact], "coding", 1).length, 1);
+  assert.deepEqual(filterComposerServiceMentions([groups[0], disabled, exact], ""), [groups[0], exact]);
 });
 
 test("composer mention filters retain known tools and files while typing", () => {

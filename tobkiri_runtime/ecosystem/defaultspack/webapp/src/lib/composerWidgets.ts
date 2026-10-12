@@ -134,11 +134,22 @@ function composerToolSearchText(item: ComposerExtensionItem): string {
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
+/** Rank names and aliases before incidental matches in descriptions. */
+export function composerMentionMatchRank(query: string, names: readonly (string | undefined)[]): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const normalizedNames = names.filter((name): name is string => Boolean(name)).map((name) => name.trim().toLowerCase());
+  if (normalizedNames.some((name) => name === q)) return 0;
+  return normalizedNames.some((name) => name.startsWith(q)) ? 1 : 2;
+}
+
 export function filterComposerToolMentions(items: ComposerExtensionItem[], query: string, limit = 20): ComposerExtensionItem[] {
   const q = query.trim().toLowerCase();
   const candidates = items.filter((item) => !item.disabled);
   if (!q) return candidates.slice(0, limit);
-  return candidates.filter((item) => composerToolSearchText(item).includes(q)).slice(0, limit);
+  const rank = (item: ComposerExtensionItem) => composerMentionMatchRank(q, [item.id, item.label, item.ui?.composer_label]);
+  return candidates.filter((item) => composerToolSearchText(item).includes(q))
+    .sort((a, b) => rank(a) - rank(b)).slice(0, limit);
 }
 
 export function composerToolMentionDisplay(item: ComposerExtensionItem): { label: string; description?: string } {
@@ -210,7 +221,9 @@ function composerSkillSearchText(item: ComposerSkillItem): string {
 export function filterComposerSkillMentions(items: ComposerSkillItem[], query: string, limit = 12): ComposerSkillItem[] {
   const q = query.trim().toLowerCase();
   if (!q) return items.slice(0, limit);
-  return items.filter((item) => composerSkillSearchText(item).includes(q)).slice(0, limit);
+  const rank = (item: ComposerSkillItem) => composerMentionMatchRank(q, [item.id, item.label, ...(item.aliases ?? [])]);
+  return items.filter((item) => composerSkillSearchText(item).includes(q))
+    .sort((a, b) => rank(a) - rank(b)).slice(0, limit);
 }
 
 export function composerSkillMentionDisplay(item: ComposerSkillItem): { label: string; description?: string } {
