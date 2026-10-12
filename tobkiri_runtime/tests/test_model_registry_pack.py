@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -83,3 +85,63 @@ def test_migration_requires_source_hash_and_can_rollback(tmp_path) -> None:
     assert registry.rollback_migration(result["migration_id"])["rolled_back"]
     assert registry.snapshot()["profiles"] == []
 
+
+@pytest.mark.parametrize("enabled", [1, "true"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"model_id": "another/model"},
+        {"metadata": {"provider_connection_id": "provider.other"}},
+    ],
+)
+def test_truthy_activation_cannot_bypass_the_existing_route_guard(
+    tmp_path: Path,
+    enabled: Any,
+    change: dict[str, Any],
+) -> None:
+    """Owner-side boolean coercion must enforce the same activation identity."""
+    registry = ModelRegistry("default", user_data_root=tmp_path)
+    record = {
+        "model_profile_id": "daily",
+        "model_id": "catalog/model",
+        "metadata": {"provider_connection_id": "provider.fixture"},
+    }
+    registry.save({**record, "enabled": False}, expected_revision=0)
+    before = registry.snapshot()
+
+    with pytest.raises(ValueError, match="route identity changed"):
+        registry.save(
+            {**record, **change, "enabled": enabled},
+            expected_revision=1,
+            preserve_existing=True,
+        )
+
+    assert registry.snapshot() == before
+
+
+def test_omitted_enabled_keeps_an_existing_disabled_route_disabled(
+    tmp_path: Path,
+) -> None:
+    """An ordinary preserved update does not request activation implicitly."""
+    registry = ModelRegistry("default", user_data_root=tmp_path)
+    registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "catalog/model",
+            "enabled": False,
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        },
+        expected_revision=0,
+    )
+
+    saved = registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "another/model",
+            "metadata": {"provider_connection_id": "provider.other"},
+        },
+        expected_revision=1,
+        preserve_existing=True,
+    )
+
+    assert saved["profile"]["enabled"] is False

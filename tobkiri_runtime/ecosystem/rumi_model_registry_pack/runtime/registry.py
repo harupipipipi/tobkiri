@@ -95,7 +95,7 @@ class ModelRegistry:
             profile_id = normalized["model_profile_id"]
             current = state["profiles"].get(profile_id)
             if preserve_existing and isinstance(current, Mapping):
-                if record.get("enabled") is True:
+                if "enabled" in record and normalized["enabled"]:
                     connection = _provider_connection(normalized)
                     if (
                         not connection
