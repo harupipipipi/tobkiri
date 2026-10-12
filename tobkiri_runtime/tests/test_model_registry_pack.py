@@ -66,7 +66,7 @@ def test_migration_requires_source_hash_and_can_rollback(tmp_path) -> None:
                 "requirements": {},
                 "credential_handle": None,
                 "parameters": {},
-                "enabled": True,
+                "enabled": False,
                 "metadata": {},
             }
         ],
@@ -79,6 +79,7 @@ def test_migration_requires_source_hash_and_can_rollback(tmp_path) -> None:
     )
 
     assert registry.resolve("default")["resolved_profile_id"] == "daily"
+    assert registry.get("daily")["enabled"] is False
     assert registry.rollback_migration(result["migration_id"])["rolled_back"]
     assert registry.snapshot()["profiles"] == []
 

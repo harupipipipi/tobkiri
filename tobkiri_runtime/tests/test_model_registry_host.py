@@ -6,8 +6,16 @@ from typing import Any
 
 import pytest
 
+from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
+    normalize_model_profile_save,
+    present_model_profile_saved,
+    present_model_profiles,
+)
 from ecosystem.rumi_model_registry_pack.runtime.process import ModelRegistryHostFactoryV4
-from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+from ecosystem.rumi_model_registry_pack.runtime.registry import (
+    ModelRegistry,
+    ModelRegistryConflict,
+)
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
 
@@ -223,3 +231,172 @@ def test_model_read_rejects_foreign_profile_and_write_fields(tmp_path: Path) -> 
         with pytest.raises(PermissionError):
             _invoke(tmp_path, "profile")(payload)
     assert not (tmp_path / "packs").exists()
+
+
+def _disabled_route_registry(tmp_path: Path) -> ModelRegistry:
+    """Create an imported disabled route without granting execution authority."""
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "provider/model",
+            "enabled": False,
+            "requirements": {"tool_calling": True},
+            "parameters": {"temperature": 0.2},
+            "metadata": {"provider_connection_id": "provider.fixture", "note": "keep"},
+        },
+        expected_revision=0,
+    )
+    return registry
+
+
+def _route_registration(**changes: Any) -> dict[str, Any]:
+    """Use the same public normalization as an explicit model registration."""
+    return normalize_model_profile_save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "provider/model",
+            "provider_instance_id": "provider.fixture",
+            "display_name": "Daily",
+            "max_output_tokens": 2048,
+            "expected_revision": 1,
+            "provider_registry_revision": 1,
+            **changes,
+        }
+    )
+
+
+def test_explicit_registration_activates_only_the_exact_disabled_route(
+    tmp_path: Path,
+) -> None:
+    """Validated registration makes its saved route usable and keeps policy."""
+    provider_registry = _provider_registry(tmp_path)
+    registry = _disabled_route_registry(tmp_path)
+    registry.save(
+        {
+            "model_profile_id": "unrelated",
+            "model_id": "another/model",
+            "enabled": False,
+        },
+        expected_revision=1,
+    )
+    unrelated = registry.get("unrelated")
+    before = registry.snapshot()
+    assert present_model_profiles(before)["profiles"] == []
+    assert registry.snapshot() == before, "reading must never activate profiles"
+    client = _ProviderRegistryClient(provider_registry)
+    invoke = _invoke(tmp_path, client=client)
+
+    saved = invoke(_route_registration(expected_revision=2))
+
+    assert present_model_profile_saved(saved)["profiles"] == [
+        {
+            "profile_id": "daily",
+            "display_name": "Daily",
+            "model_id": "provider/model",
+            "max_output_tokens": 2048,
+            "provider_id": "provider.fixture",
+            "route_configured": True,
+        }
+    ]
+    assert saved["profile"]["enabled"] is True
+    assert saved["profile"]["requirements"] == {"tool_calling": True}
+    assert saved["profile"]["parameters"] == {"temperature": 0.2, "max_tokens": 2048}
+    assert saved["profile"]["metadata"]["note"] == "keep"
+    assert registry.get("unrelated") == unrelated
+    assert invoke(_route_registration(expected_revision=3)) == saved
+    assert len(client.calls) == 2, "even repeated saves revalidate the provider"
+
+
+@pytest.mark.parametrize("existing_binding", ["metadata", "requirements"])
+def test_explicit_registration_uses_the_exact_existing_connection_binding(
+    tmp_path: Path,
+    existing_binding: str,
+) -> None:
+    """Legacy preferred-connection bindings may activate only their same route."""
+    provider_registry = _provider_registry(tmp_path)
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    binding = (
+        {"metadata": {"provider_connection_id": "provider.fixture"}}
+        if existing_binding == "metadata"
+        else {"requirements": {"preferred_provider_instance_id": "provider.fixture"}}
+    )
+    registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "provider/model",
+            "enabled": False,
+            **binding,
+        },
+        expected_revision=0,
+    )
+    saved = _invoke(tmp_path, client=_ProviderRegistryClient(provider_registry))(
+        _route_registration(),
+    )
+    assert saved["profile"]["enabled"] is True
+
+
+@pytest.mark.parametrize(
+    "existing_changes",
+    [
+        {"model_id": "unrelated/model"},
+        {"metadata": {"provider_connection_id": "provider.other"}},
+        {"metadata": {}},
+        {
+            "metadata": {"provider_connection_id": "provider.other"},
+            "requirements": {"preferred_provider_instance_id": "provider.fixture"},
+        },
+    ],
+)
+def test_explicit_registration_rejects_a_different_existing_route(
+    tmp_path: Path,
+    existing_changes: dict[str, Any],
+) -> None:
+    """A hidden disabled ID collision cannot repoint or enable another route."""
+    provider_registry = _provider_registry(tmp_path)
+    registry = ModelRegistry("defaults", user_data_root=tmp_path)
+    registry.save(
+        {
+            "model_profile_id": "daily",
+            "model_id": "provider/model",
+            "enabled": False,
+            "metadata": {"provider_connection_id": "provider.fixture"},
+            **existing_changes,
+        },
+        expected_revision=0,
+    )
+    before = registry.snapshot()
+    with pytest.raises(ValueError, match="route identity changed"):
+        _invoke(tmp_path, client=_ProviderRegistryClient(provider_registry))(
+            _route_registration(),
+        )
+    assert registry.snapshot() == before
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["model_revision", "provider_revision", "disabled_provider", "unknown_provider"],
+)
+def test_explicit_activation_retains_model_cas_and_provider_validation(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    """Activation failures leave the disabled registry and owner revision intact."""
+    provider_registry = _provider_registry(
+        tmp_path,
+        enabled=failure != "disabled_provider",
+    )
+    registry = _disabled_route_registry(tmp_path)
+    before = registry.snapshot()
+    changes = {
+        "model_revision": {"expected_revision": 0},
+        "provider_revision": {"provider_registry_revision": 0},
+        "disabled_provider": {},
+        "unknown_provider": {"provider_instance_id": "provider.unknown"},
+    }[failure]
+    error = ModelRegistryConflict if failure == "model_revision" else PermissionError
+    with pytest.raises(error):
+        _invoke(tmp_path, client=_ProviderRegistryClient(provider_registry))(
+            _route_registration(**changes),
+        )
+    assert registry.snapshot() == before

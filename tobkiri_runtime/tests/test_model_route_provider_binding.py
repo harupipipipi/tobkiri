@@ -42,7 +42,25 @@ def test_model_route_payload_keeps_the_registry_revision_outside_route_metadata(
         "model_id": "gpt-4.1",
         "display_name": "Daily",
         "metadata": {"provider_connection_id": "connection/openai:main"},
+        "enabled": True,
     }
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_model_route_payload_rejects_browser_activation_flags(enabled: bool) -> None:
+    """The canonical save owns activation, not an extra client authority flag."""
+    with pytest.raises(ValueError, match="fields"):
+        normalize_model_profile_save(
+            {
+                "model_profile_id": "daily",
+                "model_id": "gpt-4.1",
+                "provider_instance_id": "connection/openai:main",
+                "display_name": "Daily",
+                "expected_revision": 2,
+                "provider_registry_revision": 4,
+                "enabled": enabled,
+            }
+        )
 
 
 def test_provider_connection_snapshot_projects_only_safe_exact_identities() -> None:

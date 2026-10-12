@@ -95,6 +95,14 @@ class ModelRegistry:
             profile_id = normalized["model_profile_id"]
             current = state["profiles"].get(profile_id)
             if preserve_existing and isinstance(current, Mapping):
+                if record.get("enabled") is True:
+                    connection = _provider_connection(normalized)
+                    if (
+                        not connection
+                        or current.get("model_id") != normalized["model_id"]
+                        or _provider_connection(current) != connection
+                    ):
+                        raise ValueError("model profile route identity changed")
                 merged = {**dict(current), **dict(record)}
                 for key in ("parameters", "metadata"):
                     merged[key] = {
@@ -290,6 +298,24 @@ class ModelRegistry:
             "aliases": {},
             "migration": None,
         }
+
+
+def _provider_connection(value: Mapping[str, Any]) -> str | None:
+    """Read the exact saved route binding, including its legacy requirement."""
+    metadata = value.get("metadata")
+    connection = (
+        metadata.get("provider_connection_id")
+        if isinstance(metadata, Mapping)
+        else None
+    )
+    if not connection:
+        requirements = value.get("requirements")
+        connection = (
+            requirements.get("preferred_provider_instance_id")
+            if isinstance(requirements, Mapping)
+            else None
+        )
+    return connection if isinstance(connection, str) and connection else None
 
 
 def _profile_record(value: Mapping[str, Any]) -> dict[str, Any]:
