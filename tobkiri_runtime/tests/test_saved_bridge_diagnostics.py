@@ -65,6 +65,7 @@ def test_captured_saved_bridge_failure_is_correlated_and_sanitized(
     backend.target_executable_digest = principal.function_implementation_digest
     envelopes = []
     bridge_outcomes = []
+    saved_results = []
 
     def guest(envelope):
         envelopes.append(envelope)
@@ -75,6 +76,7 @@ def test_captured_saved_bridge_failure_is_correlated_and_sanitized(
             outcome = callback(envelope, _frame(intent, envelope.context.request_id))
             bridge_outcomes.append(outcome)
             intent = saved.resume(intent["state"], outcome)
+        saved_results.append(intent)
         return ProviderOutcome(intent)
 
     monkeypatch.setattr(backend, "invoke", guest)
@@ -127,8 +129,8 @@ def test_captured_saved_bridge_failure_is_correlated_and_sanitized(
     try:
         with caplog.at_level(logging.WARNING), profile_capture_scope():
             result = session.invoke(
-                "conversation.saved-turn.v1",
-                "saved_complete",
+                "tobkiri.action.turn.saved.v1",
+                "rumi_turn_runtime_pack.turn-saved",
                 {
                     "_session_id": "session.panel.saved-diagnostics",
                     "request": {
@@ -139,8 +141,16 @@ def test_captured_saved_bridge_failure_is_correlated_and_sanitized(
                     },
                 },
             )
-        assert result["status"] == "error"
-        assert result["error"]["code"] == "HOST_ACTION_FAILED"
+        assert result["status"] == "reconciliation_required"
+        assert result["turn"]["status"] == "failed"
+        assert result["turn"]["events"][-1]["details"] == {
+            "phase": "saved_execution_failed",
+            "error_code": "HOST_ACTION_FAILED",
+            "user_persistence": "saved",
+            "assistant_persistence": "not_written",
+        }
+        assert saved_results[0]["status"] == "error"
+        assert saved_results[0]["error"]["code"] == "HOST_ACTION_FAILED"
         assert bridge_outcomes[-1] == {
             "status": "error",
             "error": {

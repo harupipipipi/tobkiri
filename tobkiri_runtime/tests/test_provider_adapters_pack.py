@@ -104,7 +104,10 @@ def test_openrouter_compiles_saved_thinking_control_before_transport(
     _openai_compatible(
         Client(),
         {"model_id": "stepfun/step-5-preview", "parameters": parameters},
-        {"endpoint": "https://openrouter.ai/api/v1"},
+        {
+            "endpoint": "https://openrouter.ai/api/v1",
+            "provider_instance_id": "provider.openrouter.main",
+        },
         "credential:synthetic",
         "ai.stream" if streaming else "ai.generate",
         streaming,
