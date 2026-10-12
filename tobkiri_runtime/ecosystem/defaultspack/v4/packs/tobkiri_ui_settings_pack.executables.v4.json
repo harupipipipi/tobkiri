@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:beff1e1f032b498e04b57363b43117f8c0ef3ddc5368c11d9d4c622954b4bad7",
+  "source_identity": "sha256:ed56abe643f5e4a786342f68c689fb9f3ed191a89ca4cbf14cd6902e273b0d58",
   "variants": [
     {
       "variant_id": "tobkiri.project.state.read.python",
@@ -118,7 +118,7 @@
       "variant_id": "tobkiri.ui.catalog.read.python",
       "function_id": "tobkiri.ui.catalog.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
+      "implementation_digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -387,7 +387,7 @@
       "variant_id": "tobkiri.ui.preferences.write.python",
       "function_id": "tobkiri.ui.preferences.write",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
+      "implementation_digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -758,7 +758,7 @@
       "variant_id": "tobkiri.ui.settings.read.python",
       "function_id": "tobkiri.ui.settings.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
+      "implementation_digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -789,6 +789,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
-  "catalog_digest": "sha256:5d022d184913a8e3834a5582e6068e70bfd6f341fc338c4edac47444177f83f0"
+  "materialization_catalog_digest": "sha256:0034af80e793acb4d546c949543194a09056c17ebd0c94797040c3e020e50dd7",
+  "catalog_digest": "sha256:6df1194b440718936de68807eb2934fae5701d07a02fe11384e163bd90cb9b48"
 }

@@ -16125,7 +16125,7 @@
       "source": {
         "digest": "sha256:271082453d76deefe03222208672c92daec1e7e538155303212a3d117e9e7ac7",
         "executable_source_registry": {
-          "digest": "sha256:1aad3f62744706f48925723c88b1e5cd692c515e0fedd9f99cf35e4718122296",
+          "digest": "sha256:fec9579707c4b4cd2c6de26094612c327a5e01ccfca55657bb9dc21f027e7cf9",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 10
         },
@@ -16144,18 +16144,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 9,
-          "artifact_index_digest": "sha256:aa9779544f3f2f5eb16ecc7f2b1c4d25644fc1dc3e1ab106641833719d49f101",
-          "artifact_set_digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
-          "executable_catalog_digest": "sha256:c9e64701151f2582d84fac3ba7107f91e91d6bc94a287a374647f586afa5d7b8",
+          "artifact_index_digest": "sha256:9daffc86491ce1ffcd2fdb1d3a20eb93bad09a10d6dd1f3c258212484ad136b6",
+          "artifact_set_digest": "sha256:bc50da0fc3bf052b56658b4174991a4c0238bef37f0608c412cda03dcefdfcb5",
+          "executable_catalog_digest": "sha256:0034af80e793acb4d546c949543194a09056c17ebd0c94797040c3e020e50dd7",
           "pack_id": "tobkiri_ui_settings_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:aa9779544f3f2f5eb16ecc7f2b1c4d25644fc1dc3e1ab106641833719d49f101",
-            "contracts.v4.json": "sha256:2e50237127118192889beb5e24828d0ae703dcd78024312e7910a32eb6d14aa9",
-            "executables.v4.json": "sha256:54d2ff93fe7c5356acaa4d9c56b4e1ae9c0ebfa0771508d2efccaa3f357aba9c",
-            "pack.v4.json": "sha256:beff1e1f032b498e04b57363b43117f8c0ef3ddc5368c11d9d4c622954b4bad7"
+            "artifact-index.v4.json": "sha256:9daffc86491ce1ffcd2fdb1d3a20eb93bad09a10d6dd1f3c258212484ad136b6",
+            "contracts.v4.json": "sha256:077deef3a12206dcbb387342767ef55450507ebfeb50cc6d1f7e4bb6e41268e8",
+            "executables.v4.json": "sha256:0475f3be7b98ed7bd389fd9445217072a213b157a00f93d48952ae12ded28bd0",
+            "pack.v4.json": "sha256:ed56abe643f5e4a786342f68c689fb9f3ed191a89ca4cbf14cd6902e273b0d58"
           }
         },
-        "digest": "sha256:3dde88c389b0989cf3ea0ab51e255d511f232c70ccc442180df9bff294c6041d",
+        "digest": "sha256:bc50da0fc3bf052b56658b4174991a4c0238bef37f0608c412cda03dcefdfcb5",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "tobkiri_ui_settings_pack",
         "status": "artifact-integrity-verified"
@@ -16220,7 +16220,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:5a296322c00af966eebc30fa5fe2109ba93eca9b986ca021b88907fbbdac1fea",
+    "content_digest": "sha256:8cdbaad707760143a66aa9bfe52bc6467b8eea0de39943ac330ab66e9e307c64",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 70,
@@ -16469,7 +16469,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:64f8f0dc02955b180dcbff3536345238d1051e58405b7533d9a9cd6468e73410",
+    "input_digest": "sha256:2d20e951f458a5b8080c7ce0739b8c11691f417e4fe4f94ec711350e104bf515",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -24205,22 +24205,22 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_side_chat_pack/runtime/side_chat.py"
       },
       {
-        "digest": "sha256:aa9779544f3f2f5eb16ecc7f2b1c4d25644fc1dc3e1ab106641833719d49f101",
+        "digest": "sha256:9daffc86491ce1ffcd2fdb1d3a20eb93bad09a10d6dd1f3c258212484ad136b6",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:2e50237127118192889beb5e24828d0ae703dcd78024312e7910a32eb6d14aa9",
+        "digest": "sha256:077deef3a12206dcbb387342767ef55450507ebfeb50cc6d1f7e4bb6e41268e8",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:54d2ff93fe7c5356acaa4d9c56b4e1ae9c0ebfa0771508d2efccaa3f357aba9c",
+        "digest": "sha256:0475f3be7b98ed7bd389fd9445217072a213b157a00f93d48952ae12ded28bd0",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:beff1e1f032b498e04b57363b43117f8c0ef3ddc5368c11d9d4c622954b4bad7",
+        "digest": "sha256:ed56abe643f5e4a786342f68c689fb9f3ed191a89ca4cbf14cd6902e273b0d58",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json"
       },
@@ -24240,7 +24240,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/public-settings-fields.v1.json"
       },
       {
-        "digest": "sha256:c8c6b4ba1e7d3d909c0e45844d7b0235d6185b64a1b5e2377efb48d7104ee1ce",
+        "digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/settings.py"
       },
@@ -24315,7 +24315,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:ee0f41a334c5e0c13e52493945830b9e5fccb3178ed97e85eae05a548d218ae2",
+        "digest": "sha256:294c4315a1bfdf34d8b1218382118a0cf4bf282a55af46d6342847d27e5b5cf5",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -24376,7 +24376,7 @@
       "release-verified": 0,
       "semantically-reviewed": 70
     },
-    "observed_head_sha": "611c046efc55ce31731683ecc9275ff6102d93be",
+    "observed_head_sha": "648e65f697be243647019f2c61ec026dc7112914",
     "pack_count": 147,
     "profile_collection_proof": {
       "identity_proof": {

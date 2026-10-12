@@ -4778,11 +4778,11 @@ export function SettingsModalRenderer({
               </div>
             </header>
             <div
-              className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_280px]"
+              className="grid min-h-0 min-w-0 flex-1 md:grid-cols-[190px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_280px]"
               inert={closeConfirmationOpen ? true : undefined}
               aria-hidden={closeConfirmationOpen || undefined}
             >
-              <nav className="min-w-0 overflow-x-auto border-b border-white/7 bg-black/20 p-3 lg:overflow-y-auto lg:border-b-0 lg:border-r" aria-label={localizedCopy("Settings categories", "設定カテゴリ")}>
+              <nav className="min-w-0 overflow-x-auto border-b border-white/7 bg-black/20 p-3 md:overflow-x-hidden md:overflow-y-auto md:border-b-0 md:border-r" aria-label={localizedCopy("Settings categories", "設定カテゴリ")}>
                 <label className="mb-3 flex h-10 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 transition-colors focus-within:border-zinc-600 focus-within:text-zinc-300">
                   <Search size={14} />
                   <input
@@ -4803,15 +4803,15 @@ export function SettingsModalRenderer({
                     </button>
                   )}
                 </label>
-                <div className="flex gap-4 lg:block">
+                <div className="flex gap-2 md:block">
                   {navigationGroups.map((group) => {
                     const groupSections = group.sectionIds
                       .map((sectionId) => visibleSections.find((section) => section.id === sectionId))
                       .filter((section): section is ControlCenterSection => Boolean(section));
                     if (groupSections.length === 0) return null;
                     return (
-                      <div key={group.id} className="flex shrink-0 gap-1.5 lg:mb-5 lg:block lg:last:mb-0">
-                        <div className="hidden px-2 pb-1.5 text-[11px] font-medium tracking-wide text-zinc-600 lg:block">{group.label}</div>
+                      <div key={group.id} className="flex shrink-0 gap-1.5 md:mb-5 md:block md:last:mb-0">
+                        <div className="hidden px-2 pb-1.5 text-[11px] font-medium tracking-wide text-zinc-600 md:block">{group.label}</div>
                         {groupSections.map((section) => {
                           return (
                             <button
@@ -4820,7 +4820,7 @@ export function SettingsModalRenderer({
                               onClick={() => openSection(section.id)}
                               aria-current={activeSection?.id === section.id ? "page" : undefined}
                               className={cn(
-                                "group relative mb-0 flex min-h-11 min-w-[154px] shrink-0 items-center justify-between gap-3 overflow-hidden border-l-2 px-3 py-2.5 text-left text-xs transition-colors lg:mb-0.5 lg:min-w-0 lg:w-full",
+                                "group relative mb-0 flex min-h-11 shrink-0 items-center justify-between gap-3 overflow-hidden border-l-2 px-3 py-2.5 text-left text-xs transition-colors md:mb-0.5 md:min-w-0 md:w-full",
                                 activeSection?.id === section.id
                                   ? "border-indigo-300 bg-white/[0.065] text-zinc-100"
                                   : "border-transparent text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-300",

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "9db4e9eb40b436b5cc061990e21c0e264456e11bead59c3ee9d668a00d03113f",
+    "digest": "ab6758628d0c47234603d46802733dd5cd53cce54a5ff69a57ffac3d23948101",
     "entries": [
       {
         "path": "index.html",
@@ -2765,8 +2765,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-        "size": 274225,
-        "sha256": "eefea1ee7ae72394a90e0820ca62978ae2bde55d082d9367ddb7894faeb69611"
+        "size": 274267,
+        "sha256": "0c741e58be1fd116168c08521dd9fbdd1abda2d1b85404275ae8f0a69c17b06f"
       },
       {
         "path": "src/renderers/SpotlightShortcutRecorder.test.tsx",
@@ -3021,12 +3021,12 @@
     ]
   },
   "bundle": {
-    "digest": "e5048af837f0330ba0c60237b9fb1d4aceb8684b15851232310d4a2cd10c9d74",
+    "digest": "0051f257392f5daa3172c1fae755a8bd588509a8c18246786476421534f03b23",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 246043,
-        "sha256": "9ce5bfb32e0bf0763605dbaad18de2c8685e60d190a3a2e3e99c5ec3f1e87f41"
+        "size": 246320,
+        "sha256": "e42065af41b217568706aa5078b8db22c8fb3641ce116206a36da74f11e77d21"
       },
       {
         "path": "shell-app.js",
@@ -3035,8 +3035,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2764596,
-        "sha256": "f29713b96c5a2e44a01399c84748e9a92a1df2bdda1b15c9ce2e8f538948f8cb"
+        "size": 2764638,
+        "sha256": "23ce27771dfaac1379728b21e53fe3236f33f3c527c7064465300b9a0d80a2c0"
       },
       {
         "path": "shell-icons.js",

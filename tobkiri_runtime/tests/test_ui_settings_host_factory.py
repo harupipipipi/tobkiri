@@ -159,6 +159,51 @@ def test_preferences_write_returns_only_changed_values_and_preserves_private_sta
     assert invocation.checks >= 4
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_manual_runtime_mode_selection_persists_boolean_with_revision_guard(
+    tmp_path: Path, enabled: bool,
+) -> None:
+    """The public control uses the captured preference writer and CAS policy."""
+    path = tmp_path / "defaultspack" / "shared" / "frontend_settings.json"
+    path.parent.mkdir(parents=True)
+    saved = {
+        "general": {"manual_runtime_mode_selection": not enabled, "private": "kept"},
+        "_settings_revision": 4,
+    }
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    writer = PreferencesWriteHostFactoryV4().capture(_write_context(tmp_path))
+    changes = {"general": {"manual_runtime_mode_selection": enabled}}
+    payload = {
+        "profile_id": "defaults", "expected_revision": 4, "changes": changes,
+    }
+    invocation = _Invocation()
+    result = writer.contributions[0].invoke(WRITE_OPERATION_ID, payload, invocation)
+    assert result == {"values": changes, "document_revision": 5}
+    assert json.loads(path.read_text()) == {
+        "general": {"manual_runtime_mode_selection": enabled, "private": "kept"},
+        "_settings_revision": 5,
+    }
+    assert invocation.checks >= 4
+    committed = path.read_bytes()
+    with pytest.raises(settings_store.FrontendSettingsRevisionConflict):
+        writer.contributions[0].invoke(WRITE_OPERATION_ID, payload, _Invocation())
+    assert path.read_bytes() == committed
+
+
+@pytest.mark.parametrize("value", ["true", "false", 1, 0, 1.0, None, {}, []])
+def test_manual_runtime_mode_selection_rejects_nonboolean_before_storage(
+    tmp_path: Path, value: object,
+) -> None:
+    """Public disclosure does not permit coerced or malformed preference writes."""
+    writer = PreferencesWriteHostFactoryV4().capture(_write_context(tmp_path))
+    with pytest.raises(ValueError, match="preferences value is invalid"):
+        writer.contributions[0].invoke(WRITE_OPERATION_ID, {
+            "profile_id": "defaults", "expected_revision": 0,
+            "changes": {"general": {"manual_runtime_mode_selection": value}},
+        }, _Invocation())
+    assert list(tmp_path.iterdir()) == []
+
+
 @pytest.mark.parametrize("ending", ["cancel", "deadline"])
 def test_preferences_write_lock_wait_obeys_host_invocation_lifetime(
     tmp_path: Path, ending: str,

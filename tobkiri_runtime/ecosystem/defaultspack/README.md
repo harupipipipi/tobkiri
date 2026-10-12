@@ -905,6 +905,11 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 
 ### Hosted provider setup
 
+Settings keeps categories in a left sidebar at window widths of 768px or more;
+smaller windows use compact, horizontally scrollable categories. In the advanced
+settings view, the manual execution-mode selector can be enabled and saved as a
+boolean preference. Selecting a mode preserves the normal tool approval path.
+
 Open **Settings → Models** and add an API connection by choosing a provider
 and saving its API name and key. The connection URL and protocol are preset.
 Existing connections stay visible; the form for adding another connection

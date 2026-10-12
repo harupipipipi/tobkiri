@@ -36,6 +36,7 @@ _PREFERENCE_TYPES = {
         "composer_placeholder": str,
         "show_activity_in_messages": bool,
         "keyboard_button_navigation": bool,
+        "manual_runtime_mode_selection": bool,
         "spotlight_shortcut_enabled": bool,
         "spotlight_shortcut": str,
         "spotlight_shortcut_text_input": bool,
