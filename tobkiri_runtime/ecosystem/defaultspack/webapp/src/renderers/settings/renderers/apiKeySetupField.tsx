@@ -217,7 +217,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           <summary onClick={(event) => { event.preventDefault(); setApiFormOpen(!(apiFormOpen ?? !hasRegisteredApis)); }} className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-300">
             {hasRegisteredApis ? "別のAPI接続を追加" : "API接続を追加"}
           </summary>
-        <div className="space-y-3 border-t border-white/[0.07] p-3">
+        <div className="@container min-w-0 space-y-3 border-t border-white/[0.07] p-3">
           <p className="text-xs leading-5 text-zinc-500">
             {savesExternalToken
               ? "外部サービスを選び、識別用の名前とトークンを入力します。"
@@ -227,27 +227,32 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                 ? "Customの接続先とプロトコルを指定して、識別用の名前とAPIキーを入力します。"
                 : "使いたいAIプロバイダーを選び、識別用の名前とAPIキーを入力します。接続先は自動で設定されます。"}
           </p>
-          <div className="grid gap-2 md:grid-cols-[180px_minmax(120px,1fr)_minmax(180px,2fr)_auto]">
-              <SearchableProviderField
-                value={providerId}
-                options={providerOptions}
-                onChange={(nextProviderId) => {
-                  setProviderId(nextProviderId);
-                  setProtocol("openai-compatible");
-                  resetFeedback();
-                }}
-                onAddCustom={(option) => {
-                  onChange(sectionId, targetFieldId, {
-                    action: "register_provider",
-                    provider_id: option.providerId,
-                    label: option.label,
-                    kind: option.kind,
-                  });
-                  setProviderId(option.providerId);
-                  setProtocol("openai-compatible");
-                  resetFeedback();
-                }}
-              />
+          <div
+            data-api-connection-fields
+            className="grid min-w-0 grid-cols-1 gap-2 @min-[28rem]:grid-cols-2 @min-[44rem]:grid-cols-[180px_minmax(0,1fr)_minmax(0,2fr)_auto]"
+          >
+              <div className="min-w-0 w-full">
+                <SearchableProviderField
+                  value={providerId}
+                  options={providerOptions}
+                  onChange={(nextProviderId) => {
+                    setProviderId(nextProviderId);
+                    setProtocol("openai-compatible");
+                    resetFeedback();
+                  }}
+                  onAddCustom={(option) => {
+                    onChange(sectionId, targetFieldId, {
+                      action: "register_provider",
+                      provider_id: option.providerId,
+                      label: option.label,
+                      kind: option.kind,
+                    });
+                    setProviderId(option.providerId);
+                    setProtocol("openai-compatible");
+                    resetFeedback();
+                  }}
+                />
+              </div>
               <input
                 aria-label="APIの名前"
                 value={apiName}
@@ -258,10 +263,10 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                 placeholder={localOpenAICompatible
                   ? "接続名 (例: gemma3-1b)"
                   : "名前 (例: main, work)"}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
+                className="min-w-0 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
               />
               {!localOpenAICompatible && (
-                <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
+                <div className="flex min-w-0 w-full rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
                   <input
                     type="password"
                     aria-label={savesExternalToken ? "サービスのトークン" : "APIキー"}
@@ -288,7 +293,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                 disabled={saveState === "saving" || !saveEnabled}
                 onClick={() => void handleSubmit()}
                 className={cn(
-                  "rounded-lg border px-3 py-2 text-xs transition-colors",
+                  "min-w-0 max-w-full whitespace-normal rounded-lg border px-3 py-2 text-xs transition-colors",
                   saveState !== "saving" && saveEnabled
                     ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                     : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
