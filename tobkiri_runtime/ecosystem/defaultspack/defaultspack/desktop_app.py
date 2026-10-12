@@ -870,154 +870,159 @@ def main(
             port=port,
             url=url,
         )
-    host_contract = _capture_launch_host_contract(dispatch_session)
+    server = None
+    shutdown_event = "server_stopped"
     try:
-        from domain.integrations.secrets import load_integration_secrets_into_env
+        host_contract = _capture_launch_host_contract(dispatch_session)
+        try:
+            from domain.integrations.secrets import load_integration_secrets_into_env
 
-        load_integration_secrets_into_env()
-    except Exception as exc:
-        _write_launch_event("secrets_load_skipped", error=repr(exc), port=port, url=url)
-    from core_runtime.pack_api_server import PackAPIServer
-    from ecosystem.defaultspack.defaultspack.surface_contributions import (
-        defaultspack_web_mounts,
-    )
+            load_integration_secrets_into_env()
+        except Exception as exc:
+            _write_launch_event("secrets_load_skipped", error=repr(exc), port=port, url=url)
+        from core_runtime.pack_api_server import PackAPIServer
+        from ecosystem.defaultspack.defaultspack.surface_contributions import (
+            defaultspack_web_mounts,
+        )
 
-    web_mounts = defaultspack_web_mounts(_pack_root())
-    auth = _require_host_panel_auth_manager(host_contract)
-    server = PackAPIServer(
-        host="127.0.0.1",
-        port=int(port),
-        panel_auth_manager=auth,
-        dispatch_session=dispatch_session,
-        app_lifecycle_manager=lifecycle,
-        contract_bindings=contract_bindings,
-        runtime_capture_factory=runtime_capture_factory,
-        capability_snapshot_factory=defaultspack_capability_snapshot,
-        application_presentation=DefaultspackHTTPPresentation(),
-        web_mounts=web_mounts,
-        packvm_lifecycle=packvm_lifecycle,
-        host_contract=host_contract,
-    )
-    _write_launch_event("server_start_attempt", port=port, url=url)
-    try:
-        server.start()
-    except OSError as exc:
+        web_mounts = defaultspack_web_mounts(_pack_root())
+        auth = _require_host_panel_auth_manager(host_contract)
+        server = PackAPIServer(
+            host="127.0.0.1",
+            port=int(port),
+            panel_auth_manager=auth,
+            dispatch_session=dispatch_session,
+            app_lifecycle_manager=lifecycle,
+            contract_bindings=contract_bindings,
+            runtime_capture_factory=runtime_capture_factory,
+            capability_snapshot_factory=defaultspack_capability_snapshot,
+            application_presentation=DefaultspackHTTPPresentation(),
+            web_mounts=web_mounts,
+            packvm_lifecycle=packvm_lifecycle,
+            host_contract=host_contract,
+        )
+        _write_launch_event("server_start_attempt", port=port, url=url)
+        try:
+            server.start()
+        except OSError as exc:
+            _write_launch_event(
+                "server_start_oserror",
+                error=repr(exc),
+                existing_ready=False,
+                own_bind_required=True,
+                port=port,
+                port_owners=_port_owner_snapshot(port),
+                url=url,
+            )
+            raise
+        _write_launch_event("server_started", port=port, url=url)
+        chat_launch_blocked = False
+        startup_failure: _StartupFailure | None = None
+        if reconfirmation_error is None:
+            mark_panel_ready()
+            try:
+                server.assert_runtime_startup_ready()
+            except Exception as error:
+                # Validation is read-only and includes Profile/Host authority as
+                # well as backend selection. Keep every failure fail-closed while
+                # selecting recovery copy from trusted types, never exception text.
+                startup_failure = _classify_startup_failure(error)
+                mark_runtime_failed(startup_failure.message)
+                _write_launch_event(
+                    "runtime_unavailable",
+                    code="API_FAILURE",
+                    failure_kind=startup_failure.kind,
+                    recovery_action=startup_failure.recovery_action,
+                    port=port,
+                    url=url,
+                )
+                logger.warning(
+                    "runtime startup validation failed: API_FAILURE (%s). %s",
+                    startup_failure.kind,
+                    startup_failure.recovery_action,
+                )
+                chat_launch_blocked = True
+            else:
+                mark_runtime_ready()
+        else:
+            mark_profile_reconfirmation_required(reconfirmation_error)
+
+        if chat_launch_blocked:
+            health_ready = False
+            chat_ready = False
+        else:
+            health_ready = _wait_until_ready(url)
+            chat_ready = health_ready and _wait_until_chat_ready(url)
         _write_launch_event(
-            "server_start_oserror",
-            error=repr(exc),
-            existing_ready=False,
-            own_bind_required=True,
+            "readiness_complete",
+            chat_ready=chat_ready,
+            health_ready=health_ready,
             port=port,
-            port_owners=_port_owner_snapshot(port),
             url=url,
         )
-        raise
-    _write_launch_event("server_started", port=port, url=url)
-    chat_launch_blocked = False
-    startup_failure: _StartupFailure | None = None
-    if reconfirmation_error is None:
-        mark_panel_ready()
-        try:
-            server.assert_runtime_startup_ready()
-        except Exception as error:
-            # Validation is read-only and includes Profile/Host authority as
-            # well as backend selection. Keep every failure fail-closed while
-            # selecting recovery copy from trusted types, never exception text.
-            startup_failure = _classify_startup_failure(error)
-            mark_runtime_failed(startup_failure.message)
+        if not chat_ready:
             _write_launch_event(
-                "runtime_unavailable",
+                "chat_launch_blocked",
                 code="API_FAILURE",
-                failure_kind=startup_failure.kind,
-                recovery_action=startup_failure.recovery_action,
+                failure_kind=(
+                    startup_failure.kind if startup_failure else "chat_readiness_failed"
+                ),
+                recovery_action=(
+                    startup_failure.recovery_action
+                    if startup_failure
+                    else "Reopen the active Profile from Tobkiri Launcher."
+                ),
                 port=port,
                 url=url,
             )
-            logger.warning(
-                "runtime startup validation failed: API_FAILURE (%s). %s",
-                startup_failure.kind,
-                startup_failure.recovery_action,
+            if not chat_launch_blocked:
+                return 1
+
+        from defaultspack.native_webview import open_desktop_surface
+
+        try:
+            login_code = str(server.issue_panel_login_code()["code"])
+        except RuntimeError:
+            _write_launch_event(
+                "panel_auth_capture_unavailable",
+                port=port,
+                url=url,
             )
-            chat_launch_blocked = True
-        else:
-            mark_runtime_ready()
-    else:
-        mark_profile_reconfirmation_required(reconfirmation_error)
-
-    if chat_launch_blocked:
-        health_ready = False
-        chat_ready = False
-    else:
-        health_ready = _wait_until_ready(url)
-        chat_ready = health_ready and _wait_until_chat_ready(url)
-    _write_launch_event(
-        "readiness_complete",
-        chat_ready=chat_ready,
-        health_ready=health_ready,
-        port=port,
-        url=url,
-    )
-    if not chat_ready:
+            raise
+        launch_url = f"{url}?{urllib.parse.urlencode({'code': login_code})}"
+        surface_result = open_desktop_surface(launch_url, title="Tobkiri")
         _write_launch_event(
-            "chat_launch_blocked",
-            code="API_FAILURE",
-            failure_kind=(
-                startup_failure.kind if startup_failure else "chat_readiness_failed"
-            ),
-            recovery_action=(
-                startup_failure.recovery_action
-                if startup_failure
-                else "Reopen the active Profile from Tobkiri Launcher."
-            ),
+            "surface_opened",
             port=port,
+            reused_existing_server=False,
+            surface_result=surface_result,
             url=url,
         )
-        if not chat_launch_blocked:
-            server.stop()
-            return 1
+        if surface_result == "webview":
+            shutdown_event = "server_stopped_after_webview"
+            return 0
+        stop = False
 
-    from defaultspack.native_webview import open_desktop_surface
+        def _handle_signal(_signum, _frame):
+            nonlocal stop
+            stop = True
 
-    try:
-        login_code = str(server.issue_panel_login_code()["code"])
-    except RuntimeError:
-        server.stop()
-        _write_launch_event(
-            "panel_auth_capture_unavailable",
-            port=port,
-            url=url,
-        )
-        raise
-    launch_url = f"{url}?{urllib.parse.urlencode({'code': login_code})}"
-    surface_result = open_desktop_surface(launch_url, title="Tobkiri")
-    _write_launch_event(
-        "surface_opened",
-        port=port,
-        reused_existing_server=False,
-        surface_result=surface_result,
-        url=url,
-    )
-    if surface_result == "webview":
-        if server is not None:
-            server.stop()
-            _write_launch_event("server_stopped_after_webview", port=port, url=url)
-        return 0
-    stop = False
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
 
-    def _handle_signal(_signum, _frame):
-        nonlocal stop
-        stop = True
-
-    signal.signal(signal.SIGINT, _handle_signal)
-    signal.signal(signal.SIGTERM, _handle_signal)
-
-    try:
         while not stop:
             time.sleep(0.5)
+        return 0
     finally:
-        server.stop()
-        _write_launch_event("server_stopped", port=port, url=url)
-    return 0
+        # PackAPIServer owns refreshed captures, but its initial capture belongs
+        # to this entry point. Drain handlers before releasing that capture.
+        # If draining fails, retain its resources for the outstanding work.
+        if server is not None:
+            server.stop()
+        if dispatch_session is not None:
+            dispatch_session.close()
+        if server is not None:
+            _write_launch_event(shutdown_event, port=port, url=url)
 
 
 if __name__ == "__main__":

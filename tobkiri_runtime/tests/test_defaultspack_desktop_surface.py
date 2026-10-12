@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from importlib import import_module
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -143,6 +143,9 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
         class BindFailureServer:
             def start(self):
                 raise OSError("address already in use")
+
+            def stop(self):
+                pass
 
         with tempfile.TemporaryDirectory() as tmp:
             user_data = Path(tmp) / "user_data"
@@ -472,7 +475,7 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 with patch.object(
                     desktop_app,
                     "_restore_active_profile_contracts",
-                    return_value=(object(), ()),
+                    return_value=(Mock(), ()),
                 ):
                     with patch.object(
                         desktop_app,
@@ -671,7 +674,7 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                                     ):
                                         desktop_app.main()
 
-            self.assertFalse(fake_server.stopped)
+            self.assertTrue(fake_server.stopped)
             events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 
         event_names = [event["event"] for event in events]
