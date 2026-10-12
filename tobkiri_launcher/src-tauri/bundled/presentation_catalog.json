@@ -1001,7 +1001,7 @@
     "rumi_job_action_broker_pack": "sha256:c69bdef24d0994ec19313f333c650b60d6d311d45a2d468b26f17217cbe7b279",
     "rumi_kanban_state_store_pack": "sha256:c8d91a76f0d806e46484de008f8b6a0be6990e5f89eb1e39146016d4f58555c6",
     "rumi_model_catalog_pack": "sha256:fc39669328618c848118aa4d5f5abe51a9235b38bd113cbe494427ae61178bb4",
-    "rumi_model_registry_pack": "sha256:5151093102b90a359a26b87a3d6a1ab8ed2d78eba0d725f08201bb5591ea65e2",
+    "rumi_model_registry_pack": "sha256:9bd36b962e00d61be9674292a7b545d61364d3fc1c1f8ae3cf891624b7f41c71",
     "rumi_prompt_studio_pack": "sha256:a1cd7efd33d625774d246d9b1703640ce73eec7569165d666a172d7988466df2",
     "rumi_provider_adapters_pack": "sha256:b426ba5df70a24e137b3cc7c733b007086329d0bc55730117c9ef47b011197e5",
     "rumi_provider_registry_pack": "sha256:8dab527b35da0b4a1f5dcbab788385f549ef74798293a5a28a17acc6482befff",
