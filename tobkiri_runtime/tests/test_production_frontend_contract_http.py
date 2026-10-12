@@ -545,6 +545,21 @@ def production_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
+def host_credential_production_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Capture production HTTP with its normal temporary Host credential store."""
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    yield from _captured_production_server(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    )
+
+
+@pytest.fixture
 def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Capture production HTTP with only the sealed policy PackVM test port."""
 
@@ -3610,7 +3625,7 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
 
 
 def test_model_search_uses_captured_provider_and_nested_profile_edge(
-    production_server,
+    host_credential_production_server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3665,7 +3680,7 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
         },
         expected_revision=0,
     )
-    server, session, _authority = production_server
+    server, session, _authority = host_credential_production_server
     observed: list[RequestEnvelope] = []
     original_dispatch = session.broker._dispatch
 
@@ -3786,7 +3801,7 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
 
 
 def test_connection_model_search_http_dispatches_bound_catalog_request(
-    production_server,
+    host_credential_production_server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3837,7 +3852,7 @@ def test_connection_model_search_http_dispatches_bound_catalog_request(
         "metadata": {"provider_connection_id": "provider.fixture"},
     }, expected_revision=0)
 
-    server, session, _authority = production_server
+    server, session, _authority = host_credential_production_server
     observed: list[RequestEnvelope] = []
     original_dispatch = session.broker._dispatch
 
@@ -3889,7 +3904,7 @@ def test_connection_model_search_http_dispatches_bound_catalog_request(
 
 
 def test_model_search_projects_float_metadata_into_canonical_json(
-    production_server,
+    host_credential_production_server,
     tmp_path: Path,
 ) -> None:
     """Catalog float metadata must survive durable canonical JSON journaling.
@@ -3920,7 +3935,7 @@ def test_model_search_projects_float_metadata_into_canonical_json(
         },
         expected_revision=0,
     )
-    server, _session, _authority = production_server
+    server, _session, _authority = host_credential_production_server
     cookie, csrf, origin = _authenticate(server)
     headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
 
@@ -3944,12 +3959,12 @@ def test_model_search_projects_float_metadata_into_canonical_json(
 
 
 def test_model_search_rejects_unauthorized_and_malformed_payloads(
-    production_server,
+    host_credential_production_server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Client identity, unknown fields, and malformed filters never dispatch."""
 
-    server, session, _authority = production_server
+    server, session, _authority = host_credential_production_server
     observed: list[RequestEnvelope] = []
     original_dispatch = session.broker._dispatch
 
