@@ -64,6 +64,9 @@ test("read-only rendering starts pending without probes or key inputs", () => {
   const resource = createProviderModelAccessResources({ async getModelAccess() { ++calls; return snapshot(); }, async setModelAccess() { ++calls; return snapshot(); }, async getModelAccessCatalog() { ++calls; return { ...scope, models: [], status: "live" }; } });
   const html = renderToStaticMarkup(createElement(ProviderModelAccessSettings, { scope, resources: resource }));
   assert.match(html, /このAPI接続で使えるモデル/);
+  assert.match(html, /モデル利用範囲/);
+  assert.doesNotMatch(html, /<details open="">/);
+  assert.match(html, /設定を確認中/);
   assert.match(html, /設定を読み込み中/);
   assert.doesNotMatch(html, /password|textarea|api_key|key_value/);
   assert.equal(calls, 0);

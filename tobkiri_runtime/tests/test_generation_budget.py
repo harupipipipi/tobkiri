@@ -18,6 +18,7 @@ from core_runtime.authority.v4_models import (
     GrantLifetime,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
+    authority_digest,
 )
 from core_runtime.credential_transport import (
     CredentialTransportDenied,
@@ -28,6 +29,7 @@ from core_runtime.generation_transport_budget import (
     ENROLL_OPERATION,
     GenerationBudgetPolicy,
     HostGenerationBudgetAdmission,
+    PRICE_POLICY_FIELDS,
 )
 from core_runtime.global_contract_dispatch import (
     GlobalContractClient,
@@ -162,6 +164,7 @@ def world(
     """Use real authority and material stores; only the final opener is local."""
     original = lifecycle._principal
     is_stream = getattr(request, "param", "generate") == "stream"
+    priced = getattr(request, "param", "generate") == "priced"
     function = FUNCTION.replace(".generate", ".stream") if is_stream else FUNCTION
     operation = OPERATION.replace("-generate", "-stream") if is_stream else OPERATION
     contract = CONTRACT.replace("generate.v1", "stream.v1") if is_stream else CONTRACT
@@ -191,9 +194,12 @@ def world(
         credential_handle="credential:synthetic-fresh-test-grant",
         credential_key_version=KEY_VERSION,
         endpoint=ENDPOINT,
-        model="google/gemma-4-31b-it:free",
+        model="stepfun/step-5-preview" if priced else "google/gemma-4-31b-it:free",
         max_requests=3,
         max_output_tokens=2048,
+        max_prompt_price_microusd_per_million=1_000_000 if priced else 0,
+        max_completion_price_microusd_per_million=2_700_000 if priced else 0,
+        external_key_limit_microusd=2_000_000 if priced else 0,
     )
     credential.create(
         secret_material={"api_key": "synthetic-test-only-no-real-key"},
@@ -299,7 +305,10 @@ def transport(world: dict[str, Any], *, fail: bool = False):
             "max_tokens": 2048,
             "provider": {
                 "allow_fallbacks": False,
-                "max_price": {"prompt": 0, "completion": 0},
+                "max_price": {
+                    "prompt": policy.max_prompt_price_microusd_per_million / 1_000_000,
+                    "completion": policy.max_completion_price_microusd_per_million / 1_000_000,
+                },
             },
         },
         credential_handle=policy.credential_handle,
@@ -311,6 +320,7 @@ def transport(world: dict[str, Any], *, fail: bool = False):
     return owner, arguments
 
 
+@pytest.mark.parametrize("world", ["generate", "priced"], indirect=True)
 def test_three_posts_then_fourth_denied_before_opener(world):
     for _ in range(3):
         owner, arguments = transport(world)
@@ -322,6 +332,7 @@ def test_three_posts_then_fourth_denied_before_opener(world):
     assert len(world["calls"]) == 3
 
 
+@pytest.mark.parametrize("world", ["generate", "priced"], indirect=True)
 def test_timeout_and_restart_do_not_refund(world):
     owner, arguments = transport(world, fail=True)
     with pytest.raises(CredentialTransportDenied):
@@ -393,6 +404,107 @@ def test_guest_body_cannot_expand_policy(world, mutation):
     assert world["calls"] == []
     revision, _ = world["witness"].get_host_pending_effect(world["policy"].effect_id)
     assert revision == 1
+
+
+@pytest.mark.parametrize("world", ["priced"], indirect=True)
+def test_priced_native_compiler_payload_reaches_guard(world) -> None:
+    from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
+        compile_connection_parameters,
+    )
+    from ecosystem.rumi_provider_registry_pack.runtime.provider_filters import (
+        CAPABILITY_REVISION,
+    )
+
+    policy = world["policy"]
+    connection = {
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://openrouter.ai/api/v1",
+        "metadata": {"catalog_provider_id": "openrouter"},
+        "model_access": {
+            "version": "tobkiri.connection-model-access.v1",
+            "mode": "explicit",
+            "model_ids": [policy.model],
+            "native_filters": {
+                "revision": CAPABILITY_REVISION,
+                "routing": {"max_price": {"prompt": 1, "completion": 2.7}},
+            },
+        },
+    }
+    compiled = compile_connection_parameters(
+        connection,
+        policy.model,
+        {"max_tokens": 2048},
+    )
+    assert compiled["provider"] == {
+        "allow_fallbacks": False,
+        "max_price": {"prompt": 1, "completion": 2.7},
+    }
+    assert compiled["provider"]["allow_fallbacks"] is False
+    owner, arguments = transport(world)
+    arguments["body"].update(compiled)
+    assert owner.post_json(**arguments) == {"choices": []}
+    assert len(world["calls"]) == 1
+
+
+@pytest.mark.parametrize("world", ["priced"], indirect=True)
+@pytest.mark.parametrize(
+    "maximum, fallback",
+    [
+        ({"prompt": 0, "completion": 0}, False),
+        ({"prompt": 0.000001, "completion": 0.0000027}, False),
+        ({"prompt": 1.01, "completion": 2.7}, False),
+        ({"prompt": 0.99, "completion": 2.7}, False),
+        ({"prompt": 1, "completion": 2.71}, False),
+        ({"prompt": 1, "completion": 2.69}, False),
+        ({"prompt": True, "completion": 2.7}, False),
+        ({"prompt": float("nan"), "completion": 2.7}, False),
+        ({"prompt": float("inf"), "completion": 2.7}, False),
+        ({"prompt": 1, "completion": 2.7, "request": 0}, False),
+        ({"prompt": 1, "completion": 2.7}, True),
+    ],
+)
+def test_priced_policy_rejects_different_rates_or_fallback(
+    world,
+    maximum,
+    fallback,
+) -> None:
+    owner, arguments = transport(world)
+    arguments["body"]["provider"] = {
+        "max_price": maximum,
+        "allow_fallbacks": fallback,
+    }
+    with pytest.raises(CredentialTransportDenied):
+        owner.post_json(**arguments)
+    assert world["calls"] == []
+    assert world["witness"].get_host_pending_effect(world["policy"].effect_id)[0] == 1
+
+
+@pytest.mark.parametrize("field", PRICE_POLICY_FIELDS)
+@pytest.mark.parametrize("value", [True, 1.0, float("nan"), float("inf"), -1, 2**53, "1", None])
+def test_policy_prices_require_bounded_integer_units(world, field, value) -> None:
+    from core_runtime.native_generation_budget import NativeGenerationBudgetTemplate
+
+    with pytest.raises(ValueError):
+        replace(world["policy"], **{field: value})
+    with pytest.raises(ValueError):
+        NativeGenerationBudgetTemplate("defaults", "provider.main", **{field: value})
+
+
+def test_legacy_zero_policy_serialization_and_digest_are_unchanged(world) -> None:
+    expected = {
+        "enrollment_id": "host-test-enrollment-1",
+        "profile_id": "profile-1",
+        "consumer_pack_id": "rumi_provider_adapters_pack",
+        "connection_id": "connection/openrouter:test-only",
+        "credential_handle": "credential:synthetic-fresh-test-grant",
+        "credential_key_version": KEY_VERSION,
+        "endpoint": ENDPOINT,
+        "model": "google/gemma-4-31b-it:free",
+        "max_requests": 3,
+        "max_output_tokens": 2048,
+    }
+    assert world["policy"].to_dict() == expected
+    assert world["policy"].digest == authority_digest(expected)
 
 
 @pytest.mark.parametrize(
@@ -472,16 +584,11 @@ def test_interrupted_second_commit_is_terminal_not_refunded(world, monkeypatch):
     def unavailable(*args, **kwargs):
         raise OSError("synthetic storage unavailable")
 
-    monkeypatch.setattr(
-        world["witness"], "compare_and_swap_host_pending_effect", unavailable
-    )
+    monkeypatch.setattr(world["witness"], "compare_and_swap_host_pending_effect", unavailable)
     owner, arguments = transport(world)
     with pytest.raises(CredentialTransportDenied):
         owner.post_json(**arguments)
-    assert (
-        world["harness"].store.get_host_pending_effect(world["policy"].effect_id)[0]
-        == 2
-    )
+    assert world["harness"].store.get_host_pending_effect(world["policy"].effect_id)[0] == 2
     assert world["witness"].get_host_pending_effect(world["policy"].effect_id)[0] == 1
     monkeypatch.undo()
     owner, arguments = transport(world)

@@ -174,6 +174,29 @@ describe("shared model catalog source", () => {
     assert.equal(calls, 4);
   });
 
+  it("surfaces only safe categorized copy for rejected model-search requests", async () => {
+    const query = { text: "m", providerIds: ["openrouter"] };
+    const forbidden = createModelCatalogSearchStore(async () => {
+      throw new Error("HTTP 403 Forbidden\ncredential-secret https://private.example");
+    });
+    const failed = await forbidden.search(query);
+    assert.match(failed.error ?? "", /権限/);
+    assert.equal(failed.error?.includes("credential-secret"), false);
+    assert.equal(failed.error?.includes("private.example"), false);
+    assert.equal(forbidden.peek(query), undefined);
+
+    let attempts = 0;
+    const unavailable = createModelCatalogSearchStore(async () => {
+      attempts += 1;
+      throw new TypeError("Failed to fetch");
+    });
+    const disconnected = await unavailable.search(query);
+    assert.match(disconnected.error ?? "", /Tobkiri Launcherとの接続/);
+    assert.equal(unavailable.peek(query), undefined);
+    await unavailable.search(query, true);
+    assert.equal(attempts, 2);
+  });
+
   it("binds public catalog models to exact connections without claiming verified reachability", async () => {
     const calls: Record<string, unknown>[] = [];
     const store = createModelCatalogSearchStore(async (filters) => {

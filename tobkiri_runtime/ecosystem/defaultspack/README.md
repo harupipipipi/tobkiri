@@ -892,9 +892,19 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 
 ### Hosted provider setup
 
-Open **Settings → API keys**, choose a provider, and save its API name and key.
-The connection URL and protocol are preset. Choose a model from the searchable
-list to use it in chat; model IDs and route IDs are filled automatically.
+Open **Settings → Models** and add an API connection by choosing a provider
+and saving its API name and key. The connection URL and protocol are preset.
+Existing connections stay visible; the form for adding another connection
+can be expanded when needed.
+
+Under **チャットで使うモデル** (chat model), select the connection, search for a model, set the output
+token limit, and choose **このモデルを使う** (use this model). Model IDs and route IDs are filled
+automatically. **モデル利用範囲** (model access) manages which models the connection permits;
+expand it to edit individual models or OpenRouter filters. Review and save
+the intended model-access policy for a new connection. Saving a key,
+model-access policy, or model selection does not send a paid test request.
+Provider and Native approval restrictions still apply to saved models; model
+selection does not expand a credential's approved generation scope.
 The provider catalog is shipped as JSON, including the complete OpenRouter
 public model inventory captured during refresh. See
 [AI providers](docs/ai-providers.md) for source, license and refresh details.

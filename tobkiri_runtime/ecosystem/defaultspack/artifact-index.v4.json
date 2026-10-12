@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:bec7546ef25b6746b7a6fc7e5c87a8eafa9e0c51cc1cfc2d031124274889b6cb",
+  "artifact_set_digest": "sha256:28c50599a3b0018f807258169450f53ca360cd094a23e21edd629fd996656547",
   "artifacts": [
     {
-      "digest": "sha256:e20c21c16c0f5b27332fcf1f2dea412bc0c3490dd9c5f83812dbfc1bb22efd96",
+      "digest": "sha256:ace3b81010072c8eb19a218f88115cd8b0684b4575c60dfbdb5a73b1435dc0bd",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:41007202452ca5f2ae30238af95c12a7adb6d512e5628ed9ea691272caa81aa9",
+      "digest": "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
       "path": "defaultspack/frontend_contract_map.v4.json",
       "role": "asset"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:1424289930e7a126d93a825b0a3de1f32b0b03f9c56de5e775338542b6cfefe3",
+      "digest": "sha256:6df8e4db190e32a6dd82f6ecdab82bd2f52868e91e1aba877cdf9eeaea3c775e",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:d2df0f27033721ddb15eb0ae3db487b26124331bc499517549a2bf41c58d7a21",
+      "digest": "sha256:9f1dcdce4c639ddfb4d8f2093dedfcf4ecd2b23a4c67ff8c84536870d3dd07ba",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -685,8 +685,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:1973f20f7d2f998c60ef24c5346aa0d3aba91efcb942539ff4d4c96ba4a4ec14"
+    "signed_digest": "sha256:02ba01d490a1fe7052dc958036a1bf301610331c926441c3bc3db36e7ea9d31d"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:363518449186b9d90817c07475f6355307f7350f83b937af0d202af3ecd5c62f"
+  "source_identity": "sha256:9bbc8840a4695c837188176fd490a877edbe6a392b61c5744f9dbc0b8fcf7ebe"
 }

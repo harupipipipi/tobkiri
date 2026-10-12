@@ -19,10 +19,15 @@ from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSI
 def test_signed_owner_source_always_selects_exact_test_policy():
     policy = owner_startup_generation_budget_template()
     assert policy == NativeGenerationBudgetTemplate(
-        "defaults", "provider.openrouter.main"
+        "defaults",
+        "provider.openrouter.main",
+        model="stepfun/step-5-preview",
+        max_prompt_price_microusd_per_million=1_000_000,
+        max_completion_price_microusd_per_million=2_700_000,
+        external_key_limit_microusd=2_000_000,
     )
     assert policy.max_requests == 3 and policy.max_output_tokens == 2048
-    assert policy.model == "google/gemma-4-31b-it:free"
+    assert policy.model == "stepfun/step-5-preview"
 
 
 @pytest.mark.parametrize(
@@ -81,9 +86,7 @@ def test_common_production_capture_selects_policy_before_catalog_or_credential(
             ecosystem_root=tmp_path / "unused",
             credential_store_factory=credential,
         )
-    assert selected == [
-        NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
-    ]
+    assert selected == [owner_startup_generation_budget_template()]
     assert observed == ([] if profile == "other" else ["catalog"])
     if profile == "defaults":
         material = HostCredentialMaterialStore(user_data_root=tmp_path / "owner")
@@ -108,7 +111,7 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
     cloud request is run. The production capture and owner selector are real.
     """
     import app
-    from core_runtime import bootstrap, di_container, packvm_lifecycle_v4
+    from core_runtime import di_container, packvm_lifecycle_v4
     from core_runtime.bootstrap import runtime
     from ecosystem.defaultspack.defaultspack import profile_runtime_composition
     from ecosystem.defaultspack.backend.sandbox.isolation import macos_vz_provisioner
@@ -125,17 +128,12 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
     class KernelProbe:
         def __init__(self, **kwargs):
             self.inputs = kwargs
-            assert (
-                kwargs["runtime_capture_factory"].keywords["generation_budget_template"]
-                is None
-            )
+            assert kwargs["runtime_capture_factory"].keywords["generation_budget_template"] is None
 
         def run_startup(self):
             observed.append("kernel-startup")
             production_v4.capture_production_dispatch(
-                SimpleNamespace(
-                    resolved=SimpleNamespace(profile={"profile_id": "defaults"})
-                ),
+                SimpleNamespace(resolved=SimpleNamespace(profile={"profile_id": "defaults"})),
                 authority_store=AuthorityStore(tmp_path / "authority" / "v4.sqlite3"),
                 bundle_root=tmp_path / "unused",
                 ecosystem_root=tmp_path / "unused",
@@ -174,9 +172,7 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
     )
     with pytest.raises(AuthorityDenied):
         app.main(["--headless"])
-    assert selected == [
-        NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
-    ]
+    assert selected == [owner_startup_generation_budget_template()]
     assert observed == ["kernel-startup", "catalog", "shutdown"]
 
 
@@ -264,9 +260,7 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
         monkeypatch.setattr(production_v4, "_host_profile_catalog", stop_at_catalog)
         with pytest.raises(ActivationCommittedError):
             kernel._lifecycle.activate_bootstrap_profile({})
-        assert selected == [
-            NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
-        ]
+        assert selected == [owner_startup_generation_budget_template()]
         authority = AuthorityStore(user_data / "authority" / "v4.sqlite3")
         material = HostCredentialMaterialStore(user_data_root=user_data)
         binding = capture_native_generation_budget(

@@ -105,7 +105,7 @@ export function CatalogModelPicker({ models, value, query, providerId = "", conn
     provider_id: providerId || undefined,
   }));
   if (selectedOption?.value === value && !options.some((option) => option.value === value)) options.push(selectedOption);
-  return <div className="grid gap-2">
+  return <div className="grid gap-2 [&_[role=listbox]]:max-h-56">
     <ModelSearchPicker value={value} options={options} query={query} onChange={onChange}
       onQueryChange={onQueryChange} onSelectedOptionChange={onSelectedOptionChange}
       showTrigger={false} open preset={{ kinds: ["model"], ...(providerId ? { providerIds: [providerId] } : {}), connectionId }}
@@ -148,7 +148,8 @@ export function CustomModelControls({ displayMode, manual, manualModel, hasCatal
 }
 
 /** Choose a catalog model for the exact saved connection without typing IDs. */
-export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged, modelAccessBinding }: {
+export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged, modelAccessBinding, onConnectionsChange }: {
+  onConnectionsChange?: (connections: RegisteredProviderConnection[]) => void;
   modelAccessBinding?: { profile_id: string; resources: ProviderModelAccessResources };
   preferredConnectionId?: string;
   displayMode?: "standard" | "advanced";
@@ -194,6 +195,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
         const snapshot = await settingsApiResources.listProviderConnections();
         if (!active || currentVersion !== version) return;
         setConnections(snapshot.connections);
+        onConnectionsChange?.(snapshot.connections);
         setProviderRegistryRevision(snapshot.registry_revision);
         setConnectionsError("");
         setProvider((current) => {
@@ -209,6 +211,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       } catch (error) {
         if (!active || currentVersion !== version) return;
         setConnections([]);
+        onConnectionsChange?.([]);
         setProviderRegistryRevision(null);
         setProvider("");
         setConnectionsError(modelRouteConnectionsErrorMessage(error));
@@ -220,7 +223,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       active = false;
       window.removeEventListener("tobkiri-provider-connections-changed", loadConnections);
     };
-  }, [preferredConnectionId, requestedModel?.requestId]);
+  }, [preferredConnectionId, requestedModel?.requestId, onConnectionsChange]);
 
 
   const selectedConnection = connections.find(
@@ -294,16 +297,16 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       setBusy(false);
     }
   };
-  const field = "rounded border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100";
-  return <fieldset disabled={busy} className="mt-3 grid gap-2 rounded-lg border border-zinc-700 p-3">
-    <legend className="text-sm text-zinc-200">使いたいモデルを選ぶ</legend>
+  const field = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-zinc-500";
+  return <fieldset disabled={busy} className="mt-4 grid gap-3 rounded-xl border border-white/[0.09] bg-white/[0.02] p-4">
+    <legend className="px-1 text-sm font-medium text-zinc-100">チャットで使うモデル</legend>
     {requestedModel && <div className="rounded border border-zinc-700 p-2 text-xs text-zinc-400" data-model-properties-draft>
       <p className="font-medium text-zinc-200">{requestedModel.model.display_name}</p>
       <p>Provider: {requestedModel.identity.providerId}</p>
       <p className="font-mono">{requestedModel.identity.modelId}</p>
       <p>保存するには、このProviderの使用するAPIを選んでください。</p>
     </div>}
-    <label htmlFor={connectionSelectId} className="grid gap-1 text-xs">使用するAPI
+    <label htmlFor={connectionSelectId} className="grid gap-1.5 text-xs font-medium text-zinc-300">使用するAPI接続
       <select id={connectionSelectId} aria-label="使用するAPI" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={!connections.length}>
         <option value="">{connections.length ? "接続を選択" : "登録済みの接続がありません"}</option>
         {connections.map((connection) => <option key={connection.provider_instance_id} value={connection.provider_instance_id}>{modelRouteConnectionLabel(connection, connections)}</option>)}
@@ -316,11 +319,14 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
         key={`${effectiveAccessBinding.profile_id}:${selectedConnection.provider_instance_id}`}
         scope={{ profile_id: effectiveAccessBinding.profile_id, provider_instance_id: selectedConnection.provider_instance_id }}
         resources={effectiveAccessBinding.resources} onSnapshot={setAccessSnapshot} />}
-      {effectiveAccessBinding && accessKnown && model && !modelAllowed(activePolicy, model) && <p role="status" className="text-xs text-zinc-400">このモデルは、このAPI接続の許可対象外です。</p>}
-      {!manualModel && <CatalogModelPicker models={catalogModels} value={model} query={query}
-        providerId={catalogProviderId} connectionId={selectedConnection.provider_instance_id}
-        modelAccessPolicy={activePolicy} selectedOption={selectedCatalogOption} onSelectedOptionChange={setSelectedCatalogOption}
-        onChange={(next) => { setCatalogModel(next); setMessage(""); }} onQueryChange={setQuery} />}
+      {effectiveAccessBinding && accessKnown && model && !modelAllowed(activePolicy, model) && <p role="status" className="rounded-lg border border-amber-300/15 bg-amber-300/[0.04] px-3 py-2 text-xs text-amber-100">選択したモデルは、この接続の許可対象外です。モデル利用範囲を確認してください。</p>}
+      {!manualModel && <div className="grid gap-1.5">
+        <span className="text-xs font-medium text-zinc-300">モデルを検索して選択</span>
+        <CatalogModelPicker models={catalogModels} value={model} query={query}
+          providerId={catalogProviderId} connectionId={selectedConnection.provider_instance_id}
+          modelAccessPolicy={activePolicy} selectedOption={selectedCatalogOption} onSelectedOptionChange={setSelectedCatalogOption}
+          onChange={(next) => { setCatalogModel(next); setMessage(""); }} onQueryChange={setQuery} />
+      </div>}
       <CustomModelControls
         displayMode={displayMode}
         manual={manual}
@@ -331,16 +337,18 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
         onChange={setCustomModel}
       />
     </>}
-    <label htmlFor={outputLimitId} className="grid gap-1 text-xs">1回の応答の最大出力トークン数
-      <input id={outputLimitId} type="number" min={1} max={131072} step={1}
-        className={field} value={outputLimit} onChange={(event) => setOutputLimit(event.target.value)} />
-      <span className="text-zinc-400">このモデル設定を使う各応答の上限です。ツール実行後の応答にも適用します。</span>
-    </label>
+    <div className="grid gap-3 border-t border-white/[0.07] pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <label htmlFor={outputLimitId} className="grid max-w-xs gap-1.5 text-xs font-medium text-zinc-300">1回の応答の最大出力トークン数
+        <input id={outputLimitId} type="number" min={1} max={131072} step={1}
+          className={field} value={outputLimit} onChange={(event) => setOutputLimit(event.target.value)} />
+      </label>
+      <button type="button" disabled={busy || !validModel || !validOutputLimit || !selectedConnection || providerRegistryRevision === null} onClick={() => void save()} className="rounded-lg border border-indigo-300/30 bg-indigo-300 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-indigo-200 disabled:cursor-not-allowed disabled:opacity-45">{busy ? "保存結果を確認中" : "このモデルを使う"}</button>
+    </div>
+    <p className="-mt-2 text-[11px] leading-5 text-zinc-500">この上限はこのモデル設定を使う各応答に適用されます。</p>
     <ModelRouteErrorNotices
       connectionsError={connectionsError}
       saveError={saveError}
     />
-    <button type="button" disabled={busy || !validModel || !validOutputLimit || !selectedConnection || providerRegistryRevision === null} onClick={() => void save()} className="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-50">{busy ? "保存結果を確認中" : "このモデルを使う"}</button>
-    {message && <p role="status" className="text-xs text-zinc-300">{message}</p>}
+    {message && <p role="status" className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-3 py-2 text-xs text-emerald-100">{message}</p>}
   </fieldset>;
 }

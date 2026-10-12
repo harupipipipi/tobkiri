@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import secrets
+import re
 from typing import Any, NoReturn
 
 from core_runtime.authority.v4 import AuthorityStore
@@ -21,6 +22,8 @@ from core_runtime.credential_transport import (
 from core_runtime.generation_transport_budget import (
     GenerationBudgetPolicy,
     HostGenerationBudgetAdmission,
+    PRICE_POLICY_FIELDS,
+    valid_generation_price_limits,
 )
 from core_runtime.invocation_scope_v4 import assert_dispatched_invocation
 
@@ -40,6 +43,9 @@ class NativeGenerationBudgetTemplate:
     model: str = "google/gemma-4-31b-it:free"
     max_requests: int = 3
     max_output_tokens: int = 2048
+    max_prompt_price_microusd_per_million: int = 0
+    max_completion_price_microusd_per_million: int = 0
+    external_key_limit_microusd: int = 0
 
     def __post_init__(self) -> None:
         """Keep this isolated test policy exactly within the owner's limits."""
@@ -49,13 +55,25 @@ class NativeGenerationBudgetTemplate:
             or type(self.connection_id) is not str
             or not self.connection_id
             or self.consumer_pack_id != "rumi_provider_adapters_pack"
-            or self.model != "google/gemma-4-31b-it:free"
+            or type(self.model) is not str
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}", self.model) is None
             or type(self.max_requests) is not int
             or self.max_requests != 3
             or type(self.max_output_tokens) is not int
             or self.max_output_tokens != 2048
+            or not valid_generation_price_limits(
+                *(getattr(self, field) for field in PRICE_POLICY_FIELDS)
+            )
         ):
             raise ValueError("Native generation budget template is invalid")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Preserve legacy template bytes while binding complete priced policies."""
+        result = asdict(self)
+        if not any(result[field] for field in PRICE_POLICY_FIELDS):
+            for field in PRICE_POLICY_FIELDS:
+                del result[field]
+        return result
 
     @property
     def effect_id(self) -> str:
@@ -67,7 +85,14 @@ def owner_startup_generation_budget_template(
     requested: NativeGenerationBudgetTemplate | None = None,
 ) -> NativeGenerationBudgetTemplate | None:
     """Select the owner-approved isolated test policy from signed Source."""
-    approved = NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
+    approved = NativeGenerationBudgetTemplate(
+        "defaults",
+        "provider.openrouter.main",
+        model="stepfun/step-5-preview",
+        max_prompt_price_microusd_per_million=1_000_000,
+        max_completion_price_microusd_per_million=2_700_000,
+        external_key_limit_microusd=2_000_000,
+    )
     if requested is not None and (
         type(requested) is not NativeGenerationBudgetTemplate or requested != approved
     ):
@@ -98,7 +123,7 @@ class NativeGenerationBudgetOwner:
             "effect_id": template.effect_id,
             "state": "required",
             "kind": "native_generation_budget_template_v1",
-            "template": asdict(template),
+            "template": template.to_dict(),
         }
         left = authority_store.get_host_pending_effect(template.effect_id)
         right = witness_store.get_host_pending_effect(template.effect_id)
@@ -125,9 +150,7 @@ class NativeGenerationBudgetOwner:
             or self._witness.get_host_pending_effect(self._active_id) is not None
         ):
             self._deny()
-        draft_id = (
-            self.template.effect_id + ":draft:" + authority_digest(dict(plan))[7:]
-        )
+        draft_id = self.template.effect_id + ":draft:" + authority_digest(dict(plan))[7:]
         left = self._authority.get_host_pending_effect(draft_id)
         right = self._witness.get_host_pending_effect(draft_id)
         if left is None and right is None:
@@ -142,6 +165,7 @@ class NativeGenerationBudgetOwner:
                 model=self.template.model,
                 max_requests=self.template.max_requests,
                 max_output_tokens=self.template.max_output_tokens,
+                **{field: getattr(self.template, field) for field in PRICE_POLICY_FIELDS},
             )
             payload = {
                 "effect_id": draft_id,
@@ -212,9 +236,7 @@ class NativeGenerationBudgetOwner:
         ):
             self._deny()
         grant = self._authority.get_grant(parent_lease.grant_id)
-        approval = (
-            self._authority.get_approval(grant.approval_id or "") if grant else None
-        )
+        approval = self._authority.get_approval(grant.approval_id or "") if grant else None
         native_request = None
         decision = None
         for candidate in self._authority.list_interactive_approval_requests():
@@ -324,9 +346,7 @@ def capture_native_generation_budget(
     retained = authority_store.get_host_pending_effect(effect_id)
     witness_path = user_data_root / "credentials" / "generation-budget-witness.sqlite3"
     witness = AuthorityStore(witness_path) if witness_path.exists() else None
-    secondary = (
-        witness.get_host_pending_effect(effect_id) if witness is not None else None
-    )
+    secondary = witness.get_host_pending_effect(effect_id) if witness is not None else None
     marker_required = getattr(binding.store, "requires_generation_budget", None)
     if template is None:
         if retained is None:
@@ -338,14 +358,9 @@ def capture_native_generation_budget(
                 witness.close()
             return binding
         template = NativeGenerationBudgetTemplate(**retained[1]["template"])
-    if (
-        type(template) is not NativeGenerationBudgetTemplate
-        or template.profile_id != profile_id
-    ):
+    if type(template) is not NativeGenerationBudgetTemplate or template.profile_id != profile_id:
         raise CredentialTransportDenied("generation_budget_invalid")
-    if retained is None and (
-        callable(marker_required) and marker_required(profile_id=profile_id)
-    ):
+    if retained is None and (callable(marker_required) and marker_required(profile_id=profile_id)):
         raise CredentialTransportDenied("generation_budget_invalid")
     witness = witness or AuthorityStore(witness_path)
     owner = NativeGenerationBudgetOwner(

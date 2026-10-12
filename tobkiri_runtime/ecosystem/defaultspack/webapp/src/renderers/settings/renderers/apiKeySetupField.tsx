@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { RegisteredProviderConnection } from "../../../lib/api";
 
 import { CredentialTransferModal } from "../../../components/CredentialTransferModal";
 import { ErrorNotice } from "../../../components/ErrorNotice";
@@ -81,6 +82,11 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
         : "openai-compatible",
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [apiFormOpen, setApiFormOpen] = useState<boolean | null>(null);
+  const [connections, setConnections] = useState<RegisteredProviderConnection[]>([]);
+  const modelConnectionsVisible = providerScope !== "non_llm";
+  const hasRegisteredApis = registeredApis.length > 0
+    || (modelConnectionsVisible && connections.length > 0);
   const [saveError, setSaveError] = useState("");
   const [availability, setAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
   const [savedConnectionId, setSavedConnectionId] = useState("");
@@ -168,6 +174,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       setSecret("");
       setBaseUrl("");
       setSaveState("saved");
+      setApiFormOpen(false);
       window.dispatchEvent(new Event("tobkiri-provider-connections-changed"));
     } catch (saveErrorValue) {
       setSaveState("idle");
@@ -195,7 +202,22 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             ))}
           </div>
         )}
-        <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+        {modelConnectionsVisible && registeredApis.length === 0 && connections.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
+            {connections.map((connection) => <div key={connection.provider_instance_id} className="flex flex-wrap items-center gap-2 border-b border-zinc-800/80 px-3 py-2.5 last:border-b-0">
+              <span className="text-sm font-medium text-zinc-200">{connection.display_name || connection.provider_instance_id}</span>
+              <span className="text-xs text-zinc-500">{connection.credential_status === "configured" ? "キー設定済み" : connection.credential_status === "not_required" ? "キー不要" : "キー未設定"}</span>
+            </div>)}
+          </div>
+        )}
+        <details
+          open={apiFormOpen ?? !hasRegisteredApis}
+          className="rounded-xl border border-white/[0.08] bg-white/[0.025]"
+        >
+          <summary onClick={(event) => { event.preventDefault(); setApiFormOpen(!(apiFormOpen ?? !hasRegisteredApis)); }} className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-300">
+            {hasRegisteredApis ? "別のAPI接続を追加" : "API接続を追加"}
+          </summary>
+        <div className="space-y-3 border-t border-white/[0.07] p-3">
           <p className="text-xs leading-5 text-zinc-500">
             {savesExternalToken
               ? "外部サービスを選び、識別用の名前とトークンを入力します。"
@@ -328,6 +350,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             </>
           )}
         </div>
+        </details>
         {saveState === "saved" && savesExternalToken && (
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
             外部サービス用トークンを保存しました。
@@ -354,7 +377,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             message={saveError}
           />
         )}
-        {!savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} displayMode={displayMode} requestedModel={modelPropertiesRequest} onModelPropertiesAcknowledged={onModelPropertiesAcknowledged} />}
+        {modelConnectionsVisible && !savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} displayMode={displayMode} requestedModel={modelPropertiesRequest} onModelPropertiesAcknowledged={onModelPropertiesAcknowledged} onConnectionsChange={setConnections} />}
         {credentialTransfer && (
           <CredentialTransferModal
             providerId={credentialTransfer.providerId}

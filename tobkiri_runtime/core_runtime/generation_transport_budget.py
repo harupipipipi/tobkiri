@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 import time
 import math
+import re
 from typing import Any, NoReturn
 
 from core_runtime.authority.v4 import AuthorityStore
@@ -58,6 +59,19 @@ _BODY_KEYS = frozenset(
         "n",
     }
 )
+_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}\Z")
+PRICE_POLICY_FIELDS = (
+    "max_prompt_price_microusd_per_million",
+    "max_completion_price_microusd_per_million",
+    "external_key_limit_microusd",
+)
+
+
+def valid_generation_price_limits(*values: int) -> bool:
+    """Require finite, canonical integer price/externally declared limit units."""
+    return len(values) == 3 and all(
+        type(value) is int and 0 <= value <= 2**53 - 1 for value in values
+    )
 
 
 def _deny(code: str = "generation_budget_invalid") -> NoReturn:
@@ -78,9 +92,13 @@ class GenerationBudgetPolicy:
     model: str
     max_requests: int
     max_output_tokens: int
+    max_prompt_price_microusd_per_million: int = 0
+    max_completion_price_microusd_per_million: int = 0
+    # Disclosure only: this is not a locally verified or enforced spending ledger.
+    external_key_limit_microusd: int = 0
 
     def __post_init__(self) -> None:
-        """Require finite ceilings and the selected free OpenRouter surface."""
+        """Require finite ceilings and one exact approved OpenRouter surface."""
         if (
             any(
                 type(value) is not str
@@ -88,7 +106,7 @@ class GenerationBudgetPolicy:
                 or len(value) > 512
                 or any(c in value for c in "\x00\r\n")
                 for name, value in asdict(self).items()
-                if name not in {"max_requests", "max_output_tokens"}
+                if name not in {"max_requests", "max_output_tokens", *PRICE_POLICY_FIELDS}
             )
             or not self.credential_handle.startswith("credential:")
             or type(self.max_requests) is not int
@@ -96,7 +114,10 @@ class GenerationBudgetPolicy:
             or type(self.max_output_tokens) is not int
             or not 1 <= self.max_output_tokens <= 2048
             or self.endpoint != "https://openrouter.ai/api/v1/chat/completions"
-            or not self.model.endswith(":free")
+            or _MODEL_ID.fullmatch(self.model) is None
+            or not valid_generation_price_limits(
+                *(getattr(self, field) for field in PRICE_POLICY_FIELDS)
+            )
         ):
             raise ValueError("generation budget policy is invalid")
 
@@ -112,7 +133,12 @@ class GenerationBudgetPolicy:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize only non-secret immutable enrollment data."""
-        return asdict(self)
+        result = asdict(self)
+        # Preserve every legacy zero-price policy digest and credential marker.
+        if not any(result[field] for field in PRICE_POLICY_FIELDS):
+            for field in PRICE_POLICY_FIELDS:
+                del result[field]
+        return result
 
 
 class HostGenerationBudgetAdmission:
@@ -343,8 +369,11 @@ class HostGenerationBudgetAdmission:
             or not isinstance(maximum, Mapping)
             or set(maximum) != {"prompt", "completion"}
             or any(
-                type(value) not in (int, float) or value != 0
-                for value in maximum.values()
+                type(maximum[unit]) not in (int, float) or maximum[unit] != ceiling / 1_000_000
+                for unit, ceiling in (
+                    ("prompt", policy.max_prompt_price_microusd_per_million),
+                    ("completion", policy.max_completion_price_microusd_per_million),
+                )
             )
         ):
             _deny()

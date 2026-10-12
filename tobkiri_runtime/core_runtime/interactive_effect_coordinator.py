@@ -921,27 +921,44 @@ def _presentation_metadata(
         _execute_payload(spec, request, plan)
         # Never render the request, key, request digest, or arbitrary metadata.
         local = plan["adapter_id"] == "local-openai-compatible"
-        key_detail = (
-            "API key is not required."
-            if local else f"Credential: {_REDACTED}"
-        )
+        key_detail = "API key is not required." if local else f"Credential: {_REDACTED}"
         budget_detail = ""
+        budget_summary = ""
         if "generation_budget" in plan:
             budget = plan["generation_budget"]
+            prompt_price = budget.get("max_prompt_price_microusd_per_million", 0)
+            completion_price = budget.get("max_completion_price_microusd_per_million", 0)
+            external_limit = budget.get("external_key_limit_microusd", 0)
+            price_detail = (
+                "\nMaximum prompt/completion price: 0/0; fallback disabled."
+                if prompt_price == completion_price == 0
+                else (
+                    "\nMaximum prompt/completion price per million tokens: "
+                    f"${prompt_price / 1_000_000:g}/${completion_price / 1_000_000:g}; "
+                    "fallback disabled."
+                )
+            )
             budget_detail = (
                 f"\nGeneration requests over credential lifetime: {budget['max_requests']}"
                 f"\nModel: {budget['model']}"
                 f"\nMaximum output tokens: {budget['max_output_tokens']}"
-                "\nMaximum prompt/completion price: 0/0; fallback disabled."
+                f"{price_detail}"
                 "\nRestart, retry and continuation retain the same consumed budget."
             )
+            if external_limit:
+                budget_summary = (
+                    f"\nUser-declared external key spending limit: "
+                    f"${external_limit / 1_000_000:g} total, including prior spend."
+                    "\nThe provider enforces this limit; Tobkiri has not verified it "
+                    "and does not maintain a USD spending ledger."
+                )
         return _presentation(
             action="Configure Provider connection",
             summary=(
                 "Connect a local model server without an API key."
-                if local else
-                "Store an encrypted API key and update the Provider connection."
-            ),
+                if local
+                else "Store an encrypted API key and update the Provider connection."
+            ) + budget_summary,
             detail=(
                 f"Provider: {plan['provider_instance_id']}\n"
                 f"Profile: {plan['profile_id']}\n"

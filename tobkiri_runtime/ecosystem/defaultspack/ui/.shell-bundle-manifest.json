@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "08389f9cd0f739f5c34308dbbebc1baf7fe35b601afb94c757bd6d2b5deb8e58",
+    "digest": "040be03a59712166cf7edb8aaf1ce5132b4218e8c53294e0b0e27b185d666a20",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9518,
-        "sha256": "29085a6f33240dac0492dcfe291735529ee10e11d531517635cb2d7d6bb75077"
+        "size": 9621,
+        "sha256": "38ce6c79ea97f6a6ee5027a05a815f7e7184326df8d63f08a98b8aeef200ca43"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -885,8 +885,8 @@
       },
       {
         "path": "src/features/apiKeys/ProviderModelAccessSettings.tsx",
-        "size": 13127,
-        "sha256": "76d3d90c6fbc9a6b45cb61cd3c6d53acc074846bd95ee8e864584991a63ba3d1"
+        "size": 16181,
+        "sha256": "003470dda5dedcd78f594ee425f44ff116c7dd2cb1674f9d4fdf7a4fe4e9b51f"
       },
       {
         "path": "src/features/apiKeys/apiKeySetup.test.ts",
@@ -904,9 +904,19 @@
         "sha256": "06bd463ba6b133f37802011886c3ffe2746e08589e4430d9b81c35332b89e3a9"
       },
       {
+        "path": "src/features/apiKeys/modelAccessDisclosure.test.ts",
+        "size": 1653,
+        "sha256": "15b290e16d199caf2c88c09664bb428e6b4cd313e039a7b2385fda9eeacd5601"
+      },
+      {
+        "path": "src/features/apiKeys/modelAccessDisclosure.ts",
+        "size": 1006,
+        "sha256": "7f2cc19c8408292d8b042ee6b4ea097ad3b3c51c3de53724588b0bd83c8ebbd0"
+      },
+      {
         "path": "src/features/apiKeys/modelAccessPolicy.test.tsx",
-        "size": 10892,
-        "sha256": "d268a7094b6029dda816dd8fa6ae898f070b3d5ca10dd74142c4536945738d10"
+        "size": 11033,
+        "sha256": "1554749e5083c0697d59d35700a7230f586bf33dcd3887d46abbb7fc9beb3a6b"
       },
       {
         "path": "src/features/apiKeys/modelAccessPolicy.ts",
@@ -1060,8 +1070,8 @@
       },
       {
         "path": "src/features/models/ModelRouteSetup.tsx",
-        "size": 18918,
-        "sha256": "613f1cd00cfaea42d503617b8d800836f39a13e08561a5b0b438e22984343b18"
+        "size": 19909,
+        "sha256": "66ec61351f20cd0e43e547237505640050b1b2276d0b0e2946fe4fb0376471a7"
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
@@ -1275,13 +1285,23 @@
       },
       {
         "path": "src/features/search/modelCatalogSearch.test.ts",
-        "size": 17004,
-        "sha256": "4d562e7d6db6db3f7d19aba4a9e0e7aa50a79949e9a9291abf0deb621f50845d"
+        "size": 18044,
+        "sha256": "687253c33ba9b47d24f78981d06981cbe266bb0aff19e4a8a3a94dd2298bca41"
       },
       {
         "path": "src/features/search/modelCatalogSearch.ts",
-        "size": 11374,
-        "sha256": "c08a68a4fed0129838ec6ca65cc71fb7ea76485c3cee20f0d07fdea4aed1c41b"
+        "size": 11671,
+        "sha256": "99ff46a4a3e1d9cff991d623a89b731b267167dcd73e7468d6ed13ed04e9a157"
+      },
+      {
+        "path": "src/features/search/modelCatalogSearchError.test.ts",
+        "size": 1986,
+        "sha256": "a987d4ab599680b4ea792fb36a7d71a38f5613e253eacc9319b900543a17eba0"
+      },
+      {
+        "path": "src/features/search/modelCatalogSearchError.ts",
+        "size": 1970,
+        "sha256": "559c76d7c29167784944d3ed818c5544c859563443fbcbfd1fa83dce6e4ab2af"
       },
       {
         "path": "src/features/search/modelPropertiesNavigation.test.ts",
@@ -2730,8 +2750,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.test.tsx",
-        "size": 78903,
-        "sha256": "98a6492e0792ef6ce463595bd3ac1d9fe25063a8a755201e19bb51cd4cacf22c"
+        "size": 79657,
+        "sha256": "e36f4e496e5613f8d66ff4db23cb3bc027cd63db73b926a660d9811e23881ab5"
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
@@ -2810,8 +2830,8 @@
       },
       {
         "path": "src/renderers/settings/renderers/apiKeySetupField.tsx",
-        "size": 16732,
-        "sha256": "933e12a240617d8a3322aa16b0179bbf1f014e264d8a227d49b61d2c2d093196"
+        "size": 18460,
+        "sha256": "123b824f49fff65b51013bae0db5674b1cf82d7abbdddd2e9c14346cbd283db1"
       },
       {
         "path": "src/renderers/settings/renderers/mcpServersField.tsx",
@@ -2991,12 +3011,12 @@
     ]
   },
   "bundle": {
-    "digest": "bdee4c31084ef8784e6132be573fcd8ff6e571116267ada9da525dd94572325e",
+    "digest": "83afee0b70380de718096f42bd67b011c71de9677ebdb0d0fe40b88d2df5296e",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 244136,
-        "sha256": "e3287d6a183442b3c99101457761dbaad995ffc2dfb71468a49f4dd3a6316b4f"
+        "size": 245999,
+        "sha256": "4514294a051255dab5a4469628215ed17c55b9ee16142830ce0fc2bd68b7de59"
       },
       {
         "path": "shell-app.js",
@@ -3005,8 +3025,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2755485,
-        "sha256": "412a1d10ffc1d88549cbea738f91014fe3611906205ee649e4b402a7b14d3d8f"
+        "size": 2761222,
+        "sha256": "e0617ff89ac4efe6198f142e619a25bdce3814749f45c7f639e24e82be37b9f1"
       },
       {
         "path": "shell-icons.js",

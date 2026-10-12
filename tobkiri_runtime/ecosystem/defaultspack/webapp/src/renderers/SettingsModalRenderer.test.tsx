@@ -8,6 +8,7 @@ import { CredentialTransferModal, credentialTransferCanClose, credentialTransfer
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
 import { TaskPetNotificationSettings } from "../components/TaskPetNotificationSettings";
 import { PromptProfileField } from "./settings/renderers/promptProfileField";
+import { BuiltinApiKeySetupRenderer } from "./settings/renderers/apiKeySetupField";
 import { buildControlCenterSections, filterControlCenterSections, taskPetNotificationSettingsSearchResult } from "../settings/controlCenter";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
@@ -901,6 +902,19 @@ test("local OpenAI-compatible setup asks for a loopback URL and no API key", () 
   assert.doesNotMatch(html, /placeholder="openai_compatible API key"/);
 });
 
+test("unselected non-LLM token setup does not mount model connection controls", () => {
+  const html = renderToStaticMarkup(createElement(BuiltinApiKeySetupRenderer, {
+    sectionId: "apis",
+    field: { id: "tokens", label: "API Keys / Tokens", type: "api_key_setup", provider_scope: "non_llm" } as unknown as TemplateSettingsField,
+    value: undefined,
+    sectionValues: {},
+    onChange: () => assert.fail("rendering must not change settings"),
+  }));
+  assert.match(html, /data-provider-scope="non_llm"/);
+  assert.match(html, /<details[^>]*open/);
+  assert.doesNotMatch(html, /チャットで使うモデル|使用するAPI接続|このモデルを使う/);
+});
+
 test("Connections external-token setup omits LLM endpoint and model-route controls", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -1108,7 +1122,7 @@ test("Models shows one API registration route and hides legacy overrides in stan
   assert.doesNotMatch(html, /line:channel:\*\*\*/);
   assert.match(html, /data-settings-field="apis.api_keys"/);
   assert.doesNotMatch(html, /data-settings-field="models.model_api_routes"/);
-  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
+  assert.equal((html.match(/チャットで使うモデル/g) ?? []).length, 1);
 });
 
 test("CredentialTransferModal keeps transfer device-bound and credential-free", () => {
@@ -1184,10 +1198,10 @@ test("SettingsModalRenderer renders template model_api_routes through registered
 
   assert.doesNotMatch(html, /data-settings-renderer="model_routing"/);
   assert.doesNotMatch(html, /1\. 設定するモデル|2\. 使用するAPIキー|API keyを追加/);
-  assert.match(html, /使いたいモデルを選ぶ/);
+  assert.match(html, /チャットで使うモデル/);
   assert.match(html, /aria-label="使用するAPI"/);
   assert.match(html, /登録済みの接続がありません/);
-  assert.equal((html.match(/使いたいモデルを選ぶ/g) ?? []).length, 1);
+  assert.equal((html.match(/チャットで使うモデル/g) ?? []).length, 1);
 
 });
 

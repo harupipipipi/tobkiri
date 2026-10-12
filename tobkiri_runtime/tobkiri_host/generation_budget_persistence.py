@@ -8,12 +8,14 @@ Malformed records remain visible to the strict interactive-effect parser.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict
 import re
 from typing import Any
 
 from core_runtime.authority.v4_models import authority_digest
-from core_runtime.generation_transport_budget import GenerationBudgetPolicy
+from core_runtime.generation_transport_budget import (
+    GenerationBudgetPolicy,
+    PRICE_POLICY_FIELDS,
+)
 from core_runtime.native_generation_budget import NativeGenerationBudgetTemplate
 
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -54,7 +56,7 @@ def is_generation_budget_record(revision: int, payload: Mapping[str, Any]) -> bo
                 revision == 1
                 and payload["state"] == "required"
                 and payload["effect_id"] == template.effect_id
-                and payload["template"] == asdict(template)
+                and payload["template"] == template.to_dict()
             )
         policy = GenerationBudgetPolicy(**payload["policy"])
         if payload["policy"] != policy.to_dict():
@@ -87,12 +89,13 @@ def is_generation_budget_record(revision: int, payload: Mapping[str, Any]) -> bo
                 and count == len(set(attempts))
                 and count <= policy.max_requests
                 and revision == count + 1
-                and payload["state"]
-                == ("exhausted" if count == policy.max_requests else "active")
+                and payload["state"] == ("exhausted" if count == policy.max_requests else "active")
             )
         template = NativeGenerationBudgetTemplate(
             policy.profile_id,
             policy.connection_id,
+            model=policy.model,
+            **{field: getattr(policy, field) for field in PRICE_POLICY_FIELDS},
         )
         if (
             revision != 1

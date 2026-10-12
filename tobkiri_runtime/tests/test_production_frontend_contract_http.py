@@ -3561,6 +3561,7 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
                     "speed_tier",
                     "provider_id",
                     "provider",
+                    "connection_id",
                     "configured_only",
                     "local_only",
                     "min_knowledge_level",
@@ -3782,6 +3783,109 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     assert set(selected_ids) == {
         f"openrouter/fixture/model-{index:03d}" for index in range(125)
     }
+
+
+def test_connection_model_search_http_dispatches_bound_catalog_request(
+    production_server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HTTP admits connection_id and returns only Host-bound catalog results."""
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog as catalog_module
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+
+    now = int(time.time())
+    public_model = catalog_module._normalize_openrouter_model({
+        "id": "fixture/model-001",
+        "name": "Fixture OpenRouter Model",
+        "context_length": 8192,
+        "architecture": {
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+        },
+    })
+    assert public_model is not None
+    catalog_module._save_openrouter_inventory_cache({
+        "version": 1,
+        "saved_at": now,
+        "expires_at": now + 3600,
+        "models": [public_model],
+    })
+
+    def reject_public_inventory_request(*args, **kwargs):
+        raise AssertionError("synthetic model inventory must avoid network")
+
+    monkeypatch.setattr(
+        catalog_module.urllib.request, "urlopen", reject_public_inventory_request,
+    )
+
+    root = tmp_path / "user-data"
+    provider_registry = ProviderRegistry("defaults", user_data_root=root)
+    provider_registry.save({
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://fixture.invalid/v1",
+        "enabled": True,
+        "metadata": {"catalog_provider_id": "openrouter"},
+    }, expected_revision=0)
+    model_registry = ModelRegistry("defaults", user_data_root=root)
+    model_registry.save({
+        "model_profile_id": "saved-fixture-route",
+        "display_name": "Saved fixture route",
+        "model_id": "fixture/model-001",
+        "metadata": {"provider_connection_id": "provider.fixture"},
+    }, expected_revision=0)
+
+    server, session, _authority = production_server
+    observed: list[RequestEnvelope] = []
+    original_dispatch = session.broker._dispatch
+
+    def observe_dispatch(backend, envelope, *args, **kwargs):
+        observed.append(envelope)
+        return original_dispatch(backend, envelope, *args, **kwargs)
+
+    monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+    cookie, csrf, origin = _authenticate(server)
+    status, payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/ai/models/search"),
+        body={
+            "query": "fixture/model-001",
+            "provider_id": "openrouter",
+            "connection_id": "provider.fixture",
+            "max_results": 20,
+        },
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+
+    assert status == 200, payload
+    assert [envelope.operation_id for envelope in observed] == [
+        "tobkiri_ui_settings_pack.model-search",
+        "rumi_provider_registry_pack.provider-registry-resource",
+        "rumi_model_registry_pack.model-profile-resource",
+        "rumi_model_catalog_pack.bundled-model-catalog",
+    ]
+    data = payload["data"]
+    assert data["filters_applied"]["connection_id"] == "provider.fixture"
+    assert data["filters_applied"]["provider_id"] == "openrouter"
+    by_profile = {item["profile_id"]: item for item in data["models"]}
+    assert set(by_profile) == {
+        "openrouter/fixture/model-001",
+        "saved-fixture-route",
+    }
+    for item in by_profile.values():
+        assert item["connection_id"] == "provider.fixture"
+        assert item["provider_id"] == "openrouter"
+        assert item["provenance"] == "provider_public_catalog"
+        assert item["reachability"] == "unverified"
+    assert by_profile["saved-fixture-route"]["route_configured"] is True
 
 
 def test_model_search_projects_float_metadata_into_canonical_json(

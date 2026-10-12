@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import replace
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
@@ -30,10 +30,23 @@ from tobkiri_host.models import OpaqueAuthorityRef
 from tobkiri_host.typed_pending_effect_persistence import TypedPendingEffectPersistence
 
 
-@pytest.fixture
-def native_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+@pytest.fixture(params=["legacy", "priced"])
+def native_setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> SimpleNamespace:
     """Reuse the real approved Native fixture without importing a fixture symbol."""
-    return native.setup.__wrapped__(tmp_path, monkeypatch)
+    template = (
+        replace(
+            native.owner_startup_generation_budget_template(),
+            profile_id="profile-1",
+            connection_id="provider.main",
+        )
+        if request.param == "priced"
+        else None
+    )
+    return native.setup.__wrapped__(tmp_path, monkeypatch, template)
 
 
 @pytest.fixture
@@ -265,17 +278,13 @@ def test_all_policy_fields_remain_bound_to_namespace_not_test_identifiers() -> N
         "effect_id": policy.effect_id,
         "state": "active",
         "kind": "credential_generation_budget_v1",
-        "policy": asdict(policy),
+        "policy": policy.to_dict(),
         "policy_digest": policy.digest,
         "approval_request_id": "original-native-approval",
         "approval_digest": authority_digest({"approved": True}),
         "attempts": [],
     }
     assert is_generation_budget_record(1, payload)
-    assert not is_generation_budget_record(
-        1, {**payload, "effect_id": "pending-effect-a"}
-    )
-    assert not is_generation_budget_record(
-        1, {**payload, "policy_digest": "sha256:bad"}
-    )
+    assert not is_generation_budget_record(1, {**payload, "effect_id": "pending-effect-a"})
+    assert not is_generation_budget_record(1, {**payload, "policy_digest": "sha256:bad"})
     assert not is_generation_budget_record(1, {**payload, "attempts": ["malformed"]})

@@ -1,10 +1,13 @@
 import type { ModelSearchItem, ModelSearchResponse } from "../../lib/api";
 import { createModelSearchResources } from "../models/resources/modelSearchResources";
+import {
+  MODEL_CATALOG_SEARCH_FAILED,
+  modelCatalogSearchError,
+} from "./modelCatalogSearchError";
 
 export const MODEL_CATALOG_MAX_RESULTS = 100;
 export const MODEL_CATALOG_DEBOUNCE_MS = 120;
-export const MODEL_CATALOG_SEARCH_FAILED =
-  "モデル一覧を取得できませんでした。再試行してください。";
+export { MODEL_CATALOG_SEARCH_FAILED } from "./modelCatalogSearchError";
 
 export type ModelCatalogSearchFunction = (
   filters: Record<string, unknown>,
@@ -156,8 +159,15 @@ export function createModelCatalogSearchStore(
       const models = new Map<string, ModelSearchItem>();
       let failed = false;
       let complete = true;
+      let requestError: unknown;
       for (const [index, result] of results.entries()) {
-        if (result.status === "rejected" || !Array.isArray(result.value?.models)) {
+        if (result.status === "rejected") {
+          requestError ??= result.reason;
+          failed = true;
+          complete = false;
+          continue;
+        }
+        if (!Array.isArray(result.value?.models)) {
           failed = true;
           complete = false;
           continue;
@@ -197,7 +207,8 @@ export function createModelCatalogSearchStore(
       ));
       const state: ModelCatalogSearchState = {
         models: ordered.slice(0, MODEL_CATALOG_MAX_RESULTS), loading: false,
-        error: failed ? MODEL_CATALOG_SEARCH_FAILED : null,
+        error: failed ? (requestError === undefined
+          ? MODEL_CATALOG_SEARCH_FAILED : modelCatalogSearchError(requestError)) : null,
         complete: complete && ordered.length <= MODEL_CATALOG_MAX_RESULTS,
       };
       if (!failed) {

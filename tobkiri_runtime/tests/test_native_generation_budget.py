@@ -106,10 +106,11 @@ def test_fixed_owner_accepts_only_normal_openrouter_main_public_plan(
                 assert policy["connection_id"] == "provider.openrouter.main"
                 assert policy["max_requests"] == 3
                 assert policy["max_output_tokens"] == 2048
-                assert policy["model"] == "google/gemma-4-31b-it:free"
-                assert prepare_configuration(
-                    registry, request, budget_port=owner
-                ) == prepared
+                assert policy["model"] == "stepfun/step-5-preview"
+                assert policy["max_prompt_price_microusd_per_million"] == 1_000_000
+                assert policy["max_completion_price_microusd_per_million"] == 2_700_000
+                assert policy["external_key_limit_microusd"] == 2_000_000
+                assert prepare_configuration(registry, request, budget_port=owner) == prepared
             else:
                 with pytest.raises(CredentialTransportDenied) as denied:
                     prepare_configuration(registry, request, budget_port=owner)
@@ -158,13 +159,8 @@ def test_fixed_owner_rejects_immutable_previous_connection_template(
                     install=True,
                 )
             assert denied.value.code == "generation_budget_invalid"
-            assert (
-                authority.get_host_pending_effect(previous.effect_id) == primary_before
-            )
-            assert (
-                owner._witness.get_host_pending_effect(previous.effect_id)
-                == witness_before
-            )
+            assert authority.get_host_pending_effect(previous.effect_id) == primary_before
+            assert owner._witness.get_host_pending_effect(previous.effect_id) == witness_before
             assert material.list(profile_id="defaults")["count"] == 0
         finally:
             owner.close()
@@ -194,15 +190,17 @@ def envelope(harness, issued, context, payload, *, contract, operation):
 
 
 @pytest.fixture
-def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    template: NativeGenerationBudgetTemplate | None = None,
+):
     original = lifecycle._principal
 
     def principal(seed, *, operation="invoke"):
         value = original(seed, operation=operation)
         return (
-            replace(
-                value, function_id=CONFIGURE_FUNCTION, operation_id=CONFIGURE_OPERATION
-            )
+            replace(value, function_id=CONFIGURE_FUNCTION, operation_id=CONFIGURE_OPERATION)
             if seed == "b"
             else value
         )
@@ -215,7 +213,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         authority_store=harness.store,
         user_data_root=tmp_path / "owner",
         profile_id="profile-1",
-        template=NativeGenerationBudgetTemplate("profile-1", "provider.main"),
+        template=template or NativeGenerationBudgetTemplate("profile-1", "provider.main"),
     )
     owner = binding.generation_admission
     registry = ProviderRegistry("profile-1", user_data_root=tmp_path / "owner")
@@ -360,7 +358,8 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         contract=CREDENTIAL_CONTRACT,
         operation=CREDENTIAL_OPERATION,
     )
-    guard = lambda: assert_dispatched_invocation(child, harness.store)
+    def guard() -> None:
+        assert_dispatched_invocation(child, harness.store)
     parent_scope = CapturedInvocationScopeV4(
         parent, lambda: assert_dispatched_invocation(parent, harness.store)
     )
@@ -444,6 +443,91 @@ def test_native_approval_create_hook_enrolls_and_restart_restores(setup):
         )
 
 
+def test_priced_native_approval_enrolls_exact_review_and_restores(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template = replace(
+        owner_startup_generation_budget_template(),
+        profile_id="profile-1",
+        connection_id="provider.main",
+    )
+    approved = setup.__wrapped__(tmp_path, monkeypatch, template)
+    detail = approved.presentation["detail"]
+    assert "stepfun/step-5-preview" in detail
+    assert "$1/$2.7" in detail and "per million tokens" in detail
+    assert "3" in detail and "2048" in detail and "fallback disabled" in detail
+    summary = approved.presentation["summary"]
+    assert "$2 total, including prior spend" in summary
+    assert "has not verified it" in summary
+    assert "does not maintain a USD spending ledger" in summary
+    assert len(detail) <= 512 and len(summary) <= 512
+    assert approved.request["key_value"] not in str(approved.presentation)
+    approved.contribution.invoke(
+        CREDENTIAL_OPERATION,
+        approved.credential_payload,
+        approved.invocation,
+    )
+    restored = capture_native_generation_budget(
+        binding=CredentialMaterialStoreBinding(approved.material, KEY_VERSION),
+        authority_store=approved.harness.store,
+        user_data_root=approved.root,
+        profile_id="profile-1",
+    )
+    assert restored.generation_admission.template == template
+    assert (
+        restored.generation_admission.credential_budget_binding
+        == approved.owner.credential_budget_binding
+    )
+    with pytest.raises(CredentialTransportDenied):
+        prepare_configuration(
+            approved.registry,
+            approved.request,
+            budget_port=restored.generation_admission,
+        )
+
+
+def test_priced_startup_cannot_amend_an_enrolled_legacy_credential(setup) -> None:
+    setup.contribution.invoke(
+        CREDENTIAL_OPERATION,
+        setup.credential_payload,
+        setup.invocation,
+    )
+    primary = setup.harness.store.list_host_pending_effects()
+    witness = setup.owner._witness.list_host_pending_effects()
+    marker = setup.owner.credential_budget_binding
+    priced = replace(
+        owner_startup_generation_budget_template(),
+        profile_id="profile-1",
+        connection_id="provider.main",
+    )
+    with pytest.raises(CredentialTransportDenied):
+        NativeGenerationBudgetOwner(
+            template=priced,
+            authority_store=setup.harness.store,
+            witness_store=setup.owner._witness,
+            material_store=setup.material,
+            key_version=KEY_VERSION,
+        )
+    assert setup.harness.store.list_host_pending_effects() == primary
+    assert setup.owner._witness.list_host_pending_effects() == witness
+    assert setup.owner.credential_budget_binding == marker
+    assert setup.material.list(profile_id="profile-1")["count"] == 1
+
+
+def test_legacy_template_serialization_and_effect_identity_are_unchanged() -> None:
+    template = NativeGenerationBudgetTemplate("defaults", "provider.openrouter.main")
+    assert template.to_dict() == {
+        "profile_id": "defaults",
+        "connection_id": "provider.openrouter.main",
+        "consumer_pack_id": "rumi_provider_adapters_pack",
+        "model": "google/gemma-4-31b-it:free",
+        "max_requests": 3,
+        "max_output_tokens": 2048,
+    }
+    assert template.effect_id == ("generation-budget-operator:" + canonical_digest("defaults")[7:])
+
+
 @pytest.mark.parametrize(
     "change", ["no_parent", "key_substitution", "plan_override", "grant_revoked"]
 )
@@ -507,7 +591,7 @@ def native_transport_world(
 ):
     """Build Native-approved material with the restored production send guard."""
     from tests import test_authority_v4_lifecycle as lifecycle_tests
-    from tests.test_generation_budget import FUNCTION, OPERATION, CONTRACT, transport
+    from tests.test_generation_budget import FUNCTION, OPERATION, CONTRACT
 
     setup.contribution.invoke(
         CREDENTIAL_OPERATION,

@@ -1,13 +1,38 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { MODEL_ACCESS_VERSION, OPENROUTER_FILTER_REVISION, normalizeModelAccess, toggleAllowedModel, type ModelAccessPolicy, type NativeRouting } from "./modelAccessPolicy";
-import type { ModelAccessCatalog, ModelAccessScope, ModelAccessSnapshot, ProviderModelAccessResources } from "./resources/providerModelAccessResources";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import {
+  initialModelAccessDisclosureState,
+  modelAccessDisclosureReducer,
+} from "./modelAccessDisclosure";
+import {
+  MODEL_ACCESS_VERSION,
+  OPENROUTER_FILTER_REVISION,
+  normalizeModelAccess,
+  toggleAllowedModel,
+  type ModelAccessPolicy,
+  type NativeRouting,
+} from "./modelAccessPolicy";
+import type {
+  ModelAccessCatalog,
+  ModelAccessScope,
+  ModelAccessSnapshot,
+  ProviderModelAccessResources,
+} from "./resources/providerModelAccessResources";
 
 const emptyPolicy = (): ModelAccessPolicy => ({ version: MODEL_ACCESS_VERSION, mode: "explicit", model_ids: [] });
 const inputClass = "rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm";
 const split = (text: string) => text.split(",").map((value) => value.trim()).filter(Boolean);
 
 /** Edit restrictions for one verified Host profile and opaque saved connection. */
-export function ProviderModelAccessSettings({ scope, resources, onSnapshot }: { scope: ModelAccessScope; resources: ProviderModelAccessResources; onSnapshot?: (snapshot: ModelAccessSnapshot | null) => void }) {
+export function ProviderModelAccessSettings({
+  scope,
+  resources,
+  onSnapshot,
+}: {
+  scope: ModelAccessScope;
+  resources: ProviderModelAccessResources;
+  onSnapshot?: (snapshot: ModelAccessSnapshot | null) => void;
+}) {
   const group = useId();
   const [saved, setSaved] = useState<ModelAccessSnapshot | null>(null);
   const [draft, setDraft] = useState<ModelAccessPolicy>(emptyPolicy);
@@ -17,15 +42,21 @@ export function ProviderModelAccessSettings({ scope, resources, onSnapshot }: { 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [disclosure, dispatchDisclosure] = useReducer(
+    modelAccessDisclosureReducer,
+    initialModelAccessDisclosureState,
+  );
   const epoch = useRef(0);
   useEffect(() => {
     const ticket = ++epoch.current;
     onSnapshot?.(null);
     setSaved(null); setDraft(emptyPolicy()); setCatalog({ ...scope, models: [], status: "unavailable" });
     setNotice(""); setQuery(""); setRoutingText({}); setLoading(true); setBusy(false);
+    dispatchDisclosure({ type: "loading" });
     void resources.load(scope).then(async (snapshot) => {
       if (ticket !== epoch.current) return;
       setSaved(snapshot); setDraft(snapshot.model_access ?? emptyPolicy()); onSnapshot?.(snapshot);
+      dispatchDisclosure({ type: "loaded", hasPolicy: snapshot.model_access !== null });
       try {
         const page = await resources.catalog(scope, snapshot.model_access?.native_filters?.discovery);
         if (ticket === epoch.current) setCatalog(page);
@@ -89,9 +120,26 @@ export function ProviderModelAccessSettings({ scope, resources, onSnapshot }: { 
   try { normalizeModelAccess(draft, saved?.native_capability ?? null); }
   catch (error) { invalid = error instanceof Error ? error.message : "設定が無効です。"; }
 
-  return <section aria-label="このAPI接続で使えるモデル" className="grid gap-3 rounded border border-zinc-700 p-3">
-    <p className="text-sm font-medium">このAPI接続で使えるモデル</p>
-    <p className="text-xs text-zinc-400">API側の制限、プロファイルの許可、モデルの機能や利用可否は引き続き適用されます。保存だけではモデルの登録・選択や有料の動作確認は行いません。</p>
+  const policySummary = loading
+    ? "設定を確認中"
+    : !saved
+      ? "状態を確認できません"
+      : saved.model_access === null
+        ? "未設定・設定が必要"
+        : saved.model_access.mode === "all"
+          ? "全モデルを許可"
+          : `個別指定・${saved.model_access.model_ids.length}件`;
+  const needsModelSelection = saved?.model_access?.mode === "explicit"
+    && saved.model_access.model_ids.length === 0;
+
+  return <section aria-label="このAPI接続で使えるモデル" className="border-y border-white/[0.07]">
+    <details open={disclosure.settingsOpen} onToggle={(event) => dispatchDisclosure({ type: "toggle-settings", open: event.currentTarget.open })}>
+      <summary className="group flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs text-zinc-300 [&::-webkit-details-marker]:hidden">
+        <span className="font-medium">モデル利用範囲</span>
+        <span className="flex items-center gap-1.5 text-right text-zinc-500">{policySummary}<ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" /></span>
+      </summary>
+      <div className="grid gap-3 border-t border-white/[0.07] px-1 py-3">
+    <p className="text-xs leading-5 text-zinc-500">この接続で選べるモデルを管理します。ProviderやProfile側の制限も引き続き適用されます。</p>
     {loading ? <p role="status">設定を読み込み中…</p> : !saved ? <p role="alert">{notice}</p> : <>
       {saved.model_access === null && <p className="text-xs text-zinc-400">この接続には新しい許可設定がまだありません。モードを選んで保存してください。</p>}
       <fieldset disabled={busy} className="grid gap-2 text-sm">
@@ -100,13 +148,18 @@ export function ProviderModelAccessSettings({ scope, resources, onSnapshot }: { 
         <p className="text-xs text-zinc-400">このProviderの正規カタログに今後追加されるモデルも対象になります。</p>
         <label><input type="radio" name={group} checked={draft.mode === "explicit"} onChange={() => setDraft((current) => ({ ...current, mode: "explicit" }))} /> モデルを個別に指定</label>
         {draft.mode === "explicit" && <>
-          <label className="grid gap-1">モデルを検索<input className={inputClass} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名前またはモデルID" /></label>
           <p className="text-xs text-zinc-400">選択済み: {draft.model_ids.length}件{!draft.model_ids.length && "（この接続ではモデルを利用できません）"}</p>
           {catalog.status !== "live" && <p role="status" className="text-xs">カタログは未取得です。保存済みの指定は削除しません。</p>}
-          <div className="max-h-48 overflow-auto">
+          <details open={disclosure.modelListOpen} onToggle={(event) => dispatchDisclosure({ type: "toggle-model-list", open: event.currentTarget.open })} className="rounded-lg border border-white/[0.07]">
+            <summary className="group flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-xs text-zinc-300 [&::-webkit-details-marker]:hidden"><span>{draft.model_ids.length ? `許可モデルを確認・編集 (${draft.model_ids.length}件)` : "許可するモデルを選択"}</span><ChevronDown size={13} className="shrink-0 text-zinc-500 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
+            <div className="grid gap-2 border-t border-white/[0.06] p-2.5">
+              <label className="grid gap-1 text-xs text-zinc-400">モデルを検索<input className={inputClass} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名前またはモデルID" /></label>
+              <div className="max-h-48 overflow-auto">
             {visible.map((model) => <label className="block py-1" key={model.model_id}><input type="checkbox" checked={draft.model_ids.includes(model.model_id)} onChange={() => setDraft((current) => toggleAllowedModel(current, model.model_id))} /> {model.display_name} <span className="text-xs text-zinc-400">{model.model_id}</span></label>)}
             {missing.map((id) => <label className="block py-1" key={id}><input type="checkbox" checked onChange={() => setDraft((current) => toggleAllowedModel(current, id))} /> {id} <span className="text-xs text-zinc-400">一覧外・利用可否未確認</span></label>)}
+              </div>
           </div>
+          </details>
         </>}
       </fieldset>
       {nativeAvailable && <details><summary>OpenRouter公式フィルター</summary>
@@ -128,8 +181,11 @@ export function ProviderModelAccessSettings({ scope, resources, onSnapshot }: { 
         </fieldset>
       </details>}
       {invalid && <p role="alert">{invalid}</p>}
-      <div className="flex gap-3"><button type="button" disabled={busy || Boolean(invalid)} onClick={() => void save()}>保存</button><button type="button" disabled={busy} onClick={() => { setDraft(saved.model_access ?? emptyPolicy()); setRoutingText({}); setNotice(""); }}>取消</button></div>
-      {notice && <p role="status" className="text-xs">{notice}</p>}
+      <div className="flex flex-wrap items-center gap-2"><button type="button" className="rounded-md border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.1] disabled:opacity-40" disabled={busy || Boolean(invalid)} onClick={() => void save()}>利用範囲を保存</button><button type="button" className="rounded-md px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40" disabled={busy} onClick={() => { setDraft(saved.model_access ?? emptyPolicy()); setRoutingText({}); setNotice(""); }}>変更を取消</button></div>
+      {notice && <p role="status" className="text-xs text-zinc-400">{notice}</p>}
     </>}
+      </div>
+    </details>
+    {!disclosure.settingsOpen && !loading && (!saved?.model_access || needsModelSelection) && <button type="button" onClick={() => dispatchDisclosure({ type: "toggle-settings", open: true })} className="mx-3 mb-3 rounded-md border border-amber-300/20 bg-amber-300/[0.05] px-2.5 py-1.5 text-left text-xs text-amber-100 hover:bg-amber-300/[0.09]">{needsModelSelection ? "利用できるモデルが0件です。許可するモデルを選択" : "接続の許可設定を確認"}</button>}
   </section>;
 }
