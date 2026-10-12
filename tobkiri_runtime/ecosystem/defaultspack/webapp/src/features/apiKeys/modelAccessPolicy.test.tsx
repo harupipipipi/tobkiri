@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MODEL_ACCESS_VERSION, OPENROUTER_FILTER_REVISION, modelAllowed, normalizeModelAccess, toggleAllowedModel, type ModelAccessPolicy } from "./modelAccessPolicy";
+import { MODEL_ACCESS_VERSION, OPENROUTER_FILTER_REVISION, modelAllowed, normalizeNativePrice, normalizeModelAccess, toggleAllowedModel, type ModelAccessPolicy } from "./modelAccessPolicy";
 import { createProviderModelAccessResources, type ModelAccessScope } from "./resources/providerModelAccessResources";
 import { ProviderModelAccessSettings } from "./ProviderModelAccessSettings";
 const scope = { profile_id: "default", provider_instance_id: "opaque.saved.connection" };
@@ -26,7 +26,7 @@ test("unknown policy fields and key material are rejected", () => {
   assert.throws(() => normalizeModelAccess({ ...policy(), version: "old" }, null));
 });
 test("official native fields require the exact verified capability", () => {
-  const value = { ...policy("all"), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: { output_modalities: ["text"] }, routing: { only: ["xiaomi"], max_price: { completion: .87 } } } };
+  const value = { ...policy("all"), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: { output_modalities: ["text"] }, routing: { only: ["xiaomi"], max_price: { completion: "0.87" } } } };
   assert.throws(() => normalizeModelAccess(value, null));
   assert.throws(() => normalizeModelAccess(value, "old"));
   assert.deepEqual(normalizeModelAccess(value, OPENROUTER_FILTER_REVISION), value);
@@ -34,6 +34,28 @@ test("official native fields require the exact verified capability", () => {
 });
 test("unsafe native prices and conflicting provider selections are rejected", () => {
   for (const routing of [{ max_price: { prompt: NaN } }, { max_price: { prompt: -1 } }, { only: ["xiaomi"], ignore: ["xiaomi"] }]) assert.throws(() => normalizeModelAccess({ ...policy("all"), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing } }, OPENROUTER_FILTER_REVISION));
+});
+test("native prices stay exact and canonical through approval and storage", () => {
+  for (const [input, expected] of [["2.700000", "2.7"], ["1.000", "1"], ["0.0", "0"], ["0.000001", "0.000001"], ["9007199254.740991", "9007199254.740991"], [0, 0], [1, 1]] as const) {
+    assert.equal(normalizeNativePrice(input), expected);
+  }
+  for (const input of [2.7, NaN, Infinity, true, null, "", " 1", "+1", "-0", "01", "1e-6", "0.0000001", "9007199254.740992", Number.MAX_SAFE_INTEGER]) assert.throws(() => normalizeNativePrice(input));
+});
+test("resource saves and reloads exact StepFun prices without floating point values", async () => {
+  const priced: ModelAccessPolicy = { ...policy("explicit", ["stepfun/step-5-preview"]), native_filters: { revision: OPENROUTER_FILTER_REVISION, discovery: {}, routing: { max_price: { prompt: "1", completion: "2.7" } } } };
+  let current = { ...snapshot(scope, policy(), 1), native_capability: OPENROUTER_FILTER_REVISION };
+  const resource = createProviderModelAccessResources({
+    async getModelAccess() { return current; },
+    async setModelAccess(input) {
+      assert.deepEqual(input.model_access, priced);
+      current = { ...current, model_access: input.model_access, registry_revision: input.expected_revision + 1 };
+      return current;
+    },
+    async getModelAccessCatalog() { return { ...scope, models: [], status: "live" }; },
+  });
+  const saved = await resource.save(await resource.load(scope), priced);
+  assert.deepEqual(saved, await resource.load(scope));
+  assert.deepEqual(saved.model_access, priced);
 });
 test("resource persists exact profile/connection policy without any key values", async () => {
   let state = snapshot();

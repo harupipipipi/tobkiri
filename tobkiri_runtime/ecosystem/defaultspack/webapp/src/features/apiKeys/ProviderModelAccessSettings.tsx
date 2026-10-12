@@ -42,6 +42,7 @@ export function ProviderModelAccessSettings({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [reload, setReload] = useState(0);
   const [disclosure, dispatchDisclosure] = useReducer(
     modelAccessDisclosureReducer,
     initialModelAccessDisclosureState,
@@ -70,7 +71,7 @@ export function ProviderModelAccessSettings({
       }
     }).finally(() => { if (ticket === epoch.current) setLoading(false); });
     return () => { ++epoch.current; };
-  }, [scope.profile_id, scope.provider_instance_id, resources, onSnapshot]);
+  }, [scope.profile_id, scope.provider_instance_id, resources, onSnapshot, reload]);
 
   const nativeAvailable = saved?.native_capability === OPENROUTER_FILTER_REVISION;
   const routing = draft.native_filters?.routing ?? {};
@@ -86,10 +87,17 @@ export function ProviderModelAccessSettings({
   };
   const save = async () => {
     if (!saved || busy) return;
+    let policy: ModelAccessPolicy;
+    try {
+      policy = normalizeModelAccess(draft, saved.native_capability);
+    } catch {
+      setNotice("入力を確認してください。価格上限は0以上・小数6桁以内のUSD値で指定してください。保存は送信していません。");
+      return;
+    }
     const ticket = epoch.current;
     setBusy(true); setNotice("");
     try {
-      const result = await resources.save(saved, draft);
+      const result = await resources.save(saved, policy);
       if (ticket !== epoch.current) return;
       setSaved(result); setDraft(result.model_access ?? emptyPolicy()); setRoutingText({}); onSnapshot?.(result);
       setNotice("この接続のモデル許可を保存しました。");
@@ -97,7 +105,7 @@ export function ProviderModelAccessSettings({
     } catch {
       if (ticket === epoch.current) {
         setSaved(null); onSnapshot?.(null);
-        setNotice("保存できません。接続が削除・変更された可能性があります。再読み込みして確認してください。");
+        setNotice("保存結果を確認できません。承認画面を確認し、保存済みの状態を再確認してください。自動再送はしません。");
       }
     } finally { if (ticket === epoch.current) setBusy(false); }
   };
@@ -140,7 +148,10 @@ export function ProviderModelAccessSettings({
       </summary>
       <div className="grid gap-3 border-t border-white/[0.07] px-1 py-3">
     <p className="text-xs leading-5 text-zinc-500">この接続で選べるモデルを管理します。ProviderやProfile側の制限も引き続き適用されます。</p>
-    {loading ? <p role="status">設定を読み込み中…</p> : !saved ? <p role="alert">{notice}</p> : <>
+    {loading ? <p role="status">設定を読み込み中…</p> : !saved ? <>
+      <p role="alert">{notice}</p>
+      <button type="button" className="justify-self-start rounded border border-zinc-700 px-3 py-1.5 text-sm" onClick={() => setReload((current) => current + 1)}>保存済みの状態を再確認</button>
+    </> : <>
       {saved.model_access === null && <p className="text-xs text-zinc-400">この接続には新しい許可設定がまだありません。モードを選んで保存してください。</p>}
       <fieldset disabled={busy} className="grid gap-2 text-sm">
         <legend className="sr-only">モデル許可モード</legend>
@@ -176,7 +187,7 @@ export function ProviderModelAccessSettings({
           {(["require_parameters", "zdr"] as const).map((key) => <label key={key}><input type="checkbox" checked={routing[key] ?? false} onChange={(event) => updateNative("routing", key, event.target.checked || undefined)} /> {key === "zdr" ? "データ保持ゼロの経路のみ" : "指定した生成パラメーターに対応する経路のみ"}</label>)}
           <label>データ収集<select className={inputClass} value={routing.data_collection ?? ""} onChange={(event) => updateNative("routing", "data_collection", event.target.value || undefined)}><option value="">指定なし</option><option value="deny">収集を許可しない経路</option><option value="allow">収集を許可</option></select></label>
           <label>経路の優先条件<select className={inputClass} value={routing.sort ?? ""} onChange={(event) => updateNative("routing", "sort", event.target.value || undefined)}><option value="">Providerの既定</option><option value="price">価格</option><option value="latency">応答の速さ</option><option value="throughput">生成速度</option></select></label>
-          {(["prompt", "completion"] as const).map((unit) => <label className="grid gap-1" key={unit}>{unit === "prompt" ? "入力" : "出力"}価格上限（USD / 100万トークン）<input type="number" min="0" step="any" className={inputClass} value={routing.max_price?.[unit] ?? ""} onChange={(event) => { const prices: NonNullable<NativeRouting["max_price"]> = { ...routing.max_price }; if (event.target.value === "") delete prices[unit]; else prices[unit] = Number(event.target.value); updateNative("routing", "max_price", Object.keys(prices).length ? prices : undefined); }} /></label>)}
+          {(["prompt", "completion"] as const).map((unit) => <label className="grid gap-1" key={unit}>{unit === "prompt" ? "入力" : "出力"}価格上限（USD / 100万トークン）<input type="number" min="0" step="any" className={inputClass} value={routing.max_price?.[unit] ?? ""} onChange={(event) => { const prices: NonNullable<NativeRouting["max_price"]> = { ...routing.max_price }; if (event.target.value === "") delete prices[unit]; else prices[unit] = event.target.value; updateNative("routing", "max_price", Object.keys(prices).length ? prices : undefined); }} /></label>)}
           <button type="button" onClick={() => { setRoutingText({}); setDraft((current) => { const next = { ...current }; delete next.native_filters; return next; }); }}>公式フィルターを解除</button>
         </fieldset>
       </details>}

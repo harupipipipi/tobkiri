@@ -4,7 +4,7 @@ export type NativeDiscovery = { output_modalities?: string[]; supported_paramete
 export type NativeRouting = {
   only?: string[]; ignore?: string[]; order?: string[]; quantizations?: string[];
   require_parameters?: boolean; data_collection?: "allow" | "deny"; zdr?: boolean;
-  max_price?: { prompt?: number; completion?: number; request?: number; image?: number };
+  max_price?: { prompt?: string | number; completion?: string | number; request?: string | number; image?: string | number };
   sort?: "price" | "latency" | "throughput";
 };
 export type ModelAccessPolicy = {
@@ -19,6 +19,19 @@ const token = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const modalities = ["text", "image", "embeddings", "audio", "video", "rerank", "decisions", "speech", "transcription", "all"];
 const categories = ["programming", "roleplay", "marketing", "marketing/seo", "technology", "science", "translation", "legal", "finance", "health", "trivia", "academia"];
 const quantizations = ["int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+/** Preserve exact USD through approval; only the provider compiler emits numbers. */
+export function normalizeNativePrice(value: unknown): string | number {
+  const invalid = () => new Error("価格上限は0以上・小数6桁以内のUSD値で指定してください。");
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0 || BigInt(value) * 1_000_000n > 9_007_199_254_740_991n) throw invalid();
+    return value;
+  }
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,9})(?:\.[0-9]{1,6})?$/.test(value)) throw invalid();
+  const [whole, fraction = ""] = value.split(".");
+  if (BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0")) > 9_007_199_254_740_991n) throw invalid();
+  const trimmed = fraction.replace(/0+$/, "");
+  return trimmed ? `${whole}.${trimmed}` : whole;
+}
 function list(value: unknown, choices?: string[]): string[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 64 || value.some((item) => typeof item !== "string" || !token.test(item) || (choices && !choices.includes(item)))) throw new Error("公式フィルターの選択値が無効です。");
   return [...new Set(value)] as string[];
@@ -59,8 +72,8 @@ export function normalizeModelAccess(value: unknown, capability: string | null):
     }
     if (routing.max_price !== undefined) {
       const prices = routing.max_price;
-      if (!isObject(prices) || !Object.keys(prices).length || !exactKeys(prices, ["prompt", "completion", "request", "image"]) || Object.values(prices).some((price) => typeof price !== "number" || !Number.isFinite(price) || price < 0)) throw new Error("価格上限には0以上の有限USD値を指定してください。");
-      r.max_price = { ...prices };
+      if (!isObject(prices) || !Object.keys(prices).length || !exactKeys(prices, ["prompt", "completion", "request", "image"])) throw new Error("価格上限の項目が無効です。");
+      r.max_price = Object.fromEntries(Object.entries(prices).map(([unit, price]) => [unit, normalizeNativePrice(price)]));
     }
     if (r.only?.some((id) => r.ignore?.includes(id))) throw new Error("同じ実行事業者を許可と除外に指定できません。");
     result.native_filters = { revision: OPENROUTER_FILTER_REVISION, discovery: d, routing: r };

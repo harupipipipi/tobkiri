@@ -1,4 +1,4 @@
-"""Canonical zero-price policies through the formal prepare/snapshot boundary."""
+"""Exact USD policies through the formal prepare/snapshot/provider boundary."""
 
 from __future__ import annotations
 
@@ -81,8 +81,8 @@ def snapshot(payload: dict[str, Any]) -> PreparedInvocationSnapshot:
     )
 
 
-@pytest.mark.parametrize("zero", [0, 0.0, -0.0])
-def test_only_exact_zero_prices_are_canonical_integers(zero: Any) -> None:
+def test_legacy_zero_prices_remain_canonical_integers() -> None:
+    zero = 0
     original = filters(zero)
     normalized = normalize_native_filters(original, verified_openrouter=True)
     prices = normalized["routing"]["max_price"]
@@ -127,7 +127,7 @@ def test_formal_integer_zero_prepare_and_frozen_snapshot_pass() -> None:
 @pytest.mark.parametrize("raw_float_zero", [0.0, -0.0])
 def test_raw_float_zero_request_remains_noncanonical(raw_float_zero: float) -> None:
     public_request = request(raw_float_zero)
-    with pytest.raises(CanonicalizationError):
+    with pytest.raises(ValueError, match="plain-decimal USD"):
         prepare_model_access(
             Registry(),
             public_request,
@@ -137,32 +137,68 @@ def test_raw_float_zero_request_remains_noncanonical(raw_float_zero: float) -> N
         snapshot({"request": public_request})
 
 
-@pytest.mark.parametrize("nonzero", [0.375, 1e-12, 1])
-def test_nonzero_price_normalization_and_fraction_guards_are_unchanged(
-    nonzero: float | int,
+@pytest.mark.parametrize(
+    "price,expected",
+    [("0.000000", "0"), ("0.375000", "0.375"), ("2.700000", "2.7"),
+     ("0.000001", "0.000001"), ("9007199254.740991", "9007199254.740991"),
+     (0, 0), (1, 1), (9007199254, 9007199254)],
+)
+def test_exact_prices_survive_policy_plan_and_frozen_snapshot(
+    price: str | int, expected: str | int,
 ) -> None:
-    normalized = normalize_native_filters(filters(nonzero), verified_openrouter=True)
+    original = filters(price)
+    normalized = normalize_native_filters(original, verified_openrouter=True)
     prices = normalized["routing"]["max_price"]
-    assert all(
-        type(value) is float and value == float(nonzero) for value in prices.values()
+    assert prices == {"prompt": expected, "completion": expected}
+    assert all(type(value) is type(expected) for value in prices.values())
+    assert original == filters(price)
+    canonical_json(normalized)
+    public_request = request(price)
+    plan = prepare_model_access(
+        Registry(), public_request, native_capability_revision=CAPABILITY_REVISION,
     )
+    assert plan["request_digest"] == canonical_digest(public_request)
+    assert plan["model_access"]["native_filters"] == normalized
+    assert snapshot({"request": public_request, "plan": plan}).to_dict()[
+        "normalized_payload"
+    ]["plan"] == plan
+
+
+@pytest.mark.parametrize("raw_float", [0.0, -0.0, 0.375, 1.0, 2.7, 1e-12])
+def test_raw_float_prices_remain_noncanonical(raw_float: float) -> None:
     with pytest.raises(CanonicalizationError):
-        canonical_json(normalized)
-    with pytest.raises(ValueError, match="bounded canonical JSON"):
-        snapshot({"native_filters": normalized})
-    with pytest.raises(CanonicalizationError):
+        canonical_json(filters(raw_float))
+    with pytest.raises(ValueError, match="plain-decimal USD"):
+        normalize_native_filters(filters(raw_float), verified_openrouter=True)
+    with pytest.raises(ValueError, match="plain-decimal USD"):
         prepare_model_access(
-            Registry(),
-            request(nonzero),
+            Registry(), request(raw_float),
             native_capability_revision=CAPABILITY_REVISION,
         )
 
 
+def test_outbound_decimal_limit_cannot_round_up_or_down() -> None:
+    """Large exact policies fail closed if the numeric wire format rounds them."""
+    for price in ("9007199254.740991", "9007199254.740989"):
+        connection = {
+            **CONNECTION,
+            "model_access": request(price)["model_access"],
+        }
+        with pytest.raises(ValueError, match="represented exactly for transport"):
+            compile_connection_parameters(connection, MODEL, {})
+
+
 @pytest.mark.parametrize(
-    "invalid", [-0.375, -1, True, False, float("nan"), float("inf"), float("-inf")]
+    "invalid", [
+        -0.375, -1, True, False, float("nan"), float("inf"), float("-inf"),
+        "-0", "-1", "+1", "1e0", "NaN", "Infinity", " 1", "1 ", "",
+        ".1", "1.", "00", "01.2", "１", "1.0000000", "0.0000001",
+        "9007199254.740992", "9007199255", 9007199255, 2**53,
+        "9" * 5000,
+    ]
 )
 def test_invalid_prices_still_fail_original_validation(invalid: Any) -> None:
-    with pytest.raises(ValueError, match="finite nonnegative USD"):
+    with pytest.raises(ValueError, match="plain-decimal USD"):
         normalize_native_filters(filters(invalid), verified_openrouter=True)
 
 

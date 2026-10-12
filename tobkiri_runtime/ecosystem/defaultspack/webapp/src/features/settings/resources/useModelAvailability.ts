@@ -31,7 +31,7 @@ export function isModelsAvailable(
 }
 
 export function availabilityCopy(value: ModelAvailabilityAfterKeySave | null | undefined): {
-  tone: "success" | "warning" | "idle";
+  tone: "success" | "info" | "idle";
   text: string;
 } {
   if (!value) return { tone: "idle", text: "" };
@@ -49,7 +49,7 @@ export function availabilityCopy(value: ModelAvailabilityAfterKeySave | null | u
     };
   }
   return {
-    tone: "warning",
+    tone: "info",
     text: value.reason || "Saved, but select a model route before this key can appear in the composer.",
   };
 }

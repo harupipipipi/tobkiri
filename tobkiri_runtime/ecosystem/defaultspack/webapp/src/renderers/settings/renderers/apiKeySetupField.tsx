@@ -362,12 +362,9 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
               {feedback.text}
             </div>
           ) : (
-            <ErrorNotice
-              className="px-3 py-2 text-[11px]"
-              copyLabel="APIキー設定の警告をコピー"
-              message={feedback.text}
-              severity="warning"
-            />
+            <div role="status" className="rounded-lg border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-[11px] text-zinc-300">
+              {feedback.text}
+            </div>
           )
         )}
         {saveError && (

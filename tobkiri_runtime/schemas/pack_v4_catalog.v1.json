@@ -18167,7 +18167,7 @@
           "path": "runtime/local_endpoint.py"
         },
         {
-          "digest": "sha256:9cf158aadefd5b9616e50278470f82185b41eb486ce667c37137f05c7fc09535",
+          "digest": "sha256:7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03",
           "kind": "executable",
           "path": "domain/ai_client/provider_compiler/native_filters.py"
         },

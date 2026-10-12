@@ -135,7 +135,7 @@ def test_native_discovery_query_is_separate_from_generation_payload():
     filters = native({"output_modalities": ["image", "text"],
                       "category": "programming"},
                      {"only": ["xiaomi"], "zdr": True,
-                      "max_price": {"prompt": .435, "completion": .87}})
+                      "max_price": {"prompt": "0.435", "completion": "0.87"}})
     url = discovery_url(filters)
     assert "output_modalities=image%2Ctext" in url and "category=programming" in url
     assert "xiaomi" not in url and "max_price" not in url
@@ -179,7 +179,9 @@ def test_native_routing_reaches_exact_host_transport_model():
     class FakeHost:
         def invoke(self, *_args, **_kwargs):
             return {"providers": [connection(policy(ids=["vendor/model"], native=native(
-                routing={"only": ["xiaomi"], "max_price": {"completion": .87}},
+                routing={"only": ["xiaomi"], "max_price": {
+                    "prompt": "1", "completion": "2.7",
+                }},
             )))]}
 
         def post_json_with_credential(self, **kwargs):
@@ -192,7 +194,8 @@ def test_native_routing_reaches_exact_host_transport_model():
     })
     body = captured.get("body", captured.get("payload"))
     assert body["model"] == "vendor/model"
-    assert body["provider"] == {"only": ["xiaomi"], "max_price": {"completion": .87},
+    assert body["provider"] == {"only": ["xiaomi"], "max_price": {
+                                    "prompt": 1, "completion": 2.7},
                                 "allow_fallbacks": False}
 
 

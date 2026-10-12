@@ -407,7 +407,8 @@ def test_guest_body_cannot_expand_policy(world, mutation):
 
 
 @pytest.mark.parametrize("world", ["priced"], indirect=True)
-def test_priced_native_compiler_payload_reaches_guard(world) -> None:
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+def test_priced_native_compiler_payload_reaches_guard(world, effort: str) -> None:
     from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
         compile_connection_parameters,
     )
@@ -426,14 +427,14 @@ def test_priced_native_compiler_payload_reaches_guard(world) -> None:
             "model_ids": [policy.model],
             "native_filters": {
                 "revision": CAPABILITY_REVISION,
-                "routing": {"max_price": {"prompt": 1, "completion": 2.7}},
+                "routing": {"max_price": {"prompt": "1", "completion": "2.7"}},
             },
         },
     }
     compiled = compile_connection_parameters(
         connection,
         policy.model,
-        {"max_tokens": 2048},
+        {"max_tokens": 2048, "reasoning_effort": effort},
     )
     assert compiled["provider"] == {
         "allow_fallbacks": False,
@@ -444,6 +445,25 @@ def test_priced_native_compiler_payload_reaches_guard(world) -> None:
     arguments["body"].update(compiled)
     assert owner.post_json(**arguments) == {"choices": []}
     assert len(world["calls"]) == 1
+
+
+@pytest.mark.parametrize("world", ["generate", "priced"], indirect=True)
+@pytest.mark.parametrize("effort", ["none", "xhigh", "max", "", True, 1, {}, []])
+def test_reasoning_cannot_expand_enrollment(world, effort: Any) -> None:
+    owner, arguments = transport(world)
+    arguments["body"]["reasoning_effort"] = effort
+    with pytest.raises(CredentialTransportDenied):
+        owner.post_json(**arguments)
+    assert world["calls"] == []
+    assert world["witness"].get_host_pending_effect(world["policy"].effect_id)[0] == 1
+
+
+def test_legacy_zero_enrollment_still_rejects_supported_reasoning(world) -> None:
+    owner, arguments = transport(world)
+    arguments["body"]["reasoning_effort"] = "low"
+    with pytest.raises(CredentialTransportDenied):
+        owner.post_json(**arguments)
+    assert world["calls"] == []
 
 
 @pytest.mark.parametrize("world", ["priced"], indirect=True)

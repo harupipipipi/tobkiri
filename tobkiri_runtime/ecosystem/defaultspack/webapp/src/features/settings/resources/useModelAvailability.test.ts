@@ -36,7 +36,7 @@ describe("model availability after key save", () => {
     });
   });
 
-  it("does not render a green saved state for route_required", () => {
+  it("presents route selection as a next step without claiming model availability", () => {
     const value: ModelAvailabilityAfterKeySave = {
       status: "route_required",
       provider_id: "google",
@@ -47,7 +47,7 @@ describe("model availability after key save", () => {
 
     assert.equal(isModelsAvailable(value), false);
     assert.deepEqual(availabilityCopy(value), {
-      tone: "warning",
+      tone: "info",
       text: "Choose a model route for this API key.",
     });
   });

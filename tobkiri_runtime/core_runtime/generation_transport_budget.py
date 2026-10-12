@@ -57,6 +57,7 @@ _BODY_KEYS = frozenset(
         "parallel_tool_calls",
         "provider",
         "n",
+        "reasoning_effort",
     }
 )
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}\Z")
@@ -359,6 +360,16 @@ class HostGenerationBudgetAdmission:
             != ("ai.stream" if contract_id.endswith("stream.v1") else "ai.generate")
             or endpoint != policy.endpoint
             or set(body) - _BODY_KEYS
+            or (
+                "reasoning_effort" in body
+                and (
+                    policy.model != "stepfun/step-5-preview"
+                    or policy.max_prompt_price_microusd_per_million != 1_000_000
+                    or policy.max_completion_price_microusd_per_million != 2_700_000
+                    or type(body["reasoning_effort"]) is not str
+                    or body["reasoning_effort"] not in {"low", "medium", "high"}
+                )
+            )
             or body.get("model") != policy.model
             or type(body.get("max_tokens")) is not int
             or not 1 <= body["max_tokens"] <= policy.max_output_tokens

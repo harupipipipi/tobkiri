@@ -457,6 +457,7 @@ def test_priced_native_approval_enrolls_exact_review_and_restores(
     assert "stepfun/step-5-preview" in detail
     assert "$1/$2.7" in detail and "per million tokens" in detail
     assert "3" in detail and "2048" in detail and "fallback disabled" in detail
+    assert "Reasoning effort: low/medium/high" in detail
     summary = approved.presentation["summary"]
     assert "$2 total, including prior spend" in summary
     assert "has not verified it" in summary

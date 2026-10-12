@@ -938,11 +938,19 @@ def _presentation_metadata(
                     "fallback disabled."
                 )
             )
+            reasoning_detail = (
+                "\nReasoning effort: low/medium/high, within the same output limit."
+                if budget["model"] == "stepfun/step-5-preview"
+                and prompt_price == 1_000_000
+                and completion_price == 2_700_000
+                else ""
+            )
             budget_detail = (
                 f"\nGeneration requests over credential lifetime: {budget['max_requests']}"
                 f"\nModel: {budget['model']}"
                 f"\nMaximum output tokens: {budget['max_output_tokens']}"
                 f"{price_detail}"
+                f"{reasoning_detail}"
                 "\nRestart, retry and continuation retain the same consumed budget."
             )
             if external_limit:

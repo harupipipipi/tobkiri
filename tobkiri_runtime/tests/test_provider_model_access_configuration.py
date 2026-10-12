@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
-from ecosystem.rumi_provider_registry_pack.runtime.model_access import VERSION
+from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
+    VERSION,
+    compile_connection_parameters,
+)
 from ecosystem.rumi_provider_registry_pack.runtime.model_access_configuration import (
     execute_model_access,
     prepare_model_access,
@@ -19,6 +23,7 @@ from ecosystem.rumi_provider_registry_pack.runtime.registry import (
     ProviderRegistry,
     ProviderRegistryConflict,
 )
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 
 @pytest.fixture
@@ -144,6 +149,61 @@ def test_native_capability_rechecked_on_execute(registry: ProviderRegistry) -> N
         registry, {"request": value, "plan": plan}, native_capability_revision=CAPABILITY_REVISION
     )
     assert result["native_capability"] == CAPABILITY_REVISION
+
+
+def test_exact_decimal_price_prepare_execute_and_reload(
+    registry: ProviderRegistry,
+    tmp_path: Path,
+) -> None:
+    """Approved exact prices persist canonically and compile at transport only."""
+    value = request({
+        "version": VERSION,
+        "mode": "explicit",
+        "model_ids": ["vendor/model"],
+        "native_filters": {
+            "revision": CAPABILITY_REVISION,
+            "routing": {"max_price": {"prompt": "1", "completion": "2.700000"}},
+        },
+    })
+    original = deepcopy(value)
+    before = registry.path.read_bytes()
+    plan = prepare_model_access(
+        registry, value, native_capability_revision=CAPABILITY_REVISION,
+    )
+    assert value == original
+    assert registry.path.read_bytes() == before
+    assert plan["request_digest"] == canonical_digest(value)
+    assert plan["plan_digest"] == canonical_digest({
+        key: item for key, item in plan.items() if key != "plan_digest"
+    })
+    prices = plan["model_access"]["native_filters"]["routing"]["max_price"]
+    assert prices == {"prompt": "1", "completion": "2.7"}
+    canonical_json({"request": value, "plan": plan})
+    changed = deepcopy(plan)
+    changed["model_access"]["native_filters"]["routing"]["max_price"][
+        "completion"
+    ] = "2.8"
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_model_access(
+            registry, {"request": value, "plan": changed},
+            native_capability_revision=CAPABILITY_REVISION,
+        )
+    assert registry.path.read_bytes() == before
+    result = execute_model_access(
+        registry, {"request": value, "plan": plan},
+        native_capability_revision=CAPABILITY_REVISION,
+    )
+    reloaded = ProviderRegistry("defaults", user_data_root=tmp_path)
+    saved = reloaded.snapshot()["providers"][0]
+    assert result["model_access"] == saved["model_access"]
+    assert saved["model_access"]["native_filters"]["routing"]["max_price"] == prices
+    assert saved["credential_handle"] == "credential:synthetic-private-marker"
+    assert compile_connection_parameters(saved, "vendor/model", {}) == {
+        "provider": {
+            "max_price": {"prompt": 1, "completion": 2.7},
+            "allow_fallbacks": False,
+        },
+    }
 
 
 def test_all_policy_retains_confirmed_native_capability(
