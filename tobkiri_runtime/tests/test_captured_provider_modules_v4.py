@@ -63,7 +63,9 @@ def _capture(files: dict[str, bytes]) -> SimpleNamespace:
 
 def _binding(function_id: str = FUNCTION, artifact: str = "a") -> SimpleNamespace:
     return SimpleNamespace(
-        artifact=SimpleNamespace(digest="sha256:" + artifact * 64),
+        artifact=SimpleNamespace(
+            digest="sha256:" + artifact * 64, pack_id="test_host_extension_pack"
+        ),
         function=SimpleNamespace(function_id=function_id),
     )
 
@@ -245,10 +247,78 @@ def test_repeated_loads_reuse_one_namespace_and_old_lazy_factory_survives(
     )
     third = _load(monkeypatch, tmp_path, files, artifact="b")
     assert type(first).__module__ != type(second).__module__ != type(third).__module__
-    assert _load(monkeypatch, tmp_path, files, function_id="missing.function") is None
+    with pytest.raises(AuthorizationError, match="factory identity"):
+        _load(monkeypatch, tmp_path, files, function_id="missing.function")
     assert first.helper() == 7
     assert second.helper() == 9
     assert third.helper() == 7
+
+
+def test_unrelated_absolute_package_import_keeps_python_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = b"import ecosystem\n" + SOURCE
+    factory = _load(monkeypatch, tmp_path, {"runtime/provider.py": source})
+    assert _module(factory).ecosystem is sys.modules["ecosystem"]
+
+
+def test_omitted_mapping_key_keeps_an_accepted_lazy_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = SOURCE.replace(
+        b"HOST_PROVIDER_FACTORY = Factory()",
+        b'HOST_PROVIDER_FACTORY = {"test.host.provider": Factory()}',
+    )
+    files = {"runtime/provider.py": source, "runtime/helper.py": b"value = '7'"}
+    factory = _load(monkeypatch, tmp_path, files)
+    assert _load(monkeypatch, tmp_path, files, function_id="missing.function") is None
+    assert factory.helper() == 7
+
+
+def test_waiter_redirects_after_failed_initial_context_is_replaced(
+    tmp_path: Path,
+) -> None:
+    """Exercise the deterministic ordering of failure, replacement, then waiter."""
+    captured = _capture(
+        {"runtime/provider.py": SOURCE, "runtime/helper.py": b"value = '7'"}
+    )
+    arguments = {
+        "artifact_digest": "sha256:" + "a" * 64,
+        "pack_id": "test_host_extension_pack",
+    }
+    stale = CapturedProviderModules.for_capture(tmp_path, captured, **arguments)
+    with pytest.raises(RuntimeError):
+        with stale.loading():
+            raise RuntimeError("initial load failed")
+    replacement = CapturedProviderModules.for_capture(tmp_path, captured, **arguments)
+    assert replacement is not stale
+    with stale.loading() as active:
+        assert active is replacement
+        module = active.load()
+        active.accept()
+    assert stale not in sys.meta_path
+    assert module.HOST_PROVIDER_FACTORY.helper() == 7
+
+
+def test_failed_recapture_does_not_invalidate_an_accepted_lazy_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {"runtime/provider.py": SOURCE, "runtime/helper.py": b"value = '7'"}
+    factory = _load(monkeypatch, tmp_path, files)
+    captured = _capture(files)
+    calls = 0
+
+    def recapture(*_: Any) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise InvalidArtifactError("capture failed")
+        return captured
+
+    monkeypatch.setattr(hooks, "capture_materialized_artifact", recapture)
+    with pytest.raises(InvalidArtifactError):
+        hooks.load_host_provider_factory(tmp_path, _binding())
+    assert factory.helper() == 7
 
 
 @pytest.mark.parametrize("failure", ["import", "factory", "changed", "recapture"])

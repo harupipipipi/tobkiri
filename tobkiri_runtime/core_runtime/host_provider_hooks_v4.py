@@ -49,6 +49,7 @@ def load_host_provider_factory(
         pack_root,
         captured_before,
         artifact_digest=binding.artifact.digest,
+        pack_id=binding.artifact.pack_id,
     )
     with modules.loading() as modules:
         try:

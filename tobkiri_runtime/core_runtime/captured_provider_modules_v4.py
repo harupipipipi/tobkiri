@@ -37,11 +37,12 @@ class CapturedProviderModules(MetaPathFinder, Loader):
         captured: MaterializedPackArtifact,
         *,
         artifact_digest: str,
+        pack_id: str,
     ) -> None:
         self.namespace = self._namespace(pack_root, captured, artifact_digest)
         self._lock = threading.RLock()
         self._accepted = False
-        self._pack_id = captured.pack_id
+        self._pack_id = pack_id
         self._canonical_prefix = "ecosystem." + self._pack_id
         self._ecosystem = ModuleType("ecosystem")
         self._ecosystem.__path__ = []
@@ -101,13 +102,19 @@ class CapturedProviderModules(MetaPathFinder, Loader):
         captured: MaterializedPackArtifact,
         *,
         artifact_digest: str,
+        pack_id: str,
     ) -> CapturedProviderModules:
         """Reuse one import context for one exact artifact and materialization."""
         namespace = cls._namespace(pack_root, captured, artifact_digest)
         with _CAPTURE_LOCK:
             existing = _CAPTURES.get(namespace)
             if existing is None:
-                existing = cls(pack_root, captured, artifact_digest=artifact_digest)
+                existing = cls(
+                    pack_root,
+                    captured,
+                    artifact_digest=artifact_digest,
+                    pack_id=pack_id,
+                )
                 _CAPTURES[namespace] = existing
             return existing
 
@@ -184,7 +191,7 @@ class CapturedProviderModules(MetaPathFinder, Loader):
         name: str,
         globals: dict[str, Any] | None = None,
         locals: dict[str, Any] | None = None,
-        fromlist: tuple[str, ...] = (),
+        fromlist: tuple[str, ...] | list[str] | None = (),
         level: int = 0,
     ) -> Any:
         """Bind canonical imports of this Pack to its captured private package."""
@@ -200,8 +207,8 @@ class CapturedProviderModules(MetaPathFinder, Loader):
             # that shape locally without publishing canonical sys.modules keys.
             setattr(self._ecosystem, self._pack_id, sys.modules[self.namespace])
             return self._ecosystem
-        if level == 0 and name == "ecosystem" and self._pack_id in fromlist:
-            if tuple(fromlist) != (self._pack_id,):
+        if level == 0 and name == "ecosystem" and self._pack_id in (fromlist or ()):
+            if tuple(fromlist or ()) != (self._pack_id,):
                 raise ImportError("mixed Host Provider package imports are unsupported")
             setattr(
                 self._ecosystem, self._pack_id, importlib.import_module(self.namespace)
