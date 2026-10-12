@@ -2666,6 +2666,9 @@ def test_manual_runtime_mode_selection_round_trips_through_real_broker(
     tmp_path: Path,
 ) -> None:
     """Both booleans cross the captured input/output schemas and owner CAS."""
+    from tobkiri_host.errors import ResolutionError
+    from tobkiri_protocol.errors import CanonicalizationError
+
     server, _session, _authority = settings_vertical_server
     storage = tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
     storage.parent.mkdir(parents=True, exist_ok=True)
@@ -2678,6 +2681,25 @@ def test_manual_runtime_mode_selection_round_trips_through_real_broker(
     cookie, csrf, origin = _authenticate(server)
     headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
     route = _contract("PUT", "/api/ui/settings")
+    catalog = _session.broker._catalog
+    binding = catalog.resolve_pinned(
+        "tobkiri.action.ui.preferences.v1",
+        "tobkiri_ui_settings_pack.preferences-write",
+    )
+    float_changes = {"general": {"manual_runtime_mode_selection": 1.0}}
+    float_request = {
+        "profile_id": "defaults", "changes": float_changes, "expected_revision": 7,
+    }
+    # Floats are outside canonical HTTP payloads. Exercise the captured
+    # operation's two schemas and the earlier canonical boundary directly.
+    with pytest.raises(CanonicalizationError):
+        canonical_digest(float_request)
+    with pytest.raises(ResolutionError, match="input schema validation failed"):
+        catalog.validate_input(binding, float_request)
+    with pytest.raises(ResolutionError, match="output schema validation failed"):
+        catalog.validate_output(
+            binding, {"values": float_changes, "document_revision": 8},
+        )
     for revision, enabled in ((7, True), (8, False)):
         changes = {"general": {"manual_runtime_mode_selection": enabled}}
         body = {"changes": changes, "expected_revision": revision}
@@ -2708,33 +2730,32 @@ def test_manual_runtime_mode_selection_round_trips_through_real_broker(
         assert storage.read_bytes() == before
 
 
-@pytest.mark.parametrize("value", ["true", "false", 1, 0, 1.0, None, {}, []])
 def test_manual_runtime_mode_selection_schema_rejects_nonboolean_without_write(
     settings_vertical_server,
     tmp_path: Path,
-    value: object,
 ) -> None:
     """The public Broker rejects malformed fields before owner persistence."""
     server, _session, _authority = settings_vertical_server
     storage = tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
     cookie, csrf, origin = _authenticate(server)
-    status, payload, _ = _request(
-        server,
-        "PUT",
-        _contract("PUT", "/api/ui/settings"),
-        body={
-            "changes": {"general": {"manual_runtime_mode_selection": value}},
-            "expected_revision": 0,
-        },
-        headers={
-            "Cookie": cookie,
-            "Origin": origin,
-            "X-Rumi-CSRF": csrf,
-            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
-        },
-    )
-    assert status != 200, payload
-    assert not storage.exists()
+    for value in ("true", "false", 1, 0, None, {}, []):
+        status, payload, _ = _request(
+            server,
+            "PUT",
+            _contract("PUT", "/api/ui/settings"),
+            body={
+                "changes": {"general": {"manual_runtime_mode_selection": value}},
+                "expected_revision": 0,
+            },
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert status != 200, (value, payload)
+        assert not storage.exists(), value
 
 
 def test_settings_reads_saved_values_and_models_through_real_broker(
