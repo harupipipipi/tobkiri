@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "c8b6291ba32c743adde0223283973443c8c7257f17b015d49028547d564ffd56",
+    "digest": "fff4c960d8b499a37ab1f4f7e4f0bb2976316b2980e7bb7c47712904585c4200",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9700,
-        "sha256": "c60575eb7b6ad8407111d126ceaf2a286770bb9bc8398a7cda1f0f1e585bbe27"
+        "size": 9754,
+        "sha256": "589c5882103a7421b19c692ed275d34870aafec39d6fa676355475eb23b8b746"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 445415,
-        "sha256": "fff6a4baa4d9553ca6850d2723c8947adfdafe06df03abb40d84aefca956da20"
+        "size": 445039,
+        "sha256": "5eec3ff815b34792dec4e90875eb3a11b4b8a518a6eeb78dbfc95237b86fff2f"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -647,6 +647,16 @@
         "path": "src/components/coding/CodingWorkspaceBadge.tsx",
         "size": 1133,
         "sha256": "cd9fcd2e8cc92032748615bfe906f2529abf251b0455fa5838eac0a97f25db69"
+      },
+      {
+        "path": "src/components/coding/CodingWorkspaceCockpit.test.tsx",
+        "size": 3522,
+        "sha256": "2b7ac6099d616985ca928b0326f25dc8908601aaaafa09ab3adaabebf0fc95b8"
+      },
+      {
+        "path": "src/components/coding/CodingWorkspaceCockpit.tsx",
+        "size": 5359,
+        "sha256": "34a001e0aa938e35cfabc7d758074a302d16134090dfa1bd129366ead449cc73"
       },
       {
         "path": "src/components/coding/CodingWorkspacePicker.tsx",
@@ -3031,7 +3041,7 @@
     ]
   },
   "bundle": {
-    "digest": "b3941290267674d1deb1c7e484f64620d211b98ab7f9c937774211fd2f66da94",
+    "digest": "9d6343d8c207357c139748a46b8833188a55cf8501ed29f9787587b29ca291f8",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3045,8 +3055,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2772207,
-        "sha256": "d845abc1c78041a03c78a31d160e394179a3feb7e6bb6ed4493a5f8716998df8"
+        "size": 2680153,
+        "sha256": "5e4d08d5c83e30859e6a64b2480a3075256cdb2b88914883c16826bf765f45fb"
       },
       {
         "path": "shell-icons.js",
