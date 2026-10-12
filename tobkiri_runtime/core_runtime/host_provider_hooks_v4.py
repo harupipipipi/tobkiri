@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
+import importlib.util  # noqa: F401 - preserve existing loader instrumentation.
 from pathlib import Path
-import sys
 from typing import Any, Sequence
 
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
@@ -13,6 +12,7 @@ from tobkiri_host.contracts import ResolvedOperationBinding
 from tobkiri_host.errors import AuthorizationError
 
 from .host_provider_backend_v4 import HostProviderFactoryV4
+from .captured_provider_modules_v4 import CapturedProviderModules
 
 
 def load_host_provider_factory(
@@ -45,40 +45,34 @@ def load_host_provider_factory(
     )
     if not exports_factory:
         return None
-    implementation_path = pack_root / captured_before.implementation_path
-    module_name = "_tobkiri_host_provider_" + binding.function.implementation_digest.removeprefix(
-        "sha256:"
+    modules = CapturedProviderModules.for_capture(
+        pack_root,
+        captured_before,
+        artifact_digest=binding.artifact.digest,
     )
-    spec = importlib.util.spec_from_file_location(module_name, implementation_path)
-    if spec is None or spec.loader is None:
-        raise AuthorizationError("Host Provider executable loader is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception as error:
-        sys.modules.pop(module_name, None)
-        raise AuthorizationError("Host Provider executable import failed") from error
-    captured_after = capture_materialized_artifact(pack_root, binding)
-    if captured_after.materialization_digest != captured_before.materialization_digest:
-        sys.modules.pop(module_name, None)
-        raise AuthorizationError("Host Provider executable changed during import")
-    exported_factory = getattr(module, "HOST_PROVIDER_FACTORY", None)
-    if isinstance(exported_factory, dict):
-        if binding.function.function_id not in exported_factory:
-            sys.modules.pop(module_name, None)
-            return None
-        factory = exported_factory[binding.function.function_id]
-    else:
-        factory = exported_factory
-    if (
-        factory is None
-        or not isinstance(getattr(factory, "function_id", None), str)
-        or not callable(getattr(factory, "capture", None))
-        or factory.function_id != binding.function.function_id
-    ):
-        sys.modules.pop(module_name, None)
-        raise AuthorizationError("Host Provider factory identity is invalid")
+    with modules.loading() as modules:
+        try:
+            module = modules.load()
+        except Exception as error:
+            raise AuthorizationError("Host Provider executable import failed") from error
+        captured_after = capture_materialized_artifact(pack_root, binding)
+        if captured_after.materialization_digest != captured_before.materialization_digest:
+            raise AuthorizationError("Host Provider executable changed during import")
+        exported_factory = getattr(module, "HOST_PROVIDER_FACTORY", None)
+        if isinstance(exported_factory, dict):
+            if binding.function.function_id not in exported_factory:
+                return None
+            factory = exported_factory[binding.function.function_id]
+        else:
+            factory = exported_factory
+        if (
+            factory is None
+            or not isinstance(getattr(factory, "function_id", None), str)
+            or not callable(getattr(factory, "capture", None))
+            or factory.function_id != binding.function.function_id
+        ):
+            raise AuthorizationError("Host Provider factory identity is invalid")
+        modules.accept()
     return factory
 
 
