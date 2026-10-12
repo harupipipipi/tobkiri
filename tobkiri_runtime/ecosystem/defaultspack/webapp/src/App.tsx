@@ -13,6 +13,7 @@ import type { ProjectDirectorySelectionSet } from "./lib/projectWorkspaceMount";
 import { useSavedChatProgress } from "./lib/useSavedChatProgress";
 import { ConversationMutationBarrier } from "./lib/conversationMutationBarrier";
 import { savedTurnStoreIdentity, useScopedPendingChat, type PendingRecoveryEntry } from "./lib/scopedPendingChat";
+import { usePendingRecoveryNotices } from "./lib/usePendingRecoveryNotices";
 import { chatMessageToUiMessage } from "./lib/chatUiMessage";
 import { FrontendViewSlot } from "./host/FrontendViewSlot";
 import { viewsForSlot, matchesViewReference, type CatalogViewReference, type ViewSlot } from "./host/catalogViewRegistry";
@@ -3235,6 +3236,11 @@ export function ChatApp() {
   const pendingStorage = useScopedPendingChat(runtimeProfileId, savedTurnStoreId);
   const pendingRequests = pendingStorage.pending;
   const setPendingRequests = pendingStorage.setPending;
+  const pendingRecoveryNotices = usePendingRecoveryNotices(
+    runtimeProfileId,
+    savedTurnStoreId,
+    pendingStorage.recovery,
+  );
   const pendingRequestsRef = useRef<Record<string, PendingChatRequest>>(pendingRequests);
   pendingRequestsRef.current = pendingRequests;
   const [interruptedSavedTurnDrafts, setInterruptedSavedTurnDrafts] = useState<InterruptedSavedTurnDraft[]>([]);
@@ -8961,14 +8967,20 @@ export function ChatApp() {
       pendingRecovery={savedPendingRecoveryReady || pendingStorage.recovery.length ? {
         message: pendingStorage.persistenceError
           ? "送信記録をブラウザーに保存できません。この画面を閉じずに照合を続けてください。自動再送はしません。"
-          : pendingRequest?.savedTurn
-          ? "送信結果を照合中です。自動再送はしません。下書きは編集できます。"
-          : "以前の送信の実行結果は未確認です。履歴は保持されています。自動再送はしません。",
+          : !savedPendingRecoveryReady && pendingStorage.recovery.length > 0
+            && pendingStorage.recovery.every((entry) => pendingRecoveryNotices[entry.id])
+            ? "送信の失敗を確認しました。詳細を記録に表示しています。自動再送はしません。"
+            : pendingRequest?.savedTurn
+              ? "送信結果を照合中です。自動再送はしません。下書きは編集できます。"
+              : "以前の送信の実行結果は未確認です。履歴は保持されています。自動再送はしません。",
         entries: pendingStorage.recovery.map((entry) => ({
           id: entry.id,
+          storeId: entry.storeId,
+          conversationId: entry.request.conversationId,
           label: `${entry.archived ? "保管済み・結果未確認" : "以前の環境の送信"} / ${conversations.find((conversation) => conversation.id === entry.request.conversationId)?.title ?? "会話の記録"}`,
           operationId: entry.request.operationId,
           submittedText: entry.request.submittedText,
+          statusNotice: pendingRecoveryNotices[entry.id],
         })),
         onDetach: savedPendingRecoveryReady
           ? () => {

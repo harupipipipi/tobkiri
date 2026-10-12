@@ -267,8 +267,11 @@ export type ComposerRendererProps = {
     entries: Array<{
       id: string;
       label: string;
+      storeId?: string | null;
+      conversationId?: string;
       operationId?: string;
       submittedText?: string;
+      statusNotice?: string;
     }>;
     onDetach?: () => void;
   };

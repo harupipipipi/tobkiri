@@ -2047,11 +2047,17 @@ test("retained requests from another store do not disable a current draft or exp
   const html = renderToolModeComposer({
     pendingRecovery: {
       message: "以前の送信記録を保持しています。",
-      entries: [{ id: "old-request", label: "以前の環境", submittedText: "<script>sendAgain()</script>" }],
+      entries: [{
+        id: "old-request",
+        label: "以前の環境",
+        submittedText: "<script>sendAgain()</script>",
+        statusNotice: "送信は失敗で終了しました（HOST_ACTION_FAILED）。自動再送はしません。",
+      }],
     },
   });
 
   assert.match(html, /未確認の送信記録（1件）/);
+  assert.match(html, /送信は失敗で終了しました（HOST_ACTION_FAILED）。自動再送はしません。/);
   assert.match(html, /&lt;script&gt;sendAgain\(\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
   assert.doesNotMatch(html, /textarea[^>]*disabled=/);

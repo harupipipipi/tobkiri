@@ -17621,7 +17621,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf"
+              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -17657,7 +17657,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf"
+              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -17693,7 +17693,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf"
+              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -17729,7 +17729,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf"
+              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -17771,12 +17771,17 @@
       ],
       "runtime_artifacts": [
         {
+          "path": "domain/ai_client/provider_compiler/openai_chat.py",
+          "digest": "sha256:57f3e864959c2078db46517a3c86a99adcf7d801a260be48b3dc31e463b0c585",
+          "kind": "sidecar"
+        },
+        {
           "digest": "sha256:99779c627cd7a1ee6667657a0b88d7abfdae2eb07007c017cbf30ad6306ca724",
           "kind": "executable",
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf",
+          "digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3",
           "kind": "executable",
           "path": "runtime/adapter.py"
         },

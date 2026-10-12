@@ -31,6 +31,9 @@ from ecosystem.rumi_provider_registry_pack.runtime.local_endpoint import (
     local_openai_endpoint,
 )
 from core_runtime.local_model_authority import LocalModelRequest
+from ecosystem.rumi_provider_adapters_pack.domain.ai_client.provider_compiler.openai_chat import (
+    compile_chat_parameters,
+)
 from ecosystem.rumi_provider_adapters_pack.runtime.streaming import stream_request
 from tobkiri_protocol.turn_progress_v1 import ACTION as PROGRESS_CONTRACT
 
@@ -288,10 +291,13 @@ def _openai_compatible(
     streaming: bool,
 ) -> dict[str, Any]:
     endpoint = _endpoint(connection, "/chat/completions")
+    parameters = compile_chat_parameters(
+        dict(request.get("parameters") or {}), endpoint=endpoint,
+    )
     body = {
         "model": _provider_model_id(request),
         "messages": list(request.get("messages") or []),
-        **dict(request.get("parameters") or {}),
+        **parameters,
         "stream": streaming,
     }
     tools = request.get("tools")

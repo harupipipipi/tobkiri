@@ -69,6 +69,88 @@ def test_openai_compatible_requests_identify_the_client() -> None:
     assert "provider_extension" not in result
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    ("level", "effort"),
+    [("low", "low"), ("medium", "medium"), ("high", "high"), ("xhigh", "high")],
+)
+def test_openrouter_compiles_saved_thinking_control_before_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    streaming: bool,
+    level: str,
+    effort: str,
+) -> None:
+    """Both delivery modes send provider parameters accepted by Native policy."""
+    captured: dict[str, Any] = {}
+
+    class Client:
+        def post_json_with_credential(self, **kwargs):
+            captured.update(kwargs)
+            return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+
+    def stream_request(*_args, **kwargs):
+        captured.update(kwargs)
+        return {"output": "ok", "tool_intents": [], "usage": {}}
+
+    monkeypatch.setattr(
+        "ecosystem.rumi_provider_adapters_pack.runtime.adapter.stream_request",
+        stream_request,
+    )
+    parameters = {
+        "thinking_level": level,
+        "max_tokens": 2048,
+        "provider": {"allow_fallbacks": False, "max_price": {"prompt": 1, "completion": 2.7}},
+    }
+    _openai_compatible(
+        Client(),
+        {"model_id": "stepfun/step-5-preview", "parameters": parameters},
+        {"endpoint": "https://openrouter.ai/api/v1"},
+        "credential:synthetic",
+        "ai.stream" if streaming else "ai.generate",
+        streaming,
+    )
+    assert captured["body"] == {
+        "model": "stepfun/step-5-preview",
+        "messages": [],
+        "max_tokens": 2048,
+        "provider": parameters["provider"],
+        "reasoning_effort": effort,
+        "stream": streaming,
+    }
+    assert parameters["thinking_level"] == level
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"thinking_level": "unsupported-secret"},
+        {"thinking_level": True},
+        {"thinking_level": []},
+        {"thinking_level": "low", "reasoning_effort": "high"},
+    ],
+)
+def test_openrouter_rejects_invalid_or_conflicting_thinking_before_transport(
+    parameters: dict[str, Any],
+) -> None:
+    """Malformed controls cannot expand an existing credential's send policy."""
+
+    class Client:
+        def post_json_with_credential(self, **_kwargs):
+            pytest.fail("invalid parameters must not reach transport")
+
+    with pytest.raises(GlobalContractInvocationError) as rejected:
+        _openai_compatible(
+            Client(),
+            {"model_id": "stepfun/step-5-preview", "parameters": parameters},
+            {"endpoint": "https://openrouter.ai/api/v1"},
+            "credential:synthetic",
+            "ai.generate",
+            False,
+        )
+    assert rejected.value.code == "invalid_request"
+    assert "unsupported-secret" not in str(rejected.value)
+
+
 @pytest.mark.parametrize(
     "endpoint",
     ["http://provider.example/v1", "http://127.0.0.1:11434/v1"],

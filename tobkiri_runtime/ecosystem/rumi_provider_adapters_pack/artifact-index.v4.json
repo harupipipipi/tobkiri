@@ -1,18 +1,23 @@
 {
-  "artifact_set_digest": "sha256:5532178df89473ef7eb79942ab1279fa38e3a35fdacc871586d09ae8ccffa47c",
+  "artifact_set_digest": "sha256:5eddc80fdd8993d82834528c016548e2b4eee97ba24bd3f484bb69f88d945358",
   "artifacts": [
     {
-      "digest": "sha256:008ab50bbb7585affab6c11a8b7fa09c35c880dd656d2f553e4a27a824428fd0",
+      "digest": "sha256:16caaacb4120e61579b2fe613790f7e3ba01f14b0a714243148bf67c46396127",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:102d9d3fe4294655840e78f3833122b9a5df1eaaf81478e0fd8d4b358a204e68",
+      "digest": "sha256:57f3e864959c2078db46517a3c86a99adcf7d801a260be48b3dc31e463b0c585",
+      "path": "domain/ai_client/provider_compiler/openai_chat.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:641431778dd5ba9a9f7de420432452beb406b8bf304cd371ccfee506b560b699",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:91d31634e4e60059845dcf2d126bb5521de445f992216a0b0ac171b4c225e850",
+      "digest": "sha256:8a16477e07115745b822e575ed6aff38922c9bf7ce89d66e4df22dba80a452e3",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,7 +27,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:6266ccc997c365248e7e477afed0dc55d6b916cf59642d04fc1acb8d027393bf",
+      "digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3",
       "path": "runtime/adapter.py",
       "role": "runtime"
     },
@@ -35,8 +40,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:2ab8d00366236381f7fa5db3be27567527614206bd7a493e54aedca7fffd948a"
+    "signed_digest": "sha256:01c87413e78be2766976883cd9a6fb8b0f83d4179eaa06fdad50133ba010ad30"
   },
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:66e46c3b7612a38598cb1e2505b59af92a1e759a215bd64cf2c08e5c127da409"
+  "source_identity": "sha256:d485bab3bf71dd3ada801a017ae68e9dbbeda48333ecf4316a486d935e89b1e3"
 }

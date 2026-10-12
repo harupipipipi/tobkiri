@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { ChatMessage, Conversation, SavedTurnResult } from "./api";
+import type { ChatMessage, Conversation, SavedTurnEventSnapshot, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
   canClearSavedTurnStopFailureError,
@@ -16,6 +16,7 @@ import {
   savedTurnProgressState,
   savedTurnCanRestoreUnwrittenDraft,
   savedTurnTerminalNotice,
+  savedTurnActionFailureNotice,
   shouldReconcileSavedTurnAfterAcknowledgedStop,
   updateSavedTurnNotice,
   type SavedTurnStopAcknowledgement,
@@ -566,6 +567,68 @@ test("only matching terminal saved turns stop reconciliation", () => {
   ]) {
     assert.equal(savedTurnTerminalNotice(candidate, "c1", "turn-1"), null);
   }
+});
+
+test("saved action failure notice requires the exact terminal receipt and persistence evidence", () => {
+  const snapshot = {
+    turn_id: "turn-1",
+    operation_id: "turn-1",
+    conversation_id: "c1",
+    request_id: "request-1",
+    turn_revision: 4,
+    events: [{
+      turn_id: "turn-1",
+      operation_id: "turn-1",
+      conversation_id: "c1",
+      request_id: "request-1",
+      turn_revision: 4,
+      sequence: 0,
+      name: "turn.failed",
+      at: 1,
+      details: {
+        phase: "saved_execution_failed",
+        error_code: "HOST_ACTION_FAILED",
+        user_persistence: "saved",
+        assistant_persistence: "not_written",
+      },
+    }],
+    status: "failed",
+    terminal: {
+      turn_id: "turn-1",
+      operation_id: "turn-1",
+      conversation_id: "c1",
+      request_id: "request-1",
+      turn_revision: 4,
+      status: "failed",
+    },
+    turn: {
+      id: "turn-1",
+      conversation_id: "c1",
+      status: "failed",
+      revision: 4,
+    },
+  } as SavedTurnEventSnapshot;
+  const notice = savedTurnActionFailureNotice(snapshot, "c1", "turn-1");
+  assert.match(notice ?? "", /HOST_ACTION_FAILED/);
+  assert.match(notice ?? "", /ユーザーメッセージは保存済み/);
+  assert.match(notice ?? "", /assistant の応答は保存されていません/);
+  assert.match(notice ?? "", /自動再送はしません/);
+  assert.equal(savedTurnActionFailureNotice(snapshot, "other", "turn-1"), null);
+  assert.equal(savedTurnActionFailureNotice({
+    ...snapshot,
+    events: [{
+      ...snapshot.events[0],
+      details: { ...snapshot.events[0].details, assistant_persistence: "unknown" },
+    }],
+  }, "c1", "turn-1"), null);
+  assert.equal(savedTurnActionFailureNotice({
+    ...snapshot,
+    terminal: null,
+  }, "c1", "turn-1"), null);
+  assert.equal(savedTurnActionFailureNotice({
+    ...snapshot,
+    events: [],
+  }, "c1", "turn-1"), null);
 });
 
 test("only an exact root receipt proving no persistence permits draft restoration", () => {

@@ -5015,6 +5015,11 @@ export function ComposerRenderer({
                     {pendingRecovery.entries.map((entry) => (
                       <li key={entry.id}>
                         <p className="text-zinc-400">{entry.label}</p>
+                        {entry.statusNotice && (
+                          <p className="mt-1 text-rose-200" role="status" aria-live="polite">
+                            {entry.statusNotice}
+                          </p>
+                        )}
                         {entry.submittedText && <p className="whitespace-pre-wrap break-words">{entry.submittedText}</p>}
                       </li>
                     ))}

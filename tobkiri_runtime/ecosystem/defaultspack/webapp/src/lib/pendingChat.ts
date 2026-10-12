@@ -1,4 +1,4 @@
-import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurn, SavedTurnResult } from "./api";
+import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurn, SavedTurnEventSnapshot, SavedTurnResult } from "./api";
 
 const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
@@ -155,6 +155,44 @@ export function savedTurnTerminalNotice(
     return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
   }
   return null;
+}
+
+/**
+ * Describe a terminal saved-action failure only when its public event receipt
+ * proves the exact turn, failure phase, and message persistence state.
+ */
+export function savedTurnActionFailureNotice(
+  snapshot: SavedTurnEventSnapshot | null | undefined,
+  conversationId: string,
+  turnId: string,
+): string | null {
+  if (!snapshot || snapshot.status !== "failed"
+    || snapshot.turn_id !== turnId || snapshot.operation_id !== turnId
+    || snapshot.conversation_id !== conversationId
+    || !Number.isSafeInteger(snapshot.turn_revision) || snapshot.turn_revision < 1
+    || !STABLE_ID_PATTERN.test(snapshot.request_id)
+    || snapshot.turn?.id !== turnId || snapshot.turn.conversation_id !== conversationId
+    || snapshot.turn.status !== "failed"
+    || snapshot.turn.revision !== snapshot.turn_revision
+    || snapshot.terminal?.status !== "failed"
+    || snapshot.terminal.turn_id !== turnId
+    || snapshot.terminal.operation_id !== turnId
+    || snapshot.terminal.conversation_id !== conversationId
+    || snapshot.terminal.request_id !== snapshot.request_id
+    || snapshot.terminal.turn_revision !== snapshot.turn_revision) return null;
+  const failures = snapshot.events.filter((event) => event.name === "turn.failed"
+    && event.turn_id === turnId && event.operation_id === turnId
+    && event.conversation_id === conversationId
+    && event.request_id === snapshot.request_id
+    && event.turn_revision === snapshot.turn_revision);
+  const failure = failures[0];
+  if (failures.length !== 1 || snapshot.events.at(-1) !== failure) return null;
+  const details = failure.details;
+  if (details?.phase !== "saved_execution_failed"
+    || details.error_code !== "HOST_ACTION_FAILED"
+    || details.user_persistence !== "saved"
+    || details.assistant_persistence !== "not_written") return null;
+  return "送信は失敗で終了しました（HOST_ACTION_FAILED）。ユーザーメッセージは保存済みですが、assistant の応答は保存されていません。自動再送はしません。";
 }
 
 /**

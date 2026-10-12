@@ -2311,6 +2311,7 @@ def capture_production_dispatch(
             presentation_owner_for(outer_request),
             parent_invocation=capture_invocation_scope(outer_request),
         )
+        bridge_phase = "finite_source"
         try:
             from contextlib import nullcontext
             from tobkiri_host.finite_chat_dispatch import finite_saved_chat_source
@@ -2328,6 +2329,7 @@ def capture_production_dispatch(
                 else nullcontext()
             )
             with finite_source:
+                bridge_phase = "provider_dispatch"
                 provider_result = dispatch.invoke(
                     bridge_edge.resolved_binding.operation.contract_id,
                     bridge_edge.resolved_binding.operation.operation_id,
@@ -2337,10 +2339,13 @@ def capture_production_dispatch(
                     parent_cancellation_proof=parent_cancellation_proof,
                     inline_parent_scope=capture_invocation_scope(outer_request),
                 )
+            bridge_phase = "result_shape"
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")
             if result_projector is not None:
+                bridge_phase = "result_projection"
                 provider_result = result_projector(provider_result)
+            bridge_phase = "result_encoding"
             result = {"status": "ok", "value": dict(provider_result)}
             if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
                 raise ValueError("verified Provider capability result is too large")
@@ -2349,7 +2354,13 @@ def capture_production_dispatch(
             # The guest receives a typed, bounded result it can safely render.
             from .bridge_diagnostics import record_bridge_failure
 
-            record_bridge_failure(error)
+            record_bridge_failure(
+                error,
+                request_id=request_id,
+                phase=bridge_phase,
+                contract_id=bridge_edge.resolved_binding.operation.contract_id,
+                operation_id=bridge_edge.resolved_binding.operation.operation_id,
+            )
             result = _provider_unavailable_bridge_result(error)
         finally:
             release_nested_session(bridge_session_id, bridge_authority_session_id)

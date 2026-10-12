@@ -408,7 +408,13 @@ def test_guest_body_cannot_expand_policy(world, mutation):
 
 @pytest.mark.parametrize("world", ["priced"], indirect=True)
 @pytest.mark.parametrize("effort", ["low", "medium", "high"])
-def test_priced_native_compiler_payload_reaches_guard(world, effort: str) -> None:
+@pytest.mark.parametrize("control", ["thinking_level", "reasoning_effort"])
+def test_priced_native_compiler_payload_reaches_guard(
+    world, effort: str, control: str,
+) -> None:
+    from ecosystem.rumi_provider_adapters_pack.domain.ai_client.provider_compiler.openai_chat import (
+        compile_chat_parameters,
+    )
     from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
         compile_connection_parameters,
     )
@@ -431,11 +437,14 @@ def test_priced_native_compiler_payload_reaches_guard(world, effort: str) -> Non
             },
         },
     }
-    compiled = compile_connection_parameters(
+    policy_parameters = compile_connection_parameters(
         connection,
         policy.model,
-        {"max_tokens": 2048, "reasoning_effort": effort},
+        {"max_tokens": 2048, control: effort},
     )
+    compiled = compile_chat_parameters(policy_parameters, endpoint=ENDPOINT)
+    assert compiled["reasoning_effort"] == effort
+    assert "thinking_level" not in compiled
     assert compiled["provider"] == {
         "allow_fallbacks": False,
         "max_price": {"prompt": 1, "completion": 2.7},
