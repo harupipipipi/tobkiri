@@ -8,7 +8,6 @@ import {
   findSelectedModelOption,
   modelFieldOptionToModelSelectOption,
   modelOptionNeedsVisionRecommendation,
-  modelOptionThinkingLevels,
   parseModelSelectorSchema,
   type ModelSelectorSchema,
   type ModelSelectOption,
@@ -37,8 +36,6 @@ export function SettingsModelSearchField({
   value,
   options,
   onChange,
-  thinkingLevelsByProfile,
-  onThinkingLevelChange,
   recommendVision = false,
   placeholder = "model/provider/特徴メモで検索",
   selectorSchema,
@@ -46,8 +43,6 @@ export function SettingsModelSearchField({
   value: string;
   options: ModelSelectOption[];
   onChange: (value: string) => void;
-  thinkingLevelsByProfile?: Record<string, unknown>;
-  onThinkingLevelChange?: (value: string, option: ModelSelectOption | null) => void;
   recommendVision?: boolean;
   placeholder?: string;
   selectorSchema?: ModelSelectorSchema;
@@ -65,19 +60,8 @@ export function SettingsModelSearchField({
     ? [...options, ...rememberedOptions]
     : options;
   const selectedOption = findSelectedModelOption(pickerOptions, value);
-  const supportedThinkingLevels = modelOptionThinkingLevels(selectedOption);
-  const storedThinkingLevel = String(thinkingLevelsByProfile?.[value] ?? "").trim().toLowerCase();
-  const defaultThinkingLevel = String(selectedOption?.default_thinking_level ?? "").trim().toLowerCase();
-  const selectedThinkingLevel = supportedThinkingLevels.includes(storedThinkingLevel)
-    ? storedThinkingLevel
-    : supportedThinkingLevels.includes(defaultThinkingLevel)
-      ? defaultThinkingLevel
-      : supportedThinkingLevels.includes("medium")
-        ? "medium"
-        : supportedThinkingLevels[0] ?? "";
   const needsVisionRecommendation = recommendVision
     && modelOptionNeedsVisionRecommendation(selectedOption, value);
-
 
   return (
     <div data-settings-renderer="model_select">
@@ -94,21 +78,6 @@ export function SettingsModelSearchField({
         onSelectedOptionChange={setRememberedSelectedOption}
         onQueryChange={setQuery}
       />
-      {supportedThinkingLevels.length > 0 && onThinkingLevelChange && (
-        <label className="mt-3 flex items-center gap-3 text-xs text-zinc-400" data-settings-model-thinking>
-          <span className="shrink-0">考える深さ</span>
-          <select
-            value={selectedThinkingLevel}
-            onChange={(event) => onThinkingLevelChange(event.target.value, selectedOption)}
-            className="min-h-8 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none hover:border-zinc-700 focus:border-emerald-500/70"
-            aria-label="考える深さ"
-          >
-            {supportedThinkingLevels.map((level) => (
-              <option key={level} value={level}>{thinkingLevelLabel(level)}</option>
-            ))}
-          </select>
-        </label>
-      )}
       {needsVisionRecommendation && <VisionRecommendation />}
     </div>
   );
@@ -129,7 +98,6 @@ export function BuiltinModelSelectRenderer({
     fieldOptions(field).map(modelFieldOptionToModelSelectOption),
     modelProfiles,
   );
-  const thinkingLevelsByProfile = objectRecord(sectionValues?.thinking_level_by_profile);
   const isLightweightModel = targetFieldId === "lightweight_model";
   return (
     <SettingsFieldShell field={field}>
@@ -137,50 +105,11 @@ export function BuiltinModelSelectRenderer({
         value={selectedValue}
         options={options}
         selectorSchema={parseModelSelectorSchema(field.selector_schema)}
-        thinkingLevelsByProfile={thinkingLevelsByProfile}
         recommendVision={isLightweightModel}
         onChange={(nextValue) => onChange(sectionId, targetFieldId, nextValue)}
-        onThinkingLevelChange={(nextLevel, selectedOption) => {
-          const nextValues = withThinkingLevelForModel(
-            thinkingLevelsByProfile,
-            selectedValue,
-            selectedOption,
-            nextLevel,
-          );
-          if (nextValues) onChange(sectionId, "thinking_level_by_profile", nextValues);
-        }}
       />
     </SettingsFieldShell>
   );
-}
-
-export function withThinkingLevelForModel(
-  current: Record<string, unknown>,
-  modelId: string,
-  option: ModelSelectOption | null,
-  requestedLevel: string,
-): Record<string, unknown> | null {
-  const levels = modelOptionThinkingLevels(option);
-  const level = String(requestedLevel ?? "").trim().toLowerCase();
-  if (!modelId || !levels.includes(level) || current[modelId] === level) return null;
-  return { ...current, [modelId]: level };
-}
-
-function objectRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function thinkingLevelLabel(level: string): string {
-  const labels: Record<string, string> = {
-    none: "なし",
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-    xhigh: "XHigh",
-  };
-  return labels[level] ?? level;
 }
 
 function VisionRecommendation() {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
 import { ModelSearchPicker } from "./ModelSearchPicker";
@@ -33,9 +33,9 @@ import {
   type ModelSelectOption,
 } from "./modelSelect";
 import {
+  BuiltinModelSelectRenderer,
   SettingsModelSearchField,
   modelSelectOptionsForSettingsTarget,
-  withThinkingLevelForModel,
 } from "../../renderers/settings/renderers/modelSelectField";
 
 test("saved canonical routes remain selectable without claiming Provider health", () => {
@@ -342,7 +342,7 @@ test("saved routes replace matching catalog aliases without hiding unrelated opt
   assert.equal(options[1].label, "Gemma 3 1B Local");
 });
 
-test("settings model selector keeps thinking next to the selected model", () => {
+test("settings model selector leaves thinking to the common control and keeps vision guidance", () => {
   const html = renderToStaticMarkup(createElement(SettingsModelSearchField, {
     value: "demo/text",
     options: [{
@@ -354,34 +354,37 @@ test("settings model selector keeps thinking next to the selected model", () => 
       thinking_levels: ["low", "high"],
       default_thinking_level: "high",
     }],
-    thinkingLevelsByProfile: { "demo/text": "low" },
     recommendVision: true,
     onChange: () => undefined,
-    onThinkingLevelChange: () => undefined,
   }));
 
-  assert.match(html, /data-settings-model-thinking/);
-  assert.match(html, /aria-label="考える深さ"/);
+  assert.doesNotMatch(html, /data-settings-model-thinking|aria-label="考える深さ"|<select/);
   assert.match(html, /Vision対応モデルを推奨/);
-  assert.match(html, /<option value="low" selected="">Low<\/option>/);
 });
 
-test("remote model capability metadata persists its explicitly selected thinking level", () => {
-  const remoteOption: ModelSelectOption = {
+test("changing a settings model does not generate a per-model thinking mutation", () => {
+  const changes: unknown[][] = [];
+  const element = BuiltinModelSelectRenderer({
+    sectionId: "models",
+    field: { id: "preferred_model", label: "Preferred Model", type: "model_select" },
     value: "remote/reasoner",
-    label: "Remote Reasoner",
-    supports_thinking: true,
-    thinking_levels: ["low", "high"],
-  };
+    sectionValues: {
+      preferred_model: "remote/reasoner",
+      thinking_level: "high",
+      thinking_level_by_profile: { "remote/reasoner": "low" },
+    },
+    onChange: (...change) => { changes.push(change); },
+  });
+  const child = element.props.children as ReactElement<{
+    onChange: (value: string) => void;
+    onThinkingLevelChange?: unknown;
+    thinkingLevelsByProfile?: unknown;
+  }>;
 
-  assert.deepEqual(
-    withThinkingLevelForModel({}, remoteOption.value, remoteOption, "high"),
-    { "remote/reasoner": "high" },
-  );
-  assert.equal(
-    withThinkingLevelForModel({}, remoteOption.value, remoteOption, "medium"),
-    null,
-  );
+  child.props.onChange("remote/other");
+  assert.deepEqual(changes, [["models", "preferred_model", "remote/other"]]);
+  assert.equal(child.props.onThinkingLevelChange, undefined);
+  assert.equal(child.props.thinkingLevelsByProfile, undefined);
 });
 
 test("remembered server-selected options remain visible after a blank-query reset", () => {
