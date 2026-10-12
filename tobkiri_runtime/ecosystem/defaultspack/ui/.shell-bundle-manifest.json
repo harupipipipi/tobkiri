@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "fff4c960d8b499a37ab1f4f7e4f0bb2976316b2980e7bb7c47712904585c4200",
+    "digest": "485fdafbde3816edbe633c092eb77db3069a40d82a02f76d47ede117d79c7911",
     "entries": [
       {
         "path": "index.html",
@@ -1135,8 +1135,8 @@
       },
       {
         "path": "src/features/models/modelSelect.test.ts",
-        "size": 18919,
-        "sha256": "58e343ddfe3c1627bad348ad66761a8d446bf2c6926433066102a9d6c78df2f8"
+        "size": 19223,
+        "sha256": "0d6dd2bf2e377bf2436ddc177505865ad917fb7eaeb11b1940569a4cee7eec44"
       },
       {
         "path": "src/features/models/modelSelect.ts",
@@ -2870,8 +2870,8 @@
       },
       {
         "path": "src/renderers/settings/renderers/modelSelectField.tsx",
-        "size": 7993,
-        "sha256": "517edd349ae8590048804646c6c1300d80a12a65f3500bdb9f46cc86bffeac96"
+        "size": 4985,
+        "sha256": "a08e1b9feffe940f3d67eb111deee424b47dbca108d46b0ca3b1b8e13ef25b2b"
       },
       {
         "path": "src/renderers/settings/renderers/promptProfileField.tsx",
@@ -3041,12 +3041,12 @@
     ]
   },
   "bundle": {
-    "digest": "9d6343d8c207357c139748a46b8833188a55cf8501ed29f9787587b29ca291f8",
+    "digest": "fae409e991ad6bce2aca2f68b39556642fcd3b347d930815d1590957d8e275b3",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 246354,
-        "sha256": "cee63db9beea6a6dcd4b4c7f8aa9a7000127a48a6327a1bb10d092cdfb7b06c3"
+        "size": 246138,
+        "sha256": "9bba16c399b37404a87f06589f63fc184f10c60df7666e6a9034f937edc06348"
       },
       {
         "path": "shell-app.js",
@@ -3055,8 +3055,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2680153,
-        "sha256": "5e4d08d5c83e30859e6a64b2480a3075256cdb2b88914883c16826bf765f45fb"
+        "size": 2678693,
+        "sha256": "796731914ab20e46e6a596cde12feb6d3dd02c4c26944152d2791e2166f7bb2f"
       },
       {
         "path": "shell-icons.js",
