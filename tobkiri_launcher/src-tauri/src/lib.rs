@@ -40,6 +40,7 @@ mod sealed_python;
 mod sealed_python_protocol;
 mod shell_handoff;
 mod shell_runtime;
+mod shutdown_budget;
 mod task_pet_window;
 mod tray;
 mod updater;
@@ -3187,7 +3188,7 @@ fn wait_for_shutdown_completion(completion: &ShutdownCompletion) {
     // Outlast the cleanup watchdog so an in-progress bounded stop can
     // finish before a concurrent exit path ends the process beneath it.
     let (lock, notified) = &**completion;
-    let deadline = Instant::now() + Duration::from_secs(35);
+    let deadline = Instant::now() + shutdown_budget::CONCURRENT_EXIT_WAIT;
     if let Ok(mut done) = lock.lock() {
         while !*done {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -3247,7 +3248,7 @@ fn stop_managed_runtimes_bounded(
             let _ = done_tx.send(());
         });
     if done_rx
-        .recv_timeout(std::time::Duration::from_secs(30))
+        .recv_timeout(shutdown_budget::RUNTIME_WATCHDOG)
         .is_err()
     {
         error!("Timed out stopping managed runtimes; exiting anyway");

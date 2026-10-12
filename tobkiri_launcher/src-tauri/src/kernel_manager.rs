@@ -551,7 +551,11 @@ impl KernelManager {
         // with it; children spawned without a group are still reached by the
         // routine's direct-pid fallback. Shares the zombie-aware group stop
         // used for Defaultspack.
-        crate::defaultspack_manager::stop_unix_process_group(child, "Kernel")
+        crate::defaultspack_manager::stop_unix_process_group(
+            child,
+            "Kernel",
+            crate::shutdown_budget::KERNEL_GRACE,
+        )
     }
 }
 
@@ -881,6 +885,15 @@ fn signal_listener_process_tree(pid: u32, signal: &str) {
 }
 
 pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
+    terminate_external_listener_with_grace(pid, port, Duration::from_secs(KILL_TIMEOUT_SECS))
+}
+
+/// Stop the exact listener with a caller-owned finite graceful-stop budget.
+pub(crate) fn terminate_external_listener_with_grace(
+    pid: u32,
+    port: u16,
+    grace: Duration,
+) -> Result<()> {
     #[cfg(unix)]
     {
         // Re-verify the occupant immediately before signaling: the caller's
@@ -895,7 +908,7 @@ pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
             None => return Ok(()),
         }
         signal_listener_process_tree(pid, "-TERM");
-        wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
+        wait_for_port_to_clear(port, pid, grace)?;
         Ok(())
     }
 
@@ -908,13 +921,13 @@ pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
         if !status.success() {
             bail!("taskkill exited with {status}");
         }
-        wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
+        wait_for_port_to_clear(port, pid, grace)?;
         return Ok(());
     }
 
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = (pid, port);
+        let _ = (pid, port, grace);
         bail!("port-conflict recovery is not supported on this platform");
     }
 }

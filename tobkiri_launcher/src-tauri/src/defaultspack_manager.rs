@@ -23,6 +23,9 @@ use crate::debug_approval::DebugApprovalManager;
 use crate::dock_registration::{spawn_defaultspack_local_server, DefaultspackDesktopMetadata};
 use crate::host_broker::BrokerAttestationIdentity;
 use crate::process_utils;
+use crate::shutdown_budget;
+#[cfg(unix)]
+use crate::shutdown_budget::{wait_for_graceful_exit, GracefulWait, ProcessObservation};
 
 const DEFAULTSPACK_MONITOR_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
@@ -41,14 +44,11 @@ const DEFAULTSPACK_ADOPTED_LISTENER_RECHECK_INTERVAL: Duration = Duration::from_
 // After this many consecutive failures the pending launch is abandoned; an
 // explicit launch request re-seeds the metadata and may retry.
 const DEFAULTSPACK_MAX_OCCUPIED_PORT_RESTARTS: u32 = 60;
-// Leave enough of the product's five-second quit budget for the desktop
-// shells to observe the stopped listeners and terminate after this group.
-const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(unix)]
 // A loaded macOS runner has taken longer than 750 ms to report every group
-// member gone after SIGKILL. Keep the observation bounded inside the product's
-// five-second quit contract without treating signal delivery as termination.
-const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = Duration::from_millis(1_500);
+// member gone after SIGKILL. Keep observation inside the outer watchdog
+// without treating signal delivery as termination.
+const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = shutdown_budget::FORCE_KILL_OBSERVATION;
 #[cfg(unix)]
 const SYSTEM_KILL: &str = "/bin/kill";
 #[cfg(all(test, unix))]
@@ -353,6 +353,10 @@ impl ApplicationProcessManager {
 
     /// Stop the managed child and disable all automatic restart paths.
     pub(crate) fn stop(&self) -> Result<()> {
+        self.stop_with_grace_period(shutdown_budget::DEFAULTSPACK_GRACE)
+    }
+
+    fn stop_with_grace_period(&self, grace: Duration) -> Result<()> {
         let (child, owned_process_groups, active_run_id, adopted_listener) = {
             let mut state = self.lock_state()?;
             state.stop_requested = true;
@@ -383,23 +387,32 @@ impl ApplicationProcessManager {
         let had_live_child = child.is_some();
         let child_pid = child.as_ref().map(crate::python_env::PythonChild::id);
 
-        // Reap an adopted listener through its pid+port-verified path before
-        // stopping the process groups created by this Launcher. An adopted
-        // listener is never itself evidence of process-group ownership.
+        // An adopted listener and owned groups verify identity independently.
+        // Stop them concurrently so their grace windows do not accumulate.
+        // An adopted listener is never evidence of process-group ownership.
         #[cfg(unix)]
-        let group_stop_result = {
-            if let Some((pid, port)) = adopted_listener {
-                if Some(pid) != child_pid {
-                    if let Err(error) = stop_adopted_defaultspack_listener(pid, port) {
-                        warn!("Failed to stop adopted Defaultspack listener {pid}: {error:#}");
-                    }
+        let group_stop_result = thread::scope(|scope| {
+            let adopted_stop = adopted_listener
+                .filter(|(pid, _)| Some(*pid) != child_pid)
+                .map(|(pid, port)| {
+                    scope.spawn(move || {
+                        if let Err(error) = stop_adopted_defaultspack_listener(pid, port, grace) {
+                            warn!("Failed to stop adopted Defaultspack listener {pid}: {error:#}");
+                        }
+                    })
+                });
+            let result = stop_owned_unix_process_groups(child, owned_process_groups, grace);
+            if let Some(stop) = adopted_stop {
+                if stop.join().is_err() {
+                    warn!("Adopted Defaultspack listener stop worker panicked");
                 }
             }
-            stop_owned_unix_process_groups(child, owned_process_groups)
-        };
+            result
+        });
 
         #[cfg(not(unix))]
         let group_stop_result = {
+            let _ = grace;
             let _ = owned_process_groups;
             match child {
                 Some(mut child) => {
@@ -414,7 +427,7 @@ impl ApplicationProcessManager {
         #[cfg(not(unix))]
         if let Some((pid, port)) = adopted_listener {
             if Some(pid) != child_pid {
-                if let Err(error) = stop_adopted_defaultspack_listener(pid, port) {
+                if let Err(error) = stop_adopted_defaultspack_listener(pid, port, grace) {
                     warn!("Failed to stop adopted Defaultspack listener {pid}: {error:#}");
                 }
             }
@@ -1008,6 +1021,7 @@ impl ApplicationProcessManager {
 fn stop_owned_unix_process_groups(
     mut child: Option<crate::python_env::PythonChild>,
     owned_process_groups: Vec<OwnedProcessGroup>,
+    grace: Duration,
 ) -> Result<()> {
     let child_group = child.as_ref().map(crate::python_env::PythonChild::id);
     let mut groups = owned_process_groups
@@ -1024,11 +1038,13 @@ fn stop_owned_unix_process_groups(
     thread::scope(|scope| -> Result<()> {
         let child_stop = child.as_mut().map(|child| {
             info!("Stopping managed Defaultspack (pid {})", child.id());
-            scope.spawn(move || stop_child(child))
+            scope.spawn(move || stop_unix_process_group(child, "Defaultspack", grace))
         });
         let group_stops = groups
             .into_iter()
-            .map(|process_group| scope.spawn(move || stop_unix_process_group_id(process_group)))
+            .map(|process_group| {
+                scope.spawn(move || stop_unix_process_group_id(process_group, grace))
+            })
             .collect::<Vec<_>>();
 
         if let Some(stop) = child_stop {
@@ -1045,10 +1061,10 @@ fn stop_owned_unix_process_groups(
 
 /// Stop a guardian listener that was adopted outside the managed child.
 /// The pid+port check fences signal delivery against pid reuse.
-fn stop_adopted_defaultspack_listener(pid: u32, port: u16) -> Result<()> {
+fn stop_adopted_defaultspack_listener(pid: u32, port: u16, grace: Duration) -> Result<()> {
     match crate::kernel_manager::detect_port_listener(port)? {
         Some(listener) if listener.pid == pid => {
-            crate::kernel_manager::terminate_external_listener(pid, port)
+            crate::kernel_manager::terminate_external_listener_with_grace(pid, port, grace)
         }
         _ => Ok(()),
     }
@@ -1116,8 +1132,14 @@ fn defaultspack_restart_backoff(consecutive_failures: u32) -> Duration {
 }
 
 fn stop_child(child: &mut crate::python_env::PythonChild) -> Result<()> {
+    // Startup/replacement failures retain their short recovery bound. Normal
+    // Quit supplies its larger capture-cleanup grace through the owned-group path.
     #[cfg(unix)]
-    return stop_unix_process_group(child, "Defaultspack");
+    return stop_unix_process_group(
+        child,
+        "Defaultspack",
+        shutdown_budget::DEFAULTSPACK_RECOVERY_GRACE,
+    );
 
     #[cfg(not(unix))]
     stop_non_unix_child(child)
@@ -1131,6 +1153,7 @@ fn stop_child(child: &mut crate::python_env::PythonChild) -> Result<()> {
 pub(crate) fn stop_unix_process_group(
     child: &mut crate::python_env::PythonChild,
     label: &str,
+    grace: Duration,
 ) -> Result<()> {
     let pid = child.id();
     let owned_group = OwnedProcessGroup {
@@ -1153,13 +1176,11 @@ pub(crate) fn stop_unix_process_group(
         let _ = send_unix_process_signal(pid, "-TERM");
     }
 
-    let deadline = Instant::now() + DEFAULTSPACK_STOP_TIMEOUT;
-    while Instant::now() < deadline {
+    let wait = wait_for_graceful_exit(grace, || -> Result<ProcessObservation> {
         let exited = if group_leader {
             if !owned_group.leader_is_current() {
                 warn!("Skipping {label} process group {pid}: its leader identity was lost after SIGTERM");
-                let _ = child.try_wait();
-                return Ok(());
+                return Ok(ProcessObservation::OwnershipLost);
             }
             !process_group_exists(pid)
         } else {
@@ -1168,13 +1189,18 @@ pub(crate) fn stop_unix_process_group(
                 .with_context(|| format!("failed to wait for {label} after SIGTERM"))?
                 .is_some()
         };
-        if exited {
-            if group_leader {
-                let _ = child.try_wait();
-            }
+        Ok(if exited {
+            ProcessObservation::Exited
+        } else {
+            ProcessObservation::Running
+        })
+    })?;
+    match wait {
+        GracefulWait::Exited | GracefulWait::OwnershipLost => {
+            let _ = child.try_wait();
             return Ok(());
         }
-        thread::sleep(Duration::from_millis(100));
+        GracefulWait::TimedOut => {}
     }
 
     let sent_kill = if group_leader {
@@ -1231,7 +1257,7 @@ pub(crate) fn stop_unix_process_group(
 }
 
 #[cfg(unix)]
-fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
+fn stop_unix_process_group_id(group: OwnedProcessGroup, grace: Duration) -> Result<()> {
     let process_group = group.pgid;
     if !process_group_exists(process_group) {
         return Ok(());
@@ -1249,16 +1275,19 @@ fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
     }
 
     let _ = send_process_group_signal(process_group, "-TERM");
-    let deadline = Instant::now() + DEFAULTSPACK_STOP_TIMEOUT;
-    while Instant::now() < deadline {
+    let wait = wait_for_graceful_exit(grace, || -> Result<ProcessObservation> {
         if !group.leader_is_current() {
             warn!("Skipping owned Defaultspack process group {process_group}: its leader identity was lost after SIGTERM");
-            return Ok(());
+            return Ok(ProcessObservation::OwnershipLost);
         }
-        if !process_group_exists(process_group) {
-            return Ok(());
-        }
-        thread::sleep(Duration::from_millis(100));
+        Ok(if process_group_exists(process_group) {
+            ProcessObservation::Running
+        } else {
+            ProcessObservation::Exited
+        })
+    })?;
+    if wait != GracefulWait::TimedOut {
+        return Ok(());
     }
 
     if !group.leader_is_current() {
@@ -1854,7 +1883,12 @@ mod tests {
             .unwrap();
         assert!(process_id_is_live(descendant_pid));
 
-        stop_unix_process_group(&mut child, "Defaultspack").unwrap();
+        stop_unix_process_group(
+            &mut child,
+            "Defaultspack",
+            shutdown_budget::DEFAULTSPACK_GRACE,
+        )
+        .unwrap();
         let descendant_alive = process_id_is_live(descendant_pid);
         let _ = send_unix_process_signal(descendant_pid, "-KILL");
         fs::remove_file(pid_file).ok();
@@ -1876,7 +1910,12 @@ mod tests {
             leader_marker: child.start_marker(),
         };
         assert!(!group.leader_is_current());
-        stop_unix_process_group(&mut child, "Defaultspack").unwrap();
+        stop_unix_process_group(
+            &mut child,
+            "Defaultspack",
+            shutdown_budget::DEFAULTSPACK_GRACE,
+        )
+        .unwrap();
         assert!(child.try_wait().unwrap().is_some());
     }
 
@@ -1917,7 +1956,9 @@ mod tests {
         }));
 
         let started = Instant::now();
-        manager.stop().unwrap();
+        manager
+            .stop_with_grace_period(Duration::from_secs(2))
+            .unwrap();
         fs::remove_file(ready_file).ok();
 
         assert!(
@@ -1974,7 +2015,9 @@ mod tests {
         }));
 
         let started = Instant::now();
-        manager.stop().unwrap();
+        manager
+            .stop_with_grace_period(Duration::from_secs(2))
+            .unwrap();
         let elapsed = started.elapsed();
         let _ = child_b.wait();
         fs::remove_file(ready_a).ok();
