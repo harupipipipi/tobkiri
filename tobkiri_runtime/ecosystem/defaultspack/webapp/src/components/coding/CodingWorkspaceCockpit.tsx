@@ -43,37 +43,37 @@ export function CodingWorkspaceCockpit({
     if (!onWorkspaceCreate || adding) return;
     setAdding(true);
     setError(null);
-    setNotice("Choose a folder, then review any approval in Tobkiri Launcher.");
+    setNotice("フォルダを選択し、Tobkiri Launcher に承認画面が表示されたら内容を確認してください。");
     const result = await addCodingWorkspace(onWorkspaceCreate);
     setAdding(false);
     setError(result.error);
     setNotice(result.error ? null : result.workspace
-      ? `Added ${result.workspace.label || result.workspace.workspace_id}.`
-      : "Folder selection cancelled.");
+      ? `${result.workspace.label || "ワークスペース"}を追加しました。`
+      : "フォルダの選択をキャンセルしました。");
   };
 
   return (
     <section
       className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto rounded-lg border border-zinc-800 bg-[#0b0b0f] p-4"
-      aria-label="Coding Cockpit"
+      aria-label="Coding"
       aria-busy={adding}
     >
       <div className="mb-4 flex items-center justify-between gap-2">
         <h1 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-          <FolderGit2 size={16} />Coding Cockpit
+          <FolderGit2 size={16} />Coding
         </h1>
         <button
           type="button"
           disabled={adding || !onWorkspacesRefresh}
           onClick={onWorkspacesRefresh}
-          aria-label="Refresh workspaces"
+          aria-label="一覧を更新"
           className="rounded-md p-2 text-zinc-400 hover:bg-zinc-800 disabled:opacity-40"
         >
           <RefreshCw size={14} />
         </button>
       </div>
       <label className="mb-2 text-xs text-zinc-400" htmlFor="coding-cockpit-workspace">
-        Workspace
+        ワークスペース
       </label>
       <select
         id="coding-cockpit-workspace"
@@ -82,10 +82,10 @@ export function CodingWorkspaceCockpit({
         onChange={(event) => event.target.value && onWorkspaceSelect?.(event.target.value)}
         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300"
       >
-        {!selectedWorkspace && <option value="">Select a workspace</option>}
+        {!selectedWorkspace && <option value="">ワークスペースを選択</option>}
         {workspaces.map((workspace) => (
           <option key={workspace.workspace_id} value={workspace.workspace_id}>
-            {workspace.label || workspace.workspace_id}
+            {workspace.label || "ワークスペース"}
           </option>
         ))}
       </select>
@@ -94,35 +94,32 @@ export function CodingWorkspaceCockpit({
         disabled={adding || !onWorkspaceCreate}
         onClick={() => void handleAdd()}
         className="mt-2 flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-800 text-xs text-zinc-300 hover:bg-zinc-900 disabled:opacity-40"
-        aria-label="Add workspace"
+        aria-label="フォルダを追加"
       >
-        <FolderPlus size={14} />{adding ? "Adding workspace…" : "Add workspace"}
+        <FolderPlus size={14} />{adding ? "フォルダを追加中…" : "フォルダを追加"}
       </button>
       {error && (
-        <ErrorNotice className="mt-3 px-2 py-2 text-xs" message={error} copyLabel="Copy workspace error" />
+        <ErrorNotice className="mt-3 px-2 py-2 text-xs" message={error} copyLabel="ワークスペースのエラーをコピー" />
       )}
       {notice && (
         <p role="status" className="mt-3 text-xs text-zinc-400">{notice}</p>
       )}
       {selectedWorkspace ? (
         <div className="mt-4 rounded-md border border-zinc-800 p-3 text-xs text-zinc-400">
-          <p className="font-medium text-zinc-200">{selectedWorkspace.label || selectedWorkspace.workspace_id}</p>
+          <p className="font-medium text-zinc-200">{selectedWorkspace.label || "ワークスペース"}</p>
           <p className="mt-2 break-all font-mono">{selectedWorkspace.root_path}</p>
-          <p className="mt-2">Workspace identity: {selectedWorkspace.workspace_id}</p>
-          <p className="mt-2">Selecting this workspace does not grant trust or approve actions.</p>
+          <p className="mt-2">操作に必要な承認は別途確認します。</p>
         </div>
       ) : (
         <p role="status" className="mt-4 text-xs text-zinc-400">
           {selectedWorkspaceId
-            ? "The selected workspace is unavailable. Refresh or select a workspace."
-            : "Select or add a workspace to use for coding."}
+            ? "選択中のワークスペースを確認できません。一覧を更新するか、選び直してください。"
+            : "ワークスペースを選択するか、フォルダを追加してください。"}
         </p>
       )}
       <p className="mt-4 rounded-md border border-zinc-800 p-3 text-xs leading-5 text-zinc-500">
-        This Profile provides workspace selection and folder mounting.
-        Git status, file observations, reviews, branch changes, checkpoints,
-        terminal, browser, MCP, and agent sessions are unavailable in this Coding view.
-        No checks have been run here.
+        Git・レビュー・ターミナルは現在この画面では利用できません。
+        チェックは未実行です。
       </p>
     </section>
   );

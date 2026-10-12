@@ -19,22 +19,22 @@ function render(selectedWorkspaceId?: string | null) {
 
 test("canonical cockpit offers workspace controls and marks observations unavailable", () => {
   const html = render("ws-exact");
-  assert.match(html, /Add workspace/);
-  assert.match(html, /Refresh workspaces/);
-  assert.match(html, /Workspace identity: ws-exact/);
+  assert.match(html, /フォルダを追加/);
+  assert.match(html, /一覧を更新/);
+  assert.match(html, /Exact folder/);
   assert.match(html, /\/exact/);
-  assert.match(html, /does not grant trust or approve actions/);
-  assert.match(html, /Git status, file observations, reviews, branch changes/);
-  assert.match(html, /No checks have been run here/);
-  assert.doesNotMatch(html, /Trust workspace|No diff|No terminal runs|clean/);
+  assert.match(html, /操作に必要な承認は別途確認します/);
+  assert.match(html, /Git・レビュー・ターミナルは現在この画面では利用できません/);
+  assert.match(html, /チェックは未実行です/);
+  assert.doesNotMatch(html, /Workspace identity|Profile|Trust workspace|No diff|No terminal runs|clean/);
 });
 
 for (const selected of [null, "ws-missing"]) {
   test(`canonical cockpit never substitutes a different workspace for ${selected}`, () => {
     const html = render(selected);
     assert.match(html, /value="" selected=""/);
-    assert.doesNotMatch(html, /Workspace identity: ws-exact|\/exact/);
-    assert.match(html, selected ? /selected workspace is unavailable/ : /Select or add a workspace/);
+    assert.doesNotMatch(html, /\/exact/);
+    assert.match(html, selected ? /選択中のワークスペースを確認できません/ : /ワークスペースを選択するか、フォルダを追加/);
   });
 }
 
