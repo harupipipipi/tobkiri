@@ -8,7 +8,7 @@
     {
       "path": "runtime/registry.py",
       "role": "runtime",
-      "sha256": "sha256:914f3ae52ad43642c3f366ae698b9efece647e840780b8f209fda925a8dad20a"
+      "sha256": "sha256:82148a90805da74f7f7cbefb54f92cfca1f53cc3c84e7b2bccad0c7e4b9e7742"
     },
     {
       "path": "runtime/service.py",
