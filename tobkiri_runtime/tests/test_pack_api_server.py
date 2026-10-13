@@ -1005,6 +1005,94 @@ def _panel_session(
     return cookie.split(";", 1)[0], exchange["data"]["csrf_token"], origin
 
 
+def test_host_profile_catalog_uses_authenticated_http_journal_owner(
+    tmp_path: Path,
+) -> None:
+    """A real bootstrap invocation must accept the authenticated HTTP scope."""
+    import re
+    from types import SimpleNamespace
+    from urllib.parse import quote
+
+    from core_runtime.pack_control_v4 import HostProfileControlSession
+    from ecosystem.defaultspack.defaultspack.runtime_surface_targets import (
+        host_profile_control_bindings,
+    )
+
+    scopes: list[str] = []
+
+    class ControlSession(HostProfileControlSession):
+        def assert_current(self) -> None:
+            pass
+
+        def _catalog_payload(
+            self, *, session_id: str, selected_profile_id: str | None,
+        ) -> Mapping[str, object]:
+            assert selected_profile_id is None
+            scopes.append(session_id)
+            return {"state": "catalog_ready", "surface": "profiles", "write_set": []}
+
+    session = ControlSession.__new__(ControlSession)
+    session._catalog_digest = "sha256:" + "a" * 64
+    session._security_epoch = 1
+    session._user_data_root = tmp_path
+    session._runtime_surface = SimpleNamespace(
+        close=lambda: None, cancel_pending_reads=lambda: None,
+    )
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=session,
+        contract_bindings=host_profile_control_bindings(),
+    )
+    server.start()
+    path = "/api/contracts/defaultspack/" + quote(
+        "GET /api/runtime-surface/profiles", safe="",
+    )
+    try:
+        status, _, _ = _request(server, "GET", path)
+        assert status == 401
+        assert scopes == []
+        cookie, _, _ = _panel_session(server)
+        headers = {"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())}
+        status, body, _ = _request(server, "GET", path, headers=headers)
+        assert status == 200
+        assert body["data"]["state"] == "catalog_ready"
+        assert len(scopes) == 1
+        assert re.fullmatch(r"[0-9a-f]{64}", scopes[0])
+        assert scopes[0] != cookie.split("=", 1)[1]
+
+        forged_path = "/api/contracts/defaultspack/" + quote(
+            "GET /api/runtime-surface/profiles?_session_id=" + "b" * 64,
+            safe="",
+        )
+        status, _, _ = _request(server, "GET", forged_path, headers=headers)
+        assert status == 400
+        assert len(scopes) == 1
+    finally:
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "session_id",
+    ["a" * 63, "A" * 64, "a" * 65, "a" * 64 + "." + "b" * 24 + ".1"],
+)
+def test_host_profile_control_rejects_noncanonical_direct_session(
+    session_id: str,
+) -> None:
+    from core_runtime.pack_control_v4 import (
+        CONTROL_PRESENTATION_CONTRACT,
+        HostProfileControlSession,
+    )
+
+    session = HostProfileControlSession.__new__(HostProfileControlSession)
+    with pytest.raises(PackControlUnapproved, match="session binding"):
+        session.invoke(
+            CONTROL_PRESENTATION_CONTRACT,
+            "profile.catalog.read",
+            {"_session_id": session_id},
+        )
+
+
 def _wait_for_refreshes(refreshed: list[object], expected: list[object]) -> None:
     """Allow the deferred post-response lifecycle refresh thread to publish."""
 

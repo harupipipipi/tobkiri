@@ -377,6 +377,10 @@ class HostProfileControlSession:
         self.assert_operation_ready(contract_id, operation_id)
         arguments = dict(payload)
         session_id = _required(arguments.pop("_session_id", None), "session binding")
+        # The authenticated HTTP boundary supplies its journal owner directly.
+        # Only active Broker dispatch derives a suffixed authority session ID.
+        if re.fullmatch(r"[0-9a-f]{64}", session_id) is None:
+            raise PackControlUnapproved("authenticated panel session binding is invalid")
         if "approved" in arguments or "approval_token" in arguments:
             raise PackControlUnapproved("client approval assertions are not trusted")
         try:
@@ -384,7 +388,7 @@ class HostProfileControlSession:
                 selected = arguments.pop("selected_profile_id", None)
                 _require_empty(arguments)
                 return self._catalog_payload(
-                    session_id=_panel_session_root(session_id),
+                    session_id=session_id,
                     selected_profile_id=str(selected) if selected is not None else None,
                 )
             if operation_id == "operation.status.read":
@@ -399,12 +403,12 @@ class HostProfileControlSession:
                     self._user_data_root / "control" / "reconciliation-v4.sqlite3"
                 ).operation_status(
                     request_id,
-                    session_id=_panel_session_root(session_id),
+                    session_id=session_id,
                 )
                 return self._runtime_surface.project_operation_status(status)
             action = operation_id.removeprefix("profile.change.")
             handler = getattr(self._profile_changes, action)
-            result = handler(arguments, session_id=_panel_session_root(session_id))
+            result = handler(arguments, session_id=session_id)
             if action == "activate" and result.get("state") == "active":
                 from .profile_activation_receipt_v4 import bounded_activation_receipt
 
