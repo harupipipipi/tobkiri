@@ -715,9 +715,24 @@ class HostBoundCredentialTransport:
             )
             if not math.isfinite(remaining) or remaining <= 0:
                 return False
-            durable, state = self._authority_store.inspect_lease_token(
-                self._invocation_token
+            inspect_dispatch = getattr(
+                self._authority_store, "inspect_dispatch_authority", None
             )
+            if inspect_dispatch is None:
+                # Retain compatibility with narrow legacy authority adapters.
+                durable, state = self._authority_store.inspect_lease_token(
+                    self._invocation_token
+                )
+            else:
+                # The production store authenticates the lease, epoch and all
+                # eight revocation targets (including global fencing) under
+                # one fresh lifecycle guard. Never reuse a prior result or
+                # fall back after this inspection fails.
+                durable, state, epoch, revoked = inspect_dispatch(
+                    self._invocation_token
+                )
+                if epoch != self._binding.security_epoch or revoked:
+                    return False
             if state is not LeaseState.DISPATCHED:
                 return False
             binding = self._binding
@@ -735,6 +750,8 @@ class HostBoundCredentialTransport:
                 or durable.request_digest != binding.request_digest
             ):
                 return False
+            if inspect_dispatch is not None:
+                return True
             targets = (
                 ("function_principal", durable.caller.principal_id),
                 ("function_principal", durable.target.principal_id),
