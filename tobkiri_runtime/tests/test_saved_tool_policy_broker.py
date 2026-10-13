@@ -645,13 +645,14 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                 assert effects == [operation, operation]
         else:
             with pytest.raises(
-                (AuthorityDenied, PermissionError, ValueError, ProviderExecutionError)
+                (AuthorityDenied, PermissionError, ValueError, ProviderExecutionError),
+                match="no exact native ceiling" if outcome == "missing_route" else None,
             ):
                 run_gate(gate)
             assert effects == []
         expected_releases = (
             []
-            if tool_kind == "read" and outcome == "cancel"
+            if tool_kind in {"read", "python"} and outcome == "cancel"
             else [operation, operation]
             if outcome == "restart"
             else [operation]

@@ -26,7 +26,9 @@ from tobkiri_host.policy_delegation_boundary import BoundedPolicySelectionContro
 def captured_inputs(tmp_path: Path) -> NS:
     """Model verified bindings using the canonical Profile's unchanged scopes."""
     root = Path(__file__).resolve().parents[1]
-    profile = json.loads((root / "ecosystem/defaultspack/v4/defaults.profile.v5.json").read_text())
+    profile = json.loads(
+        (root / "ecosystem/defaultspack/v4/defaults.profile.v5.json").read_text()
+    )
     edges, bindings = [], []
     for item in profile["requested_edges"]:
         scope = AuthorityScope.from_dict(item["requested_scope_template"])
@@ -44,7 +46,8 @@ def captured_inputs(tmp_path: Path) -> NS:
         edges.append(
             NS(
                 caller=NS(
-                    function_id=item["caller_function_id"], principal_id=item["caller_function_id"]
+                    function_id=item["caller_function_id"],
+                    principal_id=item["caller_function_id"],
                 ),
                 target=NS(principal_id=item["target_provider_id"]),
                 resolved_binding=binding,
@@ -84,7 +87,9 @@ def capture(inputs: NS) -> tuple[dict, ...]:
     )
 
 
-def test_canonical_four_routes_keep_python_scope_and_exclude_guest(tmp_path: Path) -> None:
+def test_canonical_four_routes_keep_python_scope_and_exclude_guest(
+    tmp_path: Path,
+) -> None:
     inputs = captured_inputs(tmp_path)
     routes = capture(inputs)
     assert {(r["contract"], r["operation"]) for r in routes} == {
@@ -101,13 +106,17 @@ def test_canonical_four_routes_keep_python_scope_and_exclude_guest(tmp_path: Pat
     assert python["caller_principal_id"] == LOCAL_EXECUTOR
     assert python["ancestor_chain"] == ["saved-owner", "executor-parent"]
     assert python["workspace_receipt"]["canonical_root"] == str(tmp_path.resolve())
-    assert all(r["operation"] != "defaultspack.python-sandbox-guest-execute" for r in routes)
+    assert all(
+        r["operation"] != "defaultspack.python-sandbox-guest-execute" for r in routes
+    )
     create = next(r for r in routes if r["operation"] == INNER_OPERATION)
     assert create["caller_principal_id"] == COORDINATOR
     assert create["ancestor_chain"] == [FILE_TOOL]
 
 
-@pytest.mark.parametrize("change", ["missing", "duplicate", "contract", "target", "scope"])
+@pytest.mark.parametrize(
+    "change", ["missing", "duplicate", "contract", "target", "scope"]
+)
 def test_python_capture_rejects_missing_duplicate_or_rebound_route(
     tmp_path: Path,
     change: str,
@@ -134,7 +143,9 @@ def test_python_capture_rejects_missing_duplicate_or_rebound_route(
         capture(inputs)
 
 
-def test_four_route_full_native_metadata_preserves_existing_display_budget(tmp_path: Path) -> None:
+def test_four_route_full_native_metadata_preserves_existing_display_budget(
+    tmp_path: Path,
+) -> None:
     routes = deepcopy(capture(captured_inputs(tmp_path)))
     for route in routes:
         route.update(
@@ -156,7 +167,11 @@ def test_four_route_full_native_metadata_preserves_existing_display_budget(tmp_p
             "mode": "full",
         }
     )
-    parts = [value for key, value in sorted(metadata.items()) if key.startswith("boundary_part_")]
+    parts = [
+        value
+        for key, value in sorted(metadata.items())
+        if key.startswith("boundary_part_")
+    ]
     assert len(parts) <= 12
     assert all(len(value) <= 512 for value in metadata.values())
     assert json.loads("".join(parts)) == boundary
