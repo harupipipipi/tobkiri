@@ -27,6 +27,7 @@ mod macos {
     const MAX_ARGS_BYTES: usize = 256 * 1024;
     const MAX_ARGC: usize = 16_384;
     const PROC_ALL_PIDS: u32 = 1;
+    const PROC_UID_ONLY: u32 = 4;
     const KERN_PROCARGS2: c_int = 49;
     const CTL_KERN: c_int = 1;
 
@@ -134,16 +135,35 @@ mod macos {
     }
 
     fn list_pids() -> Result<Vec<u32>, ()> {
+        list_selected_pids(PROC_ALL_PIDS, 0)
+    }
+
+    fn list_owner_pids(euid: u32) -> Result<Vec<u32>, ()> {
+        // XNU checks the process credential's effective UID for this selector.
+        // Full BSD metadata for another UID can be unavailable to this process.
+        list_selected_pids(PROC_UID_ONLY, euid)
+    }
+
+    fn list_selected_pids(selector: u32, typeinfo: u32) -> Result<Vec<u32>, ()> {
         let mut pids = vec![0_u32; MAX_PIDS];
         let capacity = pids.len() * std::mem::size_of::<u32>();
         let bytes = unsafe {
             libc::proc_listpids(
-                PROC_ALL_PIDS,
-                0,
+                selector,
+                typeinfo,
                 pids.as_mut_ptr().cast(),
                 capacity as c_int,
             )
         };
+        validate_pid_snapshot(pids, bytes, std::process::id())
+    }
+
+    fn validate_pid_snapshot(
+        mut pids: Vec<u32>,
+        bytes: c_int,
+        current_pid: u32,
+    ) -> Result<Vec<u32>, ()> {
+        let capacity = pids.len() * std::mem::size_of::<u32>();
         if bytes <= 0
             || bytes as usize >= capacity
             || !(bytes as usize).is_multiple_of(std::mem::size_of::<u32>())
@@ -152,6 +172,11 @@ mod macos {
         }
         pids.truncate(bytes as usize / std::mem::size_of::<u32>());
         pids.retain(|pid| *pid != 0);
+        if !pids.contains(&current_pid) {
+            // Both the owner-UID and system-wide snapshots must include us.
+            // Missing self cannot establish an empty owner set or a PID's exit.
+            return Err(());
+        }
         Ok(pids)
     }
 
@@ -393,7 +418,7 @@ mod macos {
         let user_data = user_data.as_os_str().as_bytes();
         let old_executable = old_executable.as_os_str().as_bytes();
         let euid = unsafe { libc::geteuid() };
-        let pids = match list_pids() {
+        let pids = match list_owner_pids(euid) {
             Ok(pids) => pids,
             Err(()) => return OwnerProcessState::Uncertain,
         };
@@ -428,6 +453,36 @@ mod macos {
             fn drop(&mut self) {
                 let _ = self.0.kill();
                 let _ = self.0.wait();
+            }
+        }
+
+        #[test]
+        fn pid_snapshots_reject_errors_partial_overflow_and_missing_self() {
+            let pids = vec![7, 8, 0, 0];
+            assert_eq!(validate_pid_snapshot(pids.clone(), 8, 8), Ok(vec![7, 8]));
+            for bytes in [-1, 0, 3, 16, 20] {
+                assert!(validate_pid_snapshot(pids.clone(), bytes, 8).is_err());
+            }
+            assert!(validate_pid_snapshot(pids, 8, 9).is_err());
+        }
+
+        #[test]
+        fn owner_pid_selector_uses_effective_uid_and_exit_checks_remain_system_wide() {
+            let euid = unsafe { libc::geteuid() };
+            let own = std::process::id();
+            let owners = list_owner_pids(euid).unwrap();
+            assert!(owners.contains(&own));
+            // Using a different UID must fail our self-presence guard. An
+            // accidental PROC_ALL_PIDS owner selector would accept this scope.
+            assert!(list_owner_pids(euid.wrapping_add(1)).is_err());
+            assert!(list_pids().unwrap().contains(&own));
+            assert!(!verified_exit(own).unwrap());
+            if euid != 0 {
+                // launchd is PID 1 with effective UID 0 on macOS. It remains
+                // visible to Gone checks even though it is outside owner scope.
+                assert!(!owners.contains(&1));
+                assert!(list_pids().unwrap().contains(&1));
+                assert!(!verified_exit(1).unwrap());
             }
         }
 
