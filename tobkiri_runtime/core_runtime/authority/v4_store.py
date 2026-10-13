@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Iterator, TypeAlias
+from typing import Any, Iterator, TypeAlias, TypeVar
 
 from cryptography.fernet import Fernet, InvalidToken
 from tobkiri_protocol.platform_paths import canonical_platform_path
@@ -37,6 +37,7 @@ from ..secure_sqlite_path import (
     secure_parent as open_secure_parent,
 )
 
+from ._definition_cache import _DefinitionCache
 from .policy_derived_store import PolicyDerivedStoreMixin
 from .store_contracts import (
     AuthorityStoreError as AuthorityStoreError,
@@ -73,6 +74,7 @@ Record: TypeAlias = (
     | InteractiveApprovalRequest
     | InteractiveApprovalDecision
 )
+_DefinitionT = TypeVar("_DefinitionT", GrantRecord, ProviderAuthorityRecord)
 
 _DATABASE_THREAD_LOCKS: dict[FileIdentity, threading.RLock] = {}
 _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
@@ -319,6 +321,7 @@ class AuthorityStore(PolicyDerivedStoreMixin):
             )
         self._guard_acquire_timeout_seconds = float(guard_acquire_timeout_seconds)
         self._lock = threading.RLock()
+        self._definition_cache = _DefinitionCache()
         self._closed = False
         self._fork_fenced = False
         self._database_identity: FileIdentity | None = None
@@ -913,6 +916,7 @@ class AuthorityStore(PolicyDerivedStoreMixin):
         self._assert_current_process()
         with self._lock:
             self._closed = True
+            self._definition_cache.clear()
 
     def __enter__(self) -> "AuthorityStore":
         """Return this open store for explicit scoped ownership."""
@@ -2219,16 +2223,13 @@ class AuthorityStore(PolicyDerivedStoreMixin):
     def list_grants(self) -> list[GrantRecord]:
         """Return all authenticated Grants; callers must still filter exactly."""
 
-        return [GrantRecord.from_dict(value) for value in self._list_records("grant")]
+        return self._list_definitions("grant", GrantRecord)
 
     @_process_owned
     def list_provider_authorities(self) -> list[ProviderAuthorityRecord]:
         """Return all authenticated Provider authority records."""
 
-        return [
-            ProviderAuthorityRecord.from_dict(value)
-            for value in self._list_records("provider_authority")
-        ]
+        return self._list_definitions("provider_authority", ProviderAuthorityRecord)
 
     @_process_owned
     def list_domains(self) -> list[ExecutionDomain]:
@@ -2268,6 +2269,51 @@ class AuthorityStore(PolicyDerivedStoreMixin):
             output.append(value)
         self._assert_crypto_material()
         return output
+
+    def _list_definitions(
+        self,
+        record_type: str,
+        definition_type: type[_DefinitionT],
+    ) -> list[_DefinitionT]:
+        """Read every current row, reusing only identical authenticated definitions.
+
+        Keep the store lock through decoding so close cannot clear the cache
+        while an in-flight scan repopulates it. No row membership, selection,
+        revocation, approval, usage, domain, or authorization result is cached.
+        """
+        with self._lock:
+            try:
+                with self._connection() as connection:
+                    rows = connection.execute(
+                        "SELECT record_id, record_digest, encrypted_payload"
+                        " FROM authority_records WHERE record_type=? ORDER BY record_id",
+                        (record_type,),
+                    ).fetchall()
+            except sqlite3.Error as exc:
+                raise AuthorityStoreError("authority record listing failed") from exc
+            self._assert_crypto_material()
+            fernet = self._fernet
+            assert fernet is not None
+            output: list[_DefinitionT] = []
+            for index, row in enumerate(rows):
+                if index and index % 32 == 0:
+                    self._assert_crypto_material()
+                key = (
+                    record_type,
+                    str(row["record_id"]),
+                    str(row["record_digest"]),
+                    bytes(row["encrypted_payload"]),
+                )
+                definition = self._definition_cache.get(key)
+                if not isinstance(definition, definition_type):
+                    value = self._decrypt_payload(key[3], fernet)
+                    if not hmac.compare_digest(key[2], authority_digest(value)):
+                        raise AuthorityStoreError("authority record digest mismatch")
+                    definition = definition_type.from_dict(value)
+                    self._definition_cache.put(key, definition)
+                output.append(definition)
+            self._assert_crypto_material()
+            return output
 
     @property
     @_process_owned
