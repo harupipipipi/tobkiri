@@ -1224,6 +1224,117 @@ def test_packvm_stop_commits_response_before_slow_runtime_refresh() -> None:
     assert refreshed == [None]
 
 
+def test_profile_activation_commits_http_and_journal_before_slow_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A committed Profile activation response is not held by runtime refresh."""
+    from urllib.parse import quote
+
+    class ActivatedDispatch(_Dispatch):
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, object],
+            **kwargs: object,
+        ) -> Mapping[str, object]:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            return {
+                "state": "active",
+                "activation_id": "activation:profile-refresh-test",
+            }
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    refresh_started = threading.Event()
+    release_refresh = threading.Event()
+    refresh_finished = threading.Event()
+    refreshed: list[object] = []
+
+    def slow_refresh(_session: object) -> None:
+        refresh_started.set()
+        try:
+            assert release_refresh.wait(timeout=5)
+        finally:
+            refreshed.append(_session)
+            refresh_finished.set()
+
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/api/test/profile-activate",
+        presentation="broker_result",
+        application_id="test",
+        route_namespace="test",
+        targets=(
+            HTTPContractTarget(
+                contribution_id="test.profile.activate",
+                contract_id="tobkiri.host.control-presentation.v4",
+                operation_id="profile.change.activate",
+                provider_id="test.profile-control",
+                function_id="test.profile-control",
+            ),
+        ),
+    )
+    dispatch = ActivatedDispatch()
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=dispatch,
+        contract_bindings=(binding,),
+    )
+    monkeypatch.setattr(
+        server,
+        "_validate_contract_capture",
+        lambda *_args, **_kwargs: None,
+    )
+    server._refresh_runtime_capture = slow_refresh  # type: ignore[method-assign]
+    request_id = "12121212-1212-4212-8212-121212121212"
+    server.start()
+    response_executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        cookie, csrf, origin = _panel_session(server)
+        target = quote("POST /api/test/profile-activate", safe="")
+        path = "/api/contracts/test/" + target
+        response = response_executor.submit(
+            _request,
+            server,
+            "POST",
+            path,
+            body={},
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": request_id,
+            },
+        )
+        assert refresh_started.wait(timeout=1)
+        # This must complete while the refresh callback is still blocked.
+        status, payload, _headers = response.result(timeout=1)
+        assert status == 200
+        assert payload["data"] == {
+            "state": "active",
+            "activation_id": "activation:profile-refresh-test",
+        }
+        assert len(dispatch.calls) == 1
+        session_id = dispatch.calls[0][2]["_session_id"]
+        record = server._operation_journal.operation_status(
+            request_id,
+            session_id=str(session_id),
+        )
+        assert record["state"] == "succeeded"
+        assert record["result"] == payload["data"]
+    finally:
+        # The request thread is still finishing its post-response refresh.
+        # Release it before server.stop() drains the HTTP worker.
+        release_refresh.set()
+        server.stop()
+        response_executor.shutdown(wait=True)
+
+    assert refresh_finished.is_set()
+    assert refreshed == [None]
+
+
 def test_packvm_refresh_failure_cannot_replace_committed_operation_result() -> None:
     """An uncaught refresh error must not drop a successful lifecycle result."""
 
