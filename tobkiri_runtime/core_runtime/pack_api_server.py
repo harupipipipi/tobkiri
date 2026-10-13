@@ -1638,6 +1638,12 @@ class PackAPIHandler(
                     exc_info=error,
                 )
             return True
+        activation_response_sent = target.operation_id == "profile.change.activate"
+        if activation_response_sent:
+            # The exact result is already durable. A fresh production capture
+            # can wait on activation locks or Launcher contract renewal; it
+            # must not hold the activation response past the client deadline.
+            self._send_contract_outcome(route_binding, safe_result)
         try:
             self._refresh_after_operation(target.operation_id, safe_result)
         except Exception as error:
@@ -1651,7 +1657,8 @@ class PackAPIHandler(
                 target.operation_id,
                 exc_info=error,
             )
-        self._send_contract_outcome(route_binding, safe_result)
+        if not activation_response_sent:
+            self._send_contract_outcome(route_binding, safe_result)
         return True
 
     @staticmethod

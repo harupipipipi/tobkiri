@@ -406,10 +406,11 @@ class HostProfileControlSession:
             handler = getattr(self._profile_changes, action)
             result = handler(arguments, session_id=_panel_session_root(session_id))
             if action == "activate" and result.get("state") == "active":
-                result = {
-                    **result,
-                    "authoritative_snapshot": self._runtime_surface.read_profile(),
-                }
+                from .profile_activation_receipt_v4 import bounded_activation_receipt
+
+                result = bounded_activation_receipt(
+                    result, self._runtime_surface.read_profile()
+                )
             return result
         except Exception as error:
             as_dict = getattr(error, "as_dict", None)
@@ -785,10 +786,11 @@ class CapturedPackControlSession:
             if action == "activate":
                 try:
                     self._recapture()
-                    result = {
-                        **result,
-                        "authoritative_snapshot": self._runtime_surface.read_profile(),
-                    }
+                    from .profile_activation_receipt_v4 import bounded_activation_receipt
+
+                    result = bounded_activation_receipt(
+                        result, self._runtime_surface.read_profile()
+                    )
                 except Exception as error:
                     raise PackControlOutcomeUnknown(
                         "Profile activation committed but read-back is unavailable"

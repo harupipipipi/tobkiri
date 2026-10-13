@@ -369,6 +369,75 @@ def test_profile_read_model_is_derived_from_verified_v4_graph(active_runtime) ->
     )
 
 
+def test_activation_receipt_keeps_proof_below_journal_bound(active_runtime) -> None:
+    """A large presentation graph must not discard a committed activation."""
+
+    from core_runtime.control_reconciliation_v4 import ControlReconciliationStore
+    from core_runtime.profile_activation_receipt_v4 import bounded_activation_receipt
+
+    snapshot = _service(active_runtime).read_profile()
+    snapshot["data"]["pack_closure"].append({"presentation": "x" * (2 * 1024 * 1024)})
+    result = RuntimeProfileChangeService._activation_projection(
+        active_runtime.activation
+    )
+    receipt = bounded_activation_receipt(result, snapshot)
+    Draft202012Validator(_control_output_schema()).validate(receipt)
+    proof = receipt["authoritative_snapshot"]
+    assert len(json.dumps(receipt).encode()) < 64 * 1024
+    assert proof["records"] == snapshot["records"]
+    assert proof["data"]["activation_record"] == active_runtime.activation
+    assert "pack_closure" not in proof["data"]
+    assert "profile_document" not in proof["data"]
+    assert (
+        proof["data"]["profile_lock"]["lock_digest"]
+        == (active_runtime.resolved.lock["lock_digest"])
+    )
+    store = ControlReconciliationStore(
+        runtime_user_data_root() / "control" / "receipt.sqlite3"
+    )
+    request_id = "10101010-1010-4010-8010-101010101010"
+    store.begin_operation(
+        request_id=request_id,
+        session_id="receipt-session",
+        operation_id="profile.change.activate",
+        contract_id="tobkiri.host.control-presentation.v4",
+        request_digest=canonical_digest({"request": "receipt"}),
+    )
+    status = store.finish_operation(
+        request_id, session_id="receipt-session", state="succeeded", result=receipt
+    )
+    assert status["state"] == "succeeded"
+    assert status["result"] == receipt
+    assert status["result_digest"] == canonical_digest(receipt)
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("activation_id", "activation:wrong-receipt"),
+        ("plan_digest", "sha256:" + "0" * 64),
+        ("profile_id", "other-profile"),
+        ("security_epoch", 999),
+        ("fencing_token", 999),
+    ],
+)
+def test_activation_receipt_rejects_readback_mismatch(
+    active_runtime, field: str, value: object
+) -> None:
+    """Compaction cannot join an activation to another canonical snapshot."""
+
+    from core_runtime.profile_activation_receipt_v4 import bounded_activation_receipt
+
+    snapshot = _service(active_runtime).read_profile()
+    result = RuntimeProfileChangeService._activation_projection(
+        active_runtime.activation
+    )
+    result[field] = value
+    with pytest.raises(ValueError, match="binding changed"):
+        bounded_activation_receipt(result, snapshot)
+
+
 @pytest.mark.parametrize("view", ["packs", "contracts", "operations", "principals"])
 def test_advanced_views_have_exact_named_payload(active_runtime, view: str) -> None:
     result = _service(active_runtime).read_advanced(view)
