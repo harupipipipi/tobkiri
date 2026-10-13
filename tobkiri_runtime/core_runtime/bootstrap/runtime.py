@@ -47,6 +47,10 @@ from .profile_capture import (
 logger = logging.getLogger(__name__)
 
 
+class _LauncherProfileReconfirmationRequired(RuntimeError):
+    """The Launcher permits only recovery controls for the current Profile."""
+
+
 def _persist_desktop_api_token_cache(user_data: Path, api_token: str) -> Path:
     """Atomically publish the active local API token for the desktop Launcher."""
 
@@ -175,6 +179,13 @@ class Kernel:
 
                 selected_pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
                 try:
+                    from ..host_contract import launcher_requires_profile_confirmation
+
+                    if launcher_requires_profile_confirmation():
+                        raise _LauncherProfileReconfirmationRequired(
+                            "Launcher requires confirmation of the active Profile; "
+                            "execution remains unavailable"
+                        )
                     active = capture_active_profile()
                     capture_factory = self._runtime_capture_factory
                     if capture_factory is None:
@@ -232,7 +243,10 @@ class Kernel:
                 except Exception as error:
                     from ..profile_runtime_port import require_profile_runtime
 
-                    if not require_profile_runtime().is_reconfirmation_required(error):
+                    if not (
+                        isinstance(error, _LauncherProfileReconfirmationRequired)
+                        or require_profile_runtime().is_reconfirmation_required(error)
+                    ):
                         raise
                     reconfirmation_error = str(error)
                     control_active_binding = selected_pointer

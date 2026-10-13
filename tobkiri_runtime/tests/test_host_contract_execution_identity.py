@@ -130,6 +130,11 @@ def test_launcher_bootstrap_marker_is_credential_only_not_execution_authority(
     # not return a contract object or make the bootstrap tuple usable for
     # execution routes.
     assert capture_launcher_bootstrap_secret() == "launcher-bootstrap-secret"
+    assert host_contract_module.launcher_requires_profile_confirmation() is True
+    _write_private_contract(contract_path, _contract_a())
+    assert host_contract_module.launcher_requires_profile_confirmation() is False
+    contract_path.unlink()
+    assert host_contract_module.launcher_requires_profile_confirmation() is False
 
 
 def test_same_plan_activation_rotation_is_not_the_same_execution() -> None:

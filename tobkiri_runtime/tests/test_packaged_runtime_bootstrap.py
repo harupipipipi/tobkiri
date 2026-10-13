@@ -93,7 +93,12 @@ def _publish_launcher_contract(
 
 @pytest.mark.parametrize(
     "failure_stage",
-    ["profile_capture", "http_composition", "stale_verified_artifact"],
+    [
+        "profile_capture",
+        "http_composition",
+        "stale_verified_artifact",
+        "launcher_contract",
+    ],
 )
 def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     tmp_path: Path,
@@ -110,7 +115,9 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     from tobkiri_host.errors import ResolutionError
 
     diagnostic = (
-        "ResolvedPlan binding lacks a verified artifact"
+        "Launcher requires confirmation of the active Profile; execution remains unavailable"
+        if failure_stage == "launcher_contract"
+        else "ResolvedPlan binding lacks a verified artifact"
         if failure_stage == "stale_verified_artifact"
         else (
             "active Profile Shell artifact identity was superseded by the verified "
@@ -119,7 +126,9 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     )
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user_data"))
-    from core_runtime.bootstrap.profile_capture import prepare_default_profile_confirmation
+    from core_runtime.bootstrap.profile_capture import (
+        prepare_default_profile_confirmation,
+    )
 
     capture_default_profile(confirmation=prepare_default_profile_confirmation())
 
@@ -131,6 +140,23 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         raise ProfileReconfirmationRequired(diagnostic)
 
     monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: True)
+    if failure_stage == "launcher_contract":
+        contract_path = _publish_launcher_contract(
+            tmp_path / "user_data",
+            profile_id="defaults",
+            profile_revision=_LAUNCHER_BOOTSTRAP_REVISION,
+            activation_id="activation:bootstrap-template",
+            plan_digest=_LAUNCHER_BOOTSTRAP_PLAN,
+            bootstrap_secret="test-launcher-reconfirmation",
+        )
+        monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+
+        def reject_execution_capture():
+            pytest.fail("Launcher bootstrap must not capture execution providers")
+
+        monkeypatch.setattr(
+            runtime_bootstrap, "capture_active_profile", reject_execution_capture
+        )
     if failure_stage == "profile_capture":
         monkeypatch.setattr(
             runtime_bootstrap,
@@ -142,6 +168,7 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     clear_kernel_restart_request()
     kernel = _kernel()
     if failure_stage in {"http_composition", "stale_verified_artifact"}:
+
         def unavailable_composition(active):
             del active
             require_reconfirmation()

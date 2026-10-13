@@ -303,6 +303,20 @@ def capture_host_contract_from_file(
     return validate_host_contract(candidate, expected_identity=expected_identity)
 
 
+def launcher_requires_profile_confirmation() -> bool:
+    """Detect a verified Launcher bootstrap marker without granting execution.
+
+    A Launcher that cannot accept the active Profile publishes only this
+    credential-only marker. The Host must serve Profile recovery controls
+    rather than attempt to promote it into an execution contract.
+    """
+
+    candidate = _load_contract_file(allow_launcher_bootstrap=True)
+    return candidate is not None and _is_launcher_bootstrap_identity(
+        ExecutionProfileIdentity.from_source(candidate)
+    )
+
+
 def capture_launcher_bootstrap_secret() -> str:
     """Capture only the Launcher-owned panel credential snapshot.
 
