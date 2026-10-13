@@ -35,8 +35,17 @@ def profile_pack_versions(profile_id: str) -> dict[str, Any]:
     for selection in profile.profile["packs"]:
         pack_id = str(selection["pack_id"])
         baseline = catalog.packs.get(pack_id)
+        host_baseline = (
+            baseline is not None
+            and baseline["pack"]["kind"] == "host_extension"
+            and baseline["requirements"]["execution_boundary"] == "host_brokered"
+            and selection["role"] == "provider"
+        )
         versions: dict[str, dict[str, Any]] = {}
-        if baseline is not None and baseline["pack"]["kind"] in {"normal_sandbox", "application"}:
+        if baseline is not None and (
+            baseline["pack"]["kind"] in {"normal_sandbox", "application"}
+            or host_baseline
+        ):
             pack = baseline["pack"]
             versions[str(pack["artifact_digest"])] = {
                 "artifact_digest": str(pack["artifact_digest"]),
@@ -47,6 +56,8 @@ def profile_pack_versions(profile_id: str) -> dict[str, Any]:
             }
         for digest, entry in external.versions.get(pack_id, {}).items():
             record = entry["catalog_record"]
+            if record.get("kind") == "host_extension" and not host_baseline:
+                raise ValueError("Host Extension revision requires its bundled Provider")
             versions[digest] = {
                 "artifact_digest": digest,
                 "version": str(entry["version_string"]),

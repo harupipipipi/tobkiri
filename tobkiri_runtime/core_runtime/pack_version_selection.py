@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from packaging.version import InvalidVersion, Version
-
 from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.ids import validate_artifact_digest, validate_canonical_id
 from tobkiri_protocol.validation import validate_file
 
 from .pack_boundary import load_pack_catalog, resolve_pack_root
+from .global_contracts.semver import parse_version
 
 
 def version_catalog_key(pack_id: str, artifact_digest: str) -> str:
@@ -58,14 +57,22 @@ def verify_version_predecessor(
         previous_version = str(previous["version_string"])
     else:
         record = load_pack_catalog().get(pack_id)
-        if record is None or record.get("kind") not in {"normal_sandbox", "application"}:
-            raise ValueError("Pack update predecessor is not a Normal Pack")
+        if record is None or record.get("kind") not in {
+            "normal_sandbox", "application", "host_extension",
+        }:
+            raise ValueError("Pack update predecessor kind does not support updates")
         root = resolve_pack_root(pack_id)
         manifest = validate_file(root / "pack.v4.json", "pack")
         compiled = compile_pack_root(root)
         if (
-            manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-            or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
+            manifest["pack"]["kind"] != record.get("kind")
+            or (
+                manifest["requirements"]["execution_boundary"]
+                not in (
+                    {"host_brokered"} if record.get("kind") == "host_extension"
+                    else {"sandbox", "declarative_only"}
+                )
+            )
             or compiled.artifact.pack_id != pack_id
             or compiled.artifact.digest != expected_digest
         ):
@@ -76,16 +83,16 @@ def verify_version_predecessor(
             raise ValueError("bundled Pack update publisher differs from retained revisions")
     try:
         for retained in versions.get(pack_id, {}).values():
-            if Version(str(retained["version_string"])) == Version(version):
+            if parse_version(str(retained["version_string"])) == parse_version(version):
                 if retained["artifact_digest"] != artifact_digest:
                     raise ValueError("Pack version is already bound to a different digest")
                 if retained["publisher_id"] != publisher_id:
                     raise ValueError("Pack revision publisher is inconsistent")
         if previous is not None and previous["artifact_digest"] == artifact_digest:
-            if Version(version) != Version(previous_version):
+            if parse_version(version) != parse_version(previous_version):
                 raise ValueError("Pack revision version is inconsistent")
             return
-        if Version(version) <= Version(previous_version):
+        if parse_version(version) <= parse_version(previous_version):
             raise ValueError("Pack update must have a newer version")
-    except InvalidVersion as error:
+    except ValueError as error:
         raise ValueError("Pack update version is invalid") from error

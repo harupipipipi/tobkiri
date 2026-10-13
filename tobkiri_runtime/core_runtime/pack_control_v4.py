@@ -1649,6 +1649,10 @@ def catalog_with_admitted_pack_closure(
             except Exception as error:
                 raise PackControlDigestMismatch("Pack v4 manifest is invalid") from error
             external_normal = record.get("authority") == "host-signed-external-normal-v4"
+            external_host = (
+                record.get("authority") == "host-signed-external-host-extension-v4"
+            )
+            predecessor = catalog.packs.get(pack_id)
             if manifest["pack"]["id"] != pack_id or (
                 external_normal
                 and (
@@ -1656,6 +1660,23 @@ def catalog_with_admitted_pack_closure(
                     or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
                     or manifest["pack"]["artifact_digest"] != record.get("artifact_digest")
                 )
+            ) or (
+                manifest["pack"]["kind"] == "host_extension"
+                and (
+                    not external_host
+                    or selected_digest is None
+                    or predecessor is None
+                    or predecessor["pack"]["kind"] != "host_extension"
+                    or predecessor["requirements"]["execution_boundary"]
+                    != "host_brokered"
+                    or manifest["requirements"]["execution_boundary"]
+                    != "host_brokered"
+                    or record.get("kind") != "host_extension"
+                    or manifest["pack"]["artifact_digest"] != selected_digest
+                    or selected_digest != record.get("artifact_digest")
+                )
+            ) or (
+                external_host and manifest["pack"]["kind"] != "host_extension"
             ):
                 raise PackControlDigestMismatch("Pack v4 manifest identity is inconsistent")
             external_packs[pack_id] = manifest

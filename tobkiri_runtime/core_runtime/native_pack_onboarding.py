@@ -73,7 +73,7 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
     verified = verify_signed_pack(
         source, signed, public_key, core_version=str(core_version)
     )
-    _project_catalog_record(source, signed)  # Validates Normal Sandbox and v4 identity.
+    projected = _project_catalog_record(source, signed)
     compiled = compile_pack_root(source)
     if compiled.artifact.pack_id != verified["pack_id"]:
         raise ValueError("signed and compiled Pack identities differ")
@@ -90,6 +90,8 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         "requested_capabilities": list(signed["requested_capabilities"]),
         "contract_versions": dict(signed["contract_versions"]),
         "artifact_digest": compiled.artifact.digest,
+        "kind": str(projected["kind"]),
+        "execution_boundary": str(projected["execution_boundary"]),
     }
     snapshot = load_external_pack_catalog()
     pack_id = str(verified["pack_id"])
@@ -100,20 +102,22 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         for row in retained.values()
     }
     if bundled is not None:
-        if bundled.get("kind") not in {"normal_sandbox", "application"}:
-            raise ValueError("signed Normal Pack cannot replace a Host Extension, Base or Shell")
+        if bundled.get("kind") not in {
+            "normal_sandbox", "application", "host_extension",
+        } or projected["kind"] != bundled.get("kind"):
+            raise ValueError("signed Pack cannot change bundled kind or replace Base or Shell")
         root = resolve_pack_root(pack_id)
         manifest = _read_json_nofollow(root / "pack.v4.json", 4 * 1024 * 1024)
         if not isinstance(manifest, dict):
             raise ValueError("bundled update predecessor is unavailable")
         predecessors[str(manifest["pack"]["version"])] = compile_pack_root(root).artifact.digest
     if predecessors:
-        from packaging.version import Version
+        from .global_contracts.semver import parse_version
         from .pack_version_selection import verify_version_predecessor
 
         predecessor = (
             compiled.artifact.digest if compiled.artifact.digest in retained
-            else predecessors[max(predecessors, key=Version)]
+            else predecessors[max(predecessors, key=parse_version)]
         )
         verify_version_predecessor(
             pack_id, predecessor, versions=snapshot.versions,
@@ -151,6 +155,15 @@ def commit_signed_pack(
     signed = _read_json_nofollow(source / SIGNED_MANIFEST_RELATIVE, 4 * 1024 * 1024)
     if not isinstance(signed, dict):
         raise ValueError("signed Pack manifest is invalid")
+    reviewed_preview = {key: value for key, value in preview.items() if key != "preview_digest"}
+    observed_digest = canonical_digest({
+        "preview": reviewed_preview,
+        "signed_manifest": signed,
+        "public_key_pem": canonical_pem,
+        "source_root": str(source),
+    })
+    if not hmac.compare_digest(observed_digest, expected_preview_digest):
+        raise ValueError("signed Pack changed after native confirmation")
     verify_signed_pack(
         source, signed, public_key,
         expected_pack_id=str(preview["pack_id"]),
@@ -186,11 +199,19 @@ def commit_signed_pack(
             "allowed_pack_namespaces": [str(preview["pack_id"])],
             "revoked_key_ids": [],
         },
+        expected_signed_manifest_digest=canonical_digest(signed),
     )
     if predecessor is not None:
         return dict(admit_signed_pack_version(
             source, trust_store_path=trust_store_path,
             expected_predecessor_digest=str(predecessor),
             expected_catalog_revision=str(preview["catalog_revision"]),
+            expected_artifact_digest=str(preview["artifact_digest"]),
+            expected_signed_manifest_digest=canonical_digest(signed),
         ))
-    return dict(admit_signed_external_pack(source, trust_store_path=trust_store_path))
+    return dict(admit_signed_external_pack(
+        source,
+        trust_store_path=trust_store_path,
+        expected_artifact_digest=str(preview["artifact_digest"]),
+        expected_signed_manifest_digest=canonical_digest(signed),
+    ))

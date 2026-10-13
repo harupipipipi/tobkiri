@@ -44,16 +44,40 @@ def catalog_for_verified_active_profile(
     for pack_id in (set(merged.packs) - set(catalog.packs)) | changed_ids:
         manifest = merged.packs[pack_id]
         digest = manifest["pack"]["artifact_digest"]
+        host_successor = manifest["pack"]["kind"] == "host_extension"
+        predecessor = catalog.packs.get(pack_id)
         if (
             not isinstance(digest, str)
-            or manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-            or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
+            or (
+                host_successor
+                and (
+                    predecessor is None
+                    or predecessor["pack"]["kind"] != "host_extension"
+                    or predecessor["requirements"]["execution_boundary"]
+                    != "host_brokered"
+                    or manifest["requirements"]["execution_boundary"]
+                    != "host_brokered"
+                )
+            )
+            or (
+                not host_successor
+                and (
+                    manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
+                    or manifest["requirements"]["execution_boundary"] not in {
+                        "sandbox", "declarative_only",
+                    }
+                )
+            )
         ):
             raise AuthorityDenied("active external Pack identity is invalid")
         selected_rows = [row for row in rows if row["pack_id"] == pack_id]
+        if host_successor and not selected_rows:
+            raise AuthorityDenied("active Host Extension successor is not selected")
         if selected_rows and (
             len(selected_rows) != 1
-            or selected_rows[0].get("role") not in {"provider", "application"}
+            or selected_rows[0].get("role") not in (
+                {"provider"} if host_successor else {"provider", "application"}
+            )
             or selected_rows[0].get("artifact_digest") != digest
         ):
             raise AuthorityDenied("active external Pack Profile pin is stale")

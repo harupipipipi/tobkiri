@@ -77,6 +77,8 @@ def admit_signed_external_pack(
     *,
     trust_store_path: Path,
     fault_injector: Callable[[str], None] | None = None,
+    expected_artifact_digest: str | None = None,
+    expected_signed_manifest_digest: str | None = None,
 ) -> Mapping[str, Any]:
     """Verify and atomically admit one signed external Normal v4 Pack.
 
@@ -96,6 +98,8 @@ def admit_signed_external_pack(
             catalog_path=catalog_path,
             trust_policy_lock=trust_policy_lock,
             fault_injector=fault_injector,
+            expected_artifact_digest=expected_artifact_digest,
+            expected_signed_manifest_digest=expected_signed_manifest_digest,
         )
 
 
@@ -106,6 +110,8 @@ def admit_signed_pack_version(
     expected_predecessor_digest: str,
     expected_catalog_revision: str,
     fault_injector: Callable[[str], None] | None = None,
+    expected_artifact_digest: str | None = None,
+    expected_signed_manifest_digest: str | None = None,
 ) -> Mapping[str, Any]:
     """Admit a reviewed revision without replacing any selected Pack artifact."""
     user_data = _user_data_root()
@@ -121,6 +127,8 @@ def admit_signed_pack_version(
             trust_policy_lock=policy_locks[0],
             fault_injector=fault_injector,
             expected_predecessor_digest=expected_predecessor_digest,
+            expected_artifact_digest=expected_artifact_digest,
+            expected_signed_manifest_digest=expected_signed_manifest_digest,
         )
 
 
@@ -157,6 +165,8 @@ def _admit_signed_external_pack_locked(
     trust_policy_lock: HostPolicyLock,
     fault_injector: Callable[[str], None] | None,
     expected_predecessor_digest: str | None = None,
+    expected_artifact_digest: str | None = None,
+    expected_signed_manifest_digest: str | None = None,
 ) -> Mapping[str, Any]:
     source = Path(source_root)
     source_identity = _directory_identity(source)
@@ -166,6 +176,14 @@ def _admit_signed_external_pack_locked(
         trust_policy_lock=trust_policy_lock,
     )
     compiled = compile_pack_root(source)
+    if (
+        expected_artifact_digest is not None
+        and compiled.artifact.digest != expected_artifact_digest
+    ) or (
+        expected_signed_manifest_digest is not None
+        and canonical_digest(signed_manifest) != expected_signed_manifest_digest
+    ):
+        raise ExternalPackCatalogDenied("signed Pack differs from the reviewed artifact")
     pack_id = compiled.artifact.pack_id
     if pack_id != str(signed_manifest["pack_id"]):
         raise ExternalPackCatalogDenied("signed and v4 Pack identities differ")
@@ -395,7 +413,15 @@ def load_admitted_pack_catalog(
     unauthorized = {
         pack_id for pack_id in collisions
         if (artifact_pins or {}).get(pack_id) != external.records[pack_id]["artifact_digest"]
-        or bundled[pack_id].get("kind") not in {"normal_sandbox", "application"}
+        or (
+            bundled[pack_id].get("kind") not in {"normal_sandbox", "application"}
+            and not (
+                bundled[pack_id].get("kind") == "host_extension"
+                and external.records[pack_id].get("kind") == "host_extension"
+                and external.records[pack_id].get("authority")
+                == "host-signed-external-host-extension-v4"
+            )
+        )
     }
     if unauthorized:
         raise ExternalPackCatalogDenied(
@@ -462,8 +488,16 @@ def load_admitted_external_executable_catalog(
     try:
         manifest = validate_file(root / "pack.v4.json", "pack")
         executable = validate_file(root / "executables.v4.json", "executable_catalog")
-        _require_external_catalog_identity(executable)
+        _require_external_catalog_identity(
+            executable,
+            host_extension=manifest["pack"]["kind"] == "host_extension",
+        )
         compiled = compile_pack_root(root)
+        projected = _project_catalog_record(root, _read_json_nofollow(
+            root / SIGNED_MANIFEST_RELATIVE, _MAX_CATALOG_BYTES
+        ))
+        if canonical_digest(projected) != canonical_digest(entry["catalog_record"]):
+            raise ExternalPackCatalogDenied("external Pack compatibility record changed")
     except Exception as error:
         raise ExternalPackCatalogDenied(
             "external Pack executable catalog verification failed"
@@ -689,11 +723,38 @@ def _project_catalog_record(
     ):
         raise ExternalPackCatalogDenied("signed Pack Contract catalog identity is inconsistent")
     executable = validate_file(root / "executables.v4.json", "executable_catalog")
-    _require_external_catalog_identity(executable)
     pack_id = str(manifest["pack"]["id"])
+    host_extension = manifest["pack"]["kind"] == "host_extension"
+    compatibility = None
+    if host_extension:
+        from .host_extension_update_v4 import verify_host_extension_successor
+
+        baseline = load_pack_catalog().get(pack_id)
+        if baseline is None or baseline.get("kind") != "host_extension":
+            raise ExternalPackCatalogDenied(
+                "a Host Extension update requires an existing bundled Host Extension"
+            )
+        baseline_root = resolve_pack_root(pack_id)
+        try:
+            compatibility = verify_host_extension_successor(
+                baseline_root,
+                root,
+                expected_predecessor_digest=compile_pack_root(baseline_root).artifact.digest,
+                publisher_id=str(signed_manifest.get("publisher_id") or ""),
+                signed_manifest=signed_manifest,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise ExternalPackCatalogDenied(
+                "Host Extension update changes its authenticated compatibility boundary"
+            ) from error
+    _require_external_catalog_identity(executable, host_extension=host_extension)
     if (
-        manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
-        or manifest["requirements"]["execution_boundary"] not in {"sandbox", "declarative_only"}
+        not host_extension
+        and (
+            manifest["pack"]["kind"] not in {"normal_sandbox", "application"}
+            or manifest["requirements"]["execution_boundary"]
+            not in {"sandbox", "declarative_only"}
+        )
     ):
         raise ExternalPackCatalogDenied(
             "external admission accepts only Normal Sandbox Packs"
@@ -754,7 +815,10 @@ def _project_catalog_record(
         "version": str(manifest["pack"]["version"]),
         "kind": str(manifest["pack"]["kind"]),
         "artifact_digest": str(manifest["pack"]["artifact_digest"]),
-        "authority": "host-signed-external-normal-v4",
+        "authority": (
+            "host-signed-external-host-extension-v4"
+            if compatibility is not None else "host-signed-external-normal-v4"
+        ),
         "approval_policy": "explicit",
         "capabilities": sorted(
             str(item) for item in manifest["requirements"]["capabilities"]
@@ -1072,7 +1136,14 @@ def _verify_entry_root(
             raise ExternalPackCatalogDenied("external Pack root identity changed")
     try:
         executable = validate_file(root / "executables.v4.json", "executable_catalog")
-        _require_external_catalog_identity(executable)
+        manifest = validate_file(root / "pack.v4.json", "pack")
+        host_extension = manifest["pack"]["kind"] == "host_extension"
+        if host_extension and (
+            entry.get("catalog_record", {}).get("authority")
+            != "host-signed-external-host-extension-v4"
+        ):
+            raise ExternalPackCatalogDenied("Host Extension admission identity is missing")
+        _require_external_catalog_identity(executable, host_extension=host_extension)
         compiled = compile_pack_root(root)
     except Exception as error:
         raise ExternalPackCatalogDenied(
@@ -1095,17 +1166,24 @@ def _verify_entry_root(
     )
     if content_digest != entry.get("content_digest"):
         raise ExternalPackCatalogDenied("external Normal Pack content digest changed")
+    if host_extension:
+        projected = _project_catalog_record(root, signed_manifest)
+        if canonical_digest(projected) != canonical_digest(entry["catalog_record"]):
+            raise ExternalPackCatalogDenied("Host Extension compatibility record changed")
 
 
-def _require_external_catalog_identity(executable: Mapping[str, Any]) -> None:
+def _require_external_catalog_identity(
+    executable: Mapping[str, Any], *, host_extension: bool = False,
+) -> None:
     """Reject bundle-only executable catalog aliases from external Packs."""
 
     if executable.get("materialization_catalog_digest") is not None:
         raise ExternalPackCatalogDenied(
             "external Pack cannot replace its executable catalog identity"
         )
+    admitted_kinds = {"host_extension"} if host_extension else {"wasm", "pack_vm"}
     if any(
-        variant["execution_kind"] not in {"wasm", "pack_vm"}
+        variant["execution_kind"] not in admitted_kinds
         for variant in executable["variants"]
     ):
         raise ExternalPackCatalogDenied("external admission accepts only Normal Sandbox backends")

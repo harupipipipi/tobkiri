@@ -366,6 +366,7 @@ def write_host_install_record(
     record: Mapping[str, Any],
     publisher_record: Mapping[str, Any] | None = None,
     expected_install_record: Mapping[str, Any] | None = None,
+    expected_signed_manifest_digest: str | None = None,
 ) -> None:
     """Atomically persist a complete Host-owned Pack install policy.
 
@@ -424,6 +425,11 @@ def write_host_install_record(
         if not isinstance(signed_manifest, Mapping):
             raise ValueError("signed Pack manifest must be an object")
         signed_manifest_digest = _canonical_digest(signed_manifest)
+        if (
+            expected_signed_manifest_digest is not None
+            and signed_manifest_digest != expected_signed_manifest_digest
+        ):
+            raise ValueError("signed Pack changed after native confirmation")
     tree_digest = _pack_tree_digest(
         root,
         signed_manifest_exclusion=(

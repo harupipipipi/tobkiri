@@ -145,6 +145,7 @@ from ..host_provider_backend_v4 import (
     CapturedHostPackDataV4,
     ExactHostProviderBackendV4,
     HostProviderCaptureContextV4,
+    HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
@@ -889,6 +890,41 @@ def _load_verified_host_provider_factory(
 
     backend_id = _validate_host_provider_bindings(function_id, provider_bindings)
     return load_host_provider_factory(pack_root, provider_bindings[0]), backend_id
+
+
+def _validate_host_provider_contributions(
+    provider_bindings: tuple[ResolvedOperationBinding, ...],
+    contributions: tuple[HostProviderContributionV4, ...],
+    domain_ids: Mapping[tuple[str, str, str], str],
+) -> None:
+    """Require every contribution to retain its selected artifact and domain."""
+
+    expected = {
+        (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        ): binding
+        for binding in provider_bindings
+    }
+    if (
+        len(contributions) != len(expected)
+        or {item.key for item in contributions} != set(expected)
+    ):
+        raise AuthorityDenied("Host Provider hook contribution set is incomplete")
+    for contribution in contributions:
+        binding = expected[contribution.key]
+        domain_id = domain_ids.get(contribution.key)
+        if (
+            contribution.contract_version != binding.operation.contract_version
+            or contribution.artifact_digest != binding.artifact.digest
+            or contribution.implementation_digest
+            != binding.function.implementation_digest
+            or domain_id is None
+            or contribution.domain_id != domain_id
+            or not callable(contribution.invoke)
+        ):
+            raise AuthorityDenied("Host Provider hook contribution identity is stale")
 
 
 def _host_extension_trust_record(
@@ -1716,14 +1752,17 @@ def capture_production_dispatch(
         raise AuthorityDenied("ResolvedPlan contains an edge outside the active Profile")
 
     binding_pack_ids = {str(item["pack_id"]) for item in plan["bindings"]}
-    pack_roots = resolve_admitted_pack_roots(
-        tuple(sorted(binding_pack_ids)),
-        ecosystem_root,
-        artifact_pins={
-            str(row["identity"]): str(row["artifact_digest"])
-            for row in lock["effective_set"]
-        },
-    )
+    from .profile_capture import runtime_user_data_scope
+
+    with runtime_user_data_scope(authority_user_data):
+        pack_roots = resolve_admitted_pack_roots(
+            tuple(sorted(binding_pack_ids)),
+            ecosystem_root,
+            artifact_pins={
+                str(row["identity"]): str(row["artifact_digest"])
+                for row in lock["effective_set"]
+            },
+        )
     captured_pack_root_identities = _pack_root_identities(pack_roots)
 
     def artifact_resolver(binding: ResolvedOperationBinding) -> Any:
@@ -3302,11 +3341,13 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("captured wake declaration is invalid")
         wake_port = LateBoundWakePortV4() if declaration is not None else None
+        with runtime_user_data_scope(authority_user_data):
+            declared_pack_data = host_provider_data.capture_for(factory)
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
                 workspace_mutation_port=workspace_mutation_port,
-                declared_pack_data=host_provider_data.capture_for(factory),
+                declared_pack_data=declared_pack_data,
                 interactive_effect_port=(
                     interactive_effect_port
                     if interactive_effect_coordinator is not None
@@ -3337,17 +3378,15 @@ def capture_production_dispatch(
                     } else None),
             )
         )
-        expected_keys = {
-            (
-                binding.operation.contract_id,
-                binding.operation.operation_id,
-                binding.principal_ref.value,
+        try:
+            _validate_host_provider_contributions(
+                captured_bindings,
+                captured_provider.contributions,
+                dynamic_domain_ids,
             )
-            for binding in captured_bindings
-        }
-        if {item.key for item in captured_provider.contributions} != expected_keys:
+        except Exception:
             captured_provider.close()
-            raise AuthorityDenied("Host Provider hook contribution set is incomplete")
+            raise
         host_contributions_by_backend.setdefault(backend_id, []).extend(
             captured_provider.contributions
         )

@@ -75,12 +75,16 @@ def test_commit_writes_exact_policy_after_confirmation(monkeypatch, tmp_path: Pa
     preview = native_pack_onboarding.preview_signed_pack(source, key_file)
     observed: list[dict[str, object]] = []
 
-    def write(_target, *, pack_id, install_path, record, publisher_record):
+    def write(
+        _target, *, pack_id, install_path, record, publisher_record,
+        expected_signed_manifest_digest,
+    ):
         observed.append({
             "pack_id": pack_id,
             "install_path": install_path,
             "record": record,
             "publisher_record": publisher_record,
+            "expected_signed_manifest_digest": expected_signed_manifest_digest,
         })
 
     monkeypatch.setattr(native_pack_onboarding, "write_host_install_record", write)
