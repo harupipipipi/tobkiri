@@ -64,7 +64,8 @@ function pack(id: string, approved = true): Pack {
     installed: true,
     enabled: true,
     description: 'fixture',
-    artifactDigest: digest('1'),
+    artifactDigest: digest('2'),
+    packArtifactDigest: digest('1'),
     profileId: 'defaults',
     workspaceId: 'workspace',
     profileRevision: digest('a'),
@@ -293,6 +294,179 @@ test('Profile closure candidates come from the authoritative catalog and execute
     assert.equal(packRefreshes, 1);
     assert.equal(surface.getRefreshCount(), 1);
     assert.match(container.textContent ?? '', /Authority Kernel approval recorded|active/i);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('a saved mandatory successor reaches exact resolve without inheriting predecessor approval', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  const entry = catalogEntry(['provider-pack']);
+  entry.pack_closure[0].artifact_digest = digest('f');
+  entry.pack_closure[0].artifact_ref = `pack-v4://provider-pack@${digest('f')}`;
+  const predecessor = {
+    ...pack('provider-pack', false),
+    required: true,
+    installed: false,
+    enabled: false,
+  };
+  const calls: Array<Record<string, unknown>> = [];
+  let approvals = 0;
+  const client: ProfileCeremonyClient = {
+    resolve: async (input) => {
+      calls.push({...input});
+      return {
+        state: 'resolved', candidate_id: 'mandatory-successor', candidate_digest: digest('2'),
+        expires_in: 60, next_action: 'review', write_set: [],
+        review: {
+          profile: {profile_id: 'defaults'},
+          profile_lock: {effective_set: [{identity: 'provider-pack', artifact_digest: digest('f')}]},
+          resolved_plan: {profile_revision: digest('f'), plan_digest: digest('3')},
+          predecessor: {plan_digest: digest('b')},
+          catalog_binding: {
+            profile_definition_digest: digest('6'),
+            profile_catalog_digest: digest('c'), bundle_lock_digest: digest('d'),
+          },
+        },
+      };
+    },
+    review: async () => { throw new Error('review requires an explicit next step'); },
+    approve: async () => { approvals += 1; throw new Error('approval must not run'); },
+    activate: async () => { throw new Error('activation must not run'); },
+  };
+  try {
+    await act(async () => {
+      root.render(<ProfileCeremonyPanel surface={surface.state} packs={[predecessor]}
+        loadPacks={async () => {}} client={client}
+        authoritativeSelection={authoritativeSelection(entry)} catalogSurface={catalogSurfaceState(entry)} />);
+    });
+    assert.equal(buttonContaining(container, 'Resolve candidate').disabled, false);
+    await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
+    assert.deepEqual(calls, [{
+      profile_id: 'defaults', expected_profile_revision: digest('a'), expected_plan_digest: digest('b'),
+      desired_pack_ids: ['provider-pack'], profile_definition_digest: digest('6'),
+      profile_catalog_digest: digest('c'), bundle_lock_digest: digest('d'),
+    }]);
+    assert.equal(approvals, 0);
+    assert.ok(buttonContaining(container, 'Review exact candidate'));
+    assert.doesNotMatch(container.textContent ?? '', /Authority Kernel approval recorded/);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('optional executable digests and lifecycle gates remain required before resolve', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  const entry = catalogEntry(['provider-pack']);
+  const blockedPacks: Pack[] = [
+    {...pack('provider-pack'), artifactDigest: digest('1'), packArtifactDigest: digest('f')},
+    {...pack('provider-pack'), packArtifactDigest: null},
+    {...pack('provider-pack'), packArtifactDigest: 'invalid'},
+    {...pack('provider-pack'), installed: false},
+    {...pack('provider-pack'), approved: false},
+    {...pack('provider-pack'), enabled: false},
+    {...pack('provider-pack'), required: true, profileRevision: digest('f'), packArtifactDigest: digest('f')},
+    {...pack('provider-pack'), required: true, planDigest: digest('f'), packArtifactDigest: digest('f')},
+    {...pack('provider-pack'), required: true, profileId: 'other-profile', packArtifactDigest: digest('f')},
+    {...pack('provider-pack'), required: true, packArtifactDigest: null},
+    {...pack('provider-pack'), required: true, packArtifactDigest: 'invalid'},
+  ];
+  let resolveCalls = 0;
+  const client: ProfileCeremonyClient = {
+    resolve: async () => { resolveCalls += 1; throw new Error('resolve must not run'); },
+    review: async () => { throw new Error('review must not run'); },
+    approve: async () => { throw new Error('approval must not run'); },
+    activate: async () => { throw new Error('activation must not run'); },
+  };
+  try {
+    for (const blocked of blockedPacks) {
+      await act(async () => {
+        root.render(<ProfileCeremonyPanel surface={surface.state} packs={[blocked]}
+          loadPacks={async () => {}} client={client}
+          authoritativeSelection={authoritativeSelection(entry)} catalogSurface={catalogSurfaceState(entry)} />);
+      });
+      const resolve = buttonContaining(container, 'Resolve candidate');
+      assert.equal(resolve.disabled, true, JSON.stringify(blocked));
+      await act(async () => { resolve.click(); });
+    }
+    assert.equal(resolveCalls, 0);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('initial and browsing Profiles retain exact executable matching without the active mandatory exception', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  const entry = catalogEntry(['provider-pack'], 'alternate', false);
+  const initialCatalog = catalogSurfaceState(entry);
+  assert.ok(initialCatalog.data);
+  initialCatalog.data = {...initialCatalog.data, data: {
+    ...initialCatalog.data.data, active_profile_id: null, profiles: [entry], count: 1,
+  }};
+  const contexts: Array<{
+    runtime: RuntimeSurfaceState<unknown>;
+    catalog: RuntimeSurfaceState<RuntimeProfileCatalogProjection>;
+  }> = [
+    {runtime: surface.state, catalog: catalogSurfaceState(entry)},
+    {runtime: {...surface.state, data: null, status: 'idle'}, catalog: initialCatalog},
+  ];
+  try {
+    for (const context of contexts) {
+      for (const executableDigest of [digest('1'), digest('f')]) {
+        await act(async () => {
+          root.render(<ProfileCeremonyPanel surface={context.runtime}
+            packs={[{...pack('provider-pack'), required: true, packArtifactDigest: executableDigest}]}
+            loadPacks={async () => {}} authoritativeSelection={authoritativeSelection(entry)}
+            catalogSurface={context.catalog} />);
+        });
+        assert.equal(buttonContaining(container, 'Resolve candidate').disabled, executableDigest !== digest('1'));
+      }
+    }
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('mandatory successors remain locked by stale or changed authoritative catalog bindings', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  const entry = catalogEntry(['provider-pack']);
+  const predecessor = {...pack('provider-pack', false), required: true};
+  const staleCatalog = {...catalogSurfaceState(entry), stale: true};
+  const changedEntry = {...entry, definition: {...entry.definition, digest: digest('f')}};
+  const catalogs = [staleCatalog, catalogSurfaceState(changedEntry)];
+  try {
+    for (const catalog of catalogs) {
+      await act(async () => {
+        root.render(<ProfileCeremonyPanel surface={surface.state} packs={[predecessor]}
+          loadPacks={async () => {}} authoritativeSelection={authoritativeSelection(entry)}
+          catalogSurface={catalog} />);
+      });
+      assert.equal(buttonContaining(container, 'Resolve candidate').disabled, true);
+    }
   } finally {
     act(() => root.unmount());
     dom.window.close();

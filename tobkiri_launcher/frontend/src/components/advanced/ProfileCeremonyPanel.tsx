@@ -126,14 +126,30 @@ export function ProfileCeremonyPanel({
     )),
   );
   const selectedPackKey = selectedPackIds.slice().sort().join(',');
+  const currentSnapshot = snapshotForProfileCeremony(surface.data);
   const catalogPackRows = selectedPackIds.map((id) => packs.find((pack) => pack.id === id) ?? null);
   const catalogMissingPackIds = catalogPackRows.flatMap((pack, index) => pack ? [] : [selectedPackIds[index] ?? '']);
   const catalogIncompatiblePackIds = catalogPackRows.flatMap((pack, index) => {
     if (!pack) return [];
+    if (!pack.packArtifactDigest || !/^sha256:[0-9a-f]{64}$/.test(pack.packArtifactDigest)) {
+      return [selectedPackIds[index] ?? pack.id];
+    }
     const closureEntry = catalogEntry?.pack_closure.find((item) => item.pack_id === pack.id);
-    const expectedArtifactDigest = closureEntry?.artifact_digest ?? pack.artifactDigest;
+    // A saved mandatory successor is resolved and approved by the Host ceremony.
+    // Its predecessor's lifecycle receipt cannot approve the successor, nor can
+    // the successor already be active before this ceremony activates it.
+    const authoritativeMandatoryPack = catalogEntry.active
+      && pack.required === true
+      && authoritativePackIds?.includes(pack.id)
+      && currentSnapshot !== null
+      && pack.profileId === catalogEntry.profile_id
+      && pack.profileId === currentSnapshot.profile_id
+      && pack.profileRevision === currentSnapshot.profile_revision
+      && pack.planDigest === currentSnapshot.plan_digest;
+    if (authoritativeMandatoryPack) return [];
+    const expectedArtifactDigest = closureEntry?.artifact_digest ?? pack.packArtifactDigest;
     if (
-      pack.artifactDigest !== expectedArtifactDigest
+      pack.packArtifactDigest !== expectedArtifactDigest
       || !pack.installed
       || !pack.approved
       || !pack.enabled
@@ -165,7 +181,6 @@ export function ProfileCeremonyPanel({
     };
   }, [ceremonyState, onBusyChange]);
 
-  const currentSnapshot = snapshotForProfileCeremony(surface.data);
   const predecessorSnapshot = currentSnapshot ?? (
     catalogProjection?.active_profile_id === null
       ? {
