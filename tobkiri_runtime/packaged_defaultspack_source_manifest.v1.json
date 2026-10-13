@@ -4067,8 +4067,8 @@
     {
       "path": "tobkiri_protocol/schemas/external_normal_pack_catalog_v4.schema.json",
       "type": "regular-file",
-      "size": 6280,
-      "sha256": "b7ca4ae44dab7cd38ed97e98c4b54764dbd03b9ebfb80cad3dbe70f95d7808f2",
+      "size": 6954,
+      "sha256": "e01163b2069c530db047f3b255eb258c5cceba6d91831188c9f430d602ef5266",
       "executable": false
     },
     {
