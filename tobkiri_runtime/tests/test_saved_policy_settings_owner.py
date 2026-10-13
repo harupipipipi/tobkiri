@@ -20,7 +20,9 @@ class _ReachedSettingsOwner(Exception):
     """Stop after the original finite settings capture guard has succeeded."""
 
 
-@pytest.mark.parametrize("failure", [None, "missing", "duplicate", "foreign"])
+@pytest.mark.parametrize(
+    "failure", [None, "missing", "duplicate", "foreign", "missing_python", "duplicate_python"]
+)
 def test_composer_resolves_canonical_settings_owner_and_preserves_guards(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None
 ) -> None:
@@ -40,9 +42,7 @@ def test_composer_resolves_canonical_settings_owner_and_preserves_guards(
         bindings[key] = NS(
             function=NS(function_id=function_id),
             principal_ref=NS(value=function_id),
-            operation=NS(
-                contract_id=key[0], operation_id=key[1], contract_version="1.0.0"
-            ),
+            operation=NS(contract_id=key[0], operation_id=key[1], contract_version="1.0.0"),
         )
     policy = bindings[
         ("tobkiri.action.host.approval-policy.v1", "host.action_approval_policy.select")
@@ -59,6 +59,16 @@ def test_composer_resolves_canonical_settings_owner_and_preserves_guards(
         )
         for e in profile["requested_edges"]
     ]
+    python_edge = next(
+        edge
+        for edge in edges
+        if edge.resolved_binding.operation.operation_id
+        == "rumi_default_tools_pack.python-sandbox-execute-operation"
+    )
+    if failure == "missing_python":
+        edges.remove(python_edge)
+    elif failure == "duplicate_python":
+        edges.append(python_edge)
     settings_binding = bindings[(settings.CONTRACT_ID, settings.OPERATION_ID)]
     contexts = {function_id: NS(provider_bindings=()) for function_id in functions}
     contexts[policy.function.function_id].provider_bindings = (policy,)
@@ -102,23 +112,15 @@ def test_composer_resolves_canonical_settings_owner_and_preserves_guards(
         original(*args, **kwargs)
         raise _ReachedSettingsOwner
 
-    monkeypatch.setattr(
-        settings, "build_reviewer_configuration_revision", observe_validated
-    )
-    kwargs = {
-        key: None for key in inspect.signature(compose_saved_tool_policy_v4).parameters
-    }
+    monkeypatch.setattr(settings, "build_reviewer_configuration_revision", observe_validated)
+    kwargs = {key: None for key in inspect.signature(compose_saved_tool_policy_v4).parameters}
     kwargs.update(
-        catalog=NS(
-            resolve_pinned=lambda contract, operation: bindings[(contract, operation)]
-        ),
+        catalog=NS(resolve_pinned=lambda contract, operation: bindings[(contract, operation)]),
         edges=edges,
         host_context=host_context,
         profile_id=profile["profile_id"],
         assert_current_capture=lambda: None,
     )
-    expected = (
-        _ReachedSettingsOwner if failure is None else (AuthorityDenied, PermissionError)
-    )
+    expected = _ReachedSettingsOwner if failure is None else (AuthorityDenied, PermissionError)
     with pytest.raises(expected):
         compose_saved_tool_policy_v4(**kwargs)

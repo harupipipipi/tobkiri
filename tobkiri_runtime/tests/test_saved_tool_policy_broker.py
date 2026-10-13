@@ -54,7 +54,7 @@ from tobkiri_host.ports import OpaqueInvocationLease
 from tobkiri_host.errors import ProviderExecutionError
 
 
-@pytest.mark.parametrize("tool_kind", ["read", "calculator"])
+@pytest.mark.parametrize("tool_kind", ["read", "calculator", "python"])
 @pytest.mark.parametrize(
     "mode,outcome",
     [
@@ -63,6 +63,7 @@ from tobkiri_host.errors import ProviderExecutionError
         ("full", "cancel"),
         ("full", "changed_args"),
         ("full", "restart"),
+        ("full", "missing_route"),
         ("agent", "unavailable"),
         ("agent", "approve"),
         ("agent", "review_error"),
@@ -70,16 +71,20 @@ from tobkiri_host.errors import ProviderExecutionError
     ],
 )
 def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode, outcome):
-    operation = (
-        "rumi_default_tools_pack.files-read-operation"
-        if tool_kind == "read"
-        else "rumi_default_tools_pack.calculator-evaluate"
-    )
-    function = (
-        "rumi_default_tools_pack.files-read"
-        if tool_kind == "read"
-        else "rumi_default_tools_pack.calculator"
-    )
+    operation, function = {
+        "read": (
+            "rumi_default_tools_pack.files-read-operation",
+            "rumi_default_tools_pack.files-read",
+        ),
+        "calculator": (
+            "rumi_default_tools_pack.calculator-evaluate",
+            "rumi_default_tools_pack.calculator",
+        ),
+        "python": (
+            mode_module.PYTHON_SANDBOX_OPERATION,
+            "rumi_default_tools_pack.python-sandbox-execute-tool",
+        ),
+    }[tool_kind]
     read = replace(_principal("c", operation=operation), function_id=function)
     executor = replace(
         _principal("d", operation="rumi_tool_local_executor_pack.tool-local-execute"),
@@ -222,7 +227,9 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
         return (
             (read_artifact, executor_artifact),
             (read_route,),
-            (
+            ()
+            if outcome == "missing_route"
+            else (
                 {
                     "contract": ask_fixture.READ_CONTRACT,
                     "operation": operation,
@@ -273,11 +280,24 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
         )
         parent_lease = OpaqueInvocationLease(authorized.lease_token.encode("ascii"))
         payload = {
-            "tool_id": "coding_file_read" if tool_kind == "read" else "calculator",
+            "tool_id": {
+                "read": "coding_file_read",
+                "calculator": "calculator",
+                "python": "python_sandbox_execute",
+            }[tool_kind],
             "tool_call_id": "call-1",
-            "arguments": (
-                {"path": "fixture.txt"} if tool_kind == "read" else {"expression": "2+3"}
-            ),
+            "arguments": {
+                "read": {"path": "fixture.txt"},
+                "calculator": {"expression": "2+3"},
+                "python": {
+                    "mode": "script",
+                    "script_path": "fixture.py",
+                    "arguments": [],
+                    "stdin": "",
+                    "cwd": ".",
+                    "timeout_seconds": 5,
+                },
+            }[tool_kind],
         }
         file = tmp_path / "fixture.txt"
         file.write_text("finite policy fixture")
@@ -315,6 +335,8 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                         "result": (
                             file.read_text()
                             if tool_kind == "read"
+                            else "sandbox adapter reached"
+                            if tool_kind == "python"
                             else calculate(envelope.payload["arguments"]["expression"])
                         )
                     }
@@ -449,9 +471,7 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
         def observed_prepared(*args: Any, **kwargs: Any) -> Any:
             """Retain the exact modeled scope while original policy dispatch runs."""
             request_context = args[1]
-            assert kwargs["inline_parent_scope"] is retained_scopes[
-                request_context.request_id
-            ]
+            assert kwargs["inline_parent_scope"] is retained_scopes[request_context.request_id]
             return original_invoke_prepared(*args, **kwargs)
 
         monkeypatch.setattr(broker, "invoke_prepared", observed_prepared)
@@ -485,7 +505,7 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
 
         workspace_registry = SavedWorkspaceExecutionRegistry()
         workspace_binding = None
-        if tool_kind == "read":
+        if tool_kind in {"read", "python"}:
             workspace_id = "policy-broker-workspace"
             mount_revision = 1
             root_stat = tmp_path.stat()
@@ -557,10 +577,13 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                 tool_broker.saved_workspace_binding = captured
                 return selected_gate(invocation, execution, payload)
 
+        expected_result = {
+            "read": "finite policy fixture",
+            "calculator": 5,
+            "python": "sandbox adapter reached",
+        }[tool_kind]
         if outcome in {"approve", "restart"}:
-            assert run_gate(gate) == {
-                "result": "finite policy fixture" if tool_kind == "read" else 5
-            }
+            assert run_gate(gate) == {"result": expected_result}
             assert effects == [operation]
             assert harness.store.get_grant("read-ordinary-grant") is not None
             reopened = mode_module.SavedToolApprovalExecution(
@@ -618,9 +641,7 @@ def test_real_selected_policy_nested_tool(tmp_path, monkeypatch, tool_kind, mode
                 with pytest.raises(PermissionError, match="already claimed"):
                     run_gate(restarted_gate)
                 payload["tool_call_id"] = "call-after-reload"
-                assert run_gate(restarted_gate) == {
-                    "result": "finite policy fixture" if tool_kind == "read" else 5
-                }
+                assert run_gate(restarted_gate) == {"result": expected_result}
                 assert effects == [operation, operation]
         else:
             with pytest.raises(

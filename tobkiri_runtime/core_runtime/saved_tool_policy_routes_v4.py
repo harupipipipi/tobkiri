@@ -5,14 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from core_runtime.authority.v4 import AuthorityScope, LeaseState
+from tobkiri_host.saved_tool_consent import PYTHON_SANDBOX_OPERATION
 
 LOCAL_EXECUTOR = "rumi_tool_local_executor_pack.tool-executor.local"
 COORDINATOR = "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
 FILE_TOOL = "rumi_default_tools_pack.file-create-tool"
+LOCAL_CONTRACT = "tobkiri.service.tool.local.operation.v1"
 LOCAL_OPERATIONS = frozenset(
     {
         "rumi_default_tools_pack.files-read-operation",
         "rumi_default_tools_pack.calculator-evaluate",
+        PYTHON_SANDBOX_OPERATION,
     }
 )
 INNER_CONTRACT = "tobkiri.service.file.create.v1"
@@ -22,7 +25,7 @@ INNER_OPERATION = "rumi_default_tools_pack.file-create"
 def finite_saved_policy_routes(
     invocation: Any, *, store: Any, edges: tuple, bindings: tuple, workspace_binding: Any
 ) -> tuple[dict[str, Any], ...]:
-    """Capture exact read/calculate and inner native file-create signed ceilings."""
+    """Capture exact read/calculate/Python and inner native file-create ceilings."""
     invocation.assert_current()
     parent, state = store.inspect_lease_token(invocation.envelope.lease.token.decode("ascii"))
     if state is not LeaseState.DISPATCHED:
@@ -38,7 +41,11 @@ def finite_saved_policy_routes(
     for edge in edges:
         binding = edge.resolved_binding
         operation = binding.operation
-        if edge.caller.function_id == LOCAL_EXECUTOR and operation.operation_id in LOCAL_OPERATIONS:
+        if (
+            edge.caller.function_id == LOCAL_EXECUTOR
+            and operation.contract_id == LOCAL_CONTRACT
+            and operation.operation_id in LOCAL_OPERATIONS
+        ):
             chain = local_chain
         elif edge.caller.function_id == COORDINATOR and (
             operation.contract_id,
@@ -79,7 +86,9 @@ def finite_saved_policy_routes(
                 "ceiling": scope.to_dict(),
             }
         )
-    if len(result) != 3:
+    if len(result) != len(LOCAL_OPERATIONS) + 1 or len(
+        {(route["contract"], route["operation"]) for route in result}
+    ) != len(result):
         raise PermissionError("native policy finite topology unavailable")
     invocation.assert_current()
     return tuple(result)

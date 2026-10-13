@@ -13,7 +13,11 @@ from core_runtime.saved_tool_policy_context_v4 import (
     assert_saved_native_policy_boundary,
 )
 from core_runtime.saved_tool_policy_roots_v4 import SavedToolPolicyRootsV4
-from core_runtime.saved_tool_policy_routes_v4 import finite_saved_policy_routes
+from core_runtime.saved_tool_policy_routes_v4 import (
+    LOCAL_CONTRACT,
+    LOCAL_OPERATIONS,
+    finite_saved_policy_routes,
+)
 from tobkiri_host.broker import PreparedInvocationSnapshot
 from tobkiri_host.models import RequestContext, OpaqueAuthorityRef
 from tobkiri_host.errors import HostCoreError
@@ -125,11 +129,8 @@ def compose_saved_tool_policy_v4(
         for edge in edges
         if (
             edge.caller.function_id == "rumi_tool_local_executor_pack.tool-executor.local"
-            and edge.resolved_binding.operation.operation_id
-            in {
-                "rumi_default_tools_pack.files-read-operation",
-                "rumi_default_tools_pack.calculator-evaluate",
-            }
+            and edge.resolved_binding.operation.contract_id == LOCAL_CONTRACT
+            and edge.resolved_binding.operation.operation_id in LOCAL_OPERATIONS
         )
         or (
             edge.caller.function_id
@@ -141,7 +142,15 @@ def compose_saved_tool_policy_v4(
             == ("tobkiri.service.file.create.v1", "rumi_default_tools_pack.file-create")
         )
     )
-    if len(finite_edges) != 3:
+    if len(finite_edges) != len(LOCAL_OPERATIONS) + 1 or len(
+        {
+            (
+                edge.resolved_binding.operation.contract_id,
+                edge.resolved_binding.operation.operation_id,
+            )
+            for edge in finite_edges
+        }
+    ) != len(finite_edges):
         raise AuthorityDenied("native policy finite operation topology unavailable")
     generate_binding = catalog.resolve_pinned(
         "tobkiri.service.ai.generate.v1", "rumi_ai_gateway_pack.ai-gateway.generate"
