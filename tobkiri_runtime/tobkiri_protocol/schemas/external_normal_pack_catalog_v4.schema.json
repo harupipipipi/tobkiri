@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.tobkiri.local/io.tobkiri/external-normal-pack-catalog.v4.schema.json",
-  "title": "Host-owned external Normal Pack catalog v4",
+  "title": "Host-owned signed external Pack revision catalog v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "entries", "journal", "signature"],
@@ -37,9 +37,9 @@
         "display_name": {"type": "string", "minLength": 1},
         "description": {"type": "string"},
         "version": {"type": "string", "minLength": 1},
-        "kind": {"enum": ["normal_sandbox", "application"]},
+        "kind": {"enum": ["normal_sandbox", "application", "host_extension"]},
         "artifact_digest": {"$ref": "#/$defs/digest"},
-        "authority": {"const": "host-signed-external-normal-v4"},
+        "authority": {"enum": ["host-signed-external-normal-v4", "host-signed-external-host-extension-v4"]},
         "approval_policy": {"const": "explicit"},
         "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "dependencies": {"type": "object"},
@@ -62,7 +62,24 @@
             "key_id": {"type": "string", "minLength": 1}
           }
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {"enum": ["normal_sandbox", "application"]},
+            "authority": {"const": "host-signed-external-normal-v4"},
+            "execution_boundary": {"enum": ["sandbox", "declarative_only"]}
+          }
+        },
+        {
+          "properties": {
+            "kind": {"const": "host_extension"},
+            "authority": {"const": "host-signed-external-host-extension-v4"},
+            "execution_boundary": {"const": "host_brokered"},
+            "workspace_boundary": {"const": "host_brokered"}
+          }
+        }
+      ]
     },
     "committed_entry": {
       "type": "object",

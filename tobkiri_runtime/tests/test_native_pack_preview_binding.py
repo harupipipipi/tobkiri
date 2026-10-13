@@ -102,3 +102,25 @@ def test_admission_rejects_unreviewed_identity_before_catalog_mutation(
     with pytest.raises(ExternalPackCatalogDenied, match="reviewed artifact"):
         admit_signed_external_pack(source, trust_store_path=policy, **arguments)
     assert not load_external_pack_catalog().records
+
+
+def test_unsigned_developer_record_cannot_ignore_reviewed_signature(
+    tmp_path: Path,
+) -> None:
+    """An optional exact-signature check cannot turn into an unsigned bypass."""
+    source = tmp_path / "pack"
+    source.mkdir()
+    (source / "operation.py").write_text("VALUE = 1\n")
+    policy = tmp_path / "publisher-trust.json"
+    with pytest.raises(ValueError, match="changed after native confirmation"):
+        write_host_install_record(
+            policy, pack_id="test.developer", install_path=source,
+            record={
+                "signature_required": False, "developer_mode": True,
+                "publisher_id": "", "key_id": "", "installed_version": "1.0.0",
+                "signed_manifest_path": "", "contract_versions": {},
+                "requested_capabilities": [],
+            },
+            expected_signed_manifest_digest="sha256:" + "0" * 64,
+        )
+    assert not policy.exists()
