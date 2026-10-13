@@ -232,6 +232,37 @@ def test_setup_reports_unavailable_development_shell_without_dropping_request() 
     }
 
 
+@pytest.mark.parametrize("install", [False, True])
+def test_setup_reports_definition_conflict_without_dropping_or_activating(
+    install: bool,
+) -> None:
+    """An unrelated saved edit stays rejected with an actionable HTTP result."""
+    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStoreConflict
+
+    handler = _Handler()
+    handler.path = "/api/setup/packs?include_source_additions=true"
+    with (
+        patch.object(profile_capture, "active_profile_exists", return_value=False),
+        patch.object(
+            SetupHandlersMixin,
+            "_setup_listing",
+            side_effect=ProfileDefinitionStoreConflict("private store diagnostic"),
+        ),
+        patch.object(profile_capture, "capture_bootstrap_profile") as capture,
+    ):
+        result = (
+            handler._setup_install_pack(_request())
+            if install else handler._setup_list_packs()
+        )
+
+    assert result["status_code"] == 409
+    assert result["state"] == "activation_denied"
+    assert result["write_set"] == []
+    assert "saved Profile has changed" in result["error"]
+    assert "private store diagnostic" not in result["error"]
+    capture.assert_not_called()
+
+
 def test_development_bundle_requires_exact_source_runtime_and_generated_artifacts(
     tmp_path: Path, monkeypatch,
 ) -> None:

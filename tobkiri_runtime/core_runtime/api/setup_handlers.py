@@ -32,7 +32,20 @@ class SetupHandlersMixin:
         runtime: Any,
         error: BaseException,
     ) -> Dict[str, Any] | None:
-        """Map an application Profile denial to the typed setup response."""
+        """Map rejected setup proposals without dropping the HTTP request."""
+
+        from ..profile_definition_store_v4 import ProfileDefinitionStoreConflict
+
+        if isinstance(error, ProfileDefinitionStoreConflict):
+            return {
+                "error": (
+                    "The saved Profile has changed since its active version. "
+                    "Review the saved Profile before activating it."
+                ),
+                "status_code": 409,
+                "state": "activation_denied",
+                "write_set": [],
+            }
 
         if not runtime.is_resolution_denied(error):
             return None
