@@ -549,13 +549,9 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
     from core_runtime import native_pack_onboarding
     from core_runtime.bootstrap.profile_capture import (
         capture_active_profile,
-        capture_profile,
-        host_profile_catalog,
-        prepare_profile_confirmation,
     )
     from core_runtime.external_pack_catalog_v4 import resolve_admitted_pack_root
     from core_runtime.panel_auth import PanelAuthManager
-    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
     from core_runtime.profile_pack_versions import (
         profile_pack_versions,
         select_profile_pack_version,
@@ -565,16 +561,13 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
     )
     from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
     from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+    from tobkiri_host.credential_store import host_credential_store_factory
     from tobkiri_host.errors import InvalidArtifactError
 
     user_data = tmp_path / "same-host-owner"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
-    capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    profile_id = "gateway-revision-profile"
-    definition = deepcopy(host_profile_catalog().profiles["defaults"])
-    definition.update(profile_id=profile_id, display_name="Gateway revision fixture")
-    ProfileDefinitionStore(user_data).create_profile(definition)
-    initial = capture_profile(profile_id, confirmation=prepare_profile_confirmation(profile_id))
+    initial = capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    profile_id = str(initial.resolved.profile["profile_id"])
     baseline_digest = next(
         row["artifact_digest"]
         for row in initial.resolved.lock["effective_set"]
@@ -637,6 +630,7 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
                 activation_snapshot_loader=defaultspack_activation_snapshot_loader,
                 runtime_surface_factory=create_runtime_surface_services,
                 panel_auth_manager=manager,
+                credential_store_factory=host_credential_store_factory,
             )
             sessions.append(session)
             return session
