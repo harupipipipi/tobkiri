@@ -8,6 +8,7 @@ from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding,
     HTTPContractRouteError as ContractRouteError,
     HTTPContractTarget,
+    contract_binding_map,
     resolve_contract_route,
 )
 
@@ -37,6 +38,73 @@ class _FakeHost:
 
 def _operation(method: str, target: str) -> str:
     return f"/api/contracts/defaultspack/{quote(f'{method} {target}', safe='')}"
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/runtime-surface/profiles"),
+        ("GET", "/api/runtime-surface/operation-status"),
+        ("POST", "/api/runtime-surface/profile-change/resolve"),
+        ("POST", "/api/runtime-surface/profile-change/review"),
+        ("POST", "/api/runtime-surface/profile-change/approve"),
+        ("POST", "/api/runtime-surface/profile-change/activate"),
+    ],
+)
+def test_host_profile_ceremony_resolves_before_application_execution(
+    method: str, path: str,
+) -> None:
+    """Real bootstrap bindings must pass the canonical namespace parser."""
+    from types import SimpleNamespace
+
+    from ecosystem.defaultspack.defaultspack.runtime_surface_targets import (
+        host_profile_control_bindings,
+    )
+
+    host = SimpleNamespace(
+        _contract_routes=contract_binding_map(host_profile_control_bindings())
+    )
+    resolved = resolve_contract_route(host, method, _operation(method, path))
+
+    assert resolved is not None
+    assert (resolved.method, resolved.path) == (method, path)
+    binding = host._contract_routes[(method, path)]
+    assert not any(
+        getattr(binding, field)
+        for field in ("profile_id", "profile_revision", "activation_id", "plan_digest")
+    )
+    with pytest.raises(ContractRouteError) as denied:
+        resolve_contract_route(
+            host,
+            method,
+            f"/api/contracts/other/{quote(f'{method} {path}', safe='')}",
+        )
+    assert denied.value.code == "CONTRACT_OPERATION_UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/runtime-surface/profile"),
+        ("GET", "/api/settings"),
+        ("POST", "/api/authority/approve"),
+    ],
+)
+def test_host_profile_namespace_does_not_expose_runtime_or_approval_routes(
+    method: str, path: str,
+) -> None:
+    from types import SimpleNamespace
+
+    from ecosystem.defaultspack.defaultspack.runtime_surface_targets import (
+        host_profile_control_bindings,
+    )
+
+    host = SimpleNamespace(
+        _contract_routes=contract_binding_map(host_profile_control_bindings())
+    )
+    with pytest.raises(ContractRouteError) as denied:
+        resolve_contract_route(host, method, _operation(method, path))
+    assert denied.value.code == "CONTRACT_OPERATION_UNKNOWN"
 
 
 def test_contract_operation_resolves_only_after_method_and_route_validation() -> None:

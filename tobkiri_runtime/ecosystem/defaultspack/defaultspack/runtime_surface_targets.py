@@ -72,6 +72,8 @@ def host_profile_control_bindings() -> tuple[HTTPContractBinding, ...]:
         HTTPContractBinding(
             method=method,
             path=path,
+            application_id="defaultspack",
+            route_namespace="defaultspack",
             presentation="broker_result",
             targets=(
                 HTTPContractTarget(
