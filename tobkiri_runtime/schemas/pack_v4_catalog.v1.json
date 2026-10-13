@@ -17786,7 +17786,7 @@
           "path": "runtime/adapter.py"
         },
         {
-          "digest": "sha256:cf31b8d3fbb883333edcc03df3b3d5344e10d97d80b478ef2e0693e2d10478f4",
+          "digest": "sha256:8e4ca629a368310bf781cda78065ba694216bc93e4b382e2648910522bd96078",
           "kind": "sidecar",
           "path": "runtime/streaming.py"
         }

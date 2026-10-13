@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:8a16477e07115745b822e575ed6aff38922c9bf7ce89d66e4df22dba80a452e3",
+  "source_identity": "sha256:9d41f447f57a1299eab7b50137cafc174c06612d94758e64965a8891f2185549",
   "variants": [
     {
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.embedding.python",
@@ -140,6 +140,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:b7560aa007eae605cd87e11e267d0abba5ff20e6b1283e665f20d2469d3f4fdf",
-  "catalog_digest": "sha256:deca815fda7158251bcc10a478969813ba6210abba084d04a923a40ccfc38ea4"
+  "materialization_catalog_digest": "sha256:1271c55d9fea2730bff9321af8a9c2cd6f5873caad43b4b5b4909138cf1ac234",
+  "catalog_digest": "sha256:b0820f49e816223a7ead7b4a53b5fa332b911e1000c9f6d7d9ceacff1b112ca6"
 }
