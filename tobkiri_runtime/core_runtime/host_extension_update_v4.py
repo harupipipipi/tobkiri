@@ -302,6 +302,16 @@ def _require_signed_identity(pack: _VerifiedPack, publisher_id: str) -> None:
         )
 
 
+def _json_structure(value: Any) -> Any:
+    """Normalize finite compiled inventories to the protocol JSON profile."""
+
+    if isinstance(value, Mapping):
+        return {key: _json_structure(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_structure(item) for item in value]
+    return value
+
+
 def _authority_closure(pack: _VerifiedPack) -> Mapping[str, Any]:
     manifest = pack.documents["pack.v4.json"]
     executable = pack.documents["executables.v4.json"]
@@ -327,7 +337,7 @@ def _authority_closure(pack: _VerifiedPack) -> Mapping[str, Any]:
             key=lambda item: item["path"],
         )
 
-    return {
+    closure = {
         "manifest": {
             key: manifest[key]
             for key in (
@@ -398,6 +408,7 @@ def _authority_closure(pack: _VerifiedPack) -> Mapping[str, Any]:
             for key, route in sorted(pack.compiled.routes.items())
         ],
     }
+    return _json_structure(closure)
 
 
 __all__ = [
