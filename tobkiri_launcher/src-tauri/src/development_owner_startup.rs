@@ -188,10 +188,10 @@ mod macos {
             .last()
             .context("Host root identity is missing")?
             .identity;
-        // Both the predecessor and this executable use the same mandatory
-        // single-instance identity. The retained inode lock also excludes
-        // cooperating continuation attempts; neither admits a parallel debug
-        // instance or substitutes a snapshot scan for that Native exclusion.
+        // The retained inode lock excludes cooperating continuation attempts.
+        // Tauri's single-instance plugin can fail open and is not ownership
+        // evidence: require stopped predecessor processes independently, and
+        // reject parallel debug mode before entering this review.
         let guard = acquire_owner_guard(&handles, state_identity)?;
         require_quiescent_owner(&state_root, &old_executable)?;
         let process = current_process(&new_executable, facts.new_native.sha256)?;

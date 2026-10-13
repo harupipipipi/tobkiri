@@ -141,8 +141,18 @@ mod macos {
         Ok(pids)
     }
 
-    fn candidate(path: &[u8], old_executable: &[u8]) -> bool {
+    fn native_launcher(path: &[u8], old_executable: &[u8]) -> bool {
         if path == old_executable {
+            return true;
+        }
+        path.rsplit(|byte| *byte == b'/')
+            .next()
+            .unwrap_or(path)
+            .eq_ignore_ascii_case(b"tobkiri-launcher")
+    }
+
+    fn candidate(path: &[u8], old_executable: &[u8]) -> bool {
+        if native_launcher(path, old_executable) {
             return true;
         }
         let name = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
@@ -150,7 +160,7 @@ mod macos {
         name.starts_with(b"python")
             || matches!(
                 name.as_slice(),
-                b"tobkiri-launcher" | b"tobkiri-packvm-vz-helper" | b"packvm-vz-helper"
+                b"tobkiri-packvm-vz-helper" | b"packvm-vz-helper"
             )
     }
 
@@ -309,13 +319,21 @@ mod macos {
         if !candidate(&path, old_executable) {
             return OwnerProcessState::Clear;
         }
-        let bytes = match args_and_environment(pid) {
-            Ok(bytes) => bytes,
-            Err(()) => return uncertain_unless_exited(pid),
-        };
-        let matches = match contains_owner_marker(&bytes.0, state_root, user_data) {
-            Ok(matches) => matches,
-            Err(()) => return uncertain_unless_exited(pid),
+        // An idle Native can keep its owner only in memory, and a preserved
+        // predecessor bundle can have a different path from the running app.
+        // Single-Native continuation therefore rejects any same-user Launcher,
+        // without requiring open owner files or command/environment markers.
+        let matches = if native_launcher(&path, old_executable) {
+            true
+        } else {
+            let bytes = match args_and_environment(pid) {
+                Ok(bytes) => bytes,
+                Err(()) => return uncertain_unless_exited(pid),
+            };
+            match contains_owner_marker(&bytes.0, state_root, user_data) {
+                Ok(matches) => matches,
+                Err(()) => return uncertain_unless_exited(pid),
+            }
         };
         let after = match process_identity(pid) {
             Ok(Some(identity)) => identity,
@@ -379,6 +397,29 @@ mod macos {
         use std::process::{Command, Stdio};
         use std::thread;
         use std::time::Duration;
+
+        #[test]
+        fn native_launcher_matches_selected_executable_and_other_bundle_paths() {
+            let selected = b"/backup/Developer.app/Contents/MacOS/tobkiri-launcher";
+            assert!(native_launcher(selected, selected));
+            assert!(native_launcher(
+                b"/Applications/Developer.app/Contents/MacOS/tobkiri-launcher",
+                selected
+            ));
+            assert!(native_launcher(
+                b"/selected/renamed-native",
+                b"/selected/renamed-native"
+            ));
+            assert!(!native_launcher(
+                b"/other/renamed-native",
+                b"/selected/renamed-native"
+            ));
+            assert!(!native_launcher(b"/usr/bin/python3", selected));
+            assert!(!native_launcher(
+                b"/helper/tobkiri-packvm-vz-helper",
+                selected
+            ));
+        }
 
         #[test]
         fn parser_rejects_truncated_and_invalid_kernel_arguments() {
@@ -518,6 +559,57 @@ mod macos {
                 .unwrap();
             thread::sleep(Duration::from_millis(100));
             inspect_disposable_child(&mut child, &root, &data, true);
+        }
+
+        #[test]
+        fn live_idle_native_at_other_bundle_path_is_busy_without_owner_markers() {
+            let fixture = std::env::temp_dir().join(format!(
+                "tobkiri-idle-native-test-{}-{}",
+                std::process::id(),
+                rand::random::<u64>()
+            ));
+            let executable = fixture.join("Original.app/Contents/MacOS/tobkiri-launcher");
+            std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+            std::fs::copy("/bin/sleep", &executable).unwrap();
+            let root = fixture.join("selected-host");
+            let data = root.join("user_data");
+            let selected = fixture.join("Preserved.app/Contents/MacOS/tobkiri-launcher");
+            let mut child = Command::new(&executable)
+                .arg("1")
+                .current_dir(&fixture)
+                .env_remove("RUMI_USER_DATA")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .stdin(Stdio::null())
+                .spawn()
+                .unwrap();
+            thread::sleep(Duration::from_millis(100));
+            assert_ne!(
+                process_path(child.id()).unwrap(),
+                selected.as_os_str().as_bytes()
+            );
+            assert_eq!(
+                inspect_one(
+                    child.id(),
+                    unsafe { libc::geteuid() },
+                    root.as_os_str().as_bytes(),
+                    data.as_os_str().as_bytes(),
+                    selected.as_os_str().as_bytes(),
+                ),
+                OwnerProcessState::Busy
+            );
+            child.wait().unwrap();
+            assert_eq!(
+                inspect_one(
+                    child.id(),
+                    unsafe { libc::geteuid() },
+                    root.as_os_str().as_bytes(),
+                    data.as_os_str().as_bytes(),
+                    selected.as_os_str().as_bytes(),
+                ),
+                OwnerProcessState::Clear
+            );
+            std::fs::remove_dir_all(fixture).unwrap();
         }
 
         fn inspect_disposable_child(
