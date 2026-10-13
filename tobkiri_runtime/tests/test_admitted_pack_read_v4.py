@@ -130,10 +130,10 @@ def test_bulk_read_preserves_bundled_jail_and_exact_artifact_checks(
     digest = compile_pack_root(root).artifact.digest
     with reads.verified_pack_root_read({pack_id: digest}) as reader:
         assert reader.resolve(pack_id) == root
-        with pytest.raises(PackBoundaryError, match="pin set"):
+        with pytest.raises(external.ExternalPackCatalogDenied, match="pin set"):
             reader.resolve("../outside")
     with reads.verified_pack_root_read({pack_id: "sha256:" + "f" * 64}) as reader:
-        with pytest.raises(PackBoundaryError, match="revision"):
+        with pytest.raises(external.ExternalPackCatalogDenied, match="revision"):
             reader.resolve(pack_id)
 
 
@@ -296,3 +296,83 @@ def test_read_callers_reject_final_catalog_drift_as_digest_mismatch(
         with pytest.raises(RuntimeSurfaceError) as denial:
             _validated_contract_catalogs(snapshot)
         assert denial.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+def test_contract_catalog_projection_cannot_skip_compiled_digest_mismatch(
+    admitted: dict,
+) -> None:
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        RuntimeSurfaceError,
+        RuntimeSurfaceErrorCode,
+        RuntimeSurfaceSnapshot,
+        _validated_contract_catalogs,
+    )
+
+    active = _raw_active(["rumi_ai_gateway_pack", "rumi_file_inspect_pack"])
+    active.resolved.lock["effective_set"][0]["artifact_digest"] = "sha256:" + "f" * 64
+    snapshot = RuntimeSurfaceSnapshot(
+        active=active, catalog=SimpleNamespace(packs=active.manifests)
+    )
+    with pytest.raises(RuntimeSurfaceError) as denial:
+        _validated_contract_catalogs(snapshot)
+    assert denial.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+def test_contract_catalog_projection_cannot_skip_failed_bundled_jail(
+    admitted: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        RuntimeSurfaceError,
+        RuntimeSurfaceErrorCode,
+        RuntimeSurfaceSnapshot,
+        _validated_contract_catalogs,
+    )
+
+    active = _raw_active(["rumi_ai_gateway_pack"])
+
+    def denied_root(pack_id):
+        raise PackBoundaryError("cataloged Pack root must not be a symlink")
+
+    monkeypatch.setattr(reads, "resolve_pack_root", denied_root)
+    snapshot = RuntimeSurfaceSnapshot(
+        active=active, catalog=SimpleNamespace(packs=active.manifests)
+    )
+    with pytest.raises(RuntimeSurfaceError) as denial:
+        _validated_contract_catalogs(snapshot)
+    assert denial.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+@pytest.mark.parametrize("kind", ["base", "shell", "application", "host_extension"])
+def test_contract_catalog_projection_skips_only_unmaterialized_bundle_kinds(
+    admitted: dict,
+    kind: str,
+) -> None:
+    from copy import deepcopy
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        RuntimeSurfaceError,
+        RuntimeSurfaceErrorCode,
+        RuntimeSurfaceSnapshot,
+        _validated_contract_catalogs,
+    )
+
+    pack_id = "bundle.only.fixture"
+    active = _raw_active(["rumi_ai_gateway_pack"])
+    manifest = deepcopy(active.manifests["rumi_ai_gateway_pack"])
+    manifest["pack"].update(id=pack_id, kind=kind)
+    active.manifests[pack_id] = manifest
+    active.resolved.lock["effective_set"].append(
+        {
+            "identity": pack_id,
+            "artifact_digest": manifest["pack"]["artifact_digest"],
+        }
+    )
+    snapshot = RuntimeSurfaceSnapshot(
+        active=active, catalog=SimpleNamespace(packs=active.manifests)
+    )
+    if kind == "host_extension":
+        with pytest.raises(RuntimeSurfaceError) as denial:
+            _validated_contract_catalogs(snapshot)
+        assert denial.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+    else:
+        assert set(_validated_contract_catalogs(snapshot)) == {"rumi_ai_gateway_pack"}

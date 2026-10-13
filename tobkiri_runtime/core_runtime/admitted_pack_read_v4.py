@@ -13,7 +13,7 @@ from .external_pack_catalog_v4 import (
     ExternalPackCatalogSnapshot,
     load_external_pack_catalog,
 )
-from .pack_boundary import PackBoundaryError, resolve_pack_root
+from .pack_boundary import PackBoundaryError, load_pack_catalog, resolve_pack_root
 
 
 def _compiled_digest(root: Path) -> str:
@@ -37,12 +37,21 @@ class VerifiedPackRootRead:
         if not self._active:
             raise ExternalPackCatalogDenied("Pack root read scope is closed")
         if pack_id not in self._pins:
-            raise PackBoundaryError("Pack is absent from the captured read pin set")
+            raise ExternalPackCatalogDenied("Pack is absent from the captured read pin set")
         root = self._snapshot.roots.get(pack_id)
         if root is None:
-            root = resolve_pack_root(pack_id)
+            try:
+                root = resolve_pack_root(pack_id)
+            except PackBoundaryError as error:
+                if pack_id not in load_pack_catalog():
+                    # A sealed bundle-only artifact has no canonical source
+                    # root. The caller must separately validate its kind.
+                    raise
+                raise ExternalPackCatalogDenied(
+                    "selected bundled Pack root is unavailable"
+                ) from error
             if _compiled_digest(root) != self._pins[pack_id]:
-                raise PackBoundaryError("selected bundled Pack revision is unavailable")
+                raise ExternalPackCatalogDenied("selected bundled Pack revision is unavailable")
         elif self._snapshot.entries[pack_id]["artifact_digest"] != self._pins[pack_id]:
             raise ExternalPackCatalogDenied("selected external Pack revision changed")
         metadata = root.lstat()

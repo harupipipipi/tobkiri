@@ -2769,11 +2769,16 @@ def _contract_catalogs_from_roots(
         try:
             root = resolve_root(pack_id)
             root_before = root.lstat()
-        except PackBoundaryError:
+        except PackBoundaryError as error:
             # Defaults bundle-only Base/Shell/Application artifacts do not have
             # a materialized Pack root. Their manifest declaration remains
             # visible, but no schema document is synthesized for it.
-            continue
+            if manifest["pack"]["kind"] in {"base", "shell", "application"}:
+                continue
+            raise RuntimeSurfaceError(
+                RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+                "selected Pack artifact root is unavailable",
+            ) from error
         except (OSError, RuntimeError, ValueError) as error:
             raise RuntimeSurfaceError(
                 RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
