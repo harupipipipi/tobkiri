@@ -1,4 +1,5 @@
 import { savedCodingContext, savedCodingContextAfterMutation } from "./lib/savedCodingContext";
+import { assertSavedProjectSendSupported } from "./lib/savedProjectSendPreflight";
 import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
@@ -8290,10 +8291,13 @@ export function ChatApp() {
 
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
-      if (pendingNewTaskContext?.workspaceBindings?.length
-        || activeContextForSubmit.workspaceBindings?.length) {
-        throw new Error("作業フォルダを1つ選んでから送信してください。");
-      }
+      assertSavedProjectSendSupported({
+        projectId: groupIdForSubmit,
+        pendingWorkspaceBindings: pendingNewTaskContext?.workspaceBindings,
+        conversationWorkspaceBindings: activeConversation?.metadata?.workspace_bindings
+          ?? activeConversation?.metadata?.workspaceBindings
+          ?? activeContextForSubmit.workspaceBindings,
+      });
       const canonicalCodingContext = savedCodingContext({
         coding: isCodingWorkspaceSubmit,
         workspaceId: workspaceIdForSubmit,

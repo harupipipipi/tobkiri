@@ -1,9 +1,62 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { savedCodingContext, savedCodingContextAfterMutation } from "./savedCodingContext";
+import { assertSavedProjectSendSupported } from "./savedProjectSendPreflight";
 import { ConversationMutationBarrier } from "./conversationMutationBarrier";
 import { dispatchCodingWorkspaceSelection } from "../components/coding/CodingCockpit";
 const base = { coding: true, workspaceId: "workspace.one", pending: null, conversation: null };
+
+test("single-folder Project send explains the unsupported membership without changing it", () => {
+  const binding = Object.freeze({ workspaceId: "workspace.one", workspaceLabel: "Work", workspaceRoot: "/display/only" });
+  const project = Object.freeze({ groupId: "project.one", workspaceId: "workspace.one", workspaceBindings: Object.freeze([binding]) });
+  assert.throws(() => assertSavedProjectSendSupported({
+    projectId: project.groupId,
+    pendingWorkspaceBindings: project.workspaceBindings,
+  }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /作業フォルダが1つでも未対応/);
+    assert.match(error.message, /新しい会話でProjectを「No project」/);
+    assert.match(error.message, /実行モードを「Coding」/);
+    assert.match(error.message, /実行モードを手動選択できるようにする/);
+    return true;
+  });
+  assert.equal(project.groupId, "project.one");
+  assert.equal(project.workspaceBindings[0], binding);
+});
+
+test("existing Project membership stays blocked even without workspace bindings", () => {
+  assert.throws(() => assertSavedProjectSendSupported({ projectId: "project.one" }), /Projectやグループ/);
+});
+
+test("multiple-root Project metadata cannot reach conversation creation or saved send", () => {
+  for (const source of ["pendingWorkspaceBindings", "conversationWorkspaceBindings"] as const) {
+    let ownerWrites = 0;
+    assert.throws(() => {
+      assertSavedProjectSendSupported({ [source]: [
+        { workspaceId: "workspace.one", workspaceRoot: "/work/one", workspaceLabel: "One" },
+        { workspaceId: "workspace.two", workspaceRoot: "/work/two", workspaceLabel: "Two" },
+      ] });
+      ownerWrites += 1;
+    }, /複数の作業フォルダ/);
+    assert.equal(ownerWrites, 0);
+  }
+});
+
+test("malformed and orphaned Project bindings stay rejected", () => {
+  for (const value of [false, 0, "legacy", {}, [], [null], [{ workspaceId: "workspace.one" }]]) {
+    for (const source of ["pendingWorkspaceBindings", "conversationWorkspaceBindings"] as const) {
+      assert.throws(() => assertSavedProjectSendSupported({ [source]: value }), /作業フォルダ設定/);
+    }
+  }
+});
+
+test("No project and one canonical Coding workspace keep the exact saved context", () => {
+  assertSavedProjectSendSupported({ projectId: null });
+  assert.deepEqual(savedCodingContext({ ...base, pending: {
+    workspaceId: "workspace.one", workspaceLabel: "Work", workspaceRoot: "/display/only",
+  } }), { mode: "coding", workspace_id: "workspace.one" });
+});
+
 test("normal coding-workspace picker creates exact saved coding context", () => {
   assert.deepEqual(savedCodingContext(base), {mode:"coding",workspace_id:"workspace.one"});
   assert.deepEqual(savedCodingContext({...base,pending:{workspaceId:"workspace.one"}}),
