@@ -114,6 +114,65 @@ def test_block_permission_removes_candidate_but_confirm_remains_selectable():
     assert decision.permission_summary["confirm"] >= 1
 
 
+def test_explicit_coding_activity_selects_sandbox_tools_and_keeps_permissions():
+    from domain.capability.activity_registry import ActivityRegistry
+    from domain.chat.tool_selection_service import ToolSelectionService
+
+    sandbox_tool_ids = [
+        "sandbox_file_read",
+        "sandbox_file_write",
+        "sandbox_file_patch",
+        "sandbox_diff_preview",
+        "sandbox_terminal_exec",
+    ]
+    tools = [
+        {
+            "tool_id": tool_id,
+            "name": tool_id,
+            "summary": tool_id,
+            "action_type": (
+                "execute" if tool_id.endswith("terminal_exec") else "read"
+            ),
+            "risk": "high" if tool_id.endswith("terminal_exec") else "low",
+        }
+        for tool_id in [
+            "coding_file_create",
+            *sandbox_tool_ids,
+            "sandbox_artifact_export",
+        ]
+    ]
+    expansion = ActivityRegistry().expand(["coding"], tools)
+    service = ToolSelectionService(
+        settings={
+            "tools": {
+                "selection_strategy": "all_schemas",
+                "tool_permission_overrides": {"sandbox_file_patch": "block"},
+            }
+        }
+    )
+
+    decision = service.select(
+        "@coding create a small workspace file and inspect the sandbox tools",
+        tools,
+        selection=_selection(mode="auto", strategy="all_schemas"),
+        context={"principal_capabilities": ["developer"]},
+    )
+    selected_ids = {tool["tool_id"] for tool in decision.selected_tools}
+
+    assert set(sandbox_tool_ids).issubset(expansion["tool_ids"])
+    assert "sandbox_artifact_export" not in expansion["tool_ids"]
+    assert "coding_file_create" in selected_ids
+    expected_selectable = {
+        "sandbox_file_read",
+        "sandbox_file_write",
+        "sandbox_diff_preview",
+        "sandbox_terminal_exec",
+    }
+    assert expected_selectable.issubset(selected_ids)
+    assert "sandbox_file_patch" not in selected_ids
+    assert "sandbox_artifact_export" not in selected_ids
+
+
 def test_computer_tool_requires_explicit_intent():
     from domain.chat.tool_selection_service import ToolSelectionService
 

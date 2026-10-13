@@ -6,8 +6,8 @@
   "version": "1.0.0",
   "display_name": {"ja": "Coding", "en": "Coding"},
   "description": {
-    "ja": "コード、ファイル、Terminal、Gitを扱います。",
-    "en": "Work with code, files, terminals, and Git."
+    "ja": "Hostワークスペースのファイル、Terminal、Gitを扱います。隔離サンドボックスのステージングや確認には専用ツールを使います。Hostとサンドボックスは別の実行環境です。",
+    "en": "Work with files, terminals, and Git in the Host workspace. Use separate tools to stage and inspect an isolated sandbox; Host and sandbox are distinct workspaces."
   },
   "aliases": ["code", "developer", "programming", "コーディング", "開発"],
   "members": {
@@ -24,7 +24,12 @@
       "coding_git_status",
       "coding_git_diff",
       "coding_git_commit",
-      "coding_git_push"
+      "coding_git_push",
+      "sandbox_file_read",
+      "sandbox_file_write",
+      "sandbox_file_patch",
+      "sandbox_diff_preview",
+      "sandbox_terminal_exec"
     ],
     "tool_tags": ["activity:coding"],
     "skills": {"required": [], "optional": [], "safety": []}

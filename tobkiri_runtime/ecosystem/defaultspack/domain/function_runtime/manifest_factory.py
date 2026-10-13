@@ -391,6 +391,7 @@ def _sandbox_input_schema(
         "additionalProperties": False,
         "properties": {
             "workspace_id": {"type": "string"},
+            "sandbox_id": {"type": "string", "minLength": 1},
             "include_paths": {"type": "array", "items": {"type": "string"}},
             **properties,
         },
@@ -406,6 +407,10 @@ SANDBOX_TERMINAL_INPUT_SCHEMA = _sandbox_input_schema(
     {
         "command": {"type": "string"},
         "argv": {"type": "array", "items": {"type": "string"}},
+        "image": {
+            "type": "string",
+            "pattern": "^[^\\s@]+@sha256:[a-f0-9]{64}$",
+        },
         "cwd": {"type": "string"},
         "timeout": {"type": "integer", "minimum": 1, "maximum": 120},
         "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 120},
@@ -413,6 +418,7 @@ SANDBOX_TERMINAL_INPUT_SCHEMA = _sandbox_input_schema(
         "network": {"type": "boolean"},
         "network_enabled": {"type": "boolean"},
     },
+    required=("sandbox_id", "image"),
     any_of=({"required": ["command"]}, {"required": ["argv"]}),
 )
 SANDBOX_FILE_READ_INPUT_SCHEMA = _sandbox_input_schema(
@@ -430,7 +436,7 @@ SANDBOX_FILE_WRITE_INPUT_SCHEMA = _sandbox_input_schema(
         "path": {"type": "string"},
         "content": {"type": "string"},
     },
-    required=("path", "content"),
+    required=("sandbox_id", "path", "content"),
 )
 SANDBOX_FILE_PATCH_INPUT_SCHEMA = _sandbox_input_schema(
     {
@@ -438,7 +444,7 @@ SANDBOX_FILE_PATCH_INPUT_SCHEMA = _sandbox_input_schema(
         "old": {"type": "string"},
         "new": {"type": "string"},
     },
-    required=("path", "old", "new"),
+    required=("sandbox_id", "path", "old", "new"),
 )
 SANDBOX_DIFF_INPUT_SCHEMA = _sandbox_input_schema(
     {

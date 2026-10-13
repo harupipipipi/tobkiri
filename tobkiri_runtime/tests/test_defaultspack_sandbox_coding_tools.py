@@ -285,7 +285,7 @@ def test_untrusted_manifest_with_sandbox_capability_is_loadable():
     assert is_sandbox_capability_tool(tool) is True
 
 
-def test_public_sandbox_tool_schemas_do_not_expose_host_boundary_inputs():
+def test_public_sandbox_tool_schemas_expose_only_sandbox_boundary_inputs():
     import json
 
     tools_root = ROOT / "ecosystem" / "rumi_default_tools_pack" / "tools"
@@ -303,8 +303,8 @@ def test_public_sandbox_tool_schemas_do_not_expose_host_boundary_inputs():
 
         assert parameters["additionalProperties"] is False
         assert "workspace_id" in properties
+        assert "sandbox_id" in properties
         assert "workspace_root" not in properties
-        assert "sandbox_id" not in properties
         assert "lima_instance" not in properties
 
     terminal_properties = json.loads(
@@ -312,6 +312,78 @@ def test_public_sandbox_tool_schemas_do_not_expose_host_boundary_inputs():
     )["config"]["schema"]["parameters"]["properties"]
     assert "network" in terminal_properties
     assert "network_enabled" in terminal_properties
+
+
+def test_prepared_sandbox_id_is_schema_valid_for_followup_and_exec_is_pinned(
+    tmp_path,
+):
+    from jsonschema import Draft202012Validator, ValidationError
+
+    from blocks.coding import (
+        sandbox_diff_preview,
+        sandbox_file_write,
+        sandbox_terminal_exec,
+    )
+    from domain.coding.sandbox_workspace import SandboxWorkspaceManager
+
+    tools_root = ROOT / "ecosystem" / "rumi_default_tools_pack" / "tools"
+
+    def validator(tool_id):
+        manifest = json.loads(
+            (tools_root / tool_id / "manifest.json").read_text(encoding="utf-8")
+        )
+        return Draft202012Validator(manifest["config"]["schema"]["parameters"])
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "followup.txt").write_text("before\n", encoding="utf-8")
+    manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
+    context = _sandbox_context(manager, workspace)
+    prepare_request = {"workspace_id": context["workspace_id"]}
+    validator("sandbox_diff_preview").validate(prepare_request)
+
+    prepared = sandbox_diff_preview.run(prepare_request, context)
+    assert prepared["status"] == "ok", prepared
+    sandbox_id = prepared["data"]["sandbox_id"]
+
+    write_request = {
+        "sandbox_id": sandbox_id,
+        "path": "followup.txt",
+        "content": "prepared sandbox\n",
+    }
+    validator("sandbox_file_write").validate(write_request)
+    result = sandbox_file_write.run(write_request, context)
+    assert result["status"] == "ok", result
+
+    invalid_id_request = {**write_request, "sandbox_id": "unknown-sandbox"}
+    validator("sandbox_file_write").validate(invalid_id_request)
+    invalid_id_result = sandbox_file_write.run(invalid_id_request, context)
+    assert invalid_id_result["status"] == "error"
+    assert "unknown" in invalid_id_result["error"]["message"]
+
+    exec_validator = validator("sandbox_terminal_exec")
+    exec_request = {
+        "sandbox_id": sandbox_id,
+        "image": _PINNED_TEST_IMAGE,
+        "argv": ["true"],
+    }
+    exec_validator.validate(exec_request)
+    with pytest.raises(ValidationError):
+        exec_validator.validate({**exec_request, "image": "fixture/runtime:latest"})
+    with pytest.raises(ValidationError):
+        exec_validator.validate(
+            {
+                key: value
+                for key, value in exec_request.items()
+                if key != "sandbox_id"
+            }
+        )
+
+    invalid_exec_id_result = sandbox_terminal_exec.run(
+        {**exec_request, "sandbox_id": "unknown-sandbox"}, context
+    )
+    assert invalid_exec_id_result["status"] == "error"
+    assert "unknown" in invalid_exec_id_result["error"]["message"]
 
 
 def test_sandbox_file_write_changes_only_staged_workspace(tmp_path):
