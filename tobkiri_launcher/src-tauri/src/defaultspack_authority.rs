@@ -21,6 +21,9 @@ use sha2::{Digest, Sha256};
 #[path = "packaging_toolchain.rs"]
 mod packaging_toolchain;
 
+#[path = "deferred_gateway_successor.rs"]
+mod deferred_gateway_successor;
+
 use crate::config::AppConfig;
 
 const DEFAULT_PROFILE_API_VERSION: &str = "io.tobkiri.profile.v5";
@@ -95,7 +98,7 @@ pub(crate) struct ApplicationAuthority {
     pub shell_provider_id: String,
     pub application_id: String,
     pub launch_contribution: Option<RuntimeLaunchContribution>,
-    /// Exact active Normal Pack pins whose trust is checked by the Host.
+    /// Exact active external Pack pins whose trust is checked by the Host.
     /// These are NOT signed-bundle-verified artifacts or system Pack authority.
     pub deferred_external_packs: BTreeMap<String, String>,
 }
@@ -1622,6 +1625,39 @@ fn validate_profile_pack_closure(
                 .and_then(|item| value_str(item, "/artifact_digest"))
         };
         if let Some(expected) = expected_artifact_digest {
+            let protected = pack_id == selected.base_pack_id
+                || pack_id == selected.shell_pack_id
+                || pack_id == selected.application_pack_id
+                || selected
+                    .launch_contribution
+                    .as_ref()
+                    .is_some_and(|launch| launch.provider_id == pack_id)
+                || catalog
+                    .base_packs
+                    .iter()
+                    .any(|base| base.backend_provider_ids.contains(&pack_id));
+            if let Some(digest) = deferred_gateway_successor::deferred_identity(
+                &deferred_gateway_successor::ActiveSelection {
+                    profile: &selected.profile,
+                    lock: selected.lock.as_ref(),
+                    plan: selected.plan.as_ref(),
+                    profile_revision: selected.profile_revision.as_deref(),
+                    activation_id: selected.activation_id.as_deref(),
+                    plan_digest: selected.plan_digest.as_deref(),
+                    lock_digest: selected.lock_digest.as_deref(),
+                },
+                &pack_id,
+                expected,
+                &pack,
+                catalog
+                    .source_manifest_digests
+                    .get(&pack_id)
+                    .map(String::as_str),
+                protected,
+            ) {
+                deferred.insert(pack_id, digest);
+                continue;
+            }
             validate_selected_pack_artifact_digest(
                 expected,
                 value_str(&pack, "/pack/artifact_digest"),
@@ -5979,6 +6015,141 @@ mod external_pack_restart_tests {
             pack["pack"]["artifact_digest"] = Value::String(digest('a'));
             fs::write(root.join(relative), serde_json::to_vec(&pack).unwrap()).unwrap();
         }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn catalogued_gateway_successor_defers_only_after_bundled_predecessor_checks() {
+        const GATEWAY: &str = "rumi_ai_gateway_pack";
+        let predecessor: Value = serde_json::from_str(include_str!(
+            "../../../tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json"
+        ))
+        .unwrap();
+        let mut candidate = selected(true);
+        candidate.pack_ids.remove(EXTERNAL_PACK);
+        candidate.pack_ids.insert(GATEWAY.into());
+        candidate.profile["packs"][1]["pack_id"] = serde_json::json!(GATEWAY);
+        let revision = candidate.profile_revision.clone().unwrap();
+        let plan_digest = candidate.plan_digest.clone().unwrap();
+        let lock_digest = candidate.lock_digest.clone().unwrap();
+        let lock = candidate.lock.as_mut().unwrap();
+        lock["profile_revision"] = serde_json::json!(revision);
+        lock["plan_digest"] = serde_json::json!(plan_digest);
+        lock["lock_digest"] = serde_json::json!(lock_digest);
+        lock["effective_set"][0]["identity"] = serde_json::json!(GATEWAY);
+        let variant = serde_json::json!({
+            "pack_id": GATEWAY, "artifact_digest": digest('a'),
+            "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
+            "execution_kind": "host_extension", "domain_kind": "dedicated_process",
+            "backend": "tobkiri.python-host-v4", "runtime_abi": "python3.13",
+            "platform": "any", "architecture": "any", "executable_catalog_digest": digest('e')
+        });
+        lock["variant_pins"] = serde_json::json!([variant.clone()]);
+        let plan = candidate.plan.as_mut().unwrap();
+        plan["profile_revision"] = serde_json::json!(revision);
+        plan["plan_digest"] = serde_json::json!(plan_digest);
+        plan["effective_set"][0]["identity"] = serde_json::json!(GATEWAY);
+        let mut binding = variant;
+        binding["operation_id"] = serde_json::json!("rumi_ai_gateway_pack.ai-gateway.generate");
+        binding["function_principal"] = serde_json::json!({
+            "parent_artifact_digest": digest('a'), "function_implementation_digest": digest('f'),
+            "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+            "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+            "contract_revision_digest": predecessor["functions"][0]["contract_revision_digest"]
+        });
+        plan["bindings"] = serde_json::json!([binding]);
+
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-gateway-successor-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let mut signed_catalog = catalog();
+        signed_catalog.source_manifest_digests.clear();
+        let mut lock = VerifiedBundleLock {
+            pack_paths: BTreeMap::new(),
+            authority_digests: BTreeMap::new(),
+            sidecar_digests: BTreeMap::new(),
+            authority_roles: BTreeMap::new(),
+        };
+        for id in [
+            &candidate.base_pack_id,
+            &candidate.shell_pack_id,
+            &candidate.application_pack_id,
+        ] {
+            let relative = format!("{id}.pack.v4.json");
+            fs::write(
+                root.join(&relative),
+                serde_json::to_vec(&serde_json::json!({
+                    "pack_api_version": "io.tobkiri.pack.v4",
+                    "pack": {"id": id, "artifact_digest": digest('a')},
+                    "migration": {"compatibility": "none"}
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            lock.pack_paths.insert(id.clone(), relative);
+        }
+        let relative = "gateway.pack.v4.json";
+        let raw = serde_json::to_vec(&predecessor).unwrap();
+        fs::write(root.join(relative), &raw).unwrap();
+        lock.pack_paths.insert(GATEWAY.into(), relative.into());
+        lock.authority_digests.insert(relative.into(), sha256(&raw));
+        signed_catalog
+            .source_manifest_digests
+            .insert(GATEWAY.into(), sha256(&raw));
+        assert_eq!(
+            validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                .unwrap(),
+            BTreeMap::from([(GATEWAY.into(), digest('a'))])
+        );
+
+        let original = candidate.lock.as_ref().unwrap()["variant_pins"][0].clone();
+        candidate.lock.as_mut().unwrap()["variant_pins"][0]["artifact_digest"] =
+            serde_json::json!(digest('9'));
+        assert!(
+            validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                .unwrap_err()
+                .downcast_ref::<ProfileReresolutionRequired>()
+                .is_some()
+        );
+        candidate.lock.as_mut().unwrap()["variant_pins"][0] = original;
+        let mut protected_catalog = signed_catalog.clone();
+        protected_catalog.base_packs[0]
+            .backend_provider_ids
+            .push(GATEWAY.into());
+        assert!(
+            validate_profile_pack_closure(&candidate, &protected_catalog, &root, &lock, false)
+                .unwrap_err()
+                .downcast_ref::<ProfileReresolutionRequired>()
+                .is_some()
+        );
+
+        lock.authority_digests.insert(relative.into(), digest('9'));
+        assert!(
+            validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                .unwrap_err()
+                .to_string()
+                .contains("source digest differs from the signed catalog")
+        );
+        lock.authority_digests.insert(relative.into(), sha256(&raw));
+        let mut wrong_predecessor = predecessor;
+        wrong_predecessor["pack"]["id"] = serde_json::json!("other.extension");
+        fs::write(
+            root.join(relative),
+            serde_json::to_vec(&wrong_predecessor).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            validate_profile_pack_closure(&candidate, &signed_catalog, &root, &lock, false)
+                .unwrap_err()
+                .to_string()
+                .contains("identity is inconsistent")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
