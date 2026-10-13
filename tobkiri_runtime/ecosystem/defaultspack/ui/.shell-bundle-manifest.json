@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "90a4e9d03333d2b462645c287e32be1cce39efbe116007a5bb5edf7ae8d2864f",
+    "digest": "0f9e6557e25b6b614962aa444e259426d01b385b95b7ed609a0df2214d456890",
     "entries": [
       {
         "path": "index.html",
@@ -895,8 +895,8 @@
       },
       {
         "path": "src/features/apiKeys/ProviderModelAccessSettings.tsx",
-        "size": 16786,
-        "sha256": "06b046538d307ac2f33b0a72c4e1179e255979b1202f3d5f35981261e51f41cd"
+        "size": 16535,
+        "sha256": "07629b13fcb1eada769bd505938d86586d3c0cf489f8df151c963e16e18b30c4"
       },
       {
         "path": "src/features/apiKeys/apiKeySetup.test.ts",
@@ -915,13 +915,13 @@
       },
       {
         "path": "src/features/apiKeys/modelAccessDisclosure.test.ts",
-        "size": 1653,
-        "sha256": "15b290e16d199caf2c88c09664bb428e6b4cd313e039a7b2385fda9eeacd5601"
+        "size": 2311,
+        "sha256": "79d6e5ae1279a2581babbb042e433a2d098c877d7c210bd8d15fd3c3ec787f93"
       },
       {
         "path": "src/features/apiKeys/modelAccessDisclosure.ts",
-        "size": 1006,
-        "sha256": "7f2cc19c8408292d8b042ee6b4ea097ad3b3c51c3de53724588b0bd83c8ebbd0"
+        "size": 1521,
+        "sha256": "6a9c4a4f5e42499f5e75cd32dd474c858b529abab07019674cf9bc4365fcaea6"
       },
       {
         "path": "src/features/apiKeys/modelAccessPolicy.test.tsx",
@@ -1080,8 +1080,8 @@
       },
       {
         "path": "src/features/models/ModelRouteSetup.tsx",
-        "size": 19909,
-        "sha256": "66ec61351f20cd0e43e547237505640050b1b2276d0b0e2946fe4fb0376471a7"
+        "size": 20711,
+        "sha256": "8f907d42bbbbf04dabd46876e2fd2612375b1dd0457d255e51c98ad8693dd189"
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
@@ -1135,8 +1135,8 @@
       },
       {
         "path": "src/features/models/modelSelect.test.ts",
-        "size": 19223,
-        "sha256": "0d6dd2bf2e377bf2436ddc177505865ad917fb7eaeb11b1940569a4cee7eec44"
+        "size": 19277,
+        "sha256": "d99808cc308dba814d86ee33aff9b490cf7e8f732bd2051393d510759eacd15a"
       },
       {
         "path": "src/features/models/modelSelect.ts",
@@ -2780,8 +2780,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.test.tsx",
-        "size": 81445,
-        "sha256": "7b39132bc4e9a5f19c21337fe34e2b41e5bcb593d9644436bdcee94f839ddfa9"
+        "size": 81499,
+        "sha256": "77b36af2210912d3b3a67adecf1739e35b7c2d2b31869ee2895c43f979881bae"
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
@@ -2860,13 +2860,13 @@
       },
       {
         "path": "src/renderers/settings/renderers/apiKeySetupField.test.ts",
-        "size": 610,
-        "sha256": "3922f09bf68775ae6355cc45028a5307dbd15d66857f526df9c3d1998bafb2c1"
+        "size": 1267,
+        "sha256": "7ddc0ec331b21b399683bb075c93d0660b96341c74a816b7442681c94d0c7ba7"
       },
       {
         "path": "src/renderers/settings/renderers/apiKeySetupField.tsx",
-        "size": 18719,
-        "sha256": "1a9a56d552cea787cc289879a5279a8e97e9f0cd62e9aa78c6b611735ad16654"
+        "size": 19059,
+        "sha256": "0b62cb4d213dde518a88c2642ac60a37c7b7e4b186eae0a1974ef672c84bbe75"
       },
       {
         "path": "src/renderers/settings/renderers/mcpServersField.tsx",
@@ -3046,7 +3046,7 @@
     ]
   },
   "bundle": {
-    "digest": "eb957f84050490274d651b2c09382c76093e5f50fe8c3494e3e7354c59478490",
+    "digest": "6da799d53e55253f6d5bb464ce08b7c94d4c90ef3e862cb119a55940a3676f3d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3060,8 +3060,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2678913,
-        "sha256": "0d94bd7a80c6c97e01759aec11a08e6c4e27fc8b0d609bf082c51ab979e13748"
+        "size": 2679245,
+        "sha256": "1628208e453f172b8895e0f7b67990f5dca1f9f5ad4da2cef6f6dd466d850d54"
       },
       {
         "path": "shell-icons.js",

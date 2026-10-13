@@ -921,6 +921,9 @@ Open **Settings → Models** and add an API connection by choosing a provider
 and saving its API name and key. The connection URL and protocol are preset.
 Existing connections stay visible; the form for adding another connection
 can be expanded when needed.
+While saved connections load, the selector shows **接続を確認中…** and the new-key
+form stays collapsed. A failed lookup is reported separately from a successful
+lookup with no connections.
 
 Under **チャットで使うモデル** (chat model), select the connection, search for a model, set the output
 token limit, and choose **このモデルを使う** (use this model). Model IDs and route IDs are filled
@@ -930,6 +933,9 @@ the intended model-access policy for a new connection. Saving a key,
 model-access policy, or model selection does not send a paid test request.
 Provider and Native approval restrictions still apply to saved models; model
 selection does not expand a credential's approved generation scope.
+An existing connection without an additional model-access policy shows
+**既存の許可設定を使用**; Provider, Profile, and Native restrictions still apply.
+An explicitly saved policy with zero models continues to deny every model.
 The provider catalog is shipped as JSON, including the complete OpenRouter
 public model inventory captured during refresh. See
 [AI providers](docs/ai-providers.md) for source, license and refresh details.
