@@ -6,7 +6,7 @@
       "path": "domain/tool/calculator.py"
     },
     {
-      "digest": "sha256:b7563ff1fabaef5edcc4c1abaf1de02dc8a3dd9c75a2e556e66468c7ae727055",
+      "digest": "sha256:bf01dfe758e0005888c693db0ac1329a55f895255d51f48e3d325b36b4406829",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -171,32 +171,32 @@
       "path": "tools/rumi_api/manifest.json"
     },
     {
-      "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+      "digest": "sha256:a4ca3ffbb5d9d5982cce81e7285245954e4666547a5e0d019e6e284ada674005",
       "kind": "sidecar",
       "path": "tools/sandbox_artifact_export/manifest.json"
     },
     {
-      "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+      "digest": "sha256:4e9d61ca18708fe1f61e22c4eeb1bec540b2a177b76f6a7472282e26fc0ed2d7",
       "kind": "sidecar",
       "path": "tools/sandbox_diff_preview/manifest.json"
     },
     {
-      "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+      "digest": "sha256:5840f6f4035251eee24e340a42ed864ab2e08ee4c55cbc70251285a61a8cb473",
       "kind": "sidecar",
       "path": "tools/sandbox_file_patch/manifest.json"
     },
     {
-      "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+      "digest": "sha256:2dda7eec6cb80d187ef53c7b18b61ac1ee7b51ec504599cf62eac66226c47459",
       "kind": "sidecar",
       "path": "tools/sandbox_file_read/manifest.json"
     },
     {
-      "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+      "digest": "sha256:709c031750db1dfc838fed4b0317a5f13c55301fd8fed0cbad8404d3787e3533",
       "kind": "sidecar",
       "path": "tools/sandbox_file_write/manifest.json"
     },
     {
-      "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+      "digest": "sha256:95f53cca18effc46e464ca48ff2cd91820cecc9908c74e87a7d71aa44e2e2d37",
       "kind": "sidecar",
       "path": "tools/sandbox_terminal_exec/manifest.json"
     },
@@ -349,9 +349,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:01d498e4cf5667aaf8e2622048482d82477ed6df761b603b59825ffe9dacb35a",
-    "contract_catalog_digest": "sha256:700fd624bf8441f2c2699ebbb4cc4fc3ed071134b5bb379e700a414a5aa3e610",
-    "source_identity": "sha256:0052c8a151a8d095d8f5ae2046a1db5d36140e1c8423705c04ac50da9e7d8fcf"
+    "artifact_set_digest": "sha256:9aa1650db54612981724e44885bf91e7886de8bc6ace1660c2a12a4f1dddff1a",
+    "contract_catalog_digest": "sha256:e76eb5f70353512494b8dd0b1b9a36ad347e97da9bf661c4d2c56331eb43a034",
+    "source_identity": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0"
   },
   "migration": {
     "compatibility": "read_only",
@@ -477,7 +477,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:01d498e4cf5667aaf8e2622048482d82477ed6df761b603b59825ffe9dacb35a",
+    "artifact_digest": "sha256:9aa1650db54612981724e44885bf91e7886de8bc6ace1660c2a12a4f1dddff1a",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
     "kind": "host_extension",
@@ -487,7 +487,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:0052c8a151a8d095d8f5ae2046a1db5d36140e1c8423705c04ac50da9e7d8fcf",
+        "digest": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -498,7 +498,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0052c8a151a8d095d8f5ae2046a1db5d36140e1c8423705c04ac50da9e7d8fcf",
+    "source_digest": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
   },

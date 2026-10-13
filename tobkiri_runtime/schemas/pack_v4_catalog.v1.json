@@ -10696,32 +10696,32 @@
           "path": "tools/rumi_api/manifest.json"
         },
         {
-          "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+          "digest": "sha256:a4ca3ffbb5d9d5982cce81e7285245954e4666547a5e0d019e6e284ada674005",
           "kind": "sidecar",
           "path": "tools/sandbox_artifact_export/manifest.json"
         },
         {
-          "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+          "digest": "sha256:4e9d61ca18708fe1f61e22c4eeb1bec540b2a177b76f6a7472282e26fc0ed2d7",
           "kind": "sidecar",
           "path": "tools/sandbox_diff_preview/manifest.json"
         },
         {
-          "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+          "digest": "sha256:5840f6f4035251eee24e340a42ed864ab2e08ee4c55cbc70251285a61a8cb473",
           "kind": "sidecar",
           "path": "tools/sandbox_file_patch/manifest.json"
         },
         {
-          "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+          "digest": "sha256:2dda7eec6cb80d187ef53c7b18b61ac1ee7b51ec504599cf62eac66226c47459",
           "kind": "sidecar",
           "path": "tools/sandbox_file_read/manifest.json"
         },
         {
-          "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+          "digest": "sha256:709c031750db1dfc838fed4b0317a5f13c55301fd8fed0cbad8404d3787e3533",
           "kind": "sidecar",
           "path": "tools/sandbox_file_write/manifest.json"
         },
         {
-          "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+          "digest": "sha256:95f53cca18effc46e464ca48ff2cd91820cecc9908c74e87a7d71aa44e2e2d37",
           "kind": "sidecar",
           "path": "tools/sandbox_terminal_exec/manifest.json"
         },
