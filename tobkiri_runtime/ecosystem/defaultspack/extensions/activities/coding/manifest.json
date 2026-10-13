@@ -6,8 +6,8 @@
   "version": "1.0.0",
   "display_name": {"ja": "Coding", "en": "Coding"},
   "description": {
-    "ja": "Hostワークスペースのファイル、Terminal、Gitを扱います。隔離サンドボックスのステージングや確認には専用ツールを使います。Hostとサンドボックスは別の実行環境です。",
-    "en": "Work with files, terminals, and Git in the Host workspace. Use separate tools to stage and inspect an isolated sandbox; Host and sandbox are distinct workspaces."
+    "ja": "Hostワークスペースのファイル、Terminal、Gitを扱います。Pythonスクリプトやunittestは、承認された作業フォルダのコピーを使う隔離サンドボックスで実行できます。サンドボックス内の変更はHostには反映されません。",
+    "en": "Work with files, terminals, and Git in the Host workspace. Run Python scripts or unittest targets in an isolated sandbox using a snapshot of the approved workspace. Sandbox changes are not applied to the Host."
   },
   "aliases": ["code", "developer", "programming", "コーディング", "開発"],
   "members": {
@@ -25,11 +25,7 @@
       "coding_git_diff",
       "coding_git_commit",
       "coding_git_push",
-      "sandbox_file_read",
-      "sandbox_file_write",
-      "sandbox_file_patch",
-      "sandbox_diff_preview",
-      "sandbox_terminal_exec"
+      "python_sandbox_execute"
     ],
     "tool_tags": ["activity:coding"],
     "skills": {"required": [], "optional": [], "safety": []}
