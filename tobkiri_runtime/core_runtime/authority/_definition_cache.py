@@ -11,7 +11,7 @@ from collections import OrderedDict
 from dataclasses import fields
 from threading import Lock
 from types import MappingProxyType
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 from .v4_models import (
     AuthorityMode,
@@ -24,6 +24,9 @@ from .v4_models import (
 
 
 _Definition: TypeAlias = GrantRecord | ProviderAuthorityRecord
+_ImmutableModel: TypeAlias = (
+    GrantRecord | ProviderAuthorityRecord | FunctionPrincipal | AuthorityScope
+)
 _DefinitionKey: TypeAlias = tuple[str, str, str, bytes]
 _MAX_ENTRIES = 4096
 _MAX_KEY_BYTES = 32 * 1024 * 1024
@@ -37,7 +40,8 @@ def _deeply_immutable(value: object) -> bool:
         return all(_deeply_immutable(item) for item in value)
     if type(value) is MappingProxyType:
         return all(
-            _deeply_immutable(key) and _deeply_immutable(item) for key, item in value.items()
+            _deeply_immutable(key) and _deeply_immutable(item)
+            for key, item in value.items()
         )
     if type(value) in (
         GrantRecord,
@@ -45,7 +49,10 @@ def _deeply_immutable(value: object) -> bool:
         FunctionPrincipal,
         AuthorityScope,
     ):
-        return all(_deeply_immutable(getattr(value, field.name)) for field in fields(value))
+        return all(
+            _deeply_immutable(getattr(value, field.name))
+            for field in fields(cast(_ImmutableModel, value))
+        )
     return False
 
 
@@ -62,7 +69,9 @@ class _DefinitionCache:
             raise ValueError("definition cache limits must be positive")
         self._max_entries = max_entries
         self._max_key_bytes = max_key_bytes
-        self._entries: OrderedDict[_DefinitionKey, tuple[_Definition, int]] = OrderedDict()
+        self._entries: OrderedDict[_DefinitionKey, tuple[_Definition, int]] = (
+            OrderedDict()
+        )
         self._key_bytes = 0
         self._lock = Lock()
 
@@ -86,7 +95,10 @@ class _DefinitionCache:
                 self._key_bytes -= previous[1]
             self._entries[key] = (definition, weight)
             self._key_bytes += weight
-            while len(self._entries) > self._max_entries or self._key_bytes > self._max_key_bytes:
+            while (
+                len(self._entries) > self._max_entries
+                or self._key_bytes > self._max_key_bytes
+            ):
                 _, (_, evicted_weight) = self._entries.popitem(last=False)
                 self._key_bytes -= evicted_weight
 

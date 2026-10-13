@@ -196,7 +196,9 @@ def test_warm_definitions_do_not_cache_authorization(
         harness.store.revoke(
             target_kind="grant" if change == "grant_revoke" else "provider_authority",
             target_id=(
-                harness.grant.grant_id if change == "grant_revoke" else harness.provider.record_id
+                harness.grant.grant_id
+                if change == "grant_revoke"
+                else harness.provider.record_id
             ),
             reason="fresh cache regression",
         )
