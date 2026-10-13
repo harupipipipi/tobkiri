@@ -44,6 +44,27 @@ Rebuilding a development executable to obtain this initial bootstrap support
 can change its executable-scoped data owner; it is not a credential-preserving
 Pack update or a recovery step.
 
+For the initial local macOS development upgrade, preserve the previous
+Developer `.app`, stop its managed runtime, and start the new development
+Launcher with `--tobkiri-continue-development-owner`. Native pickers select the
+existing build folder (the parent of `user_data`) and the preserved previous
+app. Native verifies both executable identities, the origin SHA namespace,
+unredirected filesystem ownership, and exited managed processes before showing
+the exact continuation review. It checks those facts again after confirmation,
+before creating Host directories or publishing broker state. The existing
+VM registration, Authority, credentials, conversations and consumed generation
+budget remain in place; no private state is copied into a fresh owner.
+
+This ad-hoc development continuation is explicitly **for the current Launcher
+launch only**. Consent stays in Native memory, bound to this executable and
+process lifetime. Pack activation does not rebuild or restart Launcher, so it
+does not repeat this initial review. Restarting the ad-hoc Launcher requires a
+fresh continuation review. An unsigned file or a legacy Keychain item cannot
+authorize automatic reuse. Persistent development-owner authorization needs a
+separately provisioned signing and OS-access design; it is not implemented by
+this session-only path. Normal installed builds retain their existing stable
+application data namespace.
+
 Host compatibility is reverified on catalog reads. A Host Extension revision
 uses a distinct authenticated catalog marker and must be explicitly pinned.
 The running Profile keeps the bundled or previously selected revision until
@@ -93,3 +114,13 @@ admission, CAS selection, Profile activation, and production factory loading
 with the same Authority and runtime owners. It does not prove a live UI update,
 an actual VM boot, or a successful paid model conversation; those require
 separate acceptance evidence.
+
+`test_normal_packvm_production_update_v4.py` is an opt-in macOS test for a
+signed Normal Python Pack through the registered production PackVM substrate.
+It checks retained data and protected pins, then invokes the selected successor
+with authenticated artifact and implementation identities. Set
+`TOBKIRI_RUN_NATIVE_PACKVM_ACCEPTANCE=1` only on a provisioned test Host. Missing
+native readiness fails an opted-in run. This test does not replace the registered
+base VM or stop an unrelated live owner. The separate production Wasm test may
+skip on platforms without its required hard resource boundary; a skip is not
+evidence that a Pack was invoked.

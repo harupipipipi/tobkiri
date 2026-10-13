@@ -168,6 +168,34 @@ impl AppConfig {
         self.log_dir = state_root.join("logs");
     }
 
+    /// Continue a Native-confirmed development owner without moving its data.
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    pub(crate) fn continue_development_owner(
+        &mut self,
+        authorized: &crate::development_owner_continuation::AuthorizedContinuation,
+    ) -> Result<()> {
+        if !is_explicit_local_development_workspace_build() || !self.is_dev_workspace() {
+            bail!("existing Host continuation requires an explicit development build");
+        }
+        let expected_native = hex::encode(authorized.new_native_sha256());
+        if self
+            .user_data_dir
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            != Some(expected_native.as_str())
+        {
+            bail!("existing Host continuation does not match the current Native namespace");
+        }
+        require_existing_development_owner(authorized.state_root())?;
+        validate_development_state_children(authorized.state_root())?;
+        self.isolate_writable_state(
+            authorized.state_root(),
+            authorized.user_data().to_path_buf(),
+        );
+        Ok(())
+    }
+
     /// Return the path to the Python binary inside the PBS directory.
     pub fn python_bin(&self) -> PathBuf {
         if cfg!(target_os = "windows") {
@@ -205,10 +233,10 @@ impl AppConfig {
         // secret. A debug secret only coordinates children of this launcher.
         #[cfg(debug_assertions)]
         {
-            return state_root.join(format!(
+            state_root.join(format!(
                 ".rumi_panel_bootstrap_secret.{}",
                 std::process::id()
-            ));
+            ))
         }
 
         #[cfg(not(debug_assertions))]
@@ -442,8 +470,7 @@ fn development_writable_root(workspace_root: &Path, executable: &Path) -> Result
     let builds_root = state_root.join("builds");
     let writable_root = builds_root.join(format!("{:x}", hasher.finalize()));
     // A planted link in a persistent development path must not redirect reads
-    // or writes outside the ignored checkout state tree. Check children used
-    // immediately by setup as well as the parent directories.
+    // or writes outside the ignored checkout state tree.
     for path in [
         &launcher_root,
         &cargo_root,
@@ -451,12 +478,6 @@ fn development_writable_root(workspace_root: &Path, executable: &Path) -> Result
         &state_root,
         &builds_root,
         &writable_root,
-        &writable_root.join("python"),
-        &writable_root.join("user_data"),
-        &writable_root.join("user_data/host_broker"),
-        &writable_root.join("user_data/profiles"),
-        &writable_root.join("user_data/packvm-vz"),
-        &writable_root.join("logs"),
     ] {
         match fs::symlink_metadata(path) {
             Ok(metadata) if metadata.is_dir() && !redirected_path(&metadata) => {}
@@ -475,7 +496,45 @@ fn development_writable_root(workspace_root: &Path, executable: &Path) -> Result
             }
         }
     }
+    validate_development_state_children(&writable_root)?;
     Ok(writable_root)
+}
+
+fn validate_development_state_children(root: &Path) -> Result<()> {
+    // Apply the same descendant guard to default and explicitly continued owners.
+    for relative in [
+        "python",
+        "user_data",
+        "user_data/host_broker",
+        "user_data/profiles",
+        "user_data/packvm-vz",
+        "logs",
+    ] {
+        let path = root.join(relative);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() && !redirected_path(&metadata) => {}
+            Ok(_) => bail!(
+                "development state child is not an unredirected directory: {}",
+                path.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).context("development state child could not be inspected")
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_existing_development_owner(root: &Path) -> Result<()> {
+    for path in [root.to_path_buf(), root.join("user_data")] {
+        let metadata =
+            fs::symlink_metadata(&path).context("continued Host owner must already exist")?;
+        if !metadata.is_dir() || redirected_path(&metadata) {
+            bail!("continued Host owner must be an existing unredirected directory");
+        }
+    }
+    Ok(())
 }
 
 fn redirected_path(metadata: &fs::Metadata) -> bool {
@@ -1102,5 +1161,50 @@ mod tests {
         assert_eq!(resolved, staged_pack_shell);
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn continued_owner_must_exist_without_creating_replacement_data() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-missing-owner-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        assert!(require_existing_development_owner(&root).is_err());
+        assert!(!root.exists());
+        fs::create_dir(&root).unwrap();
+        assert!(require_existing_development_owner(&root).is_err());
+        assert!(!root.join("user_data").exists());
+        fs::create_dir(root.join("user_data")).unwrap();
+        assert!(require_existing_development_owner(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn continued_owner_rejects_redirected_user_data_and_children() {
+        use std::os::unix::fs::symlink;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-redirected-owner-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(root.join("outside")).unwrap();
+        symlink(root.join("outside"), root.join("user_data")).unwrap();
+        assert!(require_existing_development_owner(&root).is_err());
+        fs::remove_file(root.join("user_data")).unwrap();
+        fs::create_dir(root.join("user_data")).unwrap();
+        symlink(root.join("outside"), root.join("user_data/profiles")).unwrap();
+        assert!(validate_development_state_children(&root).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 }

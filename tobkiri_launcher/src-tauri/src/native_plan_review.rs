@@ -23,7 +23,7 @@ fn accessory_size(width: f64, height: f64) -> Result<(f64, f64), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn build_alert(
+pub(crate) fn build_alert(
     mtm: objc2::MainThreadMarker,
     screen_size: objc2_foundation::NSSize,
     title: &str,

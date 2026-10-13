@@ -11,6 +11,13 @@ mod defaultspack_manager;
 mod desktop_system_info;
 mod development_packvm;
 mod development_host_handover;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod development_owner_continuation;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod development_owner_os;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod development_owner_process;
+mod development_owner_startup;
 mod native_plan_review;
 mod frontend_entry;
 mod health_check;
@@ -3915,6 +3922,17 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
     let app_identifier = context.config().identifier.clone();
 
     #[cfg(debug_assertions)]
+    let continuation_parallel = debug_parallel_instance_policy_from_env().is_some();
+    #[cfg(not(debug_assertions))]
+    let continuation_parallel = false;
+    if let Err(error) = development_owner_startup::preflight_requested_mode(
+        &app_identifier, continuation_parallel,
+    ) {
+        eprintln!("Tobkiri Launcher could not continue the existing Host: {error:#}");
+        std::process::exit(1);
+    }
+
+    #[cfg(debug_assertions)]
     let debug_parallel_instance = debug_parallel_instance_policy_from_env().and_then(|policy| {
         match prepare_debug_cache_environment(&policy) {
             Ok(environment) => {
@@ -4215,6 +4233,15 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
         .context("failed to build AppConfig")?;
     if let Some((supervisor_root, user_data_root)) = ctx.debug_writable_roots.as_ref() {
         config.isolate_writable_state(supervisor_root, user_data_root.clone());
+    }
+
+    record_startup_stage(&ctx.startup_stage, "reviewing_existing_development_owner");
+    if let Some(lease) = development_owner_startup::resolve_before_state_writes(
+        &mut config, &ctx.app_identifier, ctx.debug_writable_roots.is_some(),
+    )? {
+        // Retain the Native-selected URLs, path handles and ownership guard
+        // until this Launcher and its managed children have shut down.
+        app.manage(lease);
     }
 
     record_startup_stage(&ctx.startup_stage, "creating_state_directories");

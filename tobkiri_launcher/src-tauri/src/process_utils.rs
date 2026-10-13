@@ -440,7 +440,7 @@ fn redact_keyed_values(text: &str) -> String {
                 let next_ok = key_end >= bytes.len()
                     || !bytes[key_end].is_ascii_alphanumeric();
                 if prev_ok && next_ok {
-                    if hit.map_or(true, |(start, _)| key_start < start) {
+                    if hit.is_none_or(|(start, _)| key_start < start) {
                         hit = Some((key_start, key_end));
                     }
                     break;
@@ -592,8 +592,7 @@ pub fn process_start_marker(pid: u32) -> Option<u64> {
     }
     let info = unsafe { info.assume_init() };
     Some(
-        u64::from(info.pbi_start_tvsec).saturating_mul(1_000_000)
-            + u64::from(info.pbi_start_tvusec),
+        info.pbi_start_tvsec.saturating_mul(1_000_000) + info.pbi_start_tvusec,
     )
 }
 
