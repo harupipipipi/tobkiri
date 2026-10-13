@@ -13,8 +13,85 @@ from tobkiri_protocol.turn_progress_v1 import (
     ACTION_OPERATION,
     MAX_BYTES,
     MAX_EVENTS,
+    MAX_DELTA_BYTES,
     validate_event,
 )
+
+
+_TEXT_BATCH_BYTES = 4096
+
+
+class DisplayProgressBuffer:
+    """Coalesce adjacent display deltas; canonical provider events stay separate.
+
+    The first nonempty text is immediate. Later text is joined by byte size,
+    without timers or background work, and drained before a kind change or a
+    real finish. A failed publication is terminal and is never retried.
+    """
+
+    def __init__(self, publish: Callable[[Mapping[str, Any]], None]) -> None:
+        self._publish = publish
+        self._pending: dict[str, Any] | None = None
+        self._pending_bytes = 0
+        self._first_text_published = False
+        self._last_published_kind: str | None = None
+        self._failed = False
+        self._finished = False
+
+    def publish(self, event: Mapping[str, Any]) -> None:
+        """Publish only validated actual display data, preserving its order."""
+        if self._failed or self._finished:
+            raise ValueError("display progress is already terminal")
+        try:
+            clean = validate_event(event)
+        except (TypeError, ValueError):
+            self._failed = True
+            raise
+        kind = clean["type"]
+        if kind not in {"text_delta", "thinking_delta"}:
+            self._flush()
+            self._send(clean)
+            self._finished = kind == "finish"
+            return
+        if kind == "thinking_delta" and clean["delta"] == "":
+            self._flush()
+            # Reasoning has already been removed by ProviderStream. Repeated
+            # empty notifications carry no additional display information.
+            if self._last_published_kind != kind:
+                self._send(clean)
+            return
+        if kind == "text_delta" and clean["delta"]:
+            if not self._first_text_published:
+                self._flush()
+                self._send(clean)
+                self._first_text_published = True
+                return
+        size = len(clean["delta"].encode("utf-8"))
+        if self._pending is not None and (
+            self._pending["type"] != kind or self._pending_bytes + size > MAX_DELTA_BYTES
+        ):
+            self._flush()
+        if self._pending is None:
+            self._pending = clean
+        else:
+            self._pending["delta"] += clean["delta"]
+        self._pending_bytes += size
+        if self._pending_bytes >= _TEXT_BATCH_BYTES:
+            self._flush()
+
+    def _flush(self) -> None:
+        if self._pending is not None:
+            pending, self._pending = self._pending, None
+            self._pending_bytes = 0
+            self._send(pending)
+
+    def _send(self, event: Mapping[str, Any]) -> None:
+        try:
+            self._publish(event)
+        except BaseException:
+            self._failed = True
+            raise
+        self._last_published_kind = str(event["type"])
 
 
 class ProviderStream:
@@ -22,6 +99,7 @@ class ProviderStream:
 
     def __init__(self, protocol: str, publish: Callable[[Mapping[str, Any]], None]) -> None:
         self.protocol, self.publish = protocol, publish
+        self._display_progress = DisplayProgressBuffer(publish)
         self.events: list[dict[str, Any]] = []
         self.text: list[str] = []
         self.tools: dict[int, dict[str, Any]] = {}
@@ -30,12 +108,12 @@ class ProviderStream:
         self.done, self.size = False, 0
 
     def emit(self, event: dict[str, Any]) -> None:
-        """Publish received display deltas before accumulating the final receipt."""
+        """Retain every bounded event and coalesce only provisional display writes."""
         self.size += len(json.dumps(event, ensure_ascii=False).encode())
         if len(self.events) >= MAX_EVENTS or self.size > MAX_BYTES:
             raise ValueError("normalized provider stream exceeds its limit")
         if event["type"] in {"text_delta", "thinking_delta", "finish"}:
-            self.publish(validate_event(event))
+            self._display_progress.publish(event)
         self.events.append(event)
 
     def receive(self, frame: Mapping[str, Any]) -> None:
