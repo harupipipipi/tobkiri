@@ -291,6 +291,7 @@ mod macos {
         let finished = Arc::new(AtomicBool::new(false));
         let expired = Arc::new(AtomicBool::new(false));
         let owned = Arc::new(dispatch2::MainThreadBound::new(panel.clone(), mtm));
+        let watcher_owned = Arc::clone(&owned);
         let watcher_finished = finished.clone();
         let watcher_expired = expired.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
@@ -304,7 +305,7 @@ mod macos {
                     if !watcher_finished.load(Ordering::Acquire) {
                         if let Some(marker) = MainThreadMarker::new() {
                             unsafe {
-                                owned.get(marker).cancel(None);
+                                watcher_owned.get(marker).cancel(None);
                             }
                         }
                     }
@@ -315,6 +316,9 @@ mod macos {
         finished.store(true, Ordering::Release);
         let _ = done_tx.send(());
         let _ = watcher.join();
+        // MainThreadBound may synchronously return destruction to this thread.
+        // Keep its last reference here until the watcher has finished joining.
+        drop(owned);
         if response != NSModalResponseOK || expired.load(Ordering::Acquire) {
             bail!("Existing Host selection was cancelled");
         }
@@ -332,6 +336,7 @@ mod macos {
         let finished = Arc::new(AtomicBool::new(false));
         let expired = Arc::new(AtomicBool::new(false));
         let owned = Arc::new(dispatch2::MainThreadBound::new(alert.clone(), mtm));
+        let watcher_owned = Arc::clone(&owned);
         let watcher_finished = finished.clone();
         let watcher_expired = expired.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
@@ -345,7 +350,7 @@ mod macos {
                     if !watcher_finished.load(Ordering::Acquire) {
                         if let Some(marker) = MainThreadMarker::new() {
                             let app = objc2_app_kit::NSApplication::sharedApplication(marker);
-                            let window = owned.get(marker).window();
+                            let window = watcher_owned.get(marker).window();
                             if app.modalWindow().is_some_and(|active| {
                                 Retained::as_ptr(&active) == Retained::as_ptr(&window)
                             }) {
@@ -361,6 +366,7 @@ mod macos {
         finished.store(true, Ordering::Release);
         let _ = done_tx.send(());
         let _ = watcher.join();
+        drop(owned);
         Ok(response == NSAlertFirstButtonReturn && !expired.load(Ordering::Acquire))
     }
 
