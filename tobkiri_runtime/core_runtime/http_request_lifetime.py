@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import copy_context
 import math
 import socket
 import threading
@@ -38,8 +39,12 @@ class HttpRequestLifetime:
         self._interrupted = threading.Event()
         self._lock = threading.Lock()
         self._socket: socket.socket | None = None
+        # Keep this request's capture scope in its owned watchdog. Authority
+        # remains freshly checked on every tick; only context is propagated.
+        watcher_context = copy_context()
         self._watcher = threading.Thread(
-            target=self._watch, name="tobkiri-http-deadline", daemon=True,
+            target=watcher_context.run, args=(self._watch,),
+            name="tobkiri-http-deadline", daemon=True,
         )
         self.check()
         self._watcher.start()
