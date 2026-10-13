@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 from tobkiri_host.saved_tool_entry_guards import SavedToolEntryGuardRegistry
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,19 @@ SPEC = importlib.util.spec_from_file_location(
 helper = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = helper
 SPEC.loader.exec_module(helper)
+
+
+class _EmptySavedWorkspaceRegistry:
+    """Unrelated pure guard operations have no registered saved workspace."""
+
+    def capture(
+        self, envelope: SimpleNamespace, parent: CapturedInvocationScopeV4 | None,
+    ) -> None:
+        """Match the real registry's no-binding result for this finite fixture."""
+        assert (envelope.contract_id, envelope.operation_id) == (
+            "test.capture.guard", "inspect",
+        )
+        return None
 
 
 def harness():
@@ -55,10 +69,9 @@ def harness():
         "assert_current_capture": capture,
         "AuthorityDenied": PermissionError,
         "saved_tool_entry_guards": SavedToolEntryGuardRegistry(),
+        "saved_workspace_execution_registry": _EmptySavedWorkspaceRegistry(),
         "_capture_guard_traversal": helper._capture_guard_traversal,
-        "CapturedInvocationScopeV4": lambda envelope, guard, parent: SimpleNamespace(
-            envelope=envelope, assert_current=guard, parent=parent
-        ),
+        "CapturedInvocationScopeV4": CapturedInvocationScopeV4,
     }
     from threading import RLock
 
@@ -74,6 +87,8 @@ def harness():
 
     def make(name):
         envelope = SimpleNamespace(
+            contract_id="test.capture.guard",
+            operation_id="inspect",
             context=SimpleNamespace(caller_session_id=name, request_id=name),
             request_digest=f"capture-guard-{name}",
         )
@@ -88,6 +103,7 @@ def test_actual_scope_recursion_keeps_every_lease_and_two_capture_checks():
     counts, _, _, make = harness()
     for index in range(8):
         scope = make(str(index))
+        assert scope.saved_workspace_binding is None
     scope.assert_current()
     assert len(counts["lease"]) == 8
     assert counts["capture"] == 2
