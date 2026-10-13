@@ -58,7 +58,7 @@ def _tools():
 def test_manual_service_include_and_tool_exclude():
     from domain.chat.tool_selection_service import ToolSelectionService
 
-    decision = ToolSelectionService().select(
+    decision = ToolSelectionService(settings={}).select(
         "GitHubの実装を確認して",
         _tools(),
         selection=_selection(
@@ -77,7 +77,7 @@ def test_manual_service_include_and_tool_exclude():
 def test_none_mode_selects_no_tools():
     from domain.chat.tool_selection_service import ToolSelectionService
 
-    decision = ToolSelectionService().select(
+    decision = ToolSelectionService(settings={}).select(
         "webで検索して",
         _tools(),
         selection=_selection(mode="none"),
@@ -231,7 +231,7 @@ def test_unknown_connection_status_fails_closed():
 def test_conversation_preferences_apply_when_turn_has_no_override():
     from domain.chat.tool_selection_service import ToolSelectionService
 
-    decision = ToolSelectionService().select(
+    decision = ToolSelectionService(settings={}).select(
         "GitHubを確認して",
         _tools(),
         selection=_selection(),
