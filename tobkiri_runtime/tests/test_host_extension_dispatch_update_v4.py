@@ -29,7 +29,8 @@ from core_runtime.bootstrap.profile_capture import (
 from core_runtime.host_provider_backend_v4 import HostProviderContributionV4
 from core_runtime.profile_runtime_port import require_profile_runtime
 from tobkiri_protocol.bundle_catalog import BundledCatalog
-from tobkiri_protocol.validation import validate_file
+from tobkiri_protocol.errors import SchemaValidationError
+from tobkiri_protocol.validation import validate_document, validate_file
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 PACK_ID = "rumi_ai_gateway_pack"
@@ -387,6 +388,82 @@ def test_revision_view_keeps_only_provider_host_baselines(
         assert host_rows[0]["versions"][0]["origin"] == "bundled"
     else:
         assert host_rows == []
+
+
+def _host_catalog_document() -> dict[str, Any]:
+    """Build schema-only metadata, without asserting Host authentication."""
+
+    digest = "sha256:" + "a" * 64
+    record = {
+        "pack_id": PACK_ID,
+        "display_name": "Tobkiri Gateway fixture",
+        "description": "Signed Host Extension schema fixture.",
+        "version": "1.1.0",
+        "kind": "host_extension",
+        "artifact_digest": digest,
+        "authority": HOST_AUTHORITY,
+        "approval_policy": "explicit",
+        "capabilities": [],
+        "dependencies": {},
+        "provided_contracts": [],
+        "required_contracts": [],
+        "runtime_artifacts": [],
+        "execution_boundary": "host_brokered",
+        "workspace_boundary": "host_brokered",
+        "network": {},
+        "secrets": [],
+        "legacy_ids": [],
+        "legacy_operations": [],
+        "source_provenance": {
+            "mode": "host-signed-external-normal-catalog",
+            "publisher_id": "tobkiri.repository",
+            "key_id": "fixture-key",
+        },
+    }
+    entry = {
+        "version": "io.tobkiri.external-normal-pack-catalog-entry.v4",
+        "state": "committed",
+        "pack_id": PACK_ID,
+        "version_string": "1.1.0",
+        "artifact_digest": digest,
+        "content_digest": "sha256:" + "b" * 64,
+        "publisher_id": "tobkiri.repository",
+        "key_id": "fixture-key",
+        "catalog_record": record,
+        "store_token": "a" * 64 + "/" + PACK_ID,
+        "admission_id": "c" * 64,
+        "root_device": 1,
+        "root_inode": 1,
+    }
+    return {
+        "version": "io.tobkiri.external-normal-pack-catalog.v4",
+        "entries": {f"{PACK_ID}@{digest}": entry},
+        "journal": [],
+        "signature": "d" * 64,
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("kind", "normal_sandbox"),
+        ("authority", "host-signed-external-normal-v4"),
+        ("execution_boundary", "sandbox"),
+        ("workspace_boundary", "sandbox"),
+    ],
+)
+def test_external_catalog_schema_rejects_mixed_host_authority_tuple(
+    field: str,
+    value: str,
+) -> None:
+    """A schema-valid record cannot mix Host authority with Normal boundaries."""
+
+    catalog = _host_catalog_document()
+    assert validate_document(catalog, "external_pack_catalog") == catalog
+    record = next(iter(catalog["entries"].values()))["catalog_record"]
+    record[field] = value
+    with pytest.raises(SchemaValidationError):
+        validate_document(catalog, "external_pack_catalog")
 
 
 def _sign_gateway(root: Path, key: Ed25519PrivateKey) -> dict[str, Any]:
