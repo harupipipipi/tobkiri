@@ -56,7 +56,8 @@ test("model route setup never offers a free-form provider connection ID", () => 
   assert.match(html, /使用するAPI/);
   assert.match(html, /aria-label="使用するAPI"/);
   assert.match(html, /<select/);
-  assert.match(html, /登録済みの接続がありません/);
+  assert.match(html, /接続を確認中…/);
+  assert.doesNotMatch(html, /登録済みの接続がありません/);
   assert.doesNotMatch(html, /provider\.deepseek\.main/);
   assert.doesNotMatch(html, /モデル設定ID/);
 });

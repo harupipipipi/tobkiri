@@ -20,6 +20,8 @@ import { modelSearchItemToModelSelectOption, type ModelSelectOption } from "./mo
 import { modelRouteConnectionLabel } from "./modelRoutePresentation";
 import { settingsApiResources } from "../settings/resources/settingsApiResources";
 
+export type ProviderConnectionsLoadState = "loading" | "ready" | "error";
+
 /** Return a user-visible model route error without exposing connection secrets. */
 export function modelRouteSaveErrorMessage(error: unknown): string {
   const detail = redactDiagnosticText(
@@ -148,8 +150,9 @@ export function CustomModelControls({ displayMode, manual, manualModel, hasCatal
 }
 
 /** Choose a catalog model for the exact saved connection without typing IDs. */
-export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged, modelAccessBinding, onConnectionsChange }: {
+export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "standard", requestedModel, onModelPropertiesAcknowledged, modelAccessBinding, onConnectionsChange, onConnectionsLoadStateChange }: {
   onConnectionsChange?: (connections: RegisteredProviderConnection[]) => void;
+  onConnectionsLoadStateChange?: (state: ProviderConnectionsLoadState) => void;
   modelAccessBinding?: { profile_id: string; resources: ProviderModelAccessResources };
   preferredConnectionId?: string;
   displayMode?: "standard" | "advanced";
@@ -173,6 +176,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
   const [provider, setProvider] = useState("");
   const [manual, setManual] = useState(false);
   const [connections, setConnections] = useState<RegisteredProviderConnection[]>([]);
+  const [connectionsLoadState, setConnectionsLoadState] = useState<ProviderConnectionsLoadState>("loading");
   const [providerRegistryRevision, setProviderRegistryRevision] = useState<number | null>(null);
   const [connectionsError, setConnectionsError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -191,11 +195,15 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
     lastIncoming.current = { requestId: requestedModel?.requestId, preferredId: preferredConnectionId };
     const loadConnections = async () => {
       const currentVersion = ++version;
+      setConnectionsLoadState("loading");
+      onConnectionsLoadStateChange?.("loading");
       try {
         const snapshot = await settingsApiResources.listProviderConnections();
         if (!active || currentVersion !== version) return;
         setConnections(snapshot.connections);
         onConnectionsChange?.(snapshot.connections);
+        setConnectionsLoadState("ready");
+        onConnectionsLoadStateChange?.("ready");
         setProviderRegistryRevision(snapshot.registry_revision);
         setConnectionsError("");
         setProvider((current) => {
@@ -212,6 +220,8 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
         if (!active || currentVersion !== version) return;
         setConnections([]);
         onConnectionsChange?.([]);
+        setConnectionsLoadState("error");
+        onConnectionsLoadStateChange?.("error");
         setProviderRegistryRevision(null);
         setProvider("");
         setConnectionsError(modelRouteConnectionsErrorMessage(error));
@@ -223,7 +233,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       active = false;
       window.removeEventListener("tobkiri-provider-connections-changed", loadConnections);
     };
-  }, [preferredConnectionId, requestedModel?.requestId, onConnectionsChange]);
+  }, [preferredConnectionId, requestedModel?.requestId, onConnectionsChange, onConnectionsLoadStateChange]);
 
 
   const selectedConnection = connections.find(
@@ -272,7 +282,7 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
     ? (accessKnown ? accessSnapshot?.model_access ?? null
       : { version: MODEL_ACCESS_VERSION, mode: "explicit" as const, model_ids: [] })
     : null;
-  const validModel = accessKnown && modelAllowed(activePolicy, model.trim()) && Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
+  const validModel = connectionsLoadState === "ready" && accessKnown && modelAllowed(activePolicy, model.trim()) && Boolean(model.trim()) && (manualModel || Boolean(selectedModel)
     || selectedCatalogOption?.value === model);
   const save = async () => {
     if (!selectedConnection || providerRegistryRevision === null || !validModel || !validOutputLimit) return;
@@ -307,8 +317,8 @@ export function ModelRouteSetup({ preferredConnectionId = "", displayMode = "sta
       <p>保存するには、このProviderの使用するAPIを選んでください。</p>
     </div>}
     <label htmlFor={connectionSelectId} className="grid gap-1.5 text-xs font-medium text-zinc-300">使用するAPI接続
-      <select id={connectionSelectId} aria-label="使用するAPI" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={!connections.length}>
-        <option value="">{connections.length ? "接続を選択" : "登録済みの接続がありません"}</option>
+      <select id={connectionSelectId} aria-label="使用するAPI" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={connectionsLoadState !== "ready" || !connections.length}>
+        <option value="">{connectionsLoadState === "loading" ? "接続を確認中…" : connectionsLoadState === "error" ? "接続を確認できません" : connections.length ? "接続を選択" : "登録済みの接続がありません"}</option>
         {connections.map((connection) => <option key={connection.provider_instance_id} value={connection.provider_instance_id}>{modelRouteConnectionLabel(connection, connections)}</option>)}
       </select>
     </label>

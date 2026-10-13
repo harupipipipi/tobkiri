@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MODEL_ACCESS_VERSION } from "./modelAccessPolicy";
 import {
   initialModelAccessDisclosureState,
   modelAccessDisclosureReducer,
+  modelAccessPolicySummary,
 } from "./modelAccessDisclosure";
 
-test("access disclosure waits for policy, opens for unset policy, and keeps model list collapsed", () => {
+test("access disclosure keeps saved and inherited policy controls collapsed until requested", () => {
   assert.deepEqual(initialModelAccessDisclosureState, {
     settingsOpen: false,
     modelListOpen: false,
@@ -18,11 +20,14 @@ test("access disclosure waits for policy, opens for unset policy, and keeps mode
 
   const unsetPolicy = modelAccessDisclosureReducer(loading, {
     type: "loaded",
-    hasPolicy: false,
   });
-  assert.deepEqual(unsetPolicy, { settingsOpen: true, modelListOpen: false });
+  assert.deepEqual(unsetPolicy, { settingsOpen: false, modelListOpen: false });
 
-  const openedModelList = modelAccessDisclosureReducer(unsetPolicy, {
+  const openedSettings = modelAccessDisclosureReducer(unsetPolicy, {
+    type: "toggle-settings", open: true,
+  });
+
+  const openedModelList = modelAccessDisclosureReducer(openedSettings, {
     type: "toggle-model-list",
     open: true,
   });
@@ -30,12 +35,11 @@ test("access disclosure waits for policy, opens for unset policy, and keeps mode
 
   const savedPolicy = modelAccessDisclosureReducer(openedModelList, {
     type: "loaded",
-    hasPolicy: true,
   });
   assert.deepEqual(savedPolicy, { settingsOpen: false, modelListOpen: false });
 });
 
-test("a collapsed unset-policy disclosure has an explicit reopen action", () => {
+test("a collapsed policy disclosure has an explicit reopen action", () => {
   const collapsed = modelAccessDisclosureReducer(
     { settingsOpen: true, modelListOpen: false },
     { type: "toggle-settings", open: false },
@@ -45,4 +49,13 @@ test("a collapsed unset-policy disclosure has an explicit reopen action", () => 
     type: "toggle-settings",
     open: true,
   }), { settingsOpen: true, modelListOpen: false });
+});
+
+test("inherited legacy policy is distinct from an explicit zero-model denial", () => {
+  assert.equal(modelAccessPolicySummary(false, null), "既存の許可設定を使用");
+  assert.equal(modelAccessPolicySummary(false, {
+    version: MODEL_ACCESS_VERSION, mode: "explicit", model_ids: [],
+  }), "個別指定・0件");
+  assert.equal(modelAccessPolicySummary(true, undefined), "設定を確認中");
+  assert.equal(modelAccessPolicySummary(false, undefined), "状態を確認できません");
 });

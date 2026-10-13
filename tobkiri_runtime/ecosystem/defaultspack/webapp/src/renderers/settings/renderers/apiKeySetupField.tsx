@@ -24,7 +24,7 @@ import {
   supportsSimpleProviderSetup,
 } from "../../../lib/providerPresets";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
-import { ModelRouteSetup } from "../../../features/models/ModelRouteSetup";
+import { ModelRouteSetup, type ProviderConnectionsLoadState } from "../../../features/models/ModelRouteSetup";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../../../features/settings/resources/useModelAvailability";
 import type { SettingsFieldRendererProps } from "../fieldRendererRegistry";
 import { SearchableProviderField } from "./providerSelectField";
@@ -84,6 +84,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [apiFormOpen, setApiFormOpen] = useState<boolean | null>(null);
   const [connections, setConnections] = useState<RegisteredProviderConnection[]>([]);
+  const [connectionsLoadState, setConnectionsLoadState] = useState<ProviderConnectionsLoadState>("loading");
   const modelConnectionsVisible = providerScope !== "non_llm";
   const hasRegisteredApis = registeredApis.length > 0
     || (modelConnectionsVisible && connections.length > 0);
@@ -99,6 +100,8 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const selectedKind = selectedProviderKind(providerId, providerOptions);
   const saveResource = apiKeySaveResource(selectedKind);
   const savesExternalToken = saveResource === "external_token";
+  const defaultApiFormOpen = !hasRegisteredApis
+    && (!modelConnectionsVisible || savesExternalToken || connectionsLoadState === "ready");
   const customLlmProtocolRequired = Boolean(providerId) && requiresExplicitApiProviderProtocol(
     providerId,
     selectedKind,
@@ -211,10 +214,10 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           </div>
         )}
         <details
-          open={apiFormOpen ?? !hasRegisteredApis}
+          open={apiFormOpen ?? defaultApiFormOpen}
           className="rounded-xl border border-white/[0.08] bg-white/[0.025]"
         >
-          <summary onClick={(event) => { event.preventDefault(); setApiFormOpen(!(apiFormOpen ?? !hasRegisteredApis)); }} className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-300">
+          <summary onClick={(event) => { event.preventDefault(); setApiFormOpen(!(apiFormOpen ?? defaultApiFormOpen)); }} className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-300">
             {hasRegisteredApis ? "別のAPI接続を追加" : "API接続を追加"}
           </summary>
         <div className="@container min-w-0 space-y-3 border-t border-white/[0.07] p-3">
@@ -379,7 +382,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             message={saveError}
           />
         )}
-        {modelConnectionsVisible && !savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} displayMode={displayMode} requestedModel={modelPropertiesRequest} onModelPropertiesAcknowledged={onModelPropertiesAcknowledged} onConnectionsChange={setConnections} />}
+        {modelConnectionsVisible && !savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} displayMode={displayMode} requestedModel={modelPropertiesRequest} onModelPropertiesAcknowledged={onModelPropertiesAcknowledged} onConnectionsChange={setConnections} onConnectionsLoadStateChange={setConnectionsLoadState} />}
         {credentialTransfer && (
           <CredentialTransferModal
             providerId={credentialTransfer.providerId}

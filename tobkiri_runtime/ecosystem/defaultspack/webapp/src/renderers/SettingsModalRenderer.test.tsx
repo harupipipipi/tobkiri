@@ -1231,7 +1231,8 @@ test("SettingsModalRenderer renders template model_api_routes through registered
   assert.doesNotMatch(html, /1\. 設定するモデル|2\. 使用するAPIキー|API keyを追加/);
   assert.match(html, /チャットで使うモデル/);
   assert.match(html, /aria-label="使用するAPI"/);
-  assert.match(html, /登録済みの接続がありません/);
+  assert.match(html, /接続を確認中…/);
+  assert.doesNotMatch(html, /登録済みの接続がありません/);
   assert.equal((html.match(/チャットで使うモデル/g) ?? []).length, 1);
 
 });

@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import {
   initialModelAccessDisclosureState,
   modelAccessDisclosureReducer,
+  modelAccessPolicySummary,
 } from "./modelAccessDisclosure";
 import {
   MODEL_ACCESS_VERSION,
@@ -57,7 +58,7 @@ export function ProviderModelAccessSettings({
     void resources.load(scope).then(async (snapshot) => {
       if (ticket !== epoch.current) return;
       setSaved(snapshot); setDraft(snapshot.model_access ?? emptyPolicy()); onSnapshot?.(snapshot);
-      dispatchDisclosure({ type: "loaded", hasPolicy: snapshot.model_access !== null });
+      dispatchDisclosure({ type: "loaded" });
       try {
         const page = await resources.catalog(scope, snapshot.model_access?.native_filters?.discovery);
         if (ticket === epoch.current) setCatalog(page);
@@ -128,15 +129,7 @@ export function ProviderModelAccessSettings({
   try { normalizeModelAccess(draft, saved?.native_capability ?? null); }
   catch (error) { invalid = error instanceof Error ? error.message : "設定が無効です。"; }
 
-  const policySummary = loading
-    ? "設定を確認中"
-    : !saved
-      ? "状態を確認できません"
-      : saved.model_access === null
-        ? "未設定・設定が必要"
-        : saved.model_access.mode === "all"
-          ? "全モデルを許可"
-          : `個別指定・${saved.model_access.model_ids.length}件`;
+  const policySummary = modelAccessPolicySummary(loading, saved?.model_access);
   const needsModelSelection = saved?.model_access?.mode === "explicit"
     && saved.model_access.model_ids.length === 0;
 
@@ -152,14 +145,14 @@ export function ProviderModelAccessSettings({
       <p role="alert">{notice}</p>
       <button type="button" className="justify-self-start rounded border border-zinc-700 px-3 py-1.5 text-sm" onClick={() => setReload((current) => current + 1)}>保存済みの状態を再確認</button>
     </> : <>
-      {saved.model_access === null && <p className="text-xs text-zinc-400">この接続には新しい許可設定がまだありません。モードを選んで保存してください。</p>}
+      {saved.model_access === null && <p className="text-xs text-zinc-400">この接続には追加のモデル制限を設定していません。Provider・Profile・Nativeの許可範囲が適用されます。</p>}
       <fieldset disabled={busy} className="grid gap-2 text-sm">
         <legend className="sr-only">モデル許可モード</legend>
         <label><input type="radio" name={group} checked={draft.mode === "all"} onChange={() => setDraft((current) => ({ ...current, mode: "all", model_ids: [] }))} /> 全モデルを許可</label>
         <p className="text-xs text-zinc-400">このProviderの正規カタログに今後追加されるモデルも対象になります。</p>
         <label><input type="radio" name={group} checked={draft.mode === "explicit"} onChange={() => setDraft((current) => ({ ...current, mode: "explicit" }))} /> モデルを個別に指定</label>
         {draft.mode === "explicit" && <>
-          <p className="text-xs text-zinc-400">選択済み: {draft.model_ids.length}件{!draft.model_ids.length && "（この接続ではモデルを利用できません）"}</p>
+          <p className="text-xs text-zinc-400">選択済み: {draft.model_ids.length}件{!draft.model_ids.length && "（この内容で保存すると、モデルを利用できません）"}</p>
           {catalog.status !== "live" && <p role="status" className="text-xs">カタログは未取得です。保存済みの指定は削除しません。</p>}
           <details open={disclosure.modelListOpen} onToggle={(event) => dispatchDisclosure({ type: "toggle-model-list", open: event.currentTarget.open })} className="rounded-lg border border-white/[0.07]">
             <summary className="group flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-xs text-zinc-300 [&::-webkit-details-marker]:hidden"><span>{draft.model_ids.length ? `許可モデルを確認・編集 (${draft.model_ids.length}件)` : "許可するモデルを選択"}</span><ChevronDown size={13} className="shrink-0 text-zinc-500 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
@@ -197,6 +190,6 @@ export function ProviderModelAccessSettings({
     </>}
       </div>
     </details>
-    {!disclosure.settingsOpen && !loading && (!saved?.model_access || needsModelSelection) && <button type="button" onClick={() => dispatchDisclosure({ type: "toggle-settings", open: true })} className="mx-3 mb-3 rounded-md border border-amber-300/20 bg-amber-300/[0.05] px-2.5 py-1.5 text-left text-xs text-amber-100 hover:bg-amber-300/[0.09]">{needsModelSelection ? "利用できるモデルが0件です。許可するモデルを選択" : "接続の許可設定を確認"}</button>}
+    {!disclosure.settingsOpen && !loading && (!saved || needsModelSelection) && <button type="button" onClick={() => dispatchDisclosure({ type: "toggle-settings", open: true })} className="mx-3 mb-3 rounded-md border border-amber-300/20 bg-amber-300/[0.05] px-2.5 py-1.5 text-left text-xs text-amber-100 hover:bg-amber-300/[0.09]">{needsModelSelection ? "利用できるモデルが0件です。許可するモデルを選択" : "接続の許可設定を確認"}</button>}
   </section>;
 }
