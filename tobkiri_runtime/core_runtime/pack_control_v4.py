@@ -1440,23 +1440,39 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
 def _capture_binding(active: Any | None = None) -> _Binding:
     state, profile = _active_profile(active)
     resolved_profile = state["resolved_profile"]
-    catalog_revision = control_catalog_revision()
     profile_revision = "sha256:" + _digest(resolved_profile)
-    catalog = load_pack_catalog()
     selected = tuple(str(item or "").strip() for item in profile.get("packs") or [])
     if not selected or len(selected) != len(set(selected)):
         raise PackControlDigestMismatch("active v4 Profile effective set is empty or duplicated")
-    if any(pack_id not in catalog for pack_id in selected):
-        raise PackControlDigestMismatch("active v4 Profile contains an unknown Pack")
-    for pack_id in selected:
-        resolve_pack_root(pack_id)
-    return _Binding(
-        profile_id=str(profile["profile_id"]),
-        workspace_id=str(profile.get("workspace_id") or profile["profile_id"]),
-        profile_revision=profile_revision,
-        plan_digest=str(state["resolved_plan"]["plan_digest"]),
-        catalog_revision=catalog_revision,
-    )
+    from .admitted_pack_read_v4 import verified_pack_root_read
+
+    pins = {
+        str(item["identity"]): str(item["artifact_digest"])
+        for item in state["resolved_plan"]["effective_set"]
+    }
+    try:
+        with verified_pack_root_read(pins) as roots:
+            catalog_revision = control_catalog_revision()
+            catalog = load_pack_catalog()
+            if any(pack_id not in catalog for pack_id in selected):
+                raise PackControlDigestMismatch(
+                    "active v4 Profile contains an unknown Pack"
+                )
+            for pack_id in selected:
+                roots.resolve(pack_id)
+            return _Binding(
+                profile_id=str(profile["profile_id"]),
+                workspace_id=str(profile.get("workspace_id") or profile["profile_id"]),
+                profile_revision=profile_revision,
+                plan_digest=str(state["resolved_plan"]["plan_digest"]),
+                catalog_revision=catalog_revision,
+            )
+    except PackControlDenied:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise PackControlDigestMismatch(
+            "active Profile Pack roots changed or are unavailable"
+        ) from error
 
 
 def _binding_for_resolved(resolved: Any) -> _Binding:

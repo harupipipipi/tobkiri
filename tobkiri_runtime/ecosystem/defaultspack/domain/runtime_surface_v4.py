@@ -2727,7 +2727,30 @@ def _validated_contract_catalogs(
 ) -> dict[str, Mapping[str, Any]]:
     """Load only digest-pinned Contract catalogs for the selected Pack closure."""
 
-    from core_runtime.external_pack_catalog_v4 import resolve_admitted_pack_root
+    from core_runtime.admitted_pack_read_v4 import verified_pack_root_read
+
+    pins = {
+        str(item["identity"]): str(item["artifact_digest"])
+        for item in snapshot.active.resolved.lock["effective_set"]
+    }
+    try:
+        with verified_pack_root_read(pins) as roots:
+            return _contract_catalogs_from_roots(snapshot, roots.resolve)
+    except RuntimeSurfaceError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "selected Pack roots changed or are unavailable",
+        ) from error
+
+
+def _contract_catalogs_from_roots(
+    snapshot: RuntimeSurfaceSnapshot,
+    resolve_root: Callable[[str], Path],
+) -> dict[str, Mapping[str, Any]]:
+    """Inspect materialized catalogs inside the caller's verified read scope."""
+
     from core_runtime.pack_boundary import PackBoundaryError
 
     catalogs: dict[str, Mapping[str, Any]] = {}
@@ -2744,9 +2767,7 @@ def _validated_contract_catalogs(
                 "selected Pack is absent from the verified manifest catalog",
             )
         try:
-            root = resolve_admitted_pack_root(
-                pack_id, artifact_digest=str(manifest["pack"]["artifact_digest"])
-            )
+            root = resolve_root(pack_id)
             root_before = root.lstat()
         except PackBoundaryError:
             # Defaults bundle-only Base/Shell/Application artifacts do not have
