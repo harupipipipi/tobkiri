@@ -4,6 +4,8 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.ids import validate_artifact_digest
 
 from ..profile_definition_store_v4 import ProfileDefinitionStoreConflict
 
@@ -138,6 +140,8 @@ def profile_source_additions(
     The result is only a proposal: callers must resolve and confirm it through
     the normal Authority ceremony before persisting or activating it. Shell
     successor selection remains the responsibility of the verified caller.
+    A packaged null Pack pin retains an otherwise identical exact user pin;
+    normal resolution still verifies that selected artifact before review.
     """
     for field in ("profile_id", "base", "shell"):
         if current[field] != source[field]:
@@ -169,6 +173,12 @@ def profile_source_additions(
                 seen.add(identity)
                 prior = existing.get(identity)
                 if prior is not None and prior != row:
+                    if (
+                        field == "packs"
+                        and append
+                        and _retains_existing_pack_pin(prior, row)
+                    ):
+                        continue
                     raise ProfileDefinitionStoreConflict(
                         f"additive Profile update conflicts with existing {field}"
                     )
@@ -177,3 +187,22 @@ def profile_source_additions(
                     if append:
                         result[field].append(deepcopy(row))
     return result
+
+
+def _retains_existing_pack_pin(
+    current: Mapping[str, Any], source: Mapping[str, Any]
+) -> bool:
+    """Match only an explicit packaged null against an identical pinned row."""
+
+    pin = current.get("artifact_digest")
+    if (
+        not isinstance(pin, str)
+        or "artifact_digest" not in source
+        or source["artifact_digest"] is not None
+    ):
+        return False
+    try:
+        validate_artifact_digest(pin, field="artifact_digest")
+    except ProtocolError:
+        return False
+    return dict(current) == {**source, "artifact_digest": pin}

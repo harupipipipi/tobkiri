@@ -271,6 +271,22 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     previous_definition["packs"] = [
         row for row in previous_definition["packs"] if row["pack_id"] not in added_packs
     ]
+    retained_pack = next(
+        row for row in previous_definition["packs"] if row["role"] == "provider"
+    )
+    retained_pack_id = retained_pack["pack_id"]
+    retained_pin = predecessor_catalog.packs[retained_pack_id]["pack"][
+        "artifact_digest"
+    ]
+    assert (
+        successor_catalog.packs[retained_pack_id]["pack"]["artifact_digest"]
+        == retained_pin
+    )
+    assert next(
+        row for row in successor_catalog.profiles["defaults"]["packs"]
+        if row["pack_id"] == retained_pack_id
+    )["artifact_digest"] is None
+    retained_pack["artifact_digest"] = retained_pin
     added_operations = {
         "command.catalog.read",
         "rumi_model_registry_pack.model-profile-resource",
@@ -336,6 +352,10 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     }
     assert added_packs <= {row["pack_id"] for row in proposed.profiles["defaults"]["packs"]}
     assert proposed.profiles["defaults"]["display_name"] == "My retained Defaults"
+    assert next(
+        row for row in proposed.profiles["defaults"]["packs"]
+        if row["pack_id"] == retained_pack_id
+    )["artifact_digest"] == retained_pin
     if unpinned_scope and not same_catalog:
         assert all(
             "semantics_digest" in edge["requested_scope_template"]
@@ -398,6 +418,11 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         ProfileDefinitionStore(user_data).get_profile("defaults").display_name
         == "My retained Defaults"
     )
+    registered_profile = ProfileDefinitionStore(user_data).get_profile("defaults")
+    assert next(
+        row for row in registered_profile.profile["packs"]
+        if row["pack_id"] == retained_pack_id
+    )["artifact_digest"] == retained_pin
 
 
 @pytest.mark.parametrize("change", [

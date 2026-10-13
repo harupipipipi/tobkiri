@@ -1,6 +1,7 @@
 """Additive Profile proposals preserve user state and are not approvals."""
 
 from copy import deepcopy
+from typing import Any
 
 import pytest
 
@@ -58,6 +59,71 @@ def test_source_omissions_do_not_remove_existing_selections_or_edges() -> None:
     source["packs"] = []
     source["requested_edges"] = []
     assert profile_source_additions(current, source) == current
+
+
+def test_packaged_null_preserves_exact_pin_without_changing_authority() -> None:
+    current = _profile()
+    pin = "sha256:" + "a" * 64
+    current["packs"][0]["artifact_digest"] = pin
+    current["requested_edges"][0]["authority_mode"] = "profile_grant"
+    source = deepcopy(current)
+    source["packs"][0]["artifact_digest"] = None
+    before = deepcopy((current, source))
+
+    result = profile_source_additions(current, source)
+
+    assert result == current
+    assert result["packs"][0]["artifact_digest"] == pin
+    result["packs"][0]["artifact_digest"] = "sha256:" + "b" * 64
+    result["requested_edges"][0]["requested_scope_template"]["dimensions"].clear()
+    assert (current, source) == before
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["explicit_pin", "missing_pin", "role", "new_field", "missing_role",
+     "scope", "authority"],
+)
+def test_retained_pack_pin_does_not_hide_other_source_conflicts(change: str) -> None:
+    current = _profile()
+    current["packs"][0]["artifact_digest"] = "sha256:" + "a" * 64
+    source = deepcopy(current)
+    source["packs"][0]["artifact_digest"] = None
+    if change == "explicit_pin":
+        source["packs"][0]["artifact_digest"] = "sha256:" + "b" * 64
+    elif change == "missing_pin":
+        source["packs"][0].pop("artifact_digest")
+    elif change == "role":
+        source["packs"][0]["role"] = "application"
+    elif change == "new_field":
+        source["packs"][0]["selected"] = False
+    elif change == "missing_role":
+        source["packs"][0].pop("role")
+    elif change == "scope":
+        source["requested_edges"][0]["requested_scope_template"]["dimensions"][
+            "operation"
+        ].append("write")
+    else:
+        source["requested_edges"][0]["authority_mode"] = "delegated"
+    before = deepcopy((current, source))
+
+    with pytest.raises(ProfileDefinitionStoreConflict, match="conflicts"):
+        profile_source_additions(current, source)
+
+    assert (current, source) == before
+
+
+@pytest.mark.parametrize(
+    "pin", ["not-a-digest", "sha256:" + "a" * 63, "sha256:" + "A" * 64, 1],
+)
+def test_packaged_null_does_not_accept_an_invalid_current_pin(pin: Any) -> None:
+    current = _profile()
+    current["packs"][0]["artifact_digest"] = pin
+    source = deepcopy(current)
+    source["packs"][0]["artifact_digest"] = None
+
+    with pytest.raises(ProfileDefinitionStoreConflict, match="conflicts"):
+        profile_source_additions(current, source)
 
 
 def test_scope_successor_changes_only_matching_semantics_pins() -> None:
