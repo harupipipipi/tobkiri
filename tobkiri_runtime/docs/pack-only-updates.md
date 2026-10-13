@@ -24,6 +24,26 @@ Native confirmation binds the complete reviewed signed envelope, public key,
 source selection, and artifact digest through policy writing and CAS admission.
 Changed source fails closed rather than installing a different signed build.
 
+## Native bootstrap support
+
+The installed Launcher must recognize successor identities as well as the Host
+runtime. Admission alone cannot make an older Launcher accept a different
+artifact for an existing bundled Pack ID. The Native bootstrap supports
+identity-only deferral for sandboxed provider successors and the compatible
+Gateway Host Extension slot. It still verifies the signed bundled predecessor,
+the exact Profile, Lock and Plan pins, and the selected execution boundary.
+Normal successors may use PackVM or WebAssembly; they cannot become Host
+Extensions or remote providers through this path. Base, Shell, Application,
+launch providers and Base backend providers remain protected.
+
+Deferral does not load successor code or grant execution authority. The Host
+must verify the signed admitted CAS, current activation and complete authority
+graph. Native then requires the authenticated runtime identity to match the
+selected identity before publishing the Host contract and again at readiness.
+Rebuilding a development executable to obtain this initial bootstrap support
+can change its executable-scoped data owner; it is not a credential-preserving
+Pack update or a recovery step.
+
 Host compatibility is reverified on catalog reads. A Host Extension revision
 uses a distinct authenticated catalog marker and must be explicitly pinned.
 The running Profile keeps the bundled or previously selected revision until

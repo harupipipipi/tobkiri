@@ -1,7 +1,8 @@
-//! Identity-only deferral of an active Gateway successor to the Python Host.
+//! Identity-only deferral of an active provider successor to the Python Host.
 //!
-//! This deliberately covers one non-launch provider slot. It neither admits
-//! external bytes nor loads code or produces descriptors. The caller verifies
+//! This covers sandboxed providers and one non-launch Gateway provider slot.
+//! It neither admits external bytes nor loads code or produces descriptors.
+//! The caller verifies
 //! the signed bundled predecessor first; Host capture must authenticate the
 //! successor's signature, CAS, compatibility and complete authority closure
 //! before routes or Shell execution become available.
@@ -11,6 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 const GATEWAY_PACK_ID: &str = "rumi_ai_gateway_pack";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SuccessorKind {
+    Gateway,
+    Sandbox,
+}
 
 /// Already captured Profile activation identities and their exact documents.
 pub(super) struct ActiveSelection<'a> {
@@ -37,16 +44,23 @@ pub(super) fn deferred_identity(
     protected: bool,
 ) -> Option<String> {
     if protected
-        || pack_id != GATEWAY_PACK_ID
         || !valid_digest(expected)
         || !valid_digest(source_manifest_digest?)
         || string(predecessor, "/pack/id") != Some(pack_id)
         || string(predecessor, "/pack_api_version") != Some("io.tobkiri.pack.v4")
-        || string(predecessor, "/pack/kind") != Some("host_extension")
-        || string(predecessor, "/requirements/execution_boundary") != Some("host_brokered")
     {
         return None;
     }
+    let successor_kind = match (
+        string(predecessor, "/pack/kind"),
+        string(predecessor, "/requirements/execution_boundary"),
+    ) {
+        (Some("host_extension"), Some("host_brokered")) if pack_id == GATEWAY_PACK_ID => {
+            SuccessorKind::Gateway
+        }
+        (Some("normal_sandbox"), Some("sandbox")) => SuccessorKind::Sandbox,
+        _ => return None,
+    };
     let previous_digest = string(predecessor, "/pack/artifact_digest")?;
     if !valid_digest(previous_digest) || previous_digest == expected {
         return None;
@@ -92,7 +106,7 @@ pub(super) fn deferred_identity(
         if string(pin, "/pack_id") != Some(pack_id) {
             continue;
         }
-        if !host_extension_pin(pin, expected)
+        if !successor_pin(pin, expected, successor_kind)
             || variants.insert(string(pin, "/variant_id")?, pin).is_some()
         {
             return None;
@@ -101,33 +115,41 @@ pub(super) fn deferred_identity(
     if variants.is_empty() {
         return None;
     }
-    let functions = predecessor.get("functions")?.as_array()?;
     let mut used_variants = BTreeSet::new();
     for binding in plan.get("bindings")?.as_array()? {
         if string(binding, "/pack_id") != Some(pack_id) {
             continue;
         }
         let principal = binding.get("function_principal")?;
-        if !host_extension_pin(binding, expected)
+        if !successor_pin(binding, expected, successor_kind)
             || string(principal, "/parent_artifact_digest") != Some(expected)
             || !valid_digest(string(principal, "/function_implementation_digest")?)
+            || !valid_digest(string(principal, "/contract_revision_digest")?)
         {
             return None;
         }
-        let function = unique(functions, "/id", string(principal, "/function_id")?)?;
+        let function_id = string(principal, "/function_id")?;
         let operation = string(binding, "/operation_id")?;
-        if string(function, "/role") != Some("host_capability_provider")
-            || string(function, "/contract_revision_digest")
-                != string(principal, "/contract_revision_digest")
-            || !valid_digest(string(principal, "/contract_revision_digest")?)
+        if function_id.is_empty()
+            || operation.is_empty()
             || string(principal, "/operation_id") != Some(operation)
-            || !function
-                .get("operations")?
-                .as_array()?
-                .iter()
-                .any(|id| id.as_str() == Some(operation))
         {
             return None;
+        }
+        if successor_kind == SuccessorKind::Gateway {
+            let functions = predecessor.get("functions")?.as_array()?;
+            let function = unique(functions, "/id", function_id)?;
+            if string(function, "/role") != Some("host_capability_provider")
+                || string(function, "/contract_revision_digest")
+                    != string(principal, "/contract_revision_digest")
+                || !function
+                    .get("operations")?
+                    .as_array()?
+                    .iter()
+                    .any(|id| id.as_str() == Some(operation))
+            {
+                return None;
+            }
         }
         let variant_id = string(binding, "/variant_id")?;
         let pin = variants.get(variant_id)?;
@@ -158,6 +180,24 @@ fn host_extension_pin(pin: &Value, expected: &str) -> bool {
         && string(pin, "/domain_kind") == Some("dedicated_process")
         && string(pin, "/backend") == Some("tobkiri.python-host-v4")
         && string(pin, "/executable_catalog_digest").is_some_and(valid_digest)
+        && ["/variant_id", "/platform", "/architecture", "/runtime_abi"]
+            .iter()
+            .all(|field| string(pin, field).is_some_and(|value| !value.is_empty()))
+}
+
+fn successor_pin(pin: &Value, expected: &str, kind: SuccessorKind) -> bool {
+    if kind == SuccessorKind::Gateway {
+        return host_extension_pin(pin, expected);
+    }
+    string(pin, "/artifact_digest") == Some(expected)
+        && string(pin, "/executable_catalog_digest").is_some_and(valid_digest)
+        && matches!(
+            (string(pin, "/execution_kind"), string(pin, "/domain_kind")),
+            (Some("pack_vm"), Some("pack_vm" | "dedicated_process"))
+                | (Some("wasm"), Some("wasm_component"))
+        )
+        && string(pin, "/backend")
+            .is_some_and(|backend| !backend.is_empty() && backend != "tobkiri.python-host-v4")
         && ["/variant_id", "/platform", "/architecture", "/runtime_abi"]
             .iter()
             .all(|field| string(pin, field).is_some_and(|value| !value.is_empty()))
@@ -257,6 +297,34 @@ mod tests {
             }
         }
 
+        fn sandbox() -> Self {
+            let mut fixture = Self::new();
+            let pack_id = "normal.provider";
+            fixture.predecessor["pack"]["id"] = json!(pack_id);
+            fixture.predecessor["pack"]["kind"] = json!("normal_sandbox");
+            fixture.predecessor["requirements"]["execution_boundary"] = json!("sandbox");
+            fixture.predecessor["functions"][0]["role"] = json!("pure");
+            fixture.profile["packs"][0]["pack_id"] = json!(pack_id);
+            for graph in [&mut fixture.lock, &mut fixture.plan] {
+                graph["effective_set"][0]["identity"] = json!(pack_id);
+            }
+            for pin in [
+                &mut fixture.lock["variant_pins"][0],
+                &mut fixture.plan["bindings"][0],
+            ] {
+                pin["pack_id"] = json!(pack_id);
+                pin["execution_kind"] = json!("pack_vm");
+                pin["backend"] = json!("tobkiri.python-pack-v4");
+                pin["variant_id"] = json!("normal.changed.python");
+            }
+            let binding = &mut fixture.plan["bindings"][0];
+            binding["operation_id"] = json!("normal.changed-operation");
+            binding["function_principal"]["function_id"] = json!("normal.changed-function");
+            binding["function_principal"]["operation_id"] = json!("normal.changed-operation");
+            binding["function_principal"]["contract_revision_digest"] = json!(digest('4'));
+            fixture
+        }
+
         fn selection(&self) -> ActiveSelection<'_> {
             ActiveSelection {
                 profile: &self.profile,
@@ -272,7 +340,7 @@ mod tests {
         fn deferred(&self) -> Option<String> {
             deferred_identity(
                 &self.selection(),
-                GATEWAY_PACK_ID,
+                self.predecessor["pack"]["id"].as_str().unwrap(),
                 &self.artifact,
                 &self.predecessor,
                 Some(&self.source_digest),
@@ -288,6 +356,164 @@ mod tests {
         let mut unchanged = Fixture::new();
         unchanged.predecessor["pack"]["artifact_digest"] = json!(unchanged.artifact);
         assert_eq!(unchanged.deferred(), None);
+    }
+
+    #[test]
+    fn sandbox_successor_preserves_reviewed_new_function_and_variant_identities() {
+        for (execution, domain, backend, abi) in [
+            ("pack_vm", "pack_vm", "tobkiri.python-pack-v4", "python3.13"),
+            (
+                "pack_vm",
+                "dedicated_process",
+                "tobkiri.python-pack-v4",
+                "python3.14",
+            ),
+            (
+                "wasm",
+                "wasm_component",
+                "tobkiri.wasmtime-pulley-v1",
+                "component-v1",
+            ),
+        ] {
+            let mut fixture = Fixture::sandbox();
+            for pin in [
+                &mut fixture.lock["variant_pins"][0],
+                &mut fixture.plan["bindings"][0],
+            ] {
+                pin["execution_kind"] = json!(execution);
+                pin["domain_kind"] = json!(domain);
+                pin["backend"] = json!(backend);
+                pin["runtime_abi"] = json!(abi);
+                pin["executable_catalog_digest"] = json!(digest('5'));
+            }
+            assert_eq!(fixture.deferred(), Some(fixture.artifact.clone()));
+        }
+        let mut unchanged = Fixture::sandbox();
+        unchanged.predecessor["pack"]["artifact_digest"] = json!(unchanged.artifact);
+        assert_eq!(unchanged.deferred(), None);
+    }
+
+    #[test]
+    fn sandbox_successor_cannot_defer_protected_or_host_provider_slots() {
+        let fixture = Fixture::sandbox();
+        assert_eq!(
+            deferred_identity(
+                &fixture.selection(),
+                "normal.provider",
+                &fixture.artifact,
+                &fixture.predecessor,
+                Some(&fixture.source_digest),
+                true,
+            ),
+            None
+        );
+        for (kind, boundary) in [
+            ("host_extension", "host_brokered"),
+            ("application", "declarative_only"),
+            ("normal_sandbox", "host_brokered"),
+            ("normal_sandbox", "declarative_only"),
+        ] {
+            let mut changed = Fixture::sandbox();
+            changed.predecessor["pack"]["kind"] = json!(kind);
+            changed.predecessor["requirements"]["execution_boundary"] = json!(boundary);
+            assert_eq!(changed.deferred(), None, "{kind}:{boundary}");
+        }
+    }
+
+    #[test]
+    fn sandbox_pins_reject_host_remote_and_inconsistent_execution_boundaries() {
+        for (execution, domain, backend) in [
+            (
+                "host_extension",
+                "dedicated_process",
+                "tobkiri.python-host-v4",
+            ),
+            ("remote", "remote", "tobkiri.remote-pack-v4"),
+            ("pack_vm", "wasm_component", "tobkiri.python-pack-v4"),
+            ("wasm", "dedicated_process", "tobkiri.wasmtime-pulley-v1"),
+            ("pack_vm", "dedicated_process", "tobkiri.python-host-v4"),
+            ("pack_vm", "dedicated_process", ""),
+        ] {
+            let mut fixture = Fixture::sandbox();
+            for pin in [
+                &mut fixture.lock["variant_pins"][0],
+                &mut fixture.plan["bindings"][0],
+            ] {
+                pin["execution_kind"] = json!(execution);
+                pin["domain_kind"] = json!(domain);
+                pin["backend"] = json!(backend);
+            }
+            assert_eq!(fixture.deferred(), None, "{execution}:{domain}:{backend}");
+        }
+    }
+
+    #[test]
+    fn sandbox_successor_requires_exact_lock_plan_pins_and_principal() {
+        for field in [
+            "artifact_digest",
+            "executable_catalog_digest",
+            "variant_id",
+            "backend",
+            "platform",
+            "architecture",
+            "runtime_abi",
+            "execution_kind",
+            "domain_kind",
+        ] {
+            let mut fixture = Fixture::sandbox();
+            fixture.plan["bindings"][0][field] = json!("different");
+            assert_eq!(fixture.deferred(), None, "{field}");
+        }
+        for (field, value) in [
+            ("parent_artifact_digest", json!(digest('9'))),
+            ("function_implementation_digest", json!("invalid")),
+            ("contract_revision_digest", json!("invalid")),
+            ("function_id", json!("")),
+            ("operation_id", json!("normal.other-operation")),
+        ] {
+            let mut fixture = Fixture::sandbox();
+            fixture.plan["bindings"][0]["function_principal"][field] = value;
+            assert_eq!(fixture.deferred(), None, "{field}");
+        }
+        let mut fixture = Fixture::sandbox();
+        fixture.plan["bindings"][0]["operation_id"] = json!("");
+        fixture.plan["bindings"][0]["function_principal"]["operation_id"] = json!("");
+        assert_eq!(fixture.deferred(), None);
+    }
+
+    #[test]
+    fn sandbox_successor_rejects_stale_duplicate_missing_and_unbound_evidence() {
+        for mutation in 0..9 {
+            let mut fixture = Fixture::sandbox();
+            match mutation {
+                0 => fixture.profile["packs"][0]["artifact_digest"] = json!(digest('9')),
+                1 => fixture.profile["packs"][0]["role"] = json!("application"),
+                2 => {
+                    let row = fixture.profile["packs"][0].clone();
+                    fixture.profile["packs"].as_array_mut().unwrap().push(row);
+                }
+                3 => fixture.lock["effective_set"][0]["artifact_digest"] = json!(digest('9')),
+                4 => fixture.plan["effective_set"] = json!([]),
+                5 => fixture.plan["bindings"] = json!([]),
+                6 => fixture.lock["variant_pins"] = json!([]),
+                7 => {
+                    let row = fixture.lock["variant_pins"][0].clone();
+                    fixture.lock["variant_pins"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(row);
+                }
+                _ => {
+                    let mut row = fixture.lock["variant_pins"][0].clone();
+                    row["variant_id"] = json!("normal.unbound");
+                    fixture.lock["variant_pins"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(row);
+                }
+            }
+            assert_eq!(fixture.deferred(), None, "{mutation}");
+        }
     }
 
     #[test]
