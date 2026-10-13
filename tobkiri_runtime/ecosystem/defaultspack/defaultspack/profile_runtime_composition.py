@@ -150,6 +150,7 @@ class DefaultspackProfileRuntime:
         authority_snapshot_digest: str,
         security_epoch: int,
         definition_predecessor: Mapping[str, Any] | None = None,
+        pack_pin_predecessor: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         """Build Defaultspack's explicit bootstrap activation confirmation."""
 
@@ -165,6 +166,9 @@ class DefaultspackProfileRuntime:
         )
         if definition_predecessor is not None:
             confirmation["definition_predecessor"] = dict(definition_predecessor)
+        if pack_pin_predecessor is not None:
+            confirmation["pack_pin_predecessor"] = dict(pack_pin_predecessor)
+        if definition_predecessor is not None or pack_pin_predecessor is not None:
             confirmation["confirmation_digest"] = canonical_digest(
                 {
                     key: value for key, value in confirmation.items()

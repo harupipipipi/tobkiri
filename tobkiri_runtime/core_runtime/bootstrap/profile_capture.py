@@ -39,8 +39,14 @@ from .profile_publication import (
     published_candidate,
 )
 from .profile_predecessor import inactive_bootstrap_predecessor
+from .profile_pack_pin_recovery import (
+    pack_pin_predecessor_binding,
+    require_exact_pack_pin_predecessor_binding,
+    verified_pack_pin_successor_predecessor,
+)
 from .profile_registry import (
     bootstrap_review_catalog,
+    require_bootstrap_pack_pin_predecessor_current,
     recover_bootstrap_definition,
     register_bootstrap_definition,
     verify_registered_bootstrap_successor,
@@ -501,18 +507,96 @@ def _resolve_bootstrap_candidate(
 
         with runtime_user_data_scope(user_data):
             verify_reconfirmed_pack_approvals(resolved, catalog)
+    pin_predecessor = _bootstrap_pack_pin_predecessor_binding(
+        user_data=user_data,
+        runtime=runtime,
+        catalog=catalog,
+        profile_id=profile_id,
+    )
     definition_predecessor = inactive_bootstrap_predecessor(
         user_data=user_data, source=source_profile
     )
-    return resolved, dict(
-        runtime.bootstrap_confirmation(
-            resolved=resolved,
-            profile_id=profile_id,
-            authority_snapshot_digest=snapshot_digest,
-            security_epoch=security_epoch,
-            definition_predecessor=definition_predecessor,
-        )
+    confirmation_args = dict(
+        resolved=resolved,
+        profile_id=profile_id,
+        authority_snapshot_digest=snapshot_digest,
+        security_epoch=security_epoch,
+        definition_predecessor=definition_predecessor,
     )
+    if pin_predecessor is not None:
+        confirmation_args["pack_pin_predecessor"] = pin_predecessor
+    return resolved, dict(runtime.bootstrap_confirmation(**confirmation_args))
+
+
+def _bootstrap_pack_pin_predecessor_binding(
+    *, user_data: Path, runtime: Any, catalog: Any, profile_id: str
+) -> dict[str, Any] | None:
+    """Bind a pin-only setup review to its exact active and registry parents."""
+
+    definitions = ProfileDefinitionStore(user_data)
+    registry_snapshot = definitions.snapshot()
+    registered = definitions.get_profile(profile_id)
+    pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
+    source = catalog.profiles.get(profile_id)
+    if (
+        registered is None
+        or registered.tombstone
+        or pointer is None
+        or pointer.profile_id != profile_id
+        or not isinstance(source, Mapping)
+        or canonical_digest(source) != registered.profile_revision
+    ):
+        return None
+    workspace = user_data / "workspaces" / profile_id
+    try:
+        with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
+            active = runtime.activation_store(
+                root=workspace / "activation",
+                workspace=workspace,
+                profile_id=profile_id,
+                authority=authority,
+                catalog=catalog,
+            ).load_active_snapshot()
+        active_definition_digest = active.resolved.plan["profile_definition_digest"]
+        active_identity = (
+            active.resolved.plan["profile_revision"],
+            active.activation["activation_id"],
+            active.resolved.plan["plan_digest"],
+            active.resolved.lock["lock_digest"],
+        )
+    except Exception as error:
+        if not runtime.is_reconfirmation_required(error):
+            raise
+        active_definition_digest = getattr(
+            error, "verified_profile_definition_digest", None
+        )
+        active_identity = getattr(error, "verified_activation_identity", None)
+    if active_identity != (
+        pointer.profile_revision,
+        pointer.activation_id,
+        pointer.plan_digest,
+        pointer.lock_digest,
+    ):
+        raise ProfileDefinitionStoreConflict(
+            "Pack pin review does not match the verified active pointer"
+        )
+    if active_definition_digest == registered.profile_revision:
+        return None
+    try:
+        verified_pack_pin_successor_predecessor(
+            registry_snapshot,
+            registered.profile,
+            active_definition_digest,
+            catalog,
+        )
+        return pack_pin_predecessor_binding(
+            pointer=pointer,
+            active_definition_digest=active_definition_digest,
+            registry_snapshot=registry_snapshot,
+            registered=registered,
+        )
+    except ProfileDefinitionStoreConflict:
+        return None
 
 
 def _resolve_profile_candidate(
@@ -1182,6 +1266,13 @@ def _capture_bootstrap_profile(
             if dict(confirmation) != expected_confirmation:
                 raise ProfileResolutionDenied(
                     "bootstrap activation confirmation is stale or tampered"
+                )
+            pin_predecessor = expected_confirmation.get("pack_pin_predecessor")
+            if pin_predecessor is not None:
+                require_bootstrap_pack_pin_predecessor_current(
+                    user_data=user_data,
+                    catalog=catalog,
+                    binding=pin_predecessor,
                 )
             host_profile_catalog(base_dir)
         with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:

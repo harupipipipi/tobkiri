@@ -62,6 +62,7 @@ class ProfileRuntimePort(Protocol):
         authority_snapshot_digest: str,
         security_epoch: int,
         definition_predecessor: Mapping[str, Any] | None = None,
+        pack_pin_predecessor: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         """Project the application bootstrap confirmation from Host facts."""
 

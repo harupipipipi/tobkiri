@@ -15,6 +15,8 @@ from ..profile_definition_store_v4 import (
     ProfileDefinitionStoreConflict,
 )
 from .profile_predecessor import require_inactive_bootstrap_predecessor
+from .profile_pack_pin_recovery import verified_pack_pin_successor_predecessor
+from .profile_pack_pin_recovery import require_exact_pack_pin_predecessor_binding
 from .profile_source_update import (
     interrupted_source_update_predecessor,
     profile_binding_renewal_required,
@@ -103,20 +105,46 @@ def bootstrap_review_catalog(
             active.resolved.plan, catalog
         )
     candidate = deepcopy(dict(registered.profile))
+    pack_pin_recovery = False
     if definition_digest != canonical_digest(registered.profile):
-        candidate = interrupted_source_update_predecessor(
-            ProfileDefinitionStore(user_data).snapshot(),
-            registered.profile,
-            definition_digest,
-            catalog.profiles[profile_id],
-            successor_required=successor_required,
-        )
-    if successor_required:
+        try:
+            candidate = interrupted_source_update_predecessor(
+                ProfileDefinitionStore(user_data).snapshot(),
+                registered.profile,
+                definition_digest,
+                catalog.profiles[profile_id],
+                successor_required=successor_required,
+            )
+        except ProfileDefinitionStoreConflict:
+            if not include_source_additions:
+                raise
+            pins = {
+                str(row["pack_id"]): str(row["artifact_digest"])
+                for row in registered.profile["packs"]
+                if row.get("artifact_digest") is not None
+            }
+            from ..pack_control_v4 import catalog_with_admitted_pack_closure
+
+            catalog, _ = catalog_with_admitted_pack_closure(
+                catalog,
+                [str(row["pack_id"]) for row in registered.profile["packs"]],
+                artifact_pins=pins,
+            )
+            snapshot = ProfileDefinitionStore(user_data).snapshot()
+            verified_pack_pin_successor_predecessor(
+                snapshot,
+                registered.profile,
+                definition_digest,
+                catalog,
+            )
+            candidate = deepcopy(dict(registered.profile))
+            pack_pin_recovery = True
+    if successor_required and not pack_pin_recovery:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
     binding_renewal_predecessor = deepcopy(candidate)
-    if successor_required or include_source_additions:
+    if (successor_required or include_source_additions) and not pack_pin_recovery:
         candidate = profile_scope_successor(candidate, catalog.profiles[profile_id])
-    if include_source_additions:
+    if include_source_additions and not pack_pin_recovery:
         try:
             updated = profile_source_additions(candidate, catalog.profiles[profile_id])
         except ProfileDefinitionStoreConflict as error:
@@ -239,6 +267,42 @@ def register_bootstrap_definition(
     if existing is None or existing.tombstone or dict(existing.profile) != dict(source):
         raise ProfileDefinitionStoreConflict(
             "bootstrap Profile conflicts with the existing definition"
+        )
+
+
+def require_bootstrap_pack_pin_predecessor_current(
+    *, user_data: Path, catalog: Any, binding: Mapping[str, Any]
+) -> None:
+    """CAS-check the reviewed pin-only candidate and its active predecessor."""
+
+    definitions = ProfileDefinitionStore(user_data)
+    with exclusive_profile_lock(
+        SecureDirectory(user_data / "profiles", create=False),
+        ".active-profile.lock",
+        timeout_seconds=5.0,
+        monotonic_clock=time.monotonic,
+        retry_sleep=time.sleep,
+    ):
+        snapshot = definitions.snapshot()
+        profile_id = str(binding.get("profile_id", ""))
+        registered = definitions.get_profile(profile_id)
+        pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
+        if registered is None or registered.tombstone or pointer is None:
+            raise ProfileDefinitionStoreConflict(
+                "Pack pin review predecessor is no longer current"
+            )
+        require_exact_pack_pin_predecessor_binding(
+            binding,
+            pointer=pointer,
+            active_definition_digest=str(binding.get("active_definition_digest", "")),
+            registry_snapshot=snapshot,
+            registered=registered,
+            catalog=catalog,
+        )
+        definitions.require_current_profile(
+            profile_id,
+            expected_profile_revision=str(binding["registry_profile_revision"]),
+            expected_store_generation=int(binding["registry_store_generation"]),
         )
 
 
