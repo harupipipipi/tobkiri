@@ -52,6 +52,14 @@ export interface ProfileCatalogBinding {
   bundle_lock_digest: string;
 }
 
+export interface ProfileCandidateSelection {
+  selected_profile_id: string;
+  execution_profile_id: string | null;
+  execution_profile_revision: string;
+  execution_plan_digest: string;
+  execution_activation_id: string | null;
+}
+
 export interface ProfileResolveResult {
   state: 'resolved';
   candidate_id: string;
@@ -63,6 +71,8 @@ export interface ProfileResolveResult {
     resolved_plan: unknown;
     predecessor: unknown;
     catalog_binding?: ProfileCatalogBinding;
+    candidate_generation?: string;
+    selection?: ProfileCandidateSelection;
   };
   next_action: 'review';
   write_set: unknown[];
@@ -294,7 +304,7 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
     throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned an invalid ceremony state.');
   }
   const reviewKeys = ['profile', 'profile_lock', 'resolved_plan', 'predecessor'];
-  const allowedReviewKeys = [...reviewKeys, 'catalog_binding'];
+  const allowedReviewKeys = [...reviewKeys, 'catalog_binding', 'candidate_generation', 'selection'];
   if (
     reviewKeys.some((key) => !Object.prototype.hasOwnProperty.call(result.review, key))
     || Object.keys(result.review).some((key) => !allowedReviewKeys.includes(key))
@@ -319,6 +329,45 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
       bundle_lock_digest: candidate.bundle_lock_digest,
     };
   }
+  const hasGeneration = Object.prototype.hasOwnProperty.call(result.review, 'candidate_generation');
+  const hasSelection = Object.prototype.hasOwnProperty.call(result.review, 'selection');
+  let candidateGeneration: string | undefined;
+  let selection: ProfileCandidateSelection | undefined;
+  if (hasGeneration || hasSelection) {
+    if (
+      !hasGeneration || !hasSelection
+      || typeof result.review.candidate_generation !== 'string'
+      || !/^profile-change-generation:[0-9a-f]{32}$/.test(result.review.candidate_generation)
+      || !isRecord(result.review.selection)
+    ) {
+      throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned invalid candidate selection metadata.');
+    }
+    const selected = result.review.selection;
+    const selectionKeys = [
+      'selected_profile_id', 'execution_profile_id', 'execution_profile_revision',
+      'execution_plan_digest', 'execution_activation_id',
+    ];
+    if (
+      Object.keys(selected).length !== selectionKeys.length
+      || selectionKeys.some((key) => !Object.prototype.hasOwnProperty.call(selected, key))
+      || !validRequestString(selected.selected_profile_id)
+      || !(selected.execution_profile_id === null || validRequestString(selected.execution_profile_id))
+      || !(selected.execution_activation_id === null || validRequestString(selected.execution_activation_id))
+      || (selected.execution_profile_id === null) !== (selected.execution_activation_id === null)
+      || !isRecord(result.review.profile)
+      || result.review.profile.profile_id !== selected.selected_profile_id
+    ) {
+      throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned an invalid selected Profile binding.');
+    }
+    candidateGeneration = result.review.candidate_generation;
+    selection = {
+      selected_profile_id: selected.selected_profile_id as string,
+      execution_profile_id: selected.execution_profile_id as string | null,
+      execution_profile_revision: requiredDigest(selected.execution_profile_revision, 'execution_profile_revision'),
+      execution_plan_digest: requiredDigest(selected.execution_plan_digest, 'execution_plan_digest'),
+      execution_activation_id: selected.execution_activation_id as string | null,
+    };
+  }
   return {
     state: 'resolved',
     candidate_id: requiredString(result.candidate_id, 'candidate_id'),
@@ -330,6 +379,7 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
       resolved_plan: result.review.resolved_plan,
       predecessor: result.review.predecessor,
       ...(catalogBinding ? {catalog_binding: catalogBinding} : {}),
+      ...(candidateGeneration ? {candidate_generation: candidateGeneration, selection} : {}),
     },
     next_action: 'review',
     write_set: requiredWriteSet(result.write_set),

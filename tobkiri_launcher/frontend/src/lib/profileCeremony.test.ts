@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   createProfileCeremonyClient,
   type ProfileCeremonyTransport,
+  validateProfileResolveResult,
 } from './profileCeremony';
 import {
   RUNTIME_SURFACE_API_VERSION,
@@ -96,6 +97,64 @@ function queuedTransport(responses: unknown[], calls: Array<{target: string; pay
     },
   };
 }
+
+function hostCandidateReview() {
+  // RuntimeProfileChangeService publishes both of these fields as part of
+  // the candidate's digest; the client must preserve their exact values.
+  return {
+    profile: {profile_id: 'defaults'}, profile_lock: {}, resolved_plan: {},
+    predecessor: {}, catalog_binding: catalogBindingFields(),
+    candidate_generation: `profile-change-generation:${'1'.repeat(32)}`,
+    selection: {
+      selected_profile_id: 'defaults', execution_profile_id: 'defaults',
+      execution_profile_revision: digest('a'), execution_plan_digest: digest('b'),
+      execution_activation_id: 'activation:defaults-one',
+    },
+  };
+}
+
+test('resolve preserves the Host candidate generation and exact selected/executing Profile metadata', () => {
+  const review = hostCandidateReview();
+  const result = validateProfileResolveResult({
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION, state: 'resolved',
+    candidate_id: 'candidate-one', candidate_digest: digest('2'), expires_in: 60,
+    review, next_action: 'review', write_set: [],
+  });
+  assert.deepEqual(result.review, review);
+  const initialReview = {
+    ...review,
+    selection: {...review.selection, execution_profile_id: null, execution_activation_id: null},
+  };
+  assert.deepEqual(validateProfileResolveResult({
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION, state: 'resolved',
+    candidate_id: 'candidate-initial', candidate_digest: digest('3'), expires_in: 60,
+    review: initialReview, next_action: 'review', write_set: [],
+  }).review, initialReview);
+});
+
+test('candidate metadata stays finite, paired, digest-bound and matched to the selected Profile', () => {
+  const review = hostCandidateReview();
+  const {candidate_generation: _generation, ...withoutGeneration} = review;
+  const {selection: _selection, ...withoutSelection} = review;
+  const invalidReviews = [
+    withoutGeneration, withoutSelection,
+    {...review, candidate_generation: 'unrecognized-generation'},
+    {...review, selection: {...review.selection, approved: true}},
+    {...review, selection: {...review.selection, selected_profile_id: 'substituted-profile'}},
+    {...review, selection: {...review.selection, execution_profile_revision: 'invalid'}},
+    {...review, selection: {...review.selection, execution_plan_digest: 'invalid'}},
+    {...review, selection: {...review.selection, execution_profile_id: null}},
+    {...review, selection: {...review.selection, execution_activation_id: null}},
+    {...review, unrecognized_review_field: true},
+  ];
+  for (const invalidReview of invalidReviews) {
+    assert.throws(() => validateProfileResolveResult({
+      runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION, state: 'resolved',
+      candidate_id: 'candidate-one', candidate_digest: digest('2'), expires_in: 60,
+      review: invalidReview, next_action: 'review', write_set: [],
+    }), (error: unknown) => error instanceof RuntimeSurfaceError && error.code === 'INVALID');
+  }
+});
 
 test('Profile ceremony sends exact staged payloads and requires the authoritative activate snapshot', async () => {
   const snapshot = profileSnapshot();
