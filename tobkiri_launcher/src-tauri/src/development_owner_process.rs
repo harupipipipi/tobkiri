@@ -57,6 +57,17 @@ mod macos {
         pid: u32,
         uid: u32,
         start: u64,
+        status: u32,
+    }
+
+    impl ProcessIdentity {
+        fn same_process(&self, other: &Self) -> bool {
+            self.pid == other.pid && self.uid == other.uid && self.start == other.start
+        }
+    }
+
+    fn confirmed_nonrunning_zombie(before: &ProcessIdentity, after: &ProcessIdentity) -> bool {
+        before.status == libc::SZOMB && before == after
     }
 
     fn process_identity(pid: u32) -> Result<Option<ProcessIdentity>, ()> {
@@ -68,7 +79,9 @@ mod macos {
             libc::proc_pidinfo(
                 pid as c_int,
                 libc::PROC_PIDTBSDINFO,
-                0,
+                // Include unreaped zombies so their non-running state can be
+                // verified instead of confusing a listed zombie with a live PID.
+                1,
                 (&mut info as *mut libc::proc_bsdinfo).cast(),
                 size,
             )
@@ -90,6 +103,7 @@ mod macos {
             // pbi_uid is the process's effective UID in proc_bsdinfo.
             uid: info.pbi_uid,
             start,
+            status: info.pbi_status,
         }))
     }
 
@@ -312,6 +326,15 @@ mod macos {
         if before.uid != euid {
             return OwnerProcessState::Clear;
         }
+        if before.status == libc::SZOMB {
+            return match process_identity(pid) {
+                Ok(Some(after)) if confirmed_nonrunning_zombie(&before, &after) => {
+                    OwnerProcessState::Clear
+                }
+                Ok(Some(_)) => OwnerProcessState::Uncertain,
+                Ok(None) | Err(()) => uncertain_unless_exited(pid),
+            };
+        }
         let path = match process_path(pid) {
             Ok(path) => path,
             Err(()) => return uncertain_unless_exited(pid),
@@ -350,7 +373,8 @@ mod macos {
             Ok(path) => path,
             Err(()) => return uncertain_unless_exited(pid),
         };
-        if before != after || path != after_path {
+        // Sleep/run transitions do not change the live process's identity.
+        if !before.same_process(&after) || path != after_path {
             return OwnerProcessState::Uncertain;
         }
         if matches {
@@ -397,6 +421,137 @@ mod macos {
         use std::process::{Command, Stdio};
         use std::thread;
         use std::time::Duration;
+
+        struct ReapedChild(std::process::Child);
+
+        impl Drop for ReapedChild {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        #[test]
+        fn zombie_confirmation_requires_stable_pid_uid_birth_and_status() {
+            let before = ProcessIdentity {
+                pid: 11,
+                uid: 501,
+                start: 77,
+                status: libc::SZOMB,
+            };
+            assert!(confirmed_nonrunning_zombie(&before, &before));
+            for after in [
+                ProcessIdentity { pid: 12, ..before },
+                ProcessIdentity { uid: 502, ..before },
+                ProcessIdentity {
+                    start: 78,
+                    ..before
+                },
+                ProcessIdentity {
+                    status: 2,
+                    ..before
+                },
+            ] {
+                assert!(!confirmed_nonrunning_zombie(&before, &after));
+            }
+            let running = ProcessIdentity {
+                status: 2,
+                ..before
+            };
+            assert!(!confirmed_nonrunning_zombie(&running, &running));
+        }
+
+        #[test]
+        fn live_process_identity_ignores_sleep_run_transitions() {
+            let running = ProcessIdentity {
+                pid: 11,
+                uid: 501,
+                start: 77,
+                status: 2,
+            };
+            let sleeping = ProcessIdentity {
+                status: 3,
+                ..running
+            };
+            assert!(running.same_process(&sleeping));
+            assert!(!running.same_process(&ProcessIdentity {
+                start: 78,
+                ..sleeping
+            }));
+        }
+
+        #[test]
+        fn unreaped_child_zombie_is_clear_after_stable_kernel_observations() {
+            let child = Command::new("/bin/sh")
+                .args(["-c", "exit 0"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let child = ReapedChild(child);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let before = loop {
+                if let Some(identity) = process_identity(child.0.id()).unwrap() {
+                    if identity.status == libc::SZOMB {
+                        break identity;
+                    }
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "child did not become a zombie"
+                );
+                thread::sleep(Duration::from_millis(5));
+            };
+            assert!(list_pids().unwrap().contains(&child.0.id()));
+            let after = process_identity(child.0.id()).unwrap().unwrap();
+            assert!(confirmed_nonrunning_zombie(&before, &after));
+            assert_eq!(
+                inspect_one(
+                    child.0.id(),
+                    unsafe { libc::geteuid() },
+                    b"/unused/host",
+                    b"/unused/host/user_data",
+                    b"/unused/tobkiri-launcher",
+                ),
+                OwnerProcessState::Clear
+            );
+        }
+
+        #[test]
+        fn live_python_candidate_owner_marker_remains_busy() {
+            let fixture = std::env::temp_dir().join(format!(
+                "tobkiri-python-owner-test-{}-{}",
+                std::process::id(),
+                rand::random::<u64>()
+            ));
+            std::fs::create_dir(&fixture).unwrap();
+            let executable = fixture.join("python-owner-probe");
+            std::fs::copy("/bin/sh", &executable).unwrap();
+            let root = fixture.join("host");
+            let child = Command::new(&executable)
+                .args(["-c", "read -r line", root.to_str().unwrap()])
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let child = ReapedChild(child);
+            assert_eq!(
+                inspect_one(
+                    child.0.id(),
+                    unsafe { libc::geteuid() },
+                    root.as_os_str().as_bytes(),
+                    root.join("user_data").as_os_str().as_bytes(),
+                    b"/previous/tobkiri-launcher",
+                ),
+                OwnerProcessState::Busy
+            );
+            drop(child);
+            std::fs::remove_dir_all(fixture).unwrap();
+        }
 
         #[test]
         fn native_launcher_matches_selected_executable_and_other_bundle_paths() {
