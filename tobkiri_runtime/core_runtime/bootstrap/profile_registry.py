@@ -187,9 +187,24 @@ def register_bootstrap_definition(
     *,
     approved_predecessor_digest: str | None = None,
     approved_inactive_predecessor: Mapping[str, Any] | None = None,
+    approved_pack_pin_predecessor: Mapping[str, Any] | None = None,
+    admitted_catalog: Any | None = None,
 ) -> None:
     """Register a source or append its explicitly confirmed predecessor's successor."""
     definitions = ProfileDefinitionStore(user_data)
+    if approved_pack_pin_predecessor is not None:
+        if admitted_catalog is None:
+            raise ProfileDefinitionStoreConflict(
+                "Pack pin confirmation has no admitted catalog"
+            )
+        _require_pack_pin_predecessor_current(
+            definitions=definitions,
+            user_data=user_data,
+            catalog=admitted_catalog,
+            source=source,
+            binding=approved_pack_pin_predecessor,
+        )
+        return
     if approved_inactive_predecessor is not None:
         # The caller holds the application's workspace activation lock. This
         # shared Host selection lock excludes another Profile publication while
@@ -275,7 +290,25 @@ def require_bootstrap_pack_pin_predecessor_current(
 ) -> None:
     """CAS-check the reviewed pin-only candidate and its active predecessor."""
 
-    definitions = ProfileDefinitionStore(user_data)
+    _require_pack_pin_predecessor_current(
+        definitions=ProfileDefinitionStore(user_data),
+        user_data=user_data,
+        catalog=catalog,
+        source=None,
+        binding=binding,
+    )
+
+
+def _require_pack_pin_predecessor_current(
+    *,
+    definitions: ProfileDefinitionStore,
+    user_data: Path,
+    catalog: Any,
+    source: Mapping[str, Any] | None,
+    binding: Mapping[str, Any],
+) -> None:
+    """Recheck the entire reviewed binding at the registry no-op CAS boundary."""
+
     with exclusive_profile_lock(
         SecureDirectory(user_data / "profiles", create=False),
         ".active-profile.lock",
@@ -290,6 +323,10 @@ def require_bootstrap_pack_pin_predecessor_current(
         if registered is None or registered.tombstone or pointer is None:
             raise ProfileDefinitionStoreConflict(
                 "Pack pin review predecessor is no longer current"
+            )
+        if source is not None and dict(registered.profile) != dict(source):
+            raise ProfileDefinitionStoreConflict(
+                "Pack pin candidate changed after review"
             )
         require_exact_pack_pin_predecessor_binding(
             binding,

@@ -52,9 +52,13 @@ def _history(previous: dict[str, object], current: dict[str, object]) -> dict[st
     }
 
 
-def _catalog(pin: str) -> SimpleNamespace:
+def _catalog(pin: str, kind: str = "normal_sandbox") -> SimpleNamespace:
     return SimpleNamespace(
-        packs={"gateway": {"pack": {"artifact_digest": pin}}}
+        packs={
+            "gateway": {
+                "pack": {"artifact_digest": pin, "kind": kind}
+            }
+        }
     )
 
 
@@ -121,6 +125,88 @@ def test_predecessor_binding_covers_active_pointer_and_registry_snapshot() -> No
             registered=registered,
             catalog=_catalog(current["packs"][0]["artifact_digest"]),
         )
+    changed_snapshot = {**snapshot, "generation": 13}
+    with pytest.raises(ProfileDefinitionStoreConflict):
+        require_exact_pack_pin_predecessor_binding(
+            binding,
+            pointer=pointer,
+            active_definition_digest=previous_digest,
+            registry_snapshot=changed_snapshot,
+            registered=registered,
+            catalog=_catalog(current["packs"][0]["artifact_digest"]),
+        )
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_pin_recovery_registration_rechecks_current_candidate_cas(
+    tmp_path, monkeypatch, stale: bool
+) -> None:
+    previous = _profile("sha256:" + "1" * 64)
+    current = _profile("sha256:" + "2" * 64)
+    previous_digest = canonical_digest(previous)
+    registered = SimpleNamespace(
+        profile_id="defaults",
+        profile_revision=canonical_digest(current),
+        profile=current,
+        tombstone=False,
+    )
+    snapshot = {"generation": 12, **_history(previous, current)}
+    pointer = _pointer()
+    binding = pack_pin_predecessor_binding(
+        pointer=pointer,
+        active_definition_digest=previous_digest,
+        registry_snapshot=snapshot,
+        registered=registered,
+    )
+    if stale:
+        snapshot = {**snapshot, "generation": 13}
+    calls: list[tuple[str, str, int]] = []
+
+    class FakeDefinitions:
+        def __init__(self, _root):
+            pass
+
+        def snapshot(self):
+            return snapshot
+
+        def get_profile(self, _profile_id, **_kwargs):
+            return registered
+
+        def require_current_profile(
+            self, profile_id, *, expected_profile_revision, expected_store_generation
+        ):
+            calls.append(
+                (profile_id, expected_profile_revision, expected_store_generation)
+            )
+            return registered
+
+    tmp_path.joinpath("profiles").mkdir()
+    monkeypatch.setattr(profile_registry, "ProfileDefinitionStore", FakeDefinitions)
+    monkeypatch.setattr(
+        profile_registry,
+        "ActiveProfileStore",
+        lambda _root: SimpleNamespace(load=lambda **_kwargs: pointer),
+    )
+
+    if stale:
+        with pytest.raises(ProfileDefinitionStoreConflict):
+            profile_registry.register_bootstrap_definition(
+                tmp_path,
+                current,
+                approved_pack_pin_predecessor=binding,
+                admitted_catalog=_catalog(current["packs"][0]["artifact_digest"]),
+            )
+        assert calls == []
+    else:
+        profile_registry.register_bootstrap_definition(
+            tmp_path,
+            current,
+            approved_pack_pin_predecessor=binding,
+            admitted_catalog=_catalog(current["packs"][0]["artifact_digest"]),
+        )
+        assert calls == [
+            ("defaults", canonical_digest(current), 12),
+        ]
 
 
 def test_review_accepts_pin_only_predecessor_when_active_needs_reconfirmation(
@@ -169,7 +255,10 @@ def test_review_accepts_pin_only_predecessor_when_active_needs_reconfirmation(
         profiles={"defaults": previous},
         packs={
             "gateway": {
-                "pack": {"artifact_digest": current["packs"][0]["artifact_digest"]},
+                "pack": {
+                    "artifact_digest": current["packs"][0]["artifact_digest"],
+                    "kind": "normal_sandbox",
+                },
                 "requirements": {"pack_dependencies": []},
             },
             "base": {"requirements": {"pack_dependencies": []}},
@@ -247,21 +336,19 @@ def test_review_accepts_pin_only_predecessor_when_active_needs_reconfirmation(
 
     assert reviewed.profiles["defaults"] == current
     assert additional == ()
-    changed_snapshot = {**snapshot, "generation": 13}
-    with pytest.raises(ProfileDefinitionStoreConflict):
-        require_exact_pack_pin_predecessor_binding(
-            binding,
-            pointer=pointer,
-            active_definition_digest=previous_digest,
-            registry_snapshot=changed_snapshot,
-            registered=registered,
-            catalog=_catalog(current["packs"][0]["artifact_digest"]),
-        )
 
 
 @pytest.mark.parametrize(
     "mutation",
-    ["unrelated_field", "pack_order", "added_pack", "wrong_parent", "wrong_pin"],
+    [
+        "unrelated_field",
+        "pack_order",
+        "added_pack",
+        "wrong_parent",
+        "wrong_pin",
+        "application_artifact",
+        "application_manifest",
+    ],
 )
 def test_rejects_non_pin_or_unadmitted_registry_successors(mutation: str) -> None:
     previous = _profile("sha256:" + "1" * 64)
@@ -280,11 +367,20 @@ def test_rejects_non_pin_or_unadmitted_registry_successors(mutation: str) -> Non
         registry = _history(previous, current)
     elif mutation == "wrong_parent":
         registry["profiles"][0]["revisions"][1]["parent_revision"] = "sha256:" + "9" * 64
+    elif mutation == "application_artifact":
+        current["packs"][0]["role"] = "application"
+        previous["packs"][0]["role"] = "application"
+        registry = _history(previous, current)
     with pytest.raises(ProfileDefinitionStoreConflict, match="verified Pack pin update"):
         verified_pack_pin_successor_predecessor(
             registry,
             current,
             canonical_digest(previous),
-            _catalog("sha256:" + "8" * 64 if mutation == "wrong_pin" else current["packs"][0]["artifact_digest"]),
+            _catalog(
+                "sha256:" + "8" * 64
+                if mutation == "wrong_pin"
+                else current["packs"][0]["artifact_digest"],
+                "application" if mutation == "application_manifest" else "normal_sandbox",
+            ),
         )
 

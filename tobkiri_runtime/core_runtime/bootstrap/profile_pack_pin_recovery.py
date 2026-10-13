@@ -201,7 +201,11 @@ def _only_existing_provider_pins_changed(
             return False
         manifest = manifests.get(str(new.get("pack_id")))
         pack = manifest.get("pack") if isinstance(manifest, Mapping) else None
-        if not isinstance(pack, Mapping) or pack.get("artifact_digest") != new_pin:
+        if (
+            not isinstance(pack, Mapping)
+            or pack.get("artifact_digest") != new_pin
+            or pack.get("kind") not in {"normal_sandbox", "host_extension"}
+        ):
             return False
         changed = True
     before["packs"] = before_packs

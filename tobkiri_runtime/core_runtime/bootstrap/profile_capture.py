@@ -1315,6 +1315,8 @@ def _capture_bootstrap_profile(
                     user_data,
                     catalog.profiles[profile_id],
                     approved_predecessor_digest=predecessor_digest,
+                    approved_pack_pin_predecessor=pin_predecessor,
+                    admitted_catalog=catalog if pin_predecessor is not None else None,
                 )
                 created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 if predecessor is None:
