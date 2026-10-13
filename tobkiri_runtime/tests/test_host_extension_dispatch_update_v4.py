@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -616,12 +617,321 @@ def _approve_gateway_profile_revision(user_data: Path, profile_id: str) -> None:
         surface.close()
 
 
+def _retained_gateway_host_state(
+    user_data: Path,
+    active: Any,
+    authority: AuthorityStore,
+) -> SimpleNamespace:
+    """Seed real temporary Host state and reserve a slot without any HTTP call.
+
+    The finite interactive settlement below is a test-only Host enrollment,
+    following the generation-budget fixtures. It does not exercise a live
+    Native window, authorize a live provider request, or represent a VM.
+    """
+
+    from core_runtime.authority.v4_models import (
+        ApprovalRecord,
+        AuthorityScope,
+        FunctionPrincipal,
+        GrantLifetime,
+        GrantRecord,
+        InteractiveApprovalDecision,
+        InteractiveApprovalRequest,
+        authority_digest,
+    )
+    from core_runtime.credential_transport import CredentialTransportBinding
+    from core_runtime.generation_transport_budget import (
+        ENROLL_FUNCTION,
+        ENROLL_OPERATION,
+        GenerationBudgetPolicy,
+        HostGenerationBudgetAdmission,
+        PRICE_POLICY_FIELDS,
+    )
+    from core_runtime.native_generation_budget import owner_startup_generation_budget_template
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSION
+
+    template = owner_startup_generation_budget_template()
+    assert template is not None
+    profile_id = str(active.resolved.profile["profile_id"])
+    assert template.profile_id == profile_id
+    witness = AuthorityStore(user_data / "credentials/generation-budget-witness.sqlite3")
+    template_before = authority.get_host_pending_effect(template.effect_id)
+    assert template_before == witness.get_host_pending_effect(template.effect_id)
+    assert template_before is not None
+    assert template_before[1]["template"] == template.to_dict()
+    policy = GenerationBudgetPolicy(
+        enrollment_id="gateway-update-retained-enrollment",
+        profile_id=profile_id,
+        consumer_pack_id=template.consumer_pack_id,
+        connection_id=template.connection_id,
+        credential_handle="credential:gateway-update-retained-fixture",
+        credential_key_version=KEY_VERSION,
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        model=template.model,
+        max_requests=template.max_requests,
+        max_output_tokens=template.max_output_tokens,
+        **{field: getattr(template, field) for field in PRICE_POLICY_FIELDS},
+    )
+    provider = FunctionPrincipal.from_dict(
+        next(
+            row["function_principal"]
+            for row in active.resolved.plan["bindings"]
+            if row["contract_id"] == "tobkiri.service.ai.provider.generate.v1"
+        )
+    )
+    caller = FunctionPrincipal.from_dict(
+        next(
+            row["function_principal"]
+            for row in active.resolved.plan["bindings"]
+            if row["contract_id"] == "tobkiri.service.ai.generate.v1"
+        )
+    )
+
+    def domain_for(principal: Any) -> Any:
+        suffix = principal.principal_id.removeprefix("sha256:")[:24]
+        domain = authority.get_domain(
+            f"domain.provider.{suffix}.{active.activation['fencing_token']}"
+        )
+        assert domain is not None and principal in domain.principals
+        return domain
+
+    caller_domain = domain_for(caller)
+    provider_domain = domain_for(provider)
+    target = replace(provider, function_id=ENROLL_FUNCTION, operation_id=ENROLL_OPERATION)
+    scope = AuthorityScope(
+        capability="host.generation-budget",
+        semantics_digest=policy.digest,
+        exact_request_digest=policy.digest,
+    )
+    now = time.time()
+    request = InteractiveApprovalRequest(
+        request_id="gateway-retained-budget-test-enrollment",
+        request_digest=policy.digest,
+        caller=caller,
+        target=target,
+        profile_id=profile_id,
+        activation_id=str(active.activation["activation_id"]),
+        activation_digest=authority_digest(dict(active.activation)),
+        plan_digest=str(active.resolved.plan["plan_digest"]),
+        profile_authority_digest=str(active.activation["profile_authority_snapshot_digest"]),
+        profile_revision=str(active.resolved.plan["profile_revision"]),
+        security_epoch=authority.security_epoch,
+        fencing_token=int(active.activation["fencing_token"]),
+        caller_domain_id=caller_domain.domain_id,
+        caller_boot_epoch=caller_domain.boot_epoch,
+        target_domain_id=provider_domain.domain_id,
+        target_boot_epoch=provider_domain.boot_epoch,
+        target_backend_digest=authority_digest("temporary-retained-budget-fixture"),
+        handle_namespace="gateway-retained-budget-fixture",
+        base_scope=scope,
+        invocation_owner_id="gateway-retained-budget-test-owner",
+        presentation_owner_principal_id=caller.principal_id,
+        presentation_owner_session_id="gateway-retained-budget-test-native",
+        caller_session_id="gateway-retained-budget-test-caller",
+        caller_publisher_lineage="tobkiri.repository",
+        target_publisher_lineage="tobkiri.repository",
+        created_at=now,
+        expires_at=now + 300,
+    )
+    approval = ApprovalRecord(
+        approval_id="gateway-retained-budget-test-approval",
+        snapshot_digest=request.digest,
+        actor_id="temporary-fixture-user",
+        decision="approved",
+        decided_at=now,
+        caller=caller,
+        target=target,
+        profile_id=profile_id,
+        effect_bundle_digest=policy.digest,
+        security_epoch=authority.security_epoch,
+    )
+    grant = GrantRecord(
+        grant_id="gateway-retained-budget-test-grant",
+        caller=caller,
+        target=target,
+        profile_id=profile_id,
+        activation_id=str(active.activation["activation_id"]),
+        profile_authority_digest=request.profile_authority_digest,
+        caller_publisher_lineage=request.caller_publisher_lineage,
+        target_publisher_lineage=request.target_publisher_lineage,
+        scope=scope,
+        lifetime=GrantLifetime.ONE_SHOT,
+        security_epoch=authority.security_epoch,
+        approval_id=approval.approval_id,
+        issued_at=now,
+        max_uses=1,
+    )
+    decision = InteractiveApprovalDecision(
+        decision_id=request.request_id,
+        request_id=request.request_id,
+        request_snapshot_digest=request.digest,
+        decision="approved",
+        actor_id=approval.actor_id,
+        decided_at=now,
+        security_epoch=authority.security_epoch,
+        ui_operator_digest=authority_digest("temporary-finite-native-fixture"),
+        typed_confirmation_verified=False,
+        approval_id=approval.approval_id,
+        grant_id=grant.grant_id,
+    )
+    authority.create_interactive_approval_request(request)
+    authority.settle_interactive_approval(decision, approval=approval, grant=grant)
+    guard = HostGenerationBudgetAdmission(
+        policy=policy,
+        authority_store=authority,
+        witness_store=witness,
+    )
+    guard.enroll_after_interactive_approval(approval_request_id=request.request_id)
+    active_budget_id = template.effect_id + ":active"
+    active_budget = {
+        "effect_id": active_budget_id,
+        "state": "enrolled",
+        "policy": policy.to_dict(),
+        "approval_request_id": request.request_id,
+    }
+    authority.create_host_pending_effect(active_budget_id, active_budget)
+    witness.create_host_pending_effect(active_budget_id, active_budget)
+    material = HostCredentialMaterialStore(user_data_root=user_data)
+    material.create(
+        secret_material={"api_key": "synthetic-retained-key-no-provider-call"},
+        consumer_pack_id=policy.consumer_pack_id,
+        provider_instance_id=policy.connection_id,
+        scopes=["ai.generate", "ai.stream"],
+        profile_id=profile_id,
+        credential_handle=policy.credential_handle,
+        generation_budget_binding=guard.credential_budget_binding,
+    )
+    providers = ProviderRegistry(profile_id, user_data_root=user_data)
+    providers.save(
+        {
+            "provider_instance_id": policy.connection_id,
+            "adapter_id": "openai-compatible",
+            "endpoint": "https://openrouter.ai/api/v1",
+            "credential_handle": policy.credential_handle,
+            "enabled": True,
+        },
+        expected_revision=0,
+    )
+    conversations = ConversationStore(profile_id, user_data_root=user_data)
+    created = conversations.create(
+        {
+            "id": "gateway-retained-chat",
+            "title": "Retained Gateway update conversation",
+        },
+        expected_revision=0,
+    )
+    conversations.append_message(
+        "gateway-retained-chat",
+        {"id": "gateway-retained-message", "role": "user", "content": "Keep this existing chat."},
+        expected_conversation_revision=created["conversation"]["conversation_revision"],
+    )
+    reservation = {
+        "binding": CredentialTransportBinding(
+            profile_id=profile_id,
+            activation_id=str(active.activation["activation_id"]),
+            security_epoch=authority.security_epoch,
+            caller_principal_id=caller.principal_id,
+            provider_principal_id=provider.principal_id,
+            provider_function_id=provider.function_id,
+            operation_id=provider.operation_id,
+            target_domain_id=provider_domain.domain_id,
+            target_boot_epoch=provider_domain.boot_epoch,
+            request_id="gateway-retained-budget-spent-attempt",
+            request_digest=authority_digest("gateway-retained-budget-spent-attempt"),
+            credential_handle=policy.credential_handle,
+            credential_key_version=policy.credential_key_version,
+            provider_instance_id=policy.connection_id,
+            credential_scope="ai.generate",
+            credential_purpose="provider.invoke",
+            endpoint_origin="https://openrouter.ai",
+            consumer_pack_id=policy.consumer_pack_id,
+        ),
+        "contract_id": "tobkiri.service.ai.provider.generate.v1",
+        "endpoint": policy.endpoint,
+        "body": {
+            "model": policy.model,
+            "messages": [],
+            "max_tokens": policy.max_output_tokens,
+            "provider": {
+                "allow_fallbacks": False,
+                "max_price": {
+                    "prompt": policy.max_prompt_price_microusd_per_million / 1_000_000,
+                    "completion": policy.max_completion_price_microusd_per_million / 1_000_000,
+                },
+            },
+        },
+    }
+    guard.reserve(**reservation)
+    budget_before = authority.get_host_pending_effect(policy.effect_id)
+    assert budget_before == witness.get_host_pending_effect(policy.effect_id)
+    assert budget_before is not None and len(budget_before[1]["attempts"]) == 1
+    protected_paths = (
+        material.path,
+        material.key_path,
+        authority.key_path,
+        witness.key_path,
+        providers.path,
+        conversations.path,
+    )
+    files_before = {path: path.read_bytes() for path in protected_paths}
+    assert b"synthetic-retained-key-no-provider-call" not in files_before[material.path]
+    return SimpleNamespace(
+        authority=authority,
+        witness=witness,
+        policy=policy,
+        guard=guard,
+        reservation=reservation,
+        budget_before=budget_before,
+        template=template,
+        template_before=template_before,
+        active_budget_id=active_budget_id,
+        active_budget_before=authority.get_host_pending_effect(active_budget_id),
+        material=material,
+        profile_id=profile_id,
+        providers=providers,
+        providers_before=providers.snapshot(),
+        conversations=conversations,
+        conversations_before=conversations.snapshot(),
+        files_before=files_before,
+    )
+
+
+def _assert_retained_gateway_host_state(state: SimpleNamespace) -> None:
+    """Prove bytes and spent ledger slots survive each update boundary."""
+
+    from core_runtime.credential_transport import CredentialTransportDenied
+
+    assert state.providers.snapshot() == state.providers_before
+    assert state.conversations.snapshot() == state.conversations_before
+    assert {path: path.read_bytes() for path in state.files_before} == state.files_before
+    assert (
+        state.authority.get_host_pending_effect(state.template.effect_id) == state.template_before
+    )
+    assert state.witness.get_host_pending_effect(state.template.effect_id) == state.template_before
+    assert (
+        state.authority.get_host_pending_effect(state.active_budget_id)
+        == state.active_budget_before
+    )
+    assert (
+        state.witness.get_host_pending_effect(state.active_budget_id) == state.active_budget_before
+    )
+    assert state.authority.get_host_pending_effect(state.policy.effect_id) == state.budget_before
+    assert state.witness.get_host_pending_effect(state.policy.effect_id) == state.budget_before
+    with pytest.raises(CredentialTransportDenied) as denied:
+        state.guard.reserve(**state.reservation)
+    assert denied.value.code == "generation_budget_replay"
+    assert state.authority.get_host_pending_effect(state.policy.effect_id) == state.budget_before
+    assert state.witness.get_host_pending_effect(state.policy.effect_id) == state.budget_before
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Host policy fixtures use POSIX descriptors")
 def test_native_signed_gateway_update_reaches_same_host_production_capture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Real trust, CAS, Profile approval, and production import select the revision."""
+    """Select real signed bytes while retaining populated Host-owned state."""
 
     from core_runtime import native_pack_onboarding
     from core_runtime.bootstrap.profile_capture import (
@@ -661,19 +971,15 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
     assert preview["kind"] == "host_extension"
     assert preview["execution_boundary"] == "host_brokered"
     assert preview["predecessor_artifact_digest"] == baseline_digest
-    admitted = native_pack_onboarding.commit_signed_pack(
-        source,
-        public_key,
-        expected_preview_digest=preview["preview_digest"],
-        trust_store_path=policy,
-    )
-    successor_digest = str(admitted["artifact_digest"])
-    assert successor_digest != baseline_digest
-    assert pointer_path.read_bytes() == baseline_pointer
-    cas_root = resolve_admitted_pack_root(PACK_ID, artifact_digest=successor_digest)
-    assert cas_root != PACK_ROOT
     observed = []
+    observed_budget_bindings = []
     actual_loader = production_v4._load_verified_host_provider_factory
+    actual_budget_capture = production_v4.capture_native_generation_budget
+
+    def observe_budget_capture(**kwargs: Any) -> Any:
+        binding = actual_budget_capture(**kwargs)
+        observed_budget_bindings.append(binding)
+        return binding
 
     def observe_factory(root: Path, function_id: str, bindings: Any) -> Any:
         result = actual_loader(root, function_id, bindings)
@@ -694,8 +1000,10 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
         return result
 
     monkeypatch.setattr(production_v4, "_load_verified_host_provider_factory", observe_factory)
+    monkeypatch.setattr(production_v4, "capture_native_generation_budget", observe_budget_capture)
     manager = PanelAuthManager(bootstrap_secret="gateway-revision-test-owner")
     sessions = []
+    retained_state = None
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
 
         def capture(active: Any) -> Any:
@@ -715,6 +1023,23 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
         try:
             old_session = capture(initial)
             assert observed[-1][1:] == (baseline_digest, None)
+            retained_state = _retained_gateway_host_state(user_data, initial, authority)
+            assert (
+                observed_budget_bindings[-1].generation_admission.credential_budget_binding
+                == retained_state.guard.credential_budget_binding
+            )
+            admitted = native_pack_onboarding.commit_signed_pack(
+                source,
+                public_key,
+                expected_preview_digest=preview["preview_digest"],
+                trust_store_path=policy,
+            )
+            successor_digest = str(admitted["artifact_digest"])
+            assert successor_digest != baseline_digest
+            assert pointer_path.read_bytes() == baseline_pointer
+            cas_root = resolve_admitted_pack_root(PACK_ID, artifact_digest=successor_digest)
+            assert cas_root != PACK_ROOT
+            _assert_retained_gateway_host_state(retained_state)
             view = profile_pack_versions(profile_id)
             selected = next(row for row in view["packs"] if row["pack_id"] == PACK_ID)
             assert {row["artifact_digest"] for row in selected["versions"]} == {
@@ -759,7 +1084,14 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
                 actual_loader(PACK_ROOT, selected_binding.function.function_id, (selected_binding,))
             for field in ("base", "shell", "application"):
                 assert updated.resolved.lock.get(field) == initial.resolved.lock.get(field)
+            _assert_retained_gateway_host_state(retained_state)
+            assert (
+                observed_budget_bindings[-1].generation_admission.credential_budget_binding
+                == retained_state.guard.credential_budget_binding
+            )
         finally:
+            if retained_state is not None:
+                retained_state.witness.close()
             for session in reversed(sessions):
                 session.close()
     assert require_profile_runtime() is runtime_port
