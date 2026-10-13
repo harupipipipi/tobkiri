@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "0f9e6557e25b6b614962aa444e259426d01b385b95b7ed609a0df2214d456890",
+    "digest": "f710467c359ccc17e05bdb9d635bfcd88ee50ebcf14905e9eba74a0ebfb56d43",
     "entries": [
       {
         "path": "index.html",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 445039,
-        "sha256": "5eec3ff815b34792dec4e90875eb3a11b4b8a518a6eeb78dbfc95237b86fff2f"
+        "size": 445263,
+        "sha256": "1a603bdf823546c24cfb165ebb4e997698ae68dc10a48158ab81c72d114202cb"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -2440,8 +2440,8 @@
       },
       {
         "path": "src/lib/savedCodingContext.test.ts",
-        "size": 5618,
-        "sha256": "70169825fef09f6d13c7c43e8b8aff0f819188a331ec57ebed1af12b22f3e5b5"
+        "size": 8275,
+        "sha256": "f8dd3c4c0cbd9fef2be707dce54d7f58871d537f996fd2e76e10e54e99e8c1cb"
       },
       {
         "path": "src/lib/savedCodingContext.ts",
@@ -2457,6 +2457,11 @@
         "path": "src/lib/savedCodingWorkspace.ts",
         "size": 2711,
         "sha256": "84b926d8d4db4108af39eb804849444e616e8811d4821e27573e99347f5dec65"
+      },
+      {
+        "path": "src/lib/savedProjectSendPreflight.ts",
+        "size": 1479,
+        "sha256": "24dfe436ccbb27172c64c09f06228e8554ce377593b81a985f5ee7d4e0e62c61"
       },
       {
         "path": "src/lib/scopedPendingChat.test.ts",
@@ -3046,7 +3051,7 @@
     ]
   },
   "bundle": {
-    "digest": "6da799d53e55253f6d5bb464ce08b7c94d4c90ef3e862cb119a55940a3676f3d",
+    "digest": "8dcbc79eddb39ccb61bd5a6d36ba815f59cb1c2708a415439b2c36f4acdb6e3e",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3060,8 +3065,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2679245,
-        "sha256": "1628208e453f172b8895e0f7b67990f5dca1f9f5ad4da2cef6f6dd466d850d54"
+        "size": 2680214,
+        "sha256": "600a230e3a7ce81af3d6cb395c4bc134d6570b25401d621f2ef5f2167a9d8ac2"
       },
       {
         "path": "shell-icons.js",
