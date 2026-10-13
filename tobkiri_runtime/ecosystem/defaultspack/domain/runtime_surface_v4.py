@@ -2997,7 +2997,15 @@ def _catalog_for_effective_sets(
 
     packs = dict(catalog.packs)
     for pack_id in sorted(missing):
-        root = resolve_admitted_pack_root(pack_id, artifact_digest=expected[pack_id])
+        try:
+            root = resolve_admitted_pack_root(
+                pack_id, artifact_digest=expected[pack_id]
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise RuntimeSurfaceError(
+                RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+                "selected external Pack revision is unavailable",
+            ) from error
         manifest_path = root / "pack.v4.json"
         if manifest_path.is_symlink() or not manifest_path.is_file():
             raise RuntimeSurfaceError(

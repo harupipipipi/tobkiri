@@ -466,6 +466,7 @@ def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> 
     from tests.conformance_support.packaged_profile import (
         packaged_profile_bundle_root,
     )
+    from tobkiri_host.credential_store import host_credential_store_factory
 
     contribution_contract = "tobkiri.resource.tool.definition.contribution.v1"
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as store:
@@ -476,6 +477,7 @@ def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> 
             authority_store=store,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
+            credential_store_factory=host_credential_store_factory,
         )
         providers = dispatch.provider_metadata(contribution_contract)
         assert {
