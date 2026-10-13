@@ -121,7 +121,12 @@ export interface ProfileCeremonyTransport {
 
 const canonicalTransport: ProfileCeremonyTransport = {
   write: <T>(target: RuntimeSurfaceTarget, payload: Record<string, unknown>, requestId?: string) => (
-    fetchFrontendContractOperation<T>(target.method, target.logical_target, payload, {requestId})
+    // Match the Host control Contract's bounded 30-second default. Signature
+    // and active Profile verification can outlast the generic mutation budget.
+    fetchFrontendContractOperation<T>(target.method, target.logical_target, payload, {
+      requestId,
+      timeoutMs: 30_000,
+    })
   ),
 };
 

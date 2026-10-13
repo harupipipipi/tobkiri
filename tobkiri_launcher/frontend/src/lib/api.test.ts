@@ -40,6 +40,7 @@ import {
 } from './runtimeSurface.ts';
 import {GENERATED_FRONTEND_CONTRACT_MAP} from './generatedFrontendContractMap.ts';
 import {activateDefaultsProfile, fetchDefaultsSetupState} from './defaultsSetup.ts';
+import {defaultProfileCeremonyClient} from './profileCeremony.ts';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -668,6 +669,69 @@ test('canonical Profile surface reads allow Host authority capture beyond ten se
   await new Promise<void>((resolve) => setImmediate(resolve));
   context.mock.timers.tick(12_000);
   await read;
+});
+
+test('Profile resolve waits for bounded Host verification without replacing its request identity', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const requestId = 'edc1e05b-568f-45fb-a78c-ad1eaa5560ac';
+  const result = {
+    state: 'resolved', candidate_id: 'verified-successor',
+    candidate_digest: `sha256:${'c'.repeat(64)}`, expires_in: 60,
+    review: {profile: {}, profile_lock: {}, resolved_plan: {}, predecessor: {}},
+    next_action: 'review', write_set: [],
+  };
+  let writes = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent('POST /api/runtime-surface/profile-change/resolve')}`);
+    assert.equal(init?.method, 'POST');
+    assert.equal((init?.headers as Record<string, string>)['X-Tobkiri-Request-ID'], requestId);
+    writes += 1;
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+        success: true, data: {runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION, ...result},
+      }))), 12_000);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+  const pending = defaultProfileCeremonyClient.resolve({
+    profile_id: 'defaults', expected_profile_revision: `sha256:${'a'.repeat(64)}`,
+    expected_plan_digest: `sha256:${'b'.repeat(64)}`, desired_pack_ids: ['provider-pack'],
+    profile_definition_digest: `sha256:${'d'.repeat(64)}`,
+    profile_catalog_digest: `sha256:${'e'.repeat(64)}`, bundle_lock_digest: `sha256:${'f'.repeat(64)}`,
+  }, requestId);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(12_000);
+  assert.deepEqual(await pending, result);
+  assert.equal(writes, 1);
+});
+
+test('Profile ceremony retains its thirty-second deadline without replaying a timed-out mutation', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let writes = 0;
+  let requestSignal: AbortSignal | null | undefined;
+  fetchHandler = async (_input, init) => {
+    writes += 1;
+    requestSignal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {once: true});
+    });
+  };
+  const pending = assert.rejects(defaultProfileCeremonyClient.resolve({
+    profile_id: 'defaults', expected_profile_revision: `sha256:${'a'.repeat(64)}`,
+    expected_plan_digest: `sha256:${'b'.repeat(64)}`, desired_pack_ids: ['provider-pack'],
+    profile_definition_digest: `sha256:${'d'.repeat(64)}`,
+    profile_catalog_digest: `sha256:${'e'.repeat(64)}`, bundle_lock_digest: `sha256:${'f'.repeat(64)}`,
+  }), /POST request timed out after 30000ms/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(10_000);
+  assert.equal(requestSignal?.aborted, false);
+  context.mock.timers.tick(20_000);
+  await pending;
+  assert.equal(requestSignal?.aborted, true);
+  assert.equal(writes, 1);
 });
 
 test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {
