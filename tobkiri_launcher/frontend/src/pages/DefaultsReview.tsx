@@ -36,6 +36,7 @@ export function DefaultsReview({
     && !activationCommitted
     && activationAllowed;
   const predecessor = setup?.recommended_default_profile.confirmation.definition_predecessor;
+  const packPinPredecessor = setup?.recommended_default_profile.confirmation.pack_pin_predecessor;
   const targetPacks = setup?.recommended_default_profile.pack_ids ?? [];
   const addedPacks = targetPacks.filter((id) => !predecessor?.pack_ids.includes(id));
   const removedPacks = predecessor?.pack_ids.filter((id) => !targetPacks.includes(id)) ?? [];
@@ -90,6 +91,10 @@ export function DefaultsReview({
         <p className="mt-2">Imported Packs: {predecessor.pack_ids.join(', ') || 'None'}.</p>
         <p className="mt-2">Added Packs: {addedPacks.join(', ') || 'None'}. Removed Packs: {removedPacks.join(', ') || 'None'}.</p>
       </div>}
+      {packPinPredecessor && <div role="status" className="rounded-lg border border-border p-4 text-sm text-text-main">
+        <p className="font-medium">Review saved Pack versions</p>
+        <p className="mt-2">This activates the Pack versions saved in this Profile. Tobkiri verifies the current activation and saved revision again before applying them.</p>
+      </div>}
       <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
       {!activationAllowed && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
         {activationBlockedMessage}
@@ -103,7 +108,7 @@ export function DefaultsReview({
           className="mt-1 size-4 shrink-0"
           aria-describedby="defaults-review-confirmation"
         />
-        <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}</span>
+        <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}{packPinPredecessor && ' I also confirm these saved Pack versions against the displayed current activation.'}</span>
       </label>
       <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={onActivate}>Activate Defaults Profile</Button>
     </div>}

@@ -80,7 +80,7 @@ function readContract(schema) {
     ["authority_mode"],
   );
   const confirmation = objectDefinitionWithOptional(
-    definitions.confirmation, "confirmation", ["definition_predecessor"],
+    definitions.confirmation, "confirmation", ["definition_predecessor", "pack_pin_predecessor"],
   );
   return {
     setupKeys: objectDefinition(schema, "setup response"),
@@ -90,6 +90,7 @@ function readContract(schema) {
     confirmationKeys: confirmation.required,
     confirmationOptionalKeys: confirmation.optional,
     predecessorKeys: objectDefinition(definitions.definitionPredecessor, "definition predecessor"),
+    packPinPredecessorKeys: objectDefinition(definitions.packPinPredecessor, "Pack pin predecessor"),
     baseKeys: objectDefinition(definitions.base, "confirmed Base"),
     confirmedShellKeys: objectDefinition(definitions.confirmedShell, "confirmed Shell"),
     bindingKeys: binding.required,
@@ -122,6 +123,7 @@ ${constant("DEFAULTS_PACK_KEYS", contract.packKeys)}
 ${constant("DEFAULTS_CONFIRMATION_KEYS", contract.confirmationKeys)}
 ${constant("DEFAULTS_CONFIRMATION_OPTIONAL_KEYS", contract.confirmationOptionalKeys)}
 ${constant("DEFAULTS_PREDECESSOR_KEYS", contract.predecessorKeys)}
+${constant("DEFAULTS_PACK_PIN_PREDECESSOR_KEYS", contract.packPinPredecessorKeys)}
 ${constant("DEFAULTS_BASE_KEYS", contract.baseKeys)}
 ${constant("DEFAULTS_CONFIRMED_SHELL_KEYS", contract.confirmedShellKeys)}
 ${constant("DEFAULTS_BINDING_KEYS", contract.bindingKeys)}

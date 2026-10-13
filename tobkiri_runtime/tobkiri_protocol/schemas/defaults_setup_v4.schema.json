@@ -82,6 +82,7 @@
     "confirmation": {
       "type": "object",
       "additionalProperties": false,
+      "not": {"required": ["definition_predecessor", "pack_pin_predecessor"]},
       "required": ["confirmation_api_version", "operation_id", "profile_id", "catalog_revision", "profile_revision", "plan_digest", "authority_snapshot_digest", "security_epoch", "base", "shell", "bindings", "confirmation_digest"],
       "properties": {
         "confirmation_api_version": {"const": "io.tobkiri.defaults-confirmation.v1"},
@@ -100,7 +101,27 @@
           "items": {"$ref": "#/$defs/binding"}
         },
         "definition_predecessor": {"$ref": "#/$defs/definitionPredecessor"},
+        "pack_pin_predecessor": {"$ref": "#/$defs/packPinPredecessor"},
         "confirmation_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "packPinPredecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "pointer_digest", "profile_id", "profile_revision", "activation_id", "plan_digest", "lock_digest", "generation", "active_definition_digest", "registry_profile_revision", "registry_store_generation", "registry_snapshot_digest"],
+      "properties": {
+        "schema": {"const": "io.tobkiri.defaults-pack-pin-predecessor.v1"},
+        "pointer_digest": {"$ref": "#/$defs/digest"},
+        "profile_id": {"const": "defaults"},
+        "profile_revision": {"$ref": "#/$defs/digest"},
+        "activation_id": {"type": "string", "pattern": "^activation:[a-z0-9][a-z0-9._-]{7,127}$"},
+        "plan_digest": {"$ref": "#/$defs/digest"},
+        "lock_digest": {"$ref": "#/$defs/digest"},
+        "generation": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "active_definition_digest": {"$ref": "#/$defs/digest"},
+        "registry_profile_revision": {"$ref": "#/$defs/digest"},
+        "registry_store_generation": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "registry_snapshot_digest": {"$ref": "#/$defs/digest"}
       }
     },
     "definitionPredecessor": {

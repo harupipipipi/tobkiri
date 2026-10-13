@@ -12,6 +12,18 @@ export function DefaultsConfirmationDetails({confirmation}: {readonly confirmati
       <Field label="Authority snapshot" value={confirmation.authority_snapshot_digest} />
       <Field label="SecurityEpoch" value={String(confirmation.security_epoch)} />
       <Field label="Confirmation digest" value={confirmation.confirmation_digest} />
+      {confirmation.pack_pin_predecessor && <>
+        <Field label="Current activation" value={confirmation.pack_pin_predecessor.activation_id} />
+        <Field label="Current Profile revision" value={confirmation.pack_pin_predecessor.profile_revision} />
+        <Field label="Current definition" value={confirmation.pack_pin_predecessor.active_definition_digest} />
+        <Field label="Current plan" value={confirmation.pack_pin_predecessor.plan_digest} />
+        <Field label="Current lock" value={confirmation.pack_pin_predecessor.lock_digest} />
+        <Field label="Current selection digest" value={confirmation.pack_pin_predecessor.pointer_digest} />
+        <Field label="Current selection generation" value={String(confirmation.pack_pin_predecessor.generation)} />
+        <Field label="Saved Pack version revision" value={confirmation.pack_pin_predecessor.registry_profile_revision} />
+        <Field label="Saved registry generation" value={String(confirmation.pack_pin_predecessor.registry_store_generation)} />
+        <Field label="Saved registry snapshot" value={confirmation.pack_pin_predecessor.registry_snapshot_digest} />
+      </>}
       {confirmation.definition_predecessor && <>
         <Field label="Imported predecessor revision" value={confirmation.definition_predecessor.profile_revision} />
         <Field label="Imported definition digest" value={confirmation.definition_predecessor.definition_digest} />

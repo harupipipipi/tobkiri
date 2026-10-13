@@ -8,6 +8,7 @@ import {
   DEFAULTS_CONFIRMATION_KEYS,
   DEFAULTS_CONFIRMATION_OPTIONAL_KEYS,
   DEFAULTS_PREDECESSOR_KEYS,
+  DEFAULTS_PACK_PIN_PREDECESSOR_KEYS,
   DEFAULTS_CONFIRMED_SHELL_KEYS,
   DEFAULTS_FUNCTION_PRINCIPAL_KEYS,
   DEFAULTS_PACK_KEYS,
@@ -85,7 +86,23 @@ export type DefaultsConfirmation = {
   };
   readonly bindings: readonly DefaultsBinding[];
   readonly definition_predecessor?: DefaultsDefinitionPredecessor;
+  readonly pack_pin_predecessor?: DefaultsPackPinPredecessor;
   readonly confirmation_digest: string;
+};
+
+export type DefaultsPackPinPredecessor = {
+  readonly schema: 'io.tobkiri.defaults-pack-pin-predecessor.v1';
+  readonly pointer_digest: string;
+  readonly profile_id: string;
+  readonly profile_revision: string;
+  readonly activation_id: string;
+  readonly plan_digest: string;
+  readonly lock_digest: string;
+  readonly generation: number;
+  readonly active_definition_digest: string;
+  readonly registry_profile_revision: string;
+  readonly registry_store_generation: number;
+  readonly registry_snapshot_digest: string;
 };
 
 export type DefaultsSetupState = {
@@ -232,6 +249,22 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
   exactString(shell.contract_id, 'app.shell.v1', 'Defaults Shell contract');
   const confirmation = object(profile.confirmation, 'Defaults confirmation');
   exactKeys(confirmation, DEFAULTS_CONFIRMATION_KEYS, 'Defaults confirmation', DEFAULTS_CONFIRMATION_OPTIONAL_KEYS);
+  if (confirmation.pack_pin_predecessor !== undefined) {
+    const predecessor = object(confirmation.pack_pin_predecessor, 'Defaults Pack version predecessor');
+    exactKeys(predecessor, DEFAULTS_PACK_PIN_PREDECESSOR_KEYS, 'Defaults Pack version predecessor');
+    exactString(predecessor.schema, 'io.tobkiri.defaults-pack-pin-predecessor.v1', 'Pack version predecessor schema');
+    exactString(predecessor.profile_id, confirmation.profile_id as string, 'Pack version predecessor Profile');
+    for (const field of [
+      'pointer_digest', 'profile_revision', 'plan_digest', 'lock_digest',
+      'active_definition_digest', 'registry_profile_revision', 'registry_snapshot_digest',
+    ]) digest(predecessor[field], `Pack version predecessor ${field}`);
+    activationId(predecessor.activation_id, 'Pack version predecessor activation');
+    positiveSafeInteger(predecessor.generation, 'Pack version predecessor generation');
+    positiveSafeInteger(predecessor.registry_store_generation, 'Pack version registry generation');
+    if (confirmation.definition_predecessor !== undefined) {
+      throw new Error('Defaults confirmation has conflicting predecessor kinds');
+    }
+  }
   if (confirmation.definition_predecessor !== undefined) {
     const predecessor = object(confirmation.definition_predecessor, 'Defaults definition predecessor');
     exactKeys(predecessor, DEFAULTS_PREDECESSOR_KEYS, 'Defaults definition predecessor');

@@ -54,10 +54,11 @@ test("schema optional-field drift fails closed before frontend generation", asyn
 });
 
 
-test("confirmation accepts only its declared imported predecessor field", async () => {
+test("confirmation accepts only its declared predecessor fields", async () => {
   const result = await checkGeneratedDefaultsSetupContract();
-  assert.deepEqual(result.contract.confirmationOptionalKeys, ["definition_predecessor"]);
+  assert.deepEqual(result.contract.confirmationOptionalKeys, ["definition_predecessor", "pack_pin_predecessor"]);
   assert.ok(result.contract.predecessorKeys.includes("handover_digest"));
+  assert.ok(result.contract.packPinPredecessorKeys.includes("pointer_digest"));
   const root = await mkdtemp(join(tmpdir(), "tobkiri-predecessor-contract-"));
   const schemaPath = join(root, "schema.json");
   try {

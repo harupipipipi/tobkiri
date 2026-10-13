@@ -203,8 +203,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
       "type": "regular-file",
-      "size": 19495,
-      "sha256": "a59c82a01f04d4929a79aeffbe6db208188b7f3a56a9367426f2dbc4d589b98a",
+      "size": 19764,
+      "sha256": "a5f6292305cd45ec433cdcbde6c5b17fad12f1508ba36b9e342aaaf86d9a8f4e",
       "executable": false
     },
     {
@@ -4046,8 +4046,8 @@
     {
       "path": "tobkiri_protocol/schemas/defaults_setup_v4.schema.json",
       "type": "regular-file",
-      "size": 8499,
-      "sha256": "32b4483b6f944fcbea739fef4f124b17dff52973b224a968755b88393fb9d3fa",
+      "size": 9844,
+      "sha256": "75081198488e6dd732048c1dbaac2893decc92bb40c4dd2af1c0518898876197",
       "executable": false
     },
     {
