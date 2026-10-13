@@ -103,6 +103,8 @@ _PROVIDER_CODES = frozenset(
         "route_binding_invalid",
         "route_binding_stale",
         "route_binding_conflict",
+        "stream_failed",
+        "generation_budget_denied",
     }
 )
 

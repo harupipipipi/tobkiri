@@ -24,6 +24,8 @@ from core_runtime.global_contract_dispatch import GlobalContractInvocationError
                 "route_binding_invalid",
                 "route_binding_stale",
                 "route_binding_conflict",
+                "stream_failed",
+                "generation_budget_denied",
             )
         ],
         (
