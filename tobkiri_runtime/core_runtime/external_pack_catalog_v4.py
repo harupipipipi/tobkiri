@@ -732,7 +732,8 @@ def _project_catalog_record(
         baseline = load_pack_catalog().get(pack_id)
         if baseline is None or baseline.get("kind") != "host_extension":
             raise ExternalPackCatalogDenied(
-                "a Host Extension update requires an existing bundled Host Extension"
+                "external admission accepts only Normal Sandbox Packs or "
+                "compatible updates to an existing bundled Host Extension"
             )
         baseline_root = resolve_pack_root(pack_id)
         try:
