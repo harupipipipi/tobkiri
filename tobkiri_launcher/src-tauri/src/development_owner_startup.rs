@@ -595,7 +595,8 @@ mod macos {
         if !matches!(result.status.code(), Some(0 | 1)) || !result.stderr.is_empty() {
             bail!("Previous Host ownership could not be verified");
         }
-        if result.status.success() == result.stdout.is_empty() {
+        // +D returns 1 when any expanded entry is unused, even with matching PIDs.
+        if result.status.success() && result.stdout.is_empty() {
             bail!("Previous Host ownership evidence is inconsistent");
         }
         for line in std::str::from_utf8(&result.stdout)?.lines() {
