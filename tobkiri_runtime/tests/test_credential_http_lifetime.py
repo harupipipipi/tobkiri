@@ -402,3 +402,35 @@ def test_real_tls_stream_failure_has_finite_stage_and_no_post_replay(
     assert records[0]["http_bucket"] == {"redirect": "redirect", "rate_limit": "rate_limit"}.get(failure, "none")
     assert len(received) == 1
     assert "canary" not in caplog.text and origin not in caplog.text
+
+
+
+def test_deadline_at_first_body_guard_is_timeout_before_watchdog_tick(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Use the existing authority clock observation without adding another read."""
+    import json
+
+    owner, arguments = _https_transport(tmp_path)
+    owner._envelope = replace(owner._envelope, deadline_monotonic=10.0)
+    now = {"value": 0.0}
+    owner._monotonic_clock = lambda: now["value"]
+
+    class Response:
+        def __enter__(self) -> Response:
+            now["value"] = 10.0
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def read1(self, _amount: int) -> bytes:
+            raise AssertionError("expired guard must prevent body IO")
+
+    owner._opener = lambda *_args, **_kwargs: Response()
+    with pytest.raises(transport.CredentialTransportDenied):
+        owner.stream_json(**arguments, on_event=lambda _: None)
+    records = [json.loads(record.message) for record in caplog.records if record.name == "core_runtime.request_failure_diagnostics"]
+    assert len(records) == 1
+    assert records[0]["reason"] == "timeout"
+    assert records[0]["stage"] == "body"

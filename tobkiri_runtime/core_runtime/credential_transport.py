@@ -531,7 +531,7 @@ class HostBoundCredentialTransport:
                     from core_runtime.credential_stream import received_sse
 
                     def guard() -> None:
-                        if not self._authority_still_active():
+                        if not self._authority_still_active(diagnostics):
                             if diagnostics is not None:
                                 diagnostics.interrupted(
                                     "cancelled" if self._envelope.cancellation_requested.is_set()
@@ -726,18 +726,24 @@ class HostBoundCredentialTransport:
                 endpoint_origin=_origin(remote_url),
             )
 
-    def _authority_still_active(self) -> bool:
+    def _authority_still_active(
+        self, diagnostics: RequestFailureDiagnostics | None = None,
+    ) -> bool:
         try:
             if self._parent_guard is not None:
                 self._parent_guard()
             if self._current_security_epoch() != self._binding.security_epoch:
                 return False
             if self._envelope.cancellation_requested.is_set():
+                if diagnostics is not None:
+                    diagnostics.interrupted("cancelled")
                 return False
             remaining = (
                 self._envelope.deadline_monotonic - self._monotonic_clock()
             )
             if not math.isfinite(remaining) or remaining <= 0:
+                if diagnostics is not None and math.isfinite(remaining):
+                    diagnostics.interrupted("timeout")
                 return False
             inspect_dispatch = getattr(
                 self._authority_store, "inspect_dispatch_authority", None
