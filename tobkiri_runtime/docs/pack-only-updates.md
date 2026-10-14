@@ -21,6 +21,17 @@ their resulting content identities, and a newer semantic version may change.
 Normal Packs cannot become Host Extensions. New Host Extensions, Base Packs,
 and Shell replacements are outside this update path.
 
+For implementation-only successors, use
+`core_runtime.host_extension_authoring.build_host_extension_successor` or
+`scripts.stage_host_extension_successor_v4`. Supply an exact predecessor
+artifact digest, a newer version and captured replacement bytes for existing
+runtime paths. The producer preserves every individual Contract, including its
+historical provenance, and checks the complete authority closure. Regenerating
+Contracts from a changed whole-Pack source record can change that provenance
+and is correctly rejected by compatibility validation. The producer writes
+unsigned inputs; normal signing, Native authorization, admission and Profile
+activation remain separate.
+
 The publisher signature is verified under Host-owned policy. The first
 publisher-key enrollment uses the separate public-key picker and Native trust
 confirmation; a publisher name in a manifest is not authentication. Existing
@@ -35,7 +46,8 @@ The installed Launcher must recognize successor identities as well as the Host
 runtime. Admission alone cannot make an older Launcher accept a different
 artifact for an existing bundled Pack ID. The Native bootstrap supports
 identity-only deferral for sandboxed provider successors and the compatible
-Gateway Host Extension slot. It still verifies the signed bundled predecessor,
+Gateway and Provider Adapter Host Extension slots. It still verifies the signed
+bundled predecessor,
 the exact Profile, Lock and Plan pins, and the selected execution boundary.
 Normal successors may use PackVM or WebAssembly; they cannot become Host
 Extensions or remote providers through this path. Base, Shell, Application,
@@ -131,6 +143,29 @@ binding changes; an old container cannot be renamed into a new bundle's origin.
 This mechanism cannot bypass Shell reconfirmation or make a partial predecessor
 read into execution authority. Keep the old active plan until the ordinary
 signed-successor ceremony has completed.
+
+### Reading an admitted successor after Source advances
+
+An active signed Host Extension successor must be revalidated against its
+authenticated bundled baseline. A newer development Source version is not a
+replacement for that baseline. `bundled_host_baseline_v4` provides a separate
+read scope and immutable public-byte cache for this case.
+
+The Host-only `retain_bundled_host_baseline` port accepts a normally issued
+active origin and explicit, untrusted bundle, full-Pack and canonical-record
+suppliers. It verifies the origin's raw bundle-lock digest, projection, full
+manifest, source-record identity, complete quartet, inventory roles and every
+runtime byte before exclusive publication. Bounded reads validate each file's
+hash and cumulative size before retaining the next file. Foreign owners,
+changed pointers, epochs, fences, source bytes or closed scopes are rejected.
+
+These baseline bytes supply only the strict compatibility comparison. The
+selected signed CAS root and active artifact pin remain unchanged. Neither
+publication nor subsequent reads admit, approve or activate a Pack. New
+admission explicitly clears the ambient baseline read context and retains its
+current canonical Source checks. Consequently, a Source-only development
+baseline repair does not by itself establish that the next signed candidate
+can be admitted against a changed canonical Source boundary.
 
 ## Development and verification
 
