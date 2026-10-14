@@ -3421,6 +3421,13 @@
       "executable": false
     },
     {
+      "path": "scripts/compiled_ui_artifacts_v4.py",
+      "type": "regular-file",
+      "size": 8171,
+      "sha256": "5f8f70242e14524e2b8645b6972af76f33898893d6eb91f69cfb9fc04a6a8b9f",
+      "executable": false
+    },
+    {
       "path": "scripts/dev_pack_signing_key.py",
       "type": "regular-file",
       "size": 16745,
