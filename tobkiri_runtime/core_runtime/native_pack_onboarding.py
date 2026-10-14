@@ -7,7 +7,7 @@ import hmac
 import os
 import stat
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -30,6 +30,9 @@ from .pack_artifact_integrity import (
 from .pack_boundary import load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 
+if TYPE_CHECKING:
+    from .bundled_artifact_retention_v4 import BundledArtifactOrigin
+
 
 def _read_public_key(path: Path, pack_root: Path) -> tuple[Ed25519PublicKey, str]:
     selected = Path(path)
@@ -37,14 +40,21 @@ def _read_public_key(path: Path, pack_root: Path) -> tuple[Ed25519PublicKey, str
         raise ValueError("select a separate public key file")
     if selected.resolve().is_relative_to(pack_root.resolve()):
         raise ValueError("public key must be selected outside the Pack folder")
-    descriptor = os.open(selected, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(
+        selected,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+    )
     try:
         before = os.fstat(descriptor)
-        if not stat.S_ISREG(before.st_mode) or before.st_size > 64 * 1024:
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > 64 * 1024
+        ):
             raise ValueError("public key file is invalid")
         pem = os.read(descriptor, 64 * 1024 + 1)
         after = os.fstat(descriptor)
-        if len(pem) > 64 * 1024 or (
+        if len(pem) > 64 * 1024 or after.st_nlink != 1 or (
             before.st_dev,
             before.st_ino,
             before.st_size,
@@ -66,6 +76,12 @@ def _read_public_key(path: Path, pack_root: Path) -> tuple[Ed25519PublicKey, str
 def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, Any]:
     """Verify the entire selected artifact and separately selected public key."""
 
+    return _preview_signed_pack(source_root, public_key_path)
+
+
+def _preview_signed_pack(
+    source_root: Path, public_key_path: Path, *, proof: Any | None = None,
+) -> dict[str, Any]:
     source = Path(source_root)
     if not source.is_absolute() or source.is_symlink() or not source.is_dir():
         raise ValueError("select a real signed Pack folder")
@@ -79,8 +95,17 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
     verified = verify_signed_pack(
         source, signed, public_key, core_version=str(core_version)
     )
-    projected = _project_catalog_record(source, signed)
-    compiled = compile_pack_root(source)
+    if proof is not None:
+        proof.verify_candidate(source, signed)
+    projected = (
+        _project_catalog_record(source, signed) if proof is None
+        else _project_catalog_record(source, signed, baseline_read=proof)
+    )
+    if proof is None:
+        compiled = compile_pack_root(source)
+    else:
+        from .host_extension_update_v4 import _verified_pack
+        compiled = _verified_pack(source, signed_manifest=signed).compiled
     if compiled.artifact.pack_id != verified["pack_id"]:
         raise ValueError("signed and compiled Pack identities differ")
     public_key_raw = public_key.public_bytes(
@@ -99,7 +124,7 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         "kind": str(projected["kind"]),
         "execution_boundary": str(projected["execution_boundary"]),
     }
-    snapshot = load_external_pack_catalog()
+    snapshot = load_external_pack_catalog() if proof is None else proof._snapshot
     pack_id = str(verified["pack_id"])
     retained = snapshot.versions.get(pack_id, {})
     bundled = load_pack_catalog().get(pack_id)
@@ -107,7 +132,10 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         str(row["version_string"]): str(row["artifact_digest"])
         for row in retained.values()
     }
-    if bundled is not None:
+    if proof is not None:
+        preview["predecessor_artifact_digest"] = proof.predecessor_digest
+        preview["catalog_revision"] = proof.revision
+    if bundled is not None and proof is None:
         if bundled.get("kind") not in {
             "normal_sandbox",
             "application",
@@ -123,7 +151,7 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
         predecessors[str(manifest["pack"]["version"])] = compile_pack_root(
             root
         ).artifact.digest
-    if predecessors:
+    if predecessors and proof is None:
         from .global_contracts.semver import parse_version
         from .pack_version_selection import verify_version_predecessor
 
@@ -148,6 +176,7 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
             "signed_manifest": signed,
             "public_key_pem": canonical_pem,
             "source_root": str(source),
+            **_existing_review_binding(proof, source),
         }
     )
     return preview
@@ -163,7 +192,27 @@ def commit_signed_pack(
 ) -> dict[str, Any]:
     """Reverify an approved preview, bind exact Host policy, then admit it."""
 
-    preview = preview_signed_pack(source_root, public_key_path)
+    return _commit_signed_pack(
+        source_root, public_key_path,
+        expected_preview_digest=expected_preview_digest,
+        trust_store_path=trust_store_path,
+        key_version_policy_identity=key_version_policy_identity,
+    )
+
+
+def _commit_signed_pack(
+    source_root: Path, public_key_path: Path, *, expected_preview_digest: str,
+    trust_store_path: Path,
+    key_version_policy_identity: tuple[int, str] | None = None,
+    proof: Any | None = None,
+) -> dict[str, Any]:
+    if proof is not None:
+        proof._trust_path = trust_store_path
+        proof.check_current()
+    preview = (
+        preview_signed_pack(source_root, public_key_path) if proof is None
+        else _preview_signed_pack(source_root, public_key_path, proof=proof)
+    )
     actual_digest = str(preview["preview_digest"])
     if not hmac.compare_digest(actual_digest, expected_preview_digest):
         raise ValueError("signed Pack changed after native confirmation")
@@ -181,6 +230,7 @@ def commit_signed_pack(
             "signed_manifest": signed,
             "public_key_pem": canonical_pem,
             "source_root": str(source),
+            **_existing_review_binding(proof, source),
         }
     )
     if not hmac.compare_digest(observed_digest, expected_preview_digest):
@@ -246,6 +296,8 @@ def commit_signed_pack(
                     str(preview["pack_id"]), {}
                 ),
             )
+    if proof is not None:
+        proof.check_current()
     write_host_install_record(
         trust_store_path,
         pack_id=str(preview["pack_id"]),
@@ -263,6 +315,14 @@ def commit_signed_pack(
         publisher_record=publisher_record,
         expected_signed_manifest_digest=canonical_digest(signed),
     )
+    if proof is not None:
+        return dict(proof.admit(
+            source, trust_store_path=trust_store_path,
+            expected_predecessor_digest=str(predecessor),
+            expected_catalog_revision=str(preview["catalog_revision"]),
+            expected_artifact_digest=str(preview["artifact_digest"]),
+            expected_signed_manifest_digest=canonical_digest(signed),
+        ))
     if predecessor is not None:
         return dict(
             admit_signed_pack_version(
@@ -290,6 +350,13 @@ def key_version_review_parameters(
     preview: dict[str, Any],
 ) -> dict[str, str]:
     """Rebind Native key review to verified bytes and unchanged update closure."""
+    return _key_version_review_parameters(source_root, public_key_path, preview)
+
+
+def _key_version_review_parameters(
+    source_root: Path, public_key_path: Path, preview: dict[str, Any], *,
+    proof: Any | None = None,
+) -> dict[str, str]:
     source = Path(source_root).resolve()
     _key, canonical_pem = _read_public_key(public_key_path, source)
     signed = _read_json_nofollow(source / SIGNED_MANIFEST_RELATIVE, 4 * 1024 * 1024)
@@ -303,11 +370,14 @@ def key_version_review_parameters(
             "signed_manifest": signed,
             "public_key_pem": canonical_pem,
             "source_root": str(source),
+            **_existing_review_binding(proof, source),
         }
     )
     if not hmac.compare_digest(observed, str(preview["preview_digest"])):
         raise ValueError("signed Pack changed during Native publisher review")
-    if preview["kind"] == "host_extension":
+    if proof is not None:
+        compatibility = proof.verify_candidate(source, signed).compatibility_digest
+    elif preview["kind"] == "host_extension":
         from .external_pack_catalog_v4 import resolve_admitted_pack_root
         from .host_extension_update_v4 import verify_host_extension_successor
 
@@ -342,3 +412,122 @@ def key_version_review_parameters(
         "signed_manifest_digest": canonical_digest(signed),
         "compatibility_digest": compatibility,
     }
+
+
+def _existing_review_binding(proof: Any | None, source: Path) -> dict[str, Any]:
+    return (
+        {}
+        if proof is None
+        else {"existing_host_extension": proof.review_binding(source)}
+    )
+
+
+def preview_signed_existing_host_extension(
+    source_root: Path,
+    public_key_path: Path,
+    *,
+    origin: BundledArtifactOrigin,
+    bundle_root: Path,
+    trust_store_path: Path,
+) -> dict[str, Any]:
+    """Preview an issued frozen baseline and active already-admitted slot."""
+    from .existing_host_extension_admission_v4 import _existing_slot_proof
+
+    from .host_extension_update_v4 import _verified_pack
+    pack_id = _verified_pack(source_root).compiled.artifact.pack_id
+    with _existing_slot_proof(
+        origin, bundle_root=bundle_root, pack_id=pack_id
+    ) as proof:
+        proof._trust_path = trust_store_path
+        proof.check_current()
+        return _preview_signed_pack(source_root, public_key_path, proof=proof)
+
+
+def commit_signed_existing_host_extension(
+    source_root: Path,
+    public_key_path: Path,
+    *,
+    origin: BundledArtifactOrigin,
+    bundle_root: Path,
+    expected_preview_digest: str,
+    trust_store_path: Path,
+    key_version_policy_identity: tuple[int, str] | None = None,
+) -> dict[str, Any]:
+    """Recheck the exact Native-reviewed existing slot and normally admit it."""
+    from .existing_host_extension_admission_v4 import _existing_slot_proof
+
+    from .host_extension_update_v4 import _verified_pack
+    pack_id = _verified_pack(source_root).compiled.artifact.pack_id
+    with _existing_slot_proof(
+        origin, bundle_root=bundle_root, pack_id=pack_id
+    ) as proof:
+        return _commit_signed_pack(
+            source_root,
+            public_key_path,
+            proof=proof,
+            expected_preview_digest=expected_preview_digest,
+            trust_store_path=trust_store_path,
+            key_version_policy_identity=key_version_policy_identity,
+        )
+
+
+def _native_existing_slot(source: Path) -> bool:
+    try:
+        manifest = _read_json_nofollow(source / "pack.v4.json", 4 * 1024 * 1024)
+    except FileNotFoundError:
+        return False  # The unchanged generic verifier handles absent artifacts.
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("pack", {}).get("kind") == "host_extension"
+    )
+
+
+def preview_native_signed_pack(
+    source: Path,
+    key: Path,
+    *,
+    trust_store_path: Path | None = None,
+) -> dict[str, Any]:
+    """Preserve Native v1 fields while selecting a separate existing-slot port."""
+    if not _native_existing_slot(source):
+        return preview_signed_pack(source, key)
+    from .existing_host_extension_admission_v4 import _capture_native_existing_slot
+
+    with _capture_native_existing_slot(source) as proof:
+        if trust_store_path is None:
+            raise ValueError("existing Host Extension publisher policy is unavailable")
+        proof._trust_path = trust_store_path
+        proof.check_current()
+        return _preview_signed_pack(source, key, proof=proof)
+
+
+def commit_native_signed_pack(
+    source: Path, key: Path, **arguments: Any
+) -> dict[str, Any]:
+    """Keep normal Native review and exact key authorization for the same slot."""
+    if not _native_existing_slot(source):
+        return commit_signed_pack(source, key, **arguments)
+    from .existing_host_extension_admission_v4 import _capture_native_existing_slot
+
+    with _capture_native_existing_slot(source) as proof:
+        return _commit_signed_pack(source, key, proof=proof, **arguments)
+
+
+def native_key_version_review_parameters(
+    source: Path,
+    key: Path,
+    preview: dict[str, Any],
+    *,
+    trust_store_path: Path | None = None,
+) -> dict[str, str]:
+    """Bind unchanged Native v1 key review to both authenticated predecessors."""
+    if not _native_existing_slot(source):
+        return key_version_review_parameters(source, key, preview)
+    from .existing_host_extension_admission_v4 import _capture_native_existing_slot
+
+    with _capture_native_existing_slot(source) as proof:
+        if trust_store_path is None:
+            raise ValueError("existing Host Extension publisher policy is unavailable")
+        proof._trust_path = trust_store_path
+        proof.check_current()
+        return _key_version_review_parameters(source, key, preview, proof=proof)

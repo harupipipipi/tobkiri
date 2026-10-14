@@ -53,6 +53,12 @@ class ExternalPackCatalogDenied(RuntimeError):
     """The Host external Normal Pack catalog or signed Pack failed closed."""
 
 
+class ExternalPackAdmissionOutcomeUnknown(ExternalPackCatalogDenied):
+    """An explicit existing-slot publication needs reconciliation before retry."""
+
+    reconciliation_needed = True
+
+
 @dataclass(frozen=True)
 class ExternalPackCatalogSnapshot:
     """Verified visible external Normal Pack records and immutable roots."""
@@ -173,15 +179,28 @@ def _admit_signed_external_pack_locked(
     expected_predecessor_digest: str | None = None,
     expected_artifact_digest: str | None = None,
     expected_signed_manifest_digest: str | None = None,
+    existing_slot_proof: Any | None = None,
 ) -> Mapping[str, Any]:
+    if existing_slot_proof is not None:
+        from .existing_host_extension_admission_v4 import (
+            _require_issued_existing_slot_proof,
+        )
+        _require_issued_existing_slot_proof(existing_slot_proof)
     source = Path(source_root)
+    baseline_arguments = (
+        {} if existing_slot_proof is None else {"baseline_read": existing_slot_proof}
+    )
     source_identity = _directory_identity(source)
     signed_manifest, install_record, trust_snapshot = _verify_signed_source(
         source,
         trust_store_path,
         trust_policy_lock=trust_policy_lock,
+        captured_host_extension=existing_slot_proof is not None,
     )
-    compiled = compile_pack_root(source)
+    compiled = (
+        compile_pack_root(source) if existing_slot_proof is None
+        else _captured_existing_compile(source)
+    )
     if (
         expected_artifact_digest is not None
         and compiled.artifact.digest != expected_artifact_digest
@@ -197,7 +216,9 @@ def _admit_signed_external_pack_locked(
         raise ExternalPackCatalogDenied(
             "external Normal Pack cannot shadow the immutable bundled catalog"
         )
-    record = _project_catalog_record(source, signed_manifest)
+    if existing_slot_proof is not None:
+        existing_slot_proof.verify_candidate(source, signed_manifest)
+    record = _project_catalog_record(source, signed_manifest, **baseline_arguments)
     artifact_digest = compiled.artifact.digest
     catalog_key = pack_id
     if expected_predecessor_digest is not None:
@@ -209,7 +230,11 @@ def _admit_signed_external_pack_locked(
             verify_version_predecessor(
                 pack_id,
                 expected_predecessor_digest,
-                versions=load_external_pack_catalog().versions,
+                versions=(
+                    load_external_pack_catalog().versions
+                    if existing_slot_proof is None
+                    else existing_slot_proof._snapshot.versions
+                ),
                 publisher_id=str(signed_manifest["publisher_id"]),
                 version=str(signed_manifest["version"]),
                 artifact_digest=artifact_digest,
@@ -233,6 +258,7 @@ def _admit_signed_external_pack_locked(
     prepared_written = False
     promoted = False
     committed_written = False
+    commit_started = False
     try:
         _copy_signed_pack(source, temporary, signed_manifest)
         _verify_cas_copy(
@@ -245,7 +271,10 @@ def _admit_signed_external_pack_locked(
             authorized_install_path=source,
             expected_trust_snapshot=trust_snapshot,
             trust_policy_lock=trust_policy_lock,
+            captured_host_extension=existing_slot_proof is not None,
         )
+        if existing_slot_proof is not None:
+            existing_slot_proof.verify_candidate(temporary, signed_manifest)
         if _directory_identity(source) != source_identity:
             raise ExternalPackCatalogDenied("signed Pack root changed during installation")
         unsigned = _read_authenticated_catalog(catalog_path, allow_missing=True)
@@ -260,7 +289,9 @@ def _admit_signed_external_pack_locked(
                         "Pack artifact digest is already bound to different signed content"
                     )
                 existing_root = _entry_root(previous, user_data)
-                _verify_entry_root(pack_id, previous, existing_root)
+                _verify_entry_root(
+                    pack_id, previous, existing_root, **baseline_arguments,
+                )
                 _require_current_trust_policy(
                     trust_store_path,
                     trust_snapshot,
@@ -286,17 +317,25 @@ def _admit_signed_external_pack_locked(
             "transaction_nonce": secrets.token_hex(32),
         }
         entries[catalog_key] = entry
+        if existing_slot_proof is not None:
+            existing_slot_proof.check_current()
         _write_authenticated_catalog(catalog_path, entries, journal)
         prepared_written = True
         _inject(fault_injector, "prepared")
         if final_root.exists():
-            _verify_entry_root(pack_id, {**entry, "state": "committed"}, final_root)
+            _verify_entry_root(
+                pack_id, {**entry, "state": "committed"}, final_root,
+                **baseline_arguments,
+            )
             shutil.rmtree(temporary)
         else:
             os.replace(temporary, final_root)
             promoted = True
         _chmod_read_only_tree(final_root)
-        _verify_entry_root(pack_id, {**entry, "state": "committed"}, final_root)
+        _verify_entry_root(
+            pack_id, {**entry, "state": "committed"}, final_root,
+            **baseline_arguments,
+        )
         _inject(fault_injector, "promoted")
         committed: dict[str, Any] = {
             key: value
@@ -321,11 +360,38 @@ def _admit_signed_external_pack_locked(
             raise ExternalPackCatalogDenied("external Pack catalog transaction was replaced")
         latest_entries[catalog_key] = committed
         latest_journal.append(_install_journal_event(committed, latest_journal))
+        if existing_slot_proof is not None:
+            existing_slot_proof.check_current()
+        commit_started = True
         _write_authenticated_catalog(catalog_path, latest_entries, latest_journal)
         committed_written = True
         _inject(fault_injector, "committed")
+        if existing_slot_proof is not None:
+            existing_slot_proof.check_committed(committed)
+            _require_current_trust_policy(
+                trust_store_path, trust_snapshot, trust_policy_lock=trust_policy_lock,
+            )
         return committed
     except Exception:
+        if existing_slot_proof is not None and commit_started:
+            if committed_written:
+                return {**committed, "reconciliation_needed": True}
+            try:
+                observed = _read_authenticated_catalog(
+                    catalog_path, allow_missing=False,
+                )
+                current = observed["entries"].get(catalog_key)
+                if current == committed and observed["journal"] == latest_journal:
+                    return {**committed, "reconciliation_needed": True}
+                if current != entry or observed["journal"] != journal:
+                    raise ValueError("admission publication outcome differs")
+            except Exception as error:
+                # Preserve CAS bytes when the atomic write's result is unproved.
+                promoted = False
+                prepared_written = False
+                raise ExternalPackAdmissionOutcomeUnknown(
+                    "Host Extension admission outcome requires reconciliation"
+                ) from error
         if prepared_written and not committed_written:
             try:
                 latest = _read_authenticated_catalog(catalog_path, allow_missing=False)
@@ -359,11 +425,21 @@ def load_external_pack_catalog(
     artifact_pins: Mapping[str, str] | None = None,
 ) -> ExternalPackCatalogSnapshot:
     """Verify every retained revision; project only explicit pins or baselines."""
-    from .pack_version_selection import catalog_key_identity
     from .bundled_host_baseline_v4 import current_bundled_host_baseline_read
 
-    baseline_read = current_bundled_host_baseline_read()
+    return _load_external_pack_catalog(
+        artifact_pins, baseline_read=current_bundled_host_baseline_read(),
+    )
 
+
+def _load_external_pack_catalog(
+    artifact_pins: Mapping[str, str] | None = None,
+    *, baseline_read: Any | None = None,
+) -> ExternalPackCatalogSnapshot:
+    from .pack_version_selection import catalog_key_identity
+
+    if baseline_read is not None:
+        baseline_read.validate()
     user_data = _user_data_root()
     unsigned = _read_authenticated_catalog(_catalog_path(user_data), allow_missing=True)
     records: dict[str, Mapping[str, Any]] = {}
@@ -701,6 +777,7 @@ def _verify_signed_source(
     *,
     authorized_install_path: Path | None = None,
     trust_policy_lock: HostPolicyLock | None = None,
+    captured_host_extension: bool = False,
 ) -> tuple[dict[str, Any], Mapping[str, Any], _TrustPolicySnapshot]:
     source_identity = _directory_identity(source)
     unresolved_trust_path = Path(trust_store_path).expanduser()
@@ -747,7 +824,10 @@ def _verify_signed_source(
         if not is_legacy_publisher_key(
             trust_store, publisher_id=publisher_id, key_id=key_id,
         ):
-            compiled_digest = compile_pack_root(source).artifact.digest
+            compiled_digest = (
+                _captured_existing_compile(source) if captured_host_extension
+                else compile_pack_root(source)
+            ).artifact.digest
         public_key = resolve_publisher_key(
             trust_store, publisher_id=publisher_id, key_id=key_id,
             pack_id=pack_id, artifact_digest=compiled_digest,
@@ -845,16 +925,28 @@ def _project_catalog_record(
     *,
     baseline_read: BundledHostBaselineRead | None = None,
 ) -> dict[str, Any]:
-    manifest = validate_file(root / "pack.v4.json", "pack")
-    contract_catalog = validate_file(root / "contracts.v4.json", "pack_contract_catalog")
+    explicit = _existing_slot_read(baseline_read)
+    if explicit:
+        from .host_extension_update_v4 import _verified_pack
+        baseline_read.validate()
+        captured = _verified_pack(root, signed_manifest=signed_manifest)
+        manifest = captured.documents["pack.v4.json"]
+        contract_catalog = captured.documents["contracts.v4.json"]
+    else:
+        manifest = validate_file(root / "pack.v4.json", "pack")
+        contract_catalog = validate_file(root / "contracts.v4.json", "pack_contract_catalog")
     if (
-        "sha256:" + hashlib.sha256((root / "contracts.v4.json").read_bytes()).hexdigest()
-        != manifest["integrity"]["contract_catalog_digest"]
+        (not explicit and "sha256:" + hashlib.sha256(
+            (root / "contracts.v4.json").read_bytes()
+        ).hexdigest() != manifest["integrity"]["contract_catalog_digest"])
         or contract_catalog["pack_id"] != manifest["pack"]["id"]
         or contract_catalog["source_identity"] != manifest["integrity"]["source_identity"]
     ):
         raise ExternalPackCatalogDenied("signed Pack Contract catalog identity is inconsistent")
-    executable = validate_file(root / "executables.v4.json", "executable_catalog")
+    executable = (
+        captured.documents["executables.v4.json"] if explicit
+        else validate_file(root / "executables.v4.json", "executable_catalog")
+    )
     pack_id = str(manifest["pack"]["id"])
     host_extension = manifest["pack"]["kind"] == "host_extension"
     compatibility = None
@@ -877,7 +969,10 @@ def _project_catalog_record(
             compatibility = verify_host_extension_successor(
                 baseline_root,
                 root,
-                expected_predecessor_digest=compile_pack_root(baseline_root).artifact.digest,
+                expected_predecessor_digest=(
+                    _captured_existing_compile(baseline_root) if explicit
+                    else compile_pack_root(baseline_root)
+                ).artifact.digest,
                 publisher_id=str(signed_manifest.get("publisher_id") or ""),
                 signed_manifest=signed_manifest,
             )
@@ -1081,7 +1176,8 @@ def _read_regular_from_root_descriptor(
     try:
         # A regular file can be exchanged for a FIFO after stat. Nonblocking
         # open reaches fstat so that the regular-file check rejects that race.
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
         flags |= getattr(os, "O_NONBLOCK", 0)
         metadata = os.stat(
             parts[-1],
@@ -1239,14 +1335,19 @@ def _verify_cas_copy(
     authorized_install_path: Path,
     expected_trust_snapshot: _TrustPolicySnapshot,
     trust_policy_lock: HostPolicyLock,
+    captured_host_extension: bool = False,
 ) -> None:
     copied_manifest, copied_install_record, copied_trust_snapshot = _verify_signed_source(
         root,
         trust_store_path,
         authorized_install_path=authorized_install_path,
         trust_policy_lock=trust_policy_lock,
+        captured_host_extension=captured_host_extension,
     )
-    compiled = compile_pack_root(root)
+    compiled = (
+        _captured_existing_compile(root) if captured_host_extension
+        else compile_pack_root(root)
+    )
     content_digest = canonical_digest(
         {
             "signed_manifest": copied_manifest,
@@ -1281,9 +1382,21 @@ def _verify_entry_root(
             or expected_inode != int(metadata.st_ino)
         ):
             raise ExternalPackCatalogDenied("external Pack root identity changed")
+    explicit = _existing_slot_read(baseline_read)
     try:
-        executable = validate_file(root / "executables.v4.json", "executable_catalog")
-        manifest = validate_file(root / "pack.v4.json", "pack")
+        if explicit:
+            from tobkiri_protocol.secure_persistence import SecureDirectory
+            baseline_read.validate()
+            reader = SecureDirectory(root, create=False)
+            executable = validate_document(reader.read_bytes_bounded(
+                "executables.v4.json", max_bytes=_MAX_CATALOG_BYTES,
+            ), "executable_catalog")
+            manifest = validate_document(reader.read_bytes_bounded(
+                "pack.v4.json", max_bytes=_MAX_CATALOG_BYTES,
+            ), "pack")
+        else:
+            executable = validate_file(root / "executables.v4.json", "executable_catalog")
+            manifest = validate_file(root / "pack.v4.json", "pack")
         host_extension = manifest["pack"]["kind"] == "host_extension"
         if host_extension and (
             entry.get("catalog_record", {}).get("authority")
@@ -1291,7 +1404,10 @@ def _verify_entry_root(
         ):
             raise ExternalPackCatalogDenied("Host Extension admission identity is missing")
         _require_external_catalog_identity(executable, host_extension=host_extension)
-        compiled = compile_pack_root(root)
+        compiled = (
+            _captured_existing_compile(root, host_extension=host_extension) if explicit
+            else compile_pack_root(root)
+        )
     except Exception as error:
         raise ExternalPackCatalogDenied(
             "external Pack artifact digest verification failed"
@@ -1559,20 +1675,26 @@ def _read_json_nofollow(
     *,
     require_private: bool = False,
 ) -> Any:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
         raise ExternalPackCatalogDenied(f"Host JSON file is unreadable: {path.name}") from exc
     try:
         before = os.fstat(descriptor)
-        if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
+        if (
+            not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or before.st_size > max_bytes
+        ):
             raise ExternalPackCatalogDenied("Host JSON file identity is invalid")
         if require_private and stat.S_IMODE(before.st_mode) & 0o022:
             raise ExternalPackCatalogDenied("Host JSON file permissions are unsafe")
         content = os.read(descriptor, max_bytes + 1)
         after = os.fstat(descriptor)
-        if len(content) > max_bytes or _stat_identity(before) != _stat_identity(after):
+        if (
+            len(content) > max_bytes or after.st_nlink != 1
+            or _stat_identity(before) != _stat_identity(after)
+        ):
             raise ExternalPackCatalogDenied("Host JSON file changed while reading")
         return json.loads(content)
     except json.JSONDecodeError as exc:
@@ -1583,7 +1705,8 @@ def _read_json_nofollow(
 
 def _read_regular_nofollow(root: Path, relative: str) -> tuple[bytes, int]:
     candidate = root.joinpath(*PurePosixPath(relative).parts)
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
     descriptor = os.open(candidate, flags)
     try:
         before = os.fstat(descriptor)
@@ -1749,3 +1872,15 @@ __all__ = [
     "resolve_admitted_pack_root",
     "resolve_admitted_pack_roots",
 ]
+
+
+def _existing_slot_read(value: Any) -> bool:
+    if value is None:
+        return False
+    from .existing_host_extension_admission_v4 import _is_existing_slot_read
+    return _is_existing_slot_read(value)
+
+
+def _captured_existing_compile(root: Path, *, host_extension: bool = True) -> Any:
+    from .existing_host_extension_admission_v4 import _compile_captured_pack
+    return _compile_captured_pack(root, host_extension=host_extension)

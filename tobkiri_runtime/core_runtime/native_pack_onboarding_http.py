@@ -107,6 +107,7 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
     source, key = Path(source_value), Path(key_value)
     # Import through the canonical module at call time, preserving test seams.
     from . import native_pack_onboarding as onboarding
+    from .external_pack_catalog_v4 import ExternalPackAdmissionOutcomeUnknown
 
     try:
         trust_store = handler._native_pack_trust_store()
@@ -117,7 +118,11 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
             if echoed.issubset(fields):
                 if ceremony is None:
                     raise ValueError("Native publisher key review is unavailable")
-                fresh = onboarding.preview_signed_pack(source, key)
+                fresh = onboarding.preview_native_signed_pack(
+                    source,
+                    key,
+                    trust_store_path=trust_store,
+                )
                 if fresh["preview_digest"] != body["preview_digest"]:
                     raise ValueError("Native signed Pack preview changed")
                 arguments["key_version_policy_identity"] = ceremony.authorize(
@@ -127,7 +132,7 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
                     trust_store_path=trust_store,
                     context_loader=_current_review_context,
                 )
-            entry = onboarding.commit_signed_pack(
+            entry = onboarding.commit_native_signed_pack(
                 source,
                 key,
                 expected_preview_digest=body["preview_digest"],
@@ -136,12 +141,16 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
             )
             refreshed = False
             refresh = handler._runtime_refresh
-            if refresh is not None:
+            if refresh is not None and not entry.get("reconciliation_needed"):
                 try:
                     refresh(None)
                     refreshed = True
                 except Exception:
                     logger.warning("Onboarded Pack catalog refresh failed")
+            if entry.get("reconciliation_needed"):
+                logger.warning(
+                    "Host Extension admission committed; reconciliation required"
+                )
             result = {
                 "pack_id": str(entry["pack_id"]),
                 "artifact_digest": str(entry["artifact_digest"]),
@@ -149,14 +158,31 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
                 "catalog_refreshed": refreshed,
             }
         else:
-            result = onboarding.preview_signed_pack(source, key)
+            result = onboarding.preview_native_signed_pack(
+                source,
+                key,
+                trust_store_path=trust_store,
+            )
             if ceremony is not None and trust_store is not None:
                 result = ceremony.prepare(
                     result,
                     trust_store_path=trust_store,
                     context_loader=_current_review_context,
-                    **onboarding.key_version_review_parameters(source, key, result),
+                    **onboarding.native_key_version_review_parameters(
+                        source,
+                        key,
+                        result,
+                        trust_store_path=trust_store,
+                    ),
                 )
+    except ExternalPackAdmissionOutcomeUnknown:
+        discard_echo()
+        logger.warning("Host Extension admission outcome requires reconciliation")
+        handler._send_response(
+            APIResponse(False, error="Pack admission outcome requires reconciliation"),
+            409,
+        )
+        return
     except Exception:
         discard_echo()
         # Do not put caller paths, public review challenges, or secrets in logs.
@@ -166,4 +192,13 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
             409,
         )
         return
-    handler._send_response(APIResponse(True, data=result))
+    warning = (
+        "Pack admission committed; catalog reconciliation is required"
+        if commit and entry.get("reconciliation_needed")
+        else None
+    )
+    if warning is not None:
+        # Native v1 reads envelope.error only on a failed HTTP/API outcome.
+        handler._send_response(APIResponse(False, data=result, error=warning), 409)
+    else:
+        handler._send_response(APIResponse(True, data=result))
