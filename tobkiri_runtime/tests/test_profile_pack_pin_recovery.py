@@ -338,6 +338,129 @@ def test_review_accepts_pin_only_predecessor_when_active_needs_reconfirmation(
     assert additional == ()
 
 
+@pytest.mark.parametrize("include_source_additions", [False, True])
+@pytest.mark.parametrize("admitted", [False, True])
+def test_review_keeps_same_definition_exact_gateway_pin_over_bundled_baseline(
+    tmp_path, monkeypatch, include_source_additions: bool, admitted: bool,
+) -> None:
+    """An existing Pack ID cannot substitute its bundled predecessor for a pin."""
+    pack_id = "rumi_ai_gateway_pack"
+    selected_digest = "sha256:" + "8" * 64
+    bundled_digest = "sha256:" + "c" * 64
+    profile = _profile(selected_digest)
+    profile["packs"][0]["pack_id"] = pack_id
+    source = deepcopy(profile)
+    source["packs"][0]["artifact_digest"] = None
+    # A real packaged addition makes include-source review substantive while
+    # retaining the already selected exact pin and unchanged authority mode.
+    if include_source_additions:
+        source["packs"].append({
+            "pack_id": "new-provider", "artifact_digest": None, "selected": True,
+        })
+    pointer = SimpleNamespace(
+        profile_id="defaults", profile_revision="sha256:" + "5" * 64,
+        activation_id="activation:defaults-12345678",
+        plan_digest="sha256:" + "6" * 64, lock_digest="sha256:" + "7" * 64,
+    )
+    catalog = SimpleNamespace(
+        profiles={"defaults": source},
+        packs={
+            pack_id: {
+                "pack": {"artifact_digest": bundled_digest, "kind": "host_extension"},
+                "requirements": {"pack_dependencies": []},
+            },
+            "base": {"requirements": {"pack_dependencies": []}},
+            "shell": {"requirements": {"pack_dependencies": []}},
+            "new-provider": {"requirements": {"pack_dependencies": []}},
+        },
+    )
+    active = SimpleNamespace(
+        resolved=SimpleNamespace(
+            profile=deepcopy(profile),
+            plan={
+                "profile_definition_digest": canonical_digest(profile),
+                "profile_revision": pointer.profile_revision,
+                "plan_digest": pointer.plan_digest,
+                "bindings": [{"pack_id": pack_id, "artifact_digest": selected_digest}],
+            },
+            lock={"lock_digest": pointer.lock_digest},
+        ),
+        activation={"activation_id": pointer.activation_id},
+    )
+
+    class FakeDefinitions:
+        def __init__(self, _root):
+            pass
+
+        def get_profile(self, _profile_id):
+            return SimpleNamespace(profile=deepcopy(profile))
+
+        def snapshot(self):
+            pytest.fail("same active definition must not use pin-successor recovery")
+
+    class FakeAuthority:
+        def __init__(self, *_args):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    runtime = SimpleNamespace(
+        activation_store=lambda **_kwargs: SimpleNamespace(
+            load_active_snapshot=lambda: active
+        ),
+        catalog_with_profiles=lambda selected, profiles: SimpleNamespace(
+            packs=selected.packs, profiles=profiles
+        ),
+        denied=RuntimeError,
+    )
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "profiles" / "active.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(profile_registry, "ProfileDefinitionStore", FakeDefinitions)
+    monkeypatch.setattr(profile_registry, "AuthorityStore", FakeAuthority)
+    monkeypatch.setattr(
+        profile_registry, "ActiveProfileStore",
+        lambda _root: SimpleNamespace(load=lambda **_kwargs: pointer),
+    )
+    calls = []
+
+    def exact_admitted_closure(selected, wanted_ids, *, artifact_pins):
+        assert selected is catalog
+        assert wanted_ids == sorted({"base", "shell", pack_id})
+        assert artifact_pins == {pack_id: selected_digest}
+        calls.append((wanted_ids, artifact_pins))
+        if not admitted:
+            raise pack_control_v4.PackControlDigestMismatch("selected pin not admitted")
+        result = deepcopy(selected)
+        result.packs[pack_id]["pack"]["artifact_digest"] = selected_digest
+        return result, set(wanted_ids)
+
+    monkeypatch.setattr(
+        pack_control_v4, "catalog_with_admitted_pack_closure", exact_admitted_closure,
+    )
+    options = dict(
+        runtime=runtime, catalog=catalog, user_data=tmp_path, profile_id="defaults",
+        include_source_additions=include_source_additions,
+    )
+    if not admitted:
+        with pytest.raises(pack_control_v4.PackControlDigestMismatch):
+            profile_registry.bootstrap_review_catalog(**options)
+    else:
+        reviewed, additional = profile_registry.bootstrap_review_catalog(**options)
+        expected = deepcopy(profile)
+        if include_source_additions:
+            expected["packs"].append(source["packs"][-1])
+        assert reviewed.profiles["defaults"] == expected
+        assert reviewed.packs[pack_id]["pack"]["artifact_digest"] == selected_digest
+        assert additional == ()
+        assert catalog.packs[pack_id]["pack"]["artifact_digest"] == bundled_digest
+        assert active.resolved.profile == profile
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

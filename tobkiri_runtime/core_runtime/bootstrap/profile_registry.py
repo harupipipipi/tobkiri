@@ -93,13 +93,25 @@ def bootstrap_review_catalog(
         active_profile["base"]["pack_id"],
         active_profile["shell"]["pack_id"],
     }
-    if not closure_ids.issubset(catalog.packs):
+    artifact_pins = {
+        str(row["pack_id"]): str(row["artifact_digest"])
+        for row in registered.profile["packs"]
+        if row.get("artifact_digest") is not None
+    }
+    if not closure_ids.issubset(catalog.packs) or any(
+        pack_id in catalog.packs
+        and catalog.packs[pack_id]["pack"]["artifact_digest"] != digest
+        for pack_id, digest in artifact_pins.items()
+    ):
         from ..pack_control_v4 import catalog_with_admitted_pack_closure
 
         # Renewal must compare the verified active plan against the same
-        # admitted catalog used by Pack control, not the bundled subset.
+        # exact admitted pins used by Pack control, including existing IDs
+        # whose selected revision differs from the bundled baseline.
         # This loader still authenticates every external Pack and dependency.
-        catalog, _ = catalog_with_admitted_pack_closure(catalog, sorted(closure_ids))
+        catalog, _ = catalog_with_admitted_pack_closure(
+            catalog, sorted(closure_ids), artifact_pins=artifact_pins
+        )
     if not successor_required:
         binding_renewal_required = profile_binding_renewal_required(
             active.resolved.plan, catalog
