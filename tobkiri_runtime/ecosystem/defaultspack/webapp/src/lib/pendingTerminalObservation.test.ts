@@ -16,7 +16,8 @@ function receipt(status: "failed" | "cancelled" = "failed"): SavedTurnEventSnaps
   const identity = { turn_id: "turn-1", operation_id: "turn-1", conversation_id: "conversation-1", request_id: "owner-request-1", turn_revision: 3 };
   return {
     ...identity, status,
-    turn: { id: "turn-1", conversation_id: "conversation-1", request_id: identity.request_id, status, revision: 3 },
+    turn: { id: "turn-1", conversation_id: "conversation-1", request_id: identity.request_id, status, revision: 3,
+      result_reference: null as unknown as undefined },
     terminal: { ...identity, status, result_reference: null as unknown as undefined },
     events: [
       { ...identity, sequence: 0, name: "turn.queued", at: 1, details: {} },
