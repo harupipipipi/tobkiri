@@ -310,7 +310,14 @@ def test_stream_diagnostics_observe_real_tls_interruption_without_secret_or_repl
     import logging
 
     tls, certificate = tls_server
-    entered, release = threading.Event(), threading.Event()
+    entered, release, body_entered = (threading.Event() for _ in range(3))
+    read1 = transport._PinnedResponse.read1
+
+    def observe_read1(response: transport._PinnedResponse, amount: int) -> bytes:
+        body_entered.set()
+        return read1(response, amount)
+
+    monkeypatch.setattr(transport._PinnedResponse, "read1", observe_read1)
     received = []
     canary = "diagnostic-tls-secret-canary"
 
@@ -342,6 +349,8 @@ def test_stream_diagnostics_observe_real_tls_interruption_without_secret_or_repl
         )
         try:
             assert entered.wait(2)
+            if phase == "body":
+                assert body_entered.wait(2)
             if ending == "cancel":
                 owner._envelope.cancellation_requested.set()
             elif ending == "revocation":
