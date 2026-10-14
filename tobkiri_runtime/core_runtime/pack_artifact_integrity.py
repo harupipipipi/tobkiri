@@ -366,6 +366,7 @@ def write_host_install_record(
     publisher_record: Mapping[str, Any] | None = None,
     expected_install_record: Mapping[str, Any] | None = None,
     expected_signed_manifest_digest: str | None = None,
+    expected_key_version_policy_identity: tuple[int, str] | None = None,
 ) -> None:
     """Atomically persist a complete Host-owned Pack install policy.
 
@@ -373,6 +374,11 @@ def write_host_install_record(
     field.  The writer derives the canonical path and exact content digests so
     callers cannot accidentally authorize a Pack identity without authorizing
     the concrete artifact that was reviewed.
+
+    An additive-key install additionally requires the exact post-approval
+    policy identity and prior install record (``{}`` means exact absence).
+    This branch consumes existing exact-artifact trust; it grants no key or
+    permission and does not replace the Native review/admission ceremony.
     """
 
     required = {
@@ -388,6 +394,21 @@ def write_host_install_record(
         record
     ):
         raise ValueError("Host install record fields are incomplete or unknown")
+    if expected_key_version_policy_identity is not None:
+        identity = expected_key_version_policy_identity
+        if (
+            not isinstance(identity, tuple)
+            or len(identity) != 2
+            or type(identity[0]) is not int
+            or identity[0] < 1
+            or not isinstance(identity[1], str)
+            or not identity[1].startswith("sha256:")
+            or publisher_record is not None
+            or not isinstance(expected_install_record, Mapping)
+            or record.get("signature_required") is not True
+            or record.get("developer_mode") is True
+        ):
+            raise ValueError("additive-key install requires exact policy and prior record")
     developer_exception = record.get("developer_mode") is True
     if record.get("signature_required") is not True and not developer_exception:
         raise ValueError("installed publisher Pack signatures must be required")
@@ -457,6 +478,28 @@ def write_host_install_record(
             policy_lock=policy_lock,
         )
         previous_policy_identity = host_policy_identity(payload)
+        if expected_key_version_policy_identity is not None:
+            if previous_policy_identity != expected_key_version_policy_identity:
+                raise ValueError("additive-key install policy identity is stale")
+            prior_records = payload.get("install_records", {})
+            if not isinstance(prior_records, Mapping):
+                raise ValueError("additive-key install policy records are invalid")
+            prior_record = prior_records.get(str(pack_id))
+            if expected_install_record == {}:
+                if str(pack_id) in prior_records:
+                    raise ValueError("additive-key install expected exact record absence")
+            elif (
+                prior_record != expected_install_record
+                or not isinstance(prior_record, Mapping)
+                or prior_record.get("signature_required") is not True
+                or prior_record.get("publisher_id") != record["publisher_id"]
+            ):
+                raise ValueError("additive-key prior install policy is stale or inconsistent")
+            _verify_key_version_install(
+                root, payload, pack_id=str(pack_id), record=record,
+                expected_manifest_digest=signed_manifest_digest,
+                expected_tree_digest=tree_digest, expected_root_identity=root_identity,
+            )
         if publisher_record is not None:
             if set(publisher_record) != {
                 "public_key_pem", "allowed_pack_namespaces", "revoked_key_ids"
@@ -530,6 +573,63 @@ def write_host_install_record(
             expected_policy_identity=previous_policy_identity,
             policy_lock=policy_lock,
         )
+
+
+def _verify_key_version_install(
+    root: Path,
+    policy: Mapping[str, Any],
+    *,
+    pack_id: str,
+    record: Mapping[str, Any],
+    expected_manifest_digest: str,
+    expected_tree_digest: str,
+    expected_root_identity: tuple[int, int, int],
+) -> None:
+    """Verify current source against the already granted exact additive scope."""
+    from tobkiri_host.artifact_compiler import compile_pack_root
+
+    from .pack_signature import SIGNED_MANIFEST_RELATIVE
+
+    relative = record["signed_manifest_path"]
+    if relative != SIGNED_MANIFEST_RELATIVE:
+        raise ValueError("additive-key install requires the canonical signed manifest")
+    publisher_id, key_id = str(record["publisher_id"]), str(record["key_id"])
+    if is_legacy_publisher_key(policy, publisher_id=publisher_id, key_id=key_id):
+        raise ValueError("additive-key install requires a scoped key version")
+    compiled = compile_pack_root(root).artifact
+    if (
+        compiled.pack_id != pack_id
+        or compiled.version != record["installed_version"]
+        or compiled.publisher_lineage != publisher_id
+    ):
+        raise ValueError("compiled additive-key Pack identity differs from install record")
+    manifest_path = _contained_regular_file(root, relative, "signed Pack manifest")
+    signed = _read_json_nofollow(manifest_path, 4 * 1024 * 1024)
+    if not isinstance(signed, Mapping) or (
+        _canonical_digest(signed) != expected_manifest_digest
+    ):
+        raise ValueError("additive-key signed manifest changed during install")
+    key = resolve_publisher_key(
+        policy, publisher_id=publisher_id, key_id=key_id, pack_id=pack_id,
+        artifact_digest=compiled.digest, signed_manifest_digest=expected_manifest_digest,
+    )
+    verify_signed_pack(
+        root, dict(signed), key, expected_publisher_id=publisher_id,
+        expected_pack_id=pack_id, expected_version=record["installed_version"],
+        expected_key_id=key_id,
+        expected_contract_versions=record["contract_versions"],
+        expected_capabilities=record["requested_capabilities"],
+        revoked_key_ids=set(policy["publishers"][publisher_id]["revoked_key_ids"]),
+        core_version=_core_version(),
+    )
+    if (
+        _directory_identity(root) != expected_root_identity
+        or _pack_tree_digest(root, signed_manifest_exclusion=relative)
+        != expected_tree_digest
+        or _canonical_digest(_read_json_nofollow(manifest_path, 4 * 1024 * 1024))
+        != expected_manifest_digest
+    ):
+        raise ValueError("additive-key Pack changed during signature verification")
 
 
 def verify_host_install_binding(
