@@ -1,4 +1,4 @@
-"""Privacy and delivery checks for fixed Shell HTTP failure diagnostics."""
+"""Privacy and delivery checks for fixed UI HTTP failure diagnostics."""
 
 from __future__ import annotations
 
@@ -63,6 +63,8 @@ class _Writer(ResponseWriterMixin, _ClosedResponse):
         ("/api/ai/strategies", "catalog"),
         ("/api/ui/settings?full=true&private=secret", "settings"),
         ("/api/command-protocol/v1/catalog", "commands"),
+        ("/api/runtime-surface/profile?profile_id=private", "profile"),
+        ("/api/runtime-surface/profiles?search=private", "profiles"),
     ],
 )
 def test_actual_response_delivers_unchanged_before_fixed_log(
@@ -93,15 +95,23 @@ def test_actual_response_delivers_unchanged_before_fixed_log(
 @pytest.mark.parametrize(
     "data", [None, {}, {"code": "cookie-secret"}, {"code": ["TIMEOUT"]}, {"code": 123}]
 )
+@pytest.mark.parametrize(
+    ("target", "label"),
+    [
+        ("/api/ui/settings?cookie=private", "settings"),
+        ("/api/runtime-surface/profile?cookie=private", "profile"),
+        ("/api/runtime-surface/profiles?cookie=private", "profiles"),
+    ],
+)
 def test_unknown_or_missing_code_is_never_reflected(
-    data: object, caplog: pytest.LogCaptureFixture
+    data: object, target: str, label: str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    writer = _Writer("/api/ui/settings?cookie=private")
+    writer = _Writer(target)
     with caplog.at_level(logging.WARNING):
         writer._send_response(APIResponse(False, data=data, error="private"), 401)
         writer.finish()
     assert [record.getMessage() for record in caplog.records] == [
-        "Shell UI read failed interface=settings http_status=401 code=unknown"
+        f"Shell UI read failed interface={label} http_status=401 code=unknown"
     ]
 
 
@@ -116,6 +126,8 @@ def test_unknown_or_missing_code_is_never_reflected(
         ("GET", _route("/api/ui/settings"), True),
         ("GET", _route("https://private/api/ui/settings"), 500),
         ("GET", _route("/api/ui/settings#private"), 500),
+        ("GET", _route("/api/runtime-surface/profile/private"), 503),
+        ("GET", _route("/api/runtime-surface/profiles/private"), 503),
         ("GET", "/api/contracts/defaultspack/" + "private" * 2000, 500),
     ],
 )

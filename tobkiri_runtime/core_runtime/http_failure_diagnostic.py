@@ -1,4 +1,4 @@
-"""Fixed-vocabulary diagnostics for failed Shell startup HTTP reads."""
+"""Fixed-vocabulary diagnostics for failed canonical UI HTTP reads."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ _READS = {
     "/api/ai/strategies": "catalog",
     "/api/ui/settings": "settings",
     "/api/command-protocol/v1/catalog": "commands",
+    "/api/runtime-surface/profile": "profile",
+    "/api/runtime-surface/profiles": "profiles",
 }
 _CODES = frozenset(
     {
