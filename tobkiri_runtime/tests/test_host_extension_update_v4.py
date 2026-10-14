@@ -195,7 +195,12 @@ def test_bundled_gateway_can_receive_code_only_signed_successor(tmp_path: Path) 
 
     previous = RUNTIME_ROOT / "ecosystem" / "rumi_ai_gateway_pack"
     successor = tmp_path / "rumi_ai_gateway_pack"
-    shutil.copytree(previous, successor)
+    # A development checkout may contain bytecode from prior imports. Copy
+    # only source artifacts; the signer must still reject caches in a Pack.
+    shutil.copytree(
+        previous, successor,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
     manifest = _read(successor, "pack.v4.json")
     manifest["pack"]["version"] = "1.1.0"
     _write(successor, "pack.v4.json", manifest)
