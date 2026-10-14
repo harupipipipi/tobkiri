@@ -58,6 +58,11 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
         "/desktops",
         "/approval",
     }
+    assert all(
+        mount["ui_asset_pack_id"] == "defaultspack_ui_assets_pack"
+        and mount["ui_asset_publisher_id"] == "tobkiri.repository"
+        for mount in mounts
+    )
     profile_routes = next(mount for mount in mounts if mount["path_prefix"] == "/p")
     assert profile_routes["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
     assert profile_routes["auth_required"] is True

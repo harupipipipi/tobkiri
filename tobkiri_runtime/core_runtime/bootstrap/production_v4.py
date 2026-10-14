@@ -1787,6 +1787,17 @@ def capture_production_dispatch(
             **retained_root_options,
         )
     captured_pack_root_identities = _pack_root_identities(pack_roots)
+    from ..captured_ui_asset_delegation_v4 import CapturedAssetOnlyUIPacks
+
+    # UI-only captures are not Function roots or Broker principals.
+    ui_asset_packs = CapturedAssetOnlyUIPacks(
+        artifact_pins={
+            str(row["identity"]): str(row["artifact_digest"])
+            for row in lock["effective_set"]
+            if row["role"] == "pack"
+        },
+        owner_root=authority_user_data,
+    )
     retained_pack_roots = {
         pack_id: root
         for pack_id, root in pack_roots.items()
@@ -3811,6 +3822,7 @@ def capture_production_dispatch(
                 "captured Pack filesystem identity changed",
                 code="digest_mismatch",
             )
+        ui_asset_packs.assert_current()
         for pack_id in retained_pack_roots:
             assert_retained_root_current(pack_id)
         host_provider_data.assert_current()
@@ -4127,7 +4139,10 @@ def capture_production_dispatch(
         """Bind a trusted mount to its exact selected Pack, never its latest revision."""
         root = pack_roots.get(owner_pack_id)
         if root is None:
-            return None
+            dispatch.assert_current()
+            return ui_asset_packs.capture(
+                owner_pack_id, index_file, assert_current=dispatch.assert_current,
+            )
         dispatch.assert_current()
         assert_retained_root_current(owner_pack_id)
         pin = ui_artifact_pins[owner_pack_id]

@@ -106,6 +106,20 @@ def _read_ui_regular(descriptor: int, relative: str) -> tuple[bytes, int]:
 
 
 @dataclass(frozen=True)
+class UIAssetDelegation:
+    """Host-verified exact nonlegacy signing scope for Application UI bytes.
+
+    Same-origin UI receives the Application session's authority. This evidence
+    is populated only after authenticated admission and exact key-scope checks;
+    a Normal Pack's empty capabilities do not authorize that delegation.
+    """
+
+    publisher_id: str
+    key_id: str
+    signed_manifest_digest: str
+
+
+@dataclass(frozen=True)
 class CapturedPackUIAssets:
     """Immutable asset inventory owned by a live, exact dispatch capture.
 
@@ -123,6 +137,7 @@ class CapturedPackUIAssets:
     index_file: str
     assert_current: Callable[[], None]
     legacy_builtin: bool = False
+    delegation: UIAssetDelegation | None = None
 
     @classmethod
     def capture(
@@ -277,24 +292,55 @@ def bind_captured_pack_web_mounts(
     The source declaration supplies an owner hint, never an artifact root.
     Only the production capture resolves that hint against its finite pins.
     """
-    if mounts is None or capture is None:
+    if mounts is None:
+        return mounts
+    if capture is None:
+        if any("ui_asset_pack_id" in mount for mount in mounts):
+            raise CapturedPackUIAssetDenied("UI delegation capture is unavailable")
         return mounts
     captured: dict[tuple[str, str], CapturedPackUIAssets | None] = {}
     result: list[WebMountEntry] = []
     for original in mounts:
         mount: WebMountEntry = dict(original)  # type: ignore[assignment]
         source_ui_root = Path(mount["web_root"]).absolute()
+        original_owner = source_ui_root.parent.name
+        delegated_owner = mount.get("ui_asset_pack_id")
+        delegated = delegated_owner is not None
+        if "ui_asset_pack_id" in mount and (
+            not isinstance(delegated_owner, str)
+            or not delegated_owner
+            or not isinstance(mount.get("ui_asset_publisher_id"), str)
+            or not mount["ui_asset_publisher_id"]
+            or source_ui_root.name != "ui"
+        ):
+            raise CapturedPackUIAssetDenied("UI delegation declaration is invalid")
         if source_ui_root.name != "ui":
             result.append(mount)
             continue
-        key = source_ui_root.parent.name, mount["index_file"]
+        key = delegated_owner or original_owner, mount["index_file"]
         if key not in captured:
             captured[key] = capture(*key)
         assets = captured[key]
+        if assets is None and delegated:
+            # Only the production capture may return None for an unselected
+            # slot. Selected but unavailable/corrupt/unauthorized slots raise.
+            key = original_owner, mount["index_file"]
+            if key not in captured:
+                captured[key] = capture(*key)
+            assets = captured[key]
+            delegated = False
         if assets is None:
             raise CapturedPackUIAssetDenied("UI mount owner is not selected")
+        if assets.pack_id != key[0] or assets.index_file != key[1]:
+            raise CapturedPackUIAssetDenied("UI mount capture owner differs")
         if not mount["auth_required"]:
             raise CapturedPackUIAssetDenied("captured Pack UI must be authenticated")
+        if delegated and (
+            assets.legacy_builtin
+            or assets.delegation is None
+            or assets.delegation.publisher_id != mount["ui_asset_publisher_id"]
+        ):
+            raise CapturedPackUIAssetDenied("UI delegation publisher is unauthorized")
         if assets.legacy_builtin:
             if source_ui_root != assets.pack_root / "ui":
                 raise CapturedPackUIAssetDenied(

@@ -89,7 +89,7 @@ def migrate_defaultspack_frontend_surface_contributions(
 def defaultspack_web_mounts(pack_root: Path) -> tuple[dict[str, Any], ...]:
     """Return Defaultspack's authenticated UI mounts and legacy UI alias."""
     ui_root = Path(pack_root).resolve() / "ui"
-    return (
+    mounts = (
         {
             "path_prefix": "/p",
             "web_root": ui_root,
@@ -130,6 +130,18 @@ def defaultspack_web_mounts(pack_root: Path) -> tuple[dict[str, Any], ...]:
             "auth_required": True,
             "auth_bootstrap": True,
         },
+    )
+    # This trusted Application explicitly delegates same-origin UI execution.
+    # Host capture additionally requires Native-authorized nonlegacy exact
+    # (Pack, artifact, signed manifest) scope; ordinary Pack admission is not
+    # enough, and no private/local signing key belongs in this declaration.
+    return tuple(
+        {
+            **mount,
+            "ui_asset_pack_id": "defaultspack_ui_assets_pack",
+            "ui_asset_publisher_id": "tobkiri.repository",
+        }
+        for mount in mounts
     )
 
 

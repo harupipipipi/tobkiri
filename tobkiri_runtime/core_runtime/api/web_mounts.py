@@ -25,6 +25,9 @@ class WebMountEntry(TypedDict):
     auth_required: bool
     auth_bootstrap: NotRequired[bool]
     byte_reader: NotRequired[Callable[[str, bool], tuple[bytes, str]]]
+    # Trusted Application declarations only, never Pack-supplied mount metadata.
+    ui_asset_pack_id: NotRequired[str]
+    ui_asset_publisher_id: NotRequired[str]
 
 
 class WebMountMixin(_HTTPHandlerBase):
