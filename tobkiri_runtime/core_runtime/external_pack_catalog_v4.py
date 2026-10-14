@@ -383,7 +383,10 @@ def load_external_pack_catalog(
             raise ExternalPackCatalogDenied("Pack revision catalog key is invalid") from error
         _validate_entry(pack_id, entry)
         root = _entry_root(entry, user_data)
-        _verify_entry_root(pack_id, entry, root, baseline_read=baseline_read)
+        if baseline_read is None:
+            _verify_entry_root(pack_id, entry, root)
+        else:
+            _verify_entry_root(pack_id, entry, root, baseline_read=baseline_read)
         record = entry["catalog_record"]
         if not isinstance(record, Mapping) or record.get("pack_id") != pack_id:
             raise ExternalPackCatalogDenied("external Pack catalog record identity is invalid")

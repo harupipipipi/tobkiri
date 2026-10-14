@@ -57,7 +57,12 @@ def _publish(fixture: Any) -> baselines.RetainedBundledHostBaseline:
 
 def _signed_successor(fixture: Any, tmp_path: Path) -> tuple[Path, Path]:
     source = tmp_path / "successor" / PACK_ID
-    shutil.copytree(fixture.source, source)
+    source.mkdir(parents=True)
+    index = validate_file(fixture.source / "artifact-index.v4.json", "pack_artifact_index")
+    for relative in {item["path"] for item in index["artifacts"]} | {"artifact-index.v4.json"}:
+        destination = source / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((fixture.source / relative).read_bytes())
     manifest = validate_file(source / "pack.v4.json", "pack")
     manifest["pack"]["version"] = "99.0.0"
     (source / "pack.v4.json").write_bytes(canonical_json(manifest))
