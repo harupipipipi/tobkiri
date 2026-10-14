@@ -244,6 +244,7 @@ def test_declared_signature_is_enforced_during_pack_activation(
                     "publisher.example": {
                         "public_key_pem": public_pem,
                         "revoked_key_ids": [],
+                        "allowed_pack_namespaces": ["example_pack"],
                     }
                 }
             }
@@ -326,6 +327,7 @@ def test_host_install_record_prevents_signature_declaration_downgrade(
                     "publisher.example": {
                         "public_key_pem": public_pem,
                         "revoked_key_ids": [],
+                        "allowed_pack_namespaces": ["example_pack"],
                     }
                 },
             }
@@ -381,6 +383,7 @@ def test_host_install_record_rejects_same_key_resigned_different_build(
                     "publisher.example": {
                         "public_key_pem": public_pem,
                         "revoked_key_ids": [],
+                        "allowed_pack_namespaces": ["example_pack"],
                     }
                 }
             }

@@ -272,10 +272,17 @@ def test_current_trust_must_authorize_nonlegacy_exact_ui_tuple(
         policy["publishers"][PUBLISHER]["revoked_key_ids"].append(key_id)
     else:
         policy["install_records"][PACK_ID]["publisher_id"] = "other.publisher"
+    policy["policy_digest"] = _policy_digest(policy)
     from core_runtime import captured_ui_asset_delegation_v4 as module
 
     monkeypatch.setattr(module, "read_host_policy_snapshot", lambda *_: policy)
-    with pytest.raises((CapturedPackUIAssetDenied, ValueError)):
+    reason = {
+        "legacy": "exact nonlegacy scope",
+        "scope": "exact artifact authorization",
+        "revoked": "revoked",
+        "publisher": "install policy differs",
+    }[mutation]
+    with pytest.raises((CapturedPackUIAssetDenied, ValueError), match=reason):
         capture.capture(PACK_ID, "shell.html", assert_current=lambda: None)
 
 
@@ -298,6 +305,7 @@ def test_reader_fences_policy_signed_manifest_and_closed_capture(
     closed = False
     policy = read_host_policy_snapshot(policy_path)
     policy["policy_generation"] += 1
+    policy["policy_digest"] = _policy_digest(policy)
     from core_runtime import captured_ui_asset_delegation_v4 as module
 
     with monkeypatch.context() as patched:
