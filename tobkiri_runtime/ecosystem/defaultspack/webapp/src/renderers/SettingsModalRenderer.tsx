@@ -85,6 +85,7 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
 ]);
 
 const TOOL_EXPERIENCE_OWNED_FIELD_IDS = new Set([
+  "show_tool_selection_control",
   "show_action_approval_control",
   "action_approval_mode",
   "fixed_action_approval_mode",
@@ -4929,6 +4930,7 @@ export function SettingsModalRenderer({
                         tools={(catalog?.sidebar.items ?? []).filter((item) => item.category === "tool")}
                         settingsValues={settingsValues}
                         onSettingChange={onSettingChange}
+                        runtimeProfileId={runtimeProfileId}
                         displayMode={settingsDisplayMode}
                         requestedTab={toolTabRequest}
                         basicSettings={remainingPrimaryFields.length > 0 ? (

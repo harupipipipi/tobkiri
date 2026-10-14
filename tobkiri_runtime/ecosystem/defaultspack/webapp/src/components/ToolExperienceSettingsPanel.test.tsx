@@ -39,7 +39,18 @@ test("Settings offers the initially hidden tool control with practical examples"
   const html = render("auto");
   assert.match(html, /入力欄に「機能の使い方」を表示/);
   assert.match(html, /普段は非表示です/);
+  assert.match(html, /このブラウザーの現在の Profile に保存します/);
   for (const example of ["Webで天気を調べて", "@Web Search", "文章の言い換え", "Enter・Tab・クリック"]) {
     assert.ok(html.includes(example));
   }
+});
+
+test("the browser display control ignores unsupported backend values", () => {
+  const html = renderToStaticMarkup(createElement(ToolExperienceSettingsPanel, {
+    tools: [], runtimeProfileId: "profile-a",
+    settingsValues: { tools: { show_tool_selection_control: true } },
+    onSettingChange: () => assert.fail("display control must not mutate Host settings"),
+  }));
+  assert.match(html, /aria-label="入力欄に「機能の使い方」を表示"/);
+  assert.match(html, /aria-checked="false"/);
 });

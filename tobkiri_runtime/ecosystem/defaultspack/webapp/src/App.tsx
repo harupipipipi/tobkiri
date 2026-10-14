@@ -1,5 +1,6 @@
 import { savedCodingContext, savedCodingContextAfterMutation } from "./lib/savedCodingContext";
 import { assertSavedProjectSendSupported } from "./lib/savedProjectSendPreflight";
+import { useToolSelectionControlPreference } from "./lib/toolSelectionControlPreference";
 import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
@@ -3107,6 +3108,7 @@ export function ChatApp() {
   }, []);
   const [settingsSections, setSettingsSections] = useState<SettingsSection[]>([]);
   const [settingsValues, setSettingsValues] = useState<Record<string, Record<string, unknown>>>({});
+  const showToolSelectionControl = useToolSelectionControlPreference(runtimeProfileId);
   const settingsValuesRef = useRef(settingsValues);
   // Shortcut drafts use the Settings retry flow; only owner-confirmed values bind keys.
   const [confirmedSpotlightSettings, setConfirmedSpotlightSettings] = useState<Record<string, unknown>>({});
@@ -8978,7 +8980,7 @@ export function ChatApp() {
       actionApprovalMode={actionApprovalMode}
       actionApprovalModes={approvalPolicySupport.availableModes}
       onActionApprovalModeChange={handleActionApprovalModeChange}
-      showToolSelectionControl={settingsValues.tools?.show_tool_selection_control === true}
+      showToolSelectionControl={showToolSelectionControl}
       showActionApprovalControl={approvalPreferences.controlVisible}
       toolSelectionMode={toolSelectionController.state.effectiveMode}
       toolSelectionReview={toolSelectionController.state.pendingReview}
@@ -9244,7 +9246,7 @@ export function ChatApp() {
                   profileId={runtimeProfileId}
                   tools={composerExtensions}
                   showApprovalControl={approvalPreferences.controlVisible}
-                  showToolControl={settingsValues.tools?.show_tool_selection_control === true}
+                  showToolControl={showToolSelectionControl}
                   actionApprovalMode={actionApprovalMode}
                   activationId={verifiedHost?.catalog.activation_id ?? null}
                   workspaceId={approvalWorkspaceId}

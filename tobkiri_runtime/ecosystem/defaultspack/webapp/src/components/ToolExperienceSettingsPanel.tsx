@@ -9,6 +9,7 @@ import { ApprovalPreferenceSettings } from "../features/tools/ApprovalPreference
 import { ErrorNotice } from "./ErrorNotice";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
 import { ModalFoundation } from "./ModalFoundation";
+import { ToolSelectionControlSettings } from "./ToolSelectionControlSettings";
 
 type PermissionDecision = "auto" | "confirm" | "block";
 type ToolSettings = Record<string, unknown>;
@@ -328,6 +329,7 @@ export function ToolExperienceSettingsPanel({
   tools,
   settingsValues,
   onSettingChange,
+  runtimeProfileId,
   displayMode = "standard",
   actionApprovalModes,
   approvalReviewerModels,
@@ -339,6 +341,7 @@ export function ToolExperienceSettingsPanel({
   tools: SidebarItem[];
   settingsValues: SettingsValues;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
+  runtimeProfileId?: string;
   displayMode?: "standard" | "advanced";
   actionApprovalModes?: readonly ActionApprovalMode[];
   approvalReviewerModels?: readonly ModelProfile[];
@@ -486,12 +489,7 @@ export function ToolExperienceSettingsPanel({
         </div>
       </section>
       <section className="grid gap-3 lg:grid-cols-2">
-        <ToggleRow
-          checked={boolValue(toolSettings.show_tool_selection_control, false)}
-          title="入力欄に「機能の使い方」を表示"
-          note="普段は非表示です。表示すると、メッセージごとに自動・手動・ツールなしを選べます。"
-          onChange={(value) => updateToolSetting("show_tool_selection_control", value)}
-        />
+        <ToolSelectionControlSettings key={runtimeProfileId} profileId={runtimeProfileId} />
         <ToggleRow
           checked={boolValue(toolSettings.show_selected_tools_in_answer ?? toolSettings.show_selection_summary, true)}
           title="選んだ機能を回答内に表示"

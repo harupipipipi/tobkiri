@@ -27,6 +27,22 @@ import { ModelSearchPicker } from "../features/models/ModelSearchPicker";
 import type { TemplateSettingsField } from "./template/settingsFieldMetadata";
 import type { SettingsSection } from "../lib/api";
 
+test("Tools renders the browser display switch once and excludes its unsupported generated Host field", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true, activeSectionId: "tools_mcp", runtimeProfileId: "profile-a",
+    catalog: null, health: null, previewsCount: 0,
+    settingsSections: [{ id: "tools", label: "Tools", fields: [{
+      id: "show_tool_selection_control", label: "Unsupported generated Host field", type: "toggle", default: true,
+    }] }],
+    settingsValues: { tools: { show_tool_selection_control: true } },
+    onClose: () => undefined,
+    onSettingChange: () => assert.fail("display control must not write Host settings"),
+  }));
+  assert.doesNotMatch(html, /Unsupported generated Host field/);
+  assert.equal([...html.matchAll(/aria-label="入力欄に「機能の使い方」を表示"/g)].length, 1);
+  assert.match(html, /このブラウザーの現在の Profile に保存します/);
+});
+
 test("pet notification settings remain available with empty backend Features and use the runtime Profile", () => {
   const render = (settingsSections: SettingsSection[], runtimeProfileId: string | undefined) => renderToStaticMarkup(createElement(SettingsModalRenderer, {
     isOpen: true,
