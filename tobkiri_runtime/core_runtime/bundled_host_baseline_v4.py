@@ -56,11 +56,15 @@ def _deny(condition: bool, message: str) -> None:
 def _require_owner(origin: BundledArtifactOrigin) -> None:
     from .bootstrap.profile_capture import runtime_user_data_root
 
-    assert_retention_origin_current(origin)
+    _deny(
+        not isinstance(origin, BundledArtifactOrigin),
+        "bundled baseline requires a captured origin",
+    )
     _deny(
         runtime_user_data_root().resolve(strict=True) != origin.user_data_root.resolve(strict=True),
         "bundled baseline belongs to another Host owner",
     )
+    assert_retention_origin_current(origin)
 
 
 def _baseline_projection(

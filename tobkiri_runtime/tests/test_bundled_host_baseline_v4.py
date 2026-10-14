@@ -333,6 +333,11 @@ def test_baseline_scope_rejects_other_owner_thread_and_late_byte_change(
     other.mkdir()
     with monkeypatch.context() as altered:
         altered.setenv("TOBKIRI_USER_DATA", str(other))
+        altered.setattr(
+            baselines,
+            "assert_retention_origin_current",
+            lambda _origin: pytest.fail("foreign owner must reject before Authority read"),
+        )
         with pytest.raises(BundledArtifactRetentionDenied, match="another Host owner"):
             _publish(fixture)
     with pytest.raises((ValueError, OSError)):
