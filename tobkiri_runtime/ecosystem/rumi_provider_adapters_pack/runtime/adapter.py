@@ -24,7 +24,6 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from core_runtime.http_request_lifetime import HttpRequestLifetime
-from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
 from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
     compile_connection_parameters,
 )
@@ -35,7 +34,10 @@ from core_runtime.local_model_authority import LocalModelRequest
 from ecosystem.rumi_provider_adapters_pack.domain.ai_client.provider_compiler.openai_chat import (
     compile_chat_parameters,
 )
-from ecosystem.rumi_provider_adapters_pack.runtime.streaming import stream_request
+from ecosystem.rumi_provider_adapters_pack.runtime.streaming import (
+    RequestFailureDiagnostics,
+    stream_request,
+)
 from tobkiri_protocol.turn_progress_v1 import ACTION as PROGRESS_CONTRACT
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"

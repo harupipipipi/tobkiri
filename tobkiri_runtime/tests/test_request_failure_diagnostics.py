@@ -9,7 +9,19 @@ from typing import Mapping
 
 import pytest
 
-from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
+from core_runtime.request_failure_diagnostics import (
+    RequestFailureDiagnostics as HostFailureDiagnostics,
+)
+from ecosystem.rumi_provider_adapters_pack.runtime.streaming import (
+    RequestFailureDiagnostics as PackFailureDiagnostics,
+)
+
+
+@pytest.fixture(params=[HostFailureDiagnostics, PackFailureDiagnostics],
+                ids=["host", "pack"])
+def diagnostics_type(request: pytest.FixtureRequest) -> type:
+    """Exercise identical finite evidence requirements at both boundaries."""
+    return request.param
 
 _REQUEST = "request." + "a" * 32
 _PARENT = "request." + "b" * 32
@@ -42,13 +54,14 @@ _PARENT = "request." + "b" * 32
     ],
 )
 def test_exception_projection_contains_only_finite_fields(
+    diagnostics_type: type,
     error: Exception,
     reason: str,
     bucket: str,
 ) -> None:
     """Only finite fields survive arbitrary messages and exception causes."""
     records = []
-    diagnostics = RequestFailureDiagnostics(
+    diagnostics = diagnostics_type(
         _REQUEST, parent_request_id=_PARENT, sink=records.append
     )
     error.__cause__ = RuntimeError("secret-inner-canary")
@@ -76,10 +89,12 @@ def test_exception_projection_contains_only_finite_fields(
 
 
 @pytest.mark.parametrize("value", [True, math.nan, math.inf, -100, "canary", []])
-def test_invalid_fields_and_clocks_remain_bounded(value: object) -> None:
+def test_invalid_fields_and_clocks_remain_bounded(
+    diagnostics_type: type, value: object,
+) -> None:
     """Forged identities and unsupported scalars normalize to fixed values."""
     records = []
-    diagnostics = RequestFailureDiagnostics(
+    diagnostics = diagnostics_type(
         value, parent_request_id=value, clock=lambda: value, sink=records.append
     )
     diagnostics.stage(value)
@@ -90,11 +105,13 @@ def test_invalid_fields_and_clocks_remain_bounded(value: object) -> None:
     assert records[0]["elapsed_ms"] == 0
 
 
-def test_independent_monotonic_duration_and_latched_interrupt() -> None:
+def test_independent_monotonic_duration_and_latched_interrupt(
+    diagnostics_type: type,
+) -> None:
     """A trusted first observation survives later exception translation."""
     records = []
     clock = iter([10.0, 12.0, 15.0])
-    diagnostics = RequestFailureDiagnostics(
+    diagnostics = diagnostics_type(
         _REQUEST, clock=lambda: next(clock), sink=records.append
     )
     diagnostics.stage("body")
@@ -106,11 +123,13 @@ def test_independent_monotonic_duration_and_latched_interrupt() -> None:
     assert records[0]["stage_elapsed_ms"] == 3000
 
 
-def test_failed_logging_does_not_replace_the_request_failure() -> None:
+def test_failed_logging_does_not_replace_the_request_failure(
+    diagnostics_type: type,
+) -> None:
     """A failing private sink cannot escape into transport behavior."""
 
     def fail(_record: Mapping[str, object]) -> None:
         raise RuntimeError("logger secret")
 
-    diagnostics = RequestFailureDiagnostics(_REQUEST, sink=fail)
+    diagnostics = diagnostics_type(_REQUEST, sink=fail)
     diagnostics.failure(ValueError("original secret"))
