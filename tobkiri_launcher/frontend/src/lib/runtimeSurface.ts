@@ -831,6 +831,7 @@ export function validateRuntimeSurfaceEnvelope<T>(
     if (
       !profileCatalog
       || profileCatalog.active_profile_id !== profileId
+      || acceptedRecords.resolved_plan.digest !== planDigest
       || (profileCatalog.profiles.length > 0 && (
         !activeEntry
         || activeEntry.profile_id !== profileId

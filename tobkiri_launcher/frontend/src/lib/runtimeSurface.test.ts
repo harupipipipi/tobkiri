@@ -404,6 +404,32 @@ test('Profile catalog projection is exact, exposes the active marker, and derive
   assert.deepEqual(extractExactProfileCatalogSelectablePackIds({...projection.profiles[0], pack_closure: []}), []);
 });
 
+test('Profile catalog reads reject a resolved plan record from another activation', async () => {
+  const valid = envelope('profiles', profileCatalogData());
+  const conflicting = {
+    ...valid,
+    records: {
+      ...valid.records,
+      resolved_plan: {
+        digest: digest('f'),
+        source_ref: 'resolved-plan-v1://defaults/another-plan',
+      },
+    },
+  };
+  assert.doesNotThrow(() => validateRuntimeSurfaceEnvelope('profiles', valid));
+  assert.throws(
+    () => validateRuntimeSurfaceEnvelope('profiles', conflicting),
+    (error: unknown) => error instanceof RuntimeSurfaceError && error.code === 'INVALID',
+  );
+  const client = createRuntimeSurfaceClient(undefined, {
+    read: async <T>() => conflicting as T,
+  });
+  await assert.rejects(
+    client.read('profiles'),
+    (error: unknown) => error instanceof RuntimeSurfaceError && error.code === 'INVALID',
+  );
+});
+
 function hostProfileCatalogEnvelope() {
   const catalog = profileCatalogData();
   return {
