@@ -97,6 +97,14 @@ def _digest(content: bytes) -> str:
     return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
+def _read_ui_regular(descriptor: int, relative: str) -> tuple[bytes, int]:
+    return _read_regular_from_root_descriptor(
+        descriptor,
+        relative,
+        max_file_bytes=_MAX_ASSET_BYTES,
+    )
+
+
 @dataclass(frozen=True)
 class CapturedPackUIAssets:
     """Immutable asset inventory owned by a live, exact dispatch capture.
@@ -135,12 +143,8 @@ class CapturedPackUIAssets:
         owner_identity = _directory_identity(owner)
         descriptor = _open_root(root, root_identity)
         try:
-            manifest_raw, _ = _read_regular_from_root_descriptor(
-                descriptor, "pack.v4.json"
-            )
-            index_raw, _ = _read_regular_from_root_descriptor(
-                descriptor, "artifact-index.v4.json"
-            )
+            manifest_raw, _ = _read_ui_regular(descriptor, "pack.v4.json")
+            index_raw, _ = _read_ui_regular(descriptor, "artifact-index.v4.json")
             manifest = validate_document(manifest_raw, "pack")
             index = validate_document(index_raw, "pack_artifact_index")
             if (
@@ -191,7 +195,7 @@ class CapturedPackUIAssets:
                         "captured UI asset inventory is incomplete"
                     )
                 for path, expected_digest in assets.items():
-                    content, _ = _read_regular_from_root_descriptor(descriptor, path)
+                    content, _ = _read_ui_regular(descriptor, path)
                     if (
                         len(content) > _MAX_ASSET_BYTES
                         or _digest(content) != expected_digest
@@ -255,7 +259,7 @@ class CapturedPackUIAssets:
         expected = self.asset_digests[path]
         descriptor = _open_root(self.pack_root, self.root_identity)
         try:
-            content, _ = _read_regular_from_root_descriptor(descriptor, path)
+            content, _ = _read_ui_regular(descriptor, path)
             if len(content) > _MAX_ASSET_BYTES or _digest(content) != expected:
                 raise CapturedPackUIAssetDenied("captured UI asset digest changed")
             self._assert_current()

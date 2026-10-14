@@ -263,9 +263,13 @@ def test_capture_checks_before_and_after_read(
     checks = 0
     original = assets_module._read_regular_from_root_descriptor
 
-    def raced_read(descriptor: int, relative: str) -> tuple[bytes, int]:
+    def raced_read(
+        descriptor: int,
+        relative: str,
+        **limits: int,
+    ) -> tuple[bytes, int]:
         nonlocal checks
-        result = original(descriptor, relative)
+        result = original(descriptor, relative, **limits)
         checks += 1
         return result
 
@@ -279,6 +283,52 @@ def test_capture_checks_before_and_after_read(
     monkeypatch.setattr(assets_module, "_read_regular_from_root_descriptor", raced_read)
     with pytest.raises(RuntimeError, match="activation"):
         raced.read("/shell-app.js", False)
+
+
+def test_regular_asset_replaced_with_fifo_is_rejected_without_blocking(
+    cas_assets: CapturedPackUIAssets,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real leaf replacement reaches fstat rather than waiting for a writer."""
+    from core_runtime import external_pack_catalog_v4 as catalog_module
+
+    target = cas_assets.pack_root / "ui/shell-app.js"
+    target.parent.chmod(0o700)
+    original = os.open
+    swapped = False
+
+    def racing_open(path: str | Path, flags: int, **options: int) -> int:
+        nonlocal swapped
+        if path == target.name and not swapped:
+            assert flags & os.O_NONBLOCK
+            swapped = True
+            target.unlink()
+            os.mkfifo(target)
+        return original(path, flags, **options)
+
+    monkeypatch.setattr(catalog_module.os, "open", racing_open)
+    with pytest.raises(RuntimeError, match="unsafe"):
+        cas_assets.read("/shell-app.js", False)
+    assert swapped
+
+
+def test_oversized_asset_is_rejected_before_any_content_allocation(
+    cas_assets: CapturedPackUIAssets,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 32 MiB UI bound is enforced before the first read, not after hashing."""
+    target = cas_assets.pack_root / "ui/shell-app.js"
+    target.chmod(0o600)
+    with target.open("r+b") as stream:
+        stream.truncate(32 * 1024 * 1024 + 1)
+    from core_runtime import external_pack_catalog_v4 as catalog_module
+
+    def forbidden_read(_descriptor: int, _size: int) -> bytes:
+        pytest.fail("oversized UI bytes must not be allocated")
+
+    monkeypatch.setattr(catalog_module.os, "read", forbidden_read)
+    with pytest.raises(RuntimeError, match="unsafe"):
+        cas_assets.read("/shell-app.js", False)
 
 
 def test_legacy_compatibility_mount_must_equal_captured_builtin_root(

@@ -1045,7 +1045,11 @@ def _require_normalized_copy_path(
 def _read_regular_from_root_descriptor(
     root_descriptor: int,
     relative: str,
+    *,
+    max_file_bytes: int = _MAX_PACK_FILE_BYTES,
 ) -> tuple[bytes, int]:
+    if not 0 < max_file_bytes <= _MAX_PACK_FILE_BYTES:
+        raise ExternalPackCatalogDenied("signed Pack entry size bound is invalid")
     parts = PurePosixPath(relative).parts
     parent_descriptor, ancestors = _open_directory_components(
         root_descriptor,
@@ -1054,7 +1058,10 @@ def _read_regular_from_root_descriptor(
     )
     descriptor: int | None = None
     try:
+        # A regular file can be exchanged for a FIFO after stat. Nonblocking
+        # open reaches fstat so that the regular-file check rejects that race.
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
         metadata = os.stat(
             parts[-1],
             dir_fd=parent_descriptor,
@@ -1066,7 +1073,7 @@ def _read_regular_from_root_descriptor(
             not stat.S_ISREG(before.st_mode)
             or before.st_nlink != 1
             or _stat_identity(metadata) != _stat_identity(before)
-            or before.st_size > _MAX_PACK_FILE_BYTES
+            or before.st_size > max_file_bytes
         ):
             raise ExternalPackCatalogDenied(
                 "signed Pack entry identity is unsafe"
@@ -1076,12 +1083,12 @@ def _read_regular_from_root_descriptor(
         while True:
             chunk = os.read(
                 descriptor,
-                min(1024 * 1024, _MAX_PACK_FILE_BYTES + 1),
+                min(1024 * 1024, max_file_bytes - total + 1),
             )
             if not chunk:
                 break
             total += len(chunk)
-            if total > _MAX_PACK_FILE_BYTES:
+            if total > max_file_bytes:
                 raise ExternalPackCatalogDenied(
                     "signed Pack entry exceeds the size limit"
                 )

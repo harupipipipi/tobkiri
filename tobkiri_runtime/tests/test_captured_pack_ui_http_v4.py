@@ -31,6 +31,7 @@ from tests.test_production_frontend_contract_http import (
     _authenticate,
     _captured_production_server,
 )
+from tobkiri_host.credential_store import host_credential_store_factory
 
 
 def _get(
@@ -70,7 +71,11 @@ def test_signed_ui_activation_rebinds_real_http_mounts_without_source_replacemen
 ) -> None:
     """Admission alone cannot switch UI; activation refresh binds all aliases."""
     baseline = RUNTIME_ROOT / "ecosystem/defaultspack"
-    with contextmanager(_captured_production_server)(tmp_path, monkeypatch) as (
+    with contextmanager(_captured_production_server)(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    ) as (
         server,
         old_session,
         _authority,
@@ -129,8 +134,12 @@ def test_signed_ui_activation_rebinds_real_http_mounts_without_source_replacemen
 
         original = assets_module._read_regular_from_root_descriptor
 
-        def changed_read(descriptor: int, relative: str) -> tuple[bytes, int]:
-            body, mode = original(descriptor, relative)
+        def changed_read(
+            descriptor: int,
+            relative: str,
+            **limits: int,
+        ) -> tuple[bytes, int]:
+            body, mode = original(descriptor, relative, **limits)
             if relative == "ui/shell-app.js":
                 return body + b"modified", mode
             return body, mode
@@ -148,7 +157,11 @@ def test_external_pack_without_ui_cannot_recover_via_legacy_source_mount(
 ) -> None:
     """An admitted non-UI successor cannot inherit the old source HTML."""
     baseline = RUNTIME_ROOT / "ecosystem/defaultspack"
-    with contextmanager(_captured_production_server)(tmp_path, monkeypatch) as (
+    with contextmanager(_captured_production_server)(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    ) as (
         server,
         _session,
         _authority,
