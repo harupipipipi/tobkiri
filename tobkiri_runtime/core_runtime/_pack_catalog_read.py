@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest
 
@@ -20,6 +22,17 @@ from .pack_artifact_integrity import read_host_policy_snapshot
 from .pack_boundary import load_pack_catalog
 
 _TOKEN = object()
+
+
+class _ReadScope:
+    def __init__(self) -> None:
+        self.thread = threading.get_ident()
+        self.view: _CatalogRead | None = None
+
+
+_CURRENT_SCOPE: ContextVar[_ReadScope | None] = ContextVar(
+    "physical_pack_catalog_read", default=None
+)
 
 
 def _visible_catalog(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -61,8 +74,16 @@ class _CatalogRead:
         owner: Path,
         active_identity: str | None,
     ) -> None:
-        if token is not _TOKEN:
+        scope = _CURRENT_SCOPE.get()
+        if (
+            token is not _TOKEN
+            or scope is None
+            or scope.thread != threading.get_ident()
+            or scope.view is not None
+        ):
             raise ExternalPackCatalogDenied("catalog read must be internally issued")
+        self._scope = scope
+        self._final_checks: list[Callable[[], None]] = []
         self._token = token
         self._roots = roots
         self._owner = owner
@@ -97,6 +118,7 @@ class _CatalogRead:
                 active_identity,
             ]
         )
+        scope.view = self
 
     def _snapshot_identity(self) -> str:
         value = self._roots._snapshot
@@ -118,6 +140,9 @@ class _CatalogRead:
         if (
             not self._active
             or self._token is not _TOKEN
+            or _CURRENT_SCOPE.get() is not self._scope
+            or self._scope.view is not self
+            or self._scope.thread != threading.get_ident()
             or not self._roots._active
             or self._roots._pins != self._pins
             or runtime_user_data_root() != self._owner
@@ -134,6 +159,16 @@ class _CatalogRead:
             or self._snapshot_identity() != self._snapshot_digest
         ):
             raise ExternalPackCatalogDenied("catalog read is closed or changed")
+
+    def register_final_check(self, check: Callable[[], None]) -> None:
+        """Register a fresh mutable guard for after the physical boundary walks."""
+        self.validate()
+        self._final_checks.append(check)
+
+    def final_checks(self) -> tuple[Callable[[], None], ...]:
+        """Freeze guards for the issuing caller's final publication boundary."""
+        self.validate()
+        return tuple(self._final_checks)
 
     def require_active_identity(self, identity: str) -> None:
         """Reject mixing another active snapshot into this internal scope."""
@@ -175,14 +210,19 @@ def _catalog_metadata_read(
     the scope. Authority initialization keeps its normal lifecycle semantics.
     Publisher policy is read through its usual guarded, nonwriting reader.
     """
-    raw = _read_authenticated_catalog(_catalog_path(root), allow_missing=True)
-    bundled = load_pack_catalog()
-    policy = _policy(root)
-    with verified_pack_root_read(pins, origin=origin) as roots:
-        if _revision(raw) != roots._snapshot.revision:
-            raise ExternalPackCatalogDenied("catalog changed before read")
-        view = _CatalogRead(_TOKEN, roots, raw, bundled, root, active_identity)
-        try:
+    if _CURRENT_SCOPE.get() is not None:
+        raise ExternalPackCatalogDenied("nested physical catalog read is denied")
+    scope = _ReadScope()
+    current = _CURRENT_SCOPE.set(scope)
+    view = None
+    try:
+        raw = _read_authenticated_catalog(_catalog_path(root), allow_missing=True)
+        bundled = load_pack_catalog()
+        policy = _policy(root)
+        with verified_pack_root_read(pins, origin=origin) as roots:
+            if _revision(raw) != roots._snapshot.revision:
+                raise ExternalPackCatalogDenied("catalog changed before read")
+            view = _CatalogRead(_TOKEN, roots, raw, bundled, root, active_identity)
             yield view
             view.validate()
             if (
@@ -196,5 +236,8 @@ def _catalog_metadata_read(
                 raise ExternalPackCatalogDenied(
                     "catalog or publisher policy changed during read"
                 )
-        finally:
+    finally:
+        if view is not None:
             view.close()
+        scope.view = None
+        _CURRENT_SCOPE.reset(current)

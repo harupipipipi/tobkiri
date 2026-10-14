@@ -1300,18 +1300,22 @@ def _catalog_payload(
             }
         )
     if _read is not None:
-        final_grants: dict[str, Any] = {}
-        current_grant_bindings = _active_grant_bindings(state, _inspection=final_grants)
-        if (
-            _read_control_state(binding.profile_id, read_only=True) != installed
-            or current_grant_bindings != active_grant_bindings
-            or final_grants != grant_inspection
-            or _approval_read_identity(binding.profile_id, tuple(records))
-            != approval_identity
-        ):
-            raise PackControlStaleRevision(
-                "Pack control state, approvals or grants changed during read"
-            )
+        def check_mutable_state() -> None:
+            final_grants: dict[str, Any] = {}
+            current_grants = _active_grant_bindings(state, _inspection=final_grants)
+            if (
+                _read_control_state(binding.profile_id, read_only=True) != installed
+                or current_grants != active_grant_bindings
+                or final_grants != grant_inspection
+                or _approval_read_identity(binding.profile_id, tuple(records))
+                != approval_identity
+            ):
+                raise PackControlStaleRevision(
+                    "Pack control state, approvals or grants changed during read"
+                )
+
+        check_mutable_state()
+        _read.register_final_check(check_mutable_state)
     return {"packs": packs, "count": len(packs), **_binding_payload(binding)}
 
 
@@ -1441,12 +1445,21 @@ def _active_grant_bindings(
 def _approval_read_identity(profile_id: str, pack_ids: tuple[str, ...]) -> str:
     """Observe raw approval changes without caching their verification results."""
     records: dict[str, str | None] = {}
+    revisions: set[str] = set()
     for pack_id in pack_ids:
         try:
             raw = _approval_store(profile_id, create=False).read_bytes(
                 _approval_relative(profile_id, pack_id)
             )
             records[pack_id] = hashlib.sha256(raw).hexdigest()
+            try:
+                payload = json.loads(raw)
+            except (ValueError, UnicodeError):
+                payload = None
+            if isinstance(payload, dict):
+                revision = payload.get("approval_revision")
+                if isinstance(revision, str) and revision:
+                    revisions.add(revision)
         except FileNotFoundError:
             records[pack_id] = None
         except (OSError, SecurePersistenceError, PackControlUnavailable):
@@ -1460,8 +1473,18 @@ def _approval_read_identity(profile_id: str, pack_ids: tuple[str, ...]) -> str:
         )
     except FileNotFoundError:
         key_identity = None
+    revoked: frozenset[str] = frozenset()
+    if revisions:
+        from .authority.v4 import AuthorityStore
+
+        try:
+            with AuthorityStore(_user_data_root() / "authority/v4.sqlite3") as authority:
+                revoked = authority.revoked_ids_for_kind("approval", revisions)
+        except Exception as error:
+            raise PackControlUnavailable("approval revocations unavailable") from error
     return canonical_digest({
         "approvals": records,
+        "revoked": sorted(revoked),
         "key_identity": list(key_identity) if key_identity is not None else None,
     })
 
@@ -1566,6 +1589,14 @@ def _physical_catalog_read(
             invalidate_profile_capture_scope()
             if _active_read_identity(capture_active_profile()) != identity:
                 raise PackControlStaleRevision("active Profile changed during read")
+            checks = read.final_checks()
+        # No derived result is published until the catalog, CAS, compiler and
+        # retained-Origin exit guards have completed. Revocation need not bump
+        # the active epoch, so mutable Authority checks must follow those walks.
+        if _user_data_root() != root:
+            raise PackControlStaleRevision("active Profile read owner changed")
+        for check in checks:
+            check()
     except PackControlDenied:
         raise
     except (OSError, RuntimeError, ValueError) as error:
