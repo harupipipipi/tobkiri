@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -39,7 +40,12 @@ def test_selected_admitted_data_is_pinned_and_cached(
     lock["effective_set"][0]["artifact_digest"] = "sha256:" + "0" * 64
     captured = owner.capture_for(_factory())
     assert captured[0].artifact_digest == digest
-    assert len(captured[0].files) == 33
+    declared_paths = {
+        item["path"]
+        for item in json.loads((root / "pack.v4.json").read_bytes())["artifacts"]
+        if item["path"].startswith("tools/")
+    }
+    assert {item.path for item in captured[0].files} == declared_paths
     assert {
         "tools/chat_list_targets/manifest.json",
         "tools/chat_resolve_target/manifest.json",

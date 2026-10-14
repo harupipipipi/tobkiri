@@ -293,13 +293,15 @@ def test_real_active_successor_uses_frozen_baseline_after_source_version_drift(
         raise refusal
 
     other_owner = tmp_path / "ambient-owner"
-    with profile_capture.runtime_user_data_scope(other_owner), monkeypatch.context() as altered:
+    with monkeypatch.context() as altered:
         altered.setattr(HostProviderDataCaptureV4, "capture_for", refuse_data)
         with AuthorityStore(fixture.owner / "authority/v4.sqlite3") as authority:
             with pytest.raises(AuthorizationError) as rejected:
                 capture_dispatch(authority)
         assert rejected.value is refusal
         assert baselines.current_bundled_host_baseline_read() is None
+        assert profile_capture.runtime_user_data_root() == fixture.owner
+        altered.setenv("TOBKIRI_USER_DATA", str(other_owner))
         assert profile_capture.runtime_user_data_root() == other_owner
     assert len(failed_reads) == 1
     with pytest.raises(BundledArtifactRetentionDenied, match="closed"):
@@ -316,7 +318,7 @@ def test_real_active_successor_uses_frozen_baseline_after_source_version_drift(
         captured_reads.append((read, result))
         return result
 
-    with profile_capture.runtime_user_data_scope(other_owner), monkeypatch.context() as altered:
+    with monkeypatch.context() as altered:
         altered.setattr(HostProviderDataCaptureV4, "capture_for", observed_data)
         with AuthorityStore(fixture.owner / "authority/v4.sqlite3") as authority:
             session = capture_dispatch(authority)
@@ -324,6 +326,9 @@ def test_real_active_successor_uses_frozen_baseline_after_source_version_drift(
                 assert session.plan_digest == origin.plan_digest
                 assert session.activation_id == origin.activation_id
                 assert session.owned_authority_store is authority
+                assert baselines.current_bundled_host_baseline_read() is None
+                altered.setenv("TOBKIRI_USER_DATA", str(other_owner))
+                assert profile_capture.runtime_user_data_root() == other_owner
                 session.assert_current()
             finally:
                 session.close()
