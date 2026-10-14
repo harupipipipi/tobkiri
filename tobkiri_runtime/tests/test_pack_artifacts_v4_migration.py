@@ -387,19 +387,45 @@ def test_default_tool_definitions_are_sealed_beside_finite_owned_runtime() -> No
         } == definitions
     assert manifest["pack"]["kind"] == "host_extension"
     assert manifest["requirements"]["execution_boundary"] == "host_brokered"
-    assert manifest["requirements"]["capabilities"] == ["tool.local.operation"]
-    assert [item["id"] for item in manifest["functions"]] == [
-        "rumi_default_tools_pack.calculator"
+    assert manifest["requirements"]["capabilities"] == [
+        "file.write",
+        "tool.local.operation",
+        "turn.execute",
+        "turn.manage",
     ]
+    expected_functions = [
+        "rumi_default_tools_pack.calculator",
+        "rumi_default_tools_pack.chat-message-prepare.service",
+        "rumi_default_tools_pack.chat-message-send.service",
+        "rumi_default_tools_pack.chat-message-tool",
+        "rumi_default_tools_pack.chat-reference-tools",
+        "rumi_default_tools_pack.file-create-prepare.service",
+        "rumi_default_tools_pack.file-create-tool",
+        "rumi_default_tools_pack.file-create.service",
+        "rumi_default_tools_pack.files-read",
+        "rumi_default_tools_pack.python-sandbox-execute-tool",
+    ]
+    assert [item["id"] for item in manifest["functions"]] == expected_functions
     assert [item["contract_id"] for item in manifest["contracts"]] == [
-        "tobkiri.service.tool.local.operation.v1"
+        "tobkiri.service.tool.local.operation.v1",
+        "tobkiri.service.file.create.v1",
+        "tobkiri.service.chat.message.send.v1",
     ]
     assert [item["operation_id"] for item in manifest["operation_catalog"]] == [
-        "rumi_default_tools_pack.calculator-evaluate"
+        "rumi_default_tools_pack.calculator-evaluate",
+        "rumi_default_tools_pack.chat-message-operation",
+        "rumi_default_tools_pack.chat-message-prepare",
+        "rumi_default_tools_pack.chat-message-send",
+        "rumi_default_tools_pack.chat-reference-operation",
+        "rumi_default_tools_pack.file-create",
+        "rumi_default_tools_pack.file-create-operation",
+        "rumi_default_tools_pack.file-create-prepare",
+        "rumi_default_tools_pack.files-read-operation",
+        "rumi_default_tools_pack.python-sandbox-execute-operation",
     ]
-    assert [item["provider_id"] for item in manifest["provider_catalog"]] == [
-        "rumi_default_tools_pack.calculator"
-    ]
+    assert [
+        item["provider_id"] for item in manifest["provider_catalog"]
+    ] == expected_functions
 
 
 @pytest.mark.parametrize("check", [False, True])
@@ -413,7 +439,8 @@ def test_generation_rejects_damaged_declarative_sources_before_writing(
     """Sidecar bytes must match even when the Pack has no executable Function."""
     catalog = _catalog()
     record = next(
-        item for item in catalog["packs"]
+        item
+        for item in catalog["packs"]
         if item["pack_id"] == "rumi_default_tools_pack"
     )
     source_root = migration.ECOSYSTEM / record["pack_id"]

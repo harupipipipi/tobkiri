@@ -259,6 +259,7 @@ def test_existing_target_and_symlink_parent_are_preserved(
         "defaultspack",
         "rumi_provider_adapters_pack",
         "rumi_ai_gateway_pack",
+        "rumi_default_tools_pack",
     ],
 )
 def test_shared_metadata_sealer_keeps_default_generation_byte_identical(
