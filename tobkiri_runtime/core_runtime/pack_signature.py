@@ -477,7 +477,11 @@ def _validate_package_path(relative: Path) -> None:
             f"Pack contains a secret or runtime file: {relative.as_posix()}"
         )
 def _hash_regular_file(path: Path) -> tuple[str, int, int]:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     descriptor = os.open(path, flags)
     try:
         before = os.fstat(descriptor)

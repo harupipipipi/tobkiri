@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -60,6 +63,65 @@ def test_signed_pack_verifies_without_granting_authority(tmp_path: Path) -> None
     assert result["authority_granted"] is False
     assert manifest["requested_capabilities"] == ["network.read"]
     assert manifest["authority_granted"] is False
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO replacement contract")
+@pytest.mark.parametrize("operation", ["build", "verify"])
+def test_source_signature_inventory_rejects_fifo_swap_without_blocking(
+    tmp_path: Path, operation: str,
+) -> None:
+    """Signing and verification reject a leaf changed after inventory stat."""
+    script = """
+from pathlib import Path
+import os
+import sys
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import core_runtime.pack_signature as signature
+
+root = Path(sys.argv[1]) / "pack"
+root.mkdir()
+target = root / "public.txt"
+target.write_bytes(b"public")
+private_key = Ed25519PrivateKey.generate()
+kwargs = dict(pack_id="example", version="1.0.0", publisher_id="example",
+              core_compatibility=">=0")
+signed = signature.sign_manifest(signature.build_signed_manifest(root, **kwargs),
+                                 private_key)
+real_open = signature.os.open
+replaced = False
+
+def swap_then_open(path, flags, *args, **options):
+    global replaced
+    if Path(path) == target:
+        assert not replaced
+        replaced = True
+        target.unlink()
+        os.mkfifo(target, 0o600)
+    return real_open(path, flags, *args, **options)
+
+signature.os.open = swap_then_open
+try:
+    if sys.argv[2] == "build":
+        signature.build_signed_manifest(root, **kwargs)
+    else:
+        signature.verify_signed_pack(root, signed, private_key.public_key())
+except signature.PackSignatureError:
+    pass
+else:
+    raise AssertionError("a FIFO cannot supply signed artifact bytes")
+finally:
+    signature.os.open = real_open
+assert replaced
+"""
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(tmp_path), operation],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_manifest_verification_preserves_strict_source_file_modes(tmp_path: Path) -> None:
