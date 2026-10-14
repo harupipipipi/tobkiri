@@ -198,6 +198,7 @@ def _verified_pack(
             references[path] = digest
     if not references or len(references) > _MAX_FILES:
         raise HostExtensionUpdateDenied("Host Extension artifact inventory is unsafe")
+    captured = dict(raw)
     total_bytes = 0
     for path, expected in references.items():
         content = raw.get(path)
@@ -210,13 +211,27 @@ def _verified_pack(
             )
         if "sha256:" + hashlib.sha256(content).hexdigest() != expected:
             raise HostExtensionUpdateDenied("Host Extension artifact bytes differ")
+        captured[path] = content
     if manifest["integrity"]["contract_catalog_digest"] != (
         "sha256:" + hashlib.sha256(raw["contracts.v4.json"]).hexdigest()
     ):
         raise HostExtensionUpdateDenied(
             "Host Extension Contract catalog digest differs"
         )
-    compiled = compile_pack_root(root)
+    def read_captured_artifact(path: str) -> bytes:
+        expected = captured.get(path)
+        if expected is None:
+            raise HostExtensionUpdateDenied(
+                "Host Extension compiler requested an undeclared artifact"
+            )
+        current = reader.read_bytes_bounded(path, max_bytes=_MAX_FILE_BYTES)
+        if current != expected:
+            raise HostExtensionUpdateDenied(
+                "Host Extension artifact changed during compilation"
+            )
+        return current
+
+    compiled = compile_pack_root(root, read_artifact=read_captured_artifact)
     if (
         compiled.artifact.package_kind is not PackageKind.HOST_EXTENSION
         or not compiled.artifact.functions
@@ -229,7 +244,7 @@ def _verified_pack(
         raise HostExtensionUpdateDenied(
             "Host Extension executable inventory is invalid"
         )
-    for path, content in raw.items():
+    for path, content in captured.items():
         if reader.read_bytes_bounded(path, max_bytes=_MAX_FILE_BYTES) != content:
             raise HostExtensionUpdateDenied(
                 "Host Extension metadata changed during validation"

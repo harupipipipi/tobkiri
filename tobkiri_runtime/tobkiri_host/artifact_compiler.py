@@ -5,10 +5,10 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.validation import validate_file
+from tobkiri_protocol.validation import validate_document, validate_file
 
 from .contracts import OperationRoute
 from .errors import InvalidArtifactError, ResolutionError
@@ -52,13 +52,41 @@ def _expected_execution_kind(
     return ExecutionKind.PACK_VM
 
 
-def compile_pack_root(pack_root: Path) -> CompiledPack:
-    """Compile one canonical Pack root without imports, aliases, or discovery."""
+def compile_pack_root(
+    pack_root: Path,
+    *,
+    read_artifact: Callable[[str], bytes] | None = None,
+) -> CompiledPack:
+    """Compile one canonical Pack root without imports, aliases, or discovery.
+
+    A caller with a captured root may supply its bounded, relative byte reader.
+    Compilation grants no authority; that caller must check the root and bytes
+    remain current before using this result. Default filesystem reads retain
+    the existing installed-bundle ownership and path behavior.
+    """
     root = pack_root.resolve(strict=True)
-    manifest = validate_file(root / "pack.v4.json", "pack")
-    contracts = validate_file(root / "contracts.v4.json", "pack_contract_catalog")
-    index = validate_file(root / "artifact-index.v4.json", "pack_artifact_index")
-    executable = validate_file(root / "executables.v4.json", "executable_catalog")
+    metadata_schemas = {
+        "pack.v4.json": "pack",
+        "contracts.v4.json": "pack_contract_catalog",
+        "artifact-index.v4.json": "pack_artifact_index",
+        "executables.v4.json": "executable_catalog",
+    }
+    captured_metadata = (
+        {name: read_artifact(name) for name in metadata_schemas}
+        if read_artifact is not None else None
+    )
+    documents = {
+        name: (
+            validate_document(captured_metadata[name], schema)
+            if captured_metadata is not None
+            else validate_file(root / name, schema)
+        )
+        for name, schema in metadata_schemas.items()
+    }
+    manifest = documents["pack.v4.json"]
+    contracts = documents["contracts.v4.json"]
+    index = documents["artifact-index.v4.json"]
+    executable = documents["executables.v4.json"]
     pack_id = manifest["pack"]["id"]
     if {
         contracts["pack_id"],
@@ -98,7 +126,13 @@ def compile_pack_root(pack_root: Path) -> CompiledPack:
         raise InvalidArtifactError("artifact index does not pin executable catalog")
     if len(manifest_executable_entries) != 1:
         raise InvalidArtifactError("Pack manifest does not pin executable catalog")
-    executable_digest = _file_digest(root / "executables.v4.json")
+    executable_digest = (
+        "sha256:" + hashlib.sha256(
+            captured_metadata["executables.v4.json"]
+        ).hexdigest()
+        if captured_metadata is not None
+        else _file_digest(root / "executables.v4.json")
+    )
     if (
         executable_entry["digest"] != executable_digest
         or manifest_executable_entries[0]["digest"] != executable_digest
@@ -137,7 +171,11 @@ def compile_pack_root(pack_root: Path) -> CompiledPack:
         implementation = (root / implementation_path).resolve(strict=True)
         if root not in implementation.parents or not implementation.is_file():
             raise InvalidArtifactError("executable implementation escapes its Pack root")
-        digest = _file_digest(implementation)
+        digest = (
+            "sha256:" + hashlib.sha256(read_artifact(implementation_path)).hexdigest()
+            if read_artifact is not None
+            else _file_digest(implementation)
+        )
         if (
             digest != variant["implementation_digest"]
             or digest != function["implementation_digest"]

@@ -190,6 +190,26 @@ def test_signed_runtime_update_preserves_exact_host_authority(
     assert result.compatibility_digest.startswith("sha256:")
 
 
+def test_host_update_compiler_never_reopens_pack_bytes_with_raw_path_reads(
+    host_successor: HostPair, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second compiler pass retains the bounded descriptor reader."""
+    original = Path.read_bytes
+    roots = host_successor[:2]
+
+    def reject_pack_path_read(path: Path) -> bytes:
+        if any(path.is_relative_to(root) for root in roots):
+            raise AssertionError("compiler reopened untrusted Pack bytes")
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_pack_path_read)
+
+    result = _verify(host_successor)
+
+    assert result.predecessor_digest == host_successor[2]
+    assert result.version == "1.1.0"
+
+
 def test_bundled_gateway_can_receive_code_only_signed_successor(tmp_path: Path) -> None:
     """The real bundled Gateway keeps its Host kind and repository lineage."""
 

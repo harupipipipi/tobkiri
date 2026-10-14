@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +13,78 @@ import pytest
 from tobkiri_host.artifact_compiler import compile_pack_root, routes_for_plan
 from tobkiri_host.errors import InvalidArtifactError, ResolutionError
 from tobkiri_protocol.errors import SchemaValidationError
+from tobkiri_protocol.secure_persistence import SecureDirectory
 
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_compiler_captured_reader_preserves_artifact_and_route_identities() -> None:
+    root = ROOT / "tests" / "fixtures" / "conformance_minimal_echo_pack"
+    reader = SecureDirectory(root, create=False)
+    expected = compile_pack_root(root)
+
+    captured = compile_pack_root(
+        root,
+        read_artifact=lambda path: reader.read_bytes_bounded(
+            path, max_bytes=128 * 1024 * 1024,
+        ),
+    )
+
+    assert captured == expected
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO replacement contract")
+def test_compiler_captured_reader_rejects_metadata_fifo_swap_without_blocking(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "pack"
+    shutil.copytree(
+        ROOT / "tests" / "fixtures" / "conformance_minimal_echo_pack", root,
+    )
+    script = """
+import os
+from pathlib import Path
+import sys
+from tobkiri_host.artifact_compiler import compile_pack_root
+import tobkiri_protocol.secure_persistence as persistence
+
+root = Path(sys.argv[1])
+reader = persistence.SecureDirectory(root, create=False)
+target = root / "pack.v4.json"
+real_open = persistence.os.open
+replaced = False
+
+def swap_then_open(path, flags, *args, **kwargs):
+    global replaced
+    if path == "pack.v4.json" and kwargs.get("dir_fd") is not None:
+        assert not replaced
+        replaced = True
+        target.unlink()
+        os.mkfifo(target, 0o600)
+    return real_open(path, flags, *args, **kwargs)
+
+persistence.os.open = swap_then_open
+try:
+    compile_pack_root(root, read_artifact=lambda name:
+        reader.read_bytes_bounded(name, max_bytes=128 * 1024 * 1024))
+except persistence.SecurePersistenceError:
+    pass
+else:
+    raise AssertionError("a FIFO cannot supply compiler metadata")
+finally:
+    persistence.os.open = real_open
+assert replaced
+"""
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(root)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_mcp_gateway_calls_compile_as_external_effects() -> None:
