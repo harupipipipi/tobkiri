@@ -836,6 +836,7 @@ class PackAPIHandler(
     _operation_journal: ControlReconciliationStore | None = None
     _runtime_refresh: Callable[[DispatchSession | None], None] | None = None
     _packvm_lifecycle: PackVMLifecyclePort | None = None
+    _native_pack_key_ceremony: Any | None = None
     _workspace_binding_resolver: WorkspaceBindingResolver | None = None
     _host_contract_snapshot: Mapping[str, Any] | None = None
     _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
@@ -865,6 +866,9 @@ class PackAPIHandler(
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
+        from .native_pack_key_authorization import NativePackKeyVersionCeremony
+
+        bound_key_ceremony = NativePackKeyVersionCeremony()
         bound_panel_auth = panel_auth_manager
         bound_dispatch = dispatch_session
         bound_lifecycle = app_lifecycle_manager
@@ -906,6 +910,7 @@ class PackAPIHandler(
             _contract_replay_guard = bound_replay_guard
             _operation_journal = bound_operation_journal
             _packvm_lifecycle = bound_packvm_lifecycle
+            _native_pack_key_ceremony = bound_key_ceremony
             _host_contract_snapshot = bound_host_contract
             _instance_web_mounts = bound_web_mounts
             _runtime_refresh = (
@@ -2357,85 +2362,10 @@ class PackAPIHandler(
         )
 
     def _handle_native_pack_onboarding(self, *, commit: bool) -> None:
-        """Accept only Launcher-selected paths under private loopback authentication."""
+        """Delegate private, fresh Native signed-Pack reviews."""
+        from .native_pack_onboarding_http import handle_native_pack_onboarding
 
-        if not self._native_pack_launcher_authenticated():
-            self._discard_request_body()
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
-            return
-        if os.name == "nt":
-            self._discard_request_body()
-            self._send_response(
-                APIResponse(False, error="Signed Pack onboarding requires a POSIX Host"), 409
-            )
-            return
-        body = self._parse_object_body()
-        if body is None:
-            return
-        expected_keys = {"source_root", "public_key_path"}
-        if commit:
-            expected_keys.add("preview_digest")
-        source_value = body.get("source_root")
-        key_value = body.get("public_key_path")
-        preview_digest = body.get("preview_digest")
-        if (
-            set(body) != expected_keys
-            or not isinstance(source_value, str)
-            or not source_value
-            or "\x00" in source_value
-            or not Path(source_value).is_absolute()
-            or not isinstance(key_value, str)
-            or not key_value
-            or "\x00" in key_value
-            or not Path(key_value).is_absolute()
-            or (
-                commit
-                and (
-                    not isinstance(preview_digest, str)
-                    or not preview_digest
-                    or "\x00" in preview_digest
-                )
-            )
-        ):
-            self._send_response(APIResponse(False, error="Invalid Pack selection"), 400)
-            return
-        from .native_pack_onboarding import commit_signed_pack, preview_signed_pack
-
-        source = Path(source_value)
-        key = Path(key_value)
-        try:
-            if commit:
-                assert isinstance(preview_digest, str)
-                trust_store = self._native_pack_trust_store()
-                if trust_store is None:
-                    raise ValueError("Host publisher trust store is not configured")
-                entry = commit_signed_pack(
-                    source,
-                    key,
-                    expected_preview_digest=preview_digest,
-                    trust_store_path=trust_store,
-                )
-                refreshed = False
-                refresh = self._runtime_refresh
-                if refresh is not None:
-                    try:
-                        refresh(None)
-                        refreshed = True
-                    except Exception as error:
-                        logger.warning("Onboarded Pack catalog refresh failed", exc_info=error)
-                result = {
-                    "pack_id": str(entry["pack_id"]),
-                    "artifact_digest": str(entry["artifact_digest"]),
-                    "publisher_id": str(entry["publisher_id"]),
-                    "catalog_refreshed": refreshed,
-                }
-            else:
-                result = preview_signed_pack(source, key)
-        except Exception as error:
-            logger.warning("Native Pack onboarding failed closed", exc_info=error)
-            self._send_response(APIResponse(False, error="Signed Pack verification was denied"), 409)
-            return
-        self._send_response(APIResponse(True, data=result))
+        handle_native_pack_onboarding(self, commit=commit)
 
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager

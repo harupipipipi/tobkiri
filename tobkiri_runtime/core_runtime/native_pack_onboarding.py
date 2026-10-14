@@ -23,7 +23,10 @@ from .external_pack_catalog_v4 import (
     control_catalog_revision,
     load_external_pack_catalog,
 )
-from .pack_artifact_integrity import read_host_policy_snapshot, write_host_install_record
+from .pack_artifact_integrity import (
+    read_host_policy_snapshot,
+    write_host_install_record,
+)
 from .pack_boundary import load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 
@@ -42,7 +45,10 @@ def _read_public_key(path: Path, pack_root: Path) -> tuple[Ed25519PublicKey, str
         pem = os.read(descriptor, 64 * 1024 + 1)
         after = os.fstat(descriptor)
         if len(pem) > 64 * 1024 or (
-            before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
         ) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
             raise ValueError("public key file changed while reading")
     finally:
@@ -103,25 +109,35 @@ def preview_signed_pack(source_root: Path, public_key_path: Path) -> dict[str, A
     }
     if bundled is not None:
         if bundled.get("kind") not in {
-            "normal_sandbox", "application", "host_extension",
+            "normal_sandbox",
+            "application",
+            "host_extension",
         } or projected["kind"] != bundled.get("kind"):
-            raise ValueError("signed Pack cannot change bundled kind or replace Base or Shell")
+            raise ValueError(
+                "signed Pack cannot change bundled kind or replace Base or Shell"
+            )
         root = resolve_pack_root(pack_id)
         manifest = _read_json_nofollow(root / "pack.v4.json", 4 * 1024 * 1024)
         if not isinstance(manifest, dict):
             raise ValueError("bundled update predecessor is unavailable")
-        predecessors[str(manifest["pack"]["version"])] = compile_pack_root(root).artifact.digest
+        predecessors[str(manifest["pack"]["version"])] = compile_pack_root(
+            root
+        ).artifact.digest
     if predecessors:
         from .global_contracts.semver import parse_version
         from .pack_version_selection import verify_version_predecessor
 
         predecessor = (
-            compiled.artifact.digest if compiled.artifact.digest in retained
+            compiled.artifact.digest
+            if compiled.artifact.digest in retained
             else predecessors[max(predecessors, key=parse_version)]
         )
         verify_version_predecessor(
-            pack_id, predecessor, versions=snapshot.versions,
-            publisher_id=str(verified["publisher_id"]), version=str(verified["version"]),
+            pack_id,
+            predecessor,
+            versions=snapshot.versions,
+            publisher_id=str(verified["publisher_id"]),
+            version=str(verified["version"]),
             artifact_digest=compiled.artifact.digest,
         )
         preview["predecessor_artifact_digest"] = predecessor
@@ -143,6 +159,7 @@ def commit_signed_pack(
     *,
     expected_preview_digest: str,
     trust_store_path: Path,
+    key_version_policy_identity: tuple[int, str] | None = None,
 ) -> dict[str, Any]:
     """Reverify an approved preview, bind exact Host policy, then admit it."""
 
@@ -155,17 +172,23 @@ def commit_signed_pack(
     signed = _read_json_nofollow(source / SIGNED_MANIFEST_RELATIVE, 4 * 1024 * 1024)
     if not isinstance(signed, dict):
         raise ValueError("signed Pack manifest is invalid")
-    reviewed_preview = {key: value for key, value in preview.items() if key != "preview_digest"}
-    observed_digest = canonical_digest({
-        "preview": reviewed_preview,
-        "signed_manifest": signed,
-        "public_key_pem": canonical_pem,
-        "source_root": str(source),
-    })
+    reviewed_preview = {
+        key: value for key, value in preview.items() if key != "preview_digest"
+    }
+    observed_digest = canonical_digest(
+        {
+            "preview": reviewed_preview,
+            "signed_manifest": signed,
+            "public_key_pem": canonical_pem,
+            "source_root": str(source),
+        }
+    )
     if not hmac.compare_digest(observed_digest, expected_preview_digest):
         raise ValueError("signed Pack changed after native confirmation")
     verify_signed_pack(
-        source, signed, public_key,
+        source,
+        signed,
+        public_key,
         expected_pack_id=str(preview["pack_id"]),
         expected_publisher_id=str(preview["publisher_id"]),
         expected_version=str(preview["version"]),
@@ -175,11 +198,54 @@ def commit_signed_pack(
     )
     predecessor = preview.get("predecessor_artifact_digest")
     policy_arguments: dict[str, Any] = {}
+    policy = (
+        read_host_policy_snapshot(trust_store_path) if trust_store_path.exists() else {}
+    )
     if predecessor is not None:
-        policy = read_host_policy_snapshot(trust_store_path) if trust_store_path.exists() else {}
         prior = policy.get("install_records", {}).get(str(preview["pack_id"]))
         if prior is not None:
             policy_arguments["expected_install_record"] = prior
+    publisher_record: dict[str, Any] | None = {
+        "public_key_pem": canonical_pem,
+        "allowed_pack_namespaces": [str(preview["pack_id"])],
+        "revoked_key_ids": [],
+    }
+    if str(preview["publisher_id"]) in policy.get("publishers", {}):
+        from .pack_artifact_integrity import host_policy_identity
+        from .publisher_key_versions import (
+            is_legacy_publisher_key,
+            resolve_publisher_key,
+        )
+
+        if not is_legacy_publisher_key(
+            policy,
+            publisher_id=str(preview["publisher_id"]),
+            key_id=str(preview["key_id"]),
+        ):
+            # This lookup confers no new trust. Missing or cross-artifact scopes deny.
+            resolve_publisher_key(
+                policy,
+                publisher_id=str(preview["publisher_id"]),
+                key_id=str(preview["key_id"]),
+                pack_id=str(preview["pack_id"]),
+                artifact_digest=str(preview["artifact_digest"]),
+                signed_manifest_digest=canonical_digest(signed),
+            )
+            identity = host_policy_identity(policy)
+            if (
+                key_version_policy_identity is not None
+                and identity != key_version_policy_identity
+            ):
+                raise ValueError(
+                    "publisher key policy changed after Native confirmation"
+                )
+            publisher_record = None
+            policy_arguments.update(
+                expected_key_version_policy_identity=identity,
+                expected_install_record=policy.get("install_records", {}).get(
+                    str(preview["pack_id"]), {}
+                ),
+            )
     write_host_install_record(
         trust_store_path,
         pack_id=str(preview["pack_id"]),
@@ -194,24 +260,85 @@ def commit_signed_pack(
             "requested_capabilities": preview["requested_capabilities"],
         },
         **policy_arguments,
-        publisher_record={
-            "public_key_pem": canonical_pem,
-            "allowed_pack_namespaces": [str(preview["pack_id"])],
-            "revoked_key_ids": [],
-        },
+        publisher_record=publisher_record,
         expected_signed_manifest_digest=canonical_digest(signed),
     )
     if predecessor is not None:
-        return dict(admit_signed_pack_version(
-            source, trust_store_path=trust_store_path,
-            expected_predecessor_digest=str(predecessor),
-            expected_catalog_revision=str(preview["catalog_revision"]),
+        return dict(
+            admit_signed_pack_version(
+                source,
+                trust_store_path=trust_store_path,
+                expected_predecessor_digest=str(predecessor),
+                expected_catalog_revision=str(preview["catalog_revision"]),
+                expected_artifact_digest=str(preview["artifact_digest"]),
+                expected_signed_manifest_digest=canonical_digest(signed),
+            )
+        )
+    return dict(
+        admit_signed_external_pack(
+            source,
+            trust_store_path=trust_store_path,
             expected_artifact_digest=str(preview["artifact_digest"]),
             expected_signed_manifest_digest=canonical_digest(signed),
-        ))
-    return dict(admit_signed_external_pack(
-        source,
-        trust_store_path=trust_store_path,
-        expected_artifact_digest=str(preview["artifact_digest"]),
-        expected_signed_manifest_digest=canonical_digest(signed),
-    ))
+        )
+    )
+
+
+def key_version_review_parameters(
+    source_root: Path,
+    public_key_path: Path,
+    preview: dict[str, Any],
+) -> dict[str, str]:
+    """Rebind Native key review to verified bytes and unchanged update closure."""
+    source = Path(source_root).resolve()
+    _key, canonical_pem = _read_public_key(public_key_path, source)
+    signed = _read_json_nofollow(source / SIGNED_MANIFEST_RELATIVE, 4 * 1024 * 1024)
+    if not isinstance(signed, dict):
+        raise ValueError("signed Pack manifest is invalid")
+    observed = canonical_digest(
+        {
+            "preview": {
+                key: value for key, value in preview.items() if key != "preview_digest"
+            },
+            "signed_manifest": signed,
+            "public_key_pem": canonical_pem,
+            "source_root": str(source),
+        }
+    )
+    if not hmac.compare_digest(observed, str(preview["preview_digest"])):
+        raise ValueError("signed Pack changed during Native publisher review")
+    if preview["kind"] == "host_extension":
+        from .external_pack_catalog_v4 import resolve_admitted_pack_root
+        from .host_extension_update_v4 import verify_host_extension_successor
+
+        predecessor = str(preview.get("predecessor_artifact_digest") or "")
+        previous_root = resolve_admitted_pack_root(
+            str(preview["pack_id"]),
+            artifact_digest=predecessor,
+        )
+        binding = verify_host_extension_successor(
+            previous_root,
+            source,
+            expected_predecessor_digest=predecessor,
+            publisher_id=str(preview["publisher_id"]),
+            expected_successor_digest=str(preview["artifact_digest"]),
+            signed_manifest=signed,
+        )
+        compatibility = binding.compatibility_digest
+    else:
+        compatibility = canonical_digest(
+            {
+                "kind": preview["kind"],
+                "artifact_digest": preview["artifact_digest"],
+                "predecessor_artifact_digest": preview.get(
+                    "predecessor_artifact_digest"
+                ),
+                "contract_versions": preview["contract_versions"],
+                "requested_capabilities": preview["requested_capabilities"],
+            }
+        )
+    return {
+        "public_key_pem": canonical_pem,
+        "signed_manifest_digest": canonical_digest(signed),
+        "compatibility_digest": compatibility,
+    }
