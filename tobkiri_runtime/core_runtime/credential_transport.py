@@ -519,12 +519,18 @@ class HostBoundCredentialTransport:
             diagnostic_arguments = (
                 {"diagnostics": diagnostics} if diagnostics is not None else {}
             )
+            # Observe the existing fresh predicates even if cancellation/deadline
+            # changes between the lifetime check and its authority callback.
+            authority_check = (
+                (lambda: self._authority_still_active(diagnostics))
+                if diagnostics is not None else self._authority_still_active
+            )
             with self._opener(
                 request, timeout=timeout,
                 deadline=deadline_started + initial_remaining,
                 cancellation=self._envelope.cancellation_requested,
                 clock=self._monotonic_clock,
-                authority_check=self._authority_still_active,
+                authority_check=authority_check,
                 **diagnostic_arguments,
             ) as response:
                 if on_event is not None:
