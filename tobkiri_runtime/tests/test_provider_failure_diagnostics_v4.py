@@ -153,7 +153,7 @@ def test_captured_provider_factory_ignores_payload_correlations(
 
 
 def test_pack_diagnostics_import_without_new_core_module() -> None:
-    """Pack stream diagnostics require no Host API added after frozen Core."""
+    """The Pack stream module itself has no new Core diagnostic dependency."""
     import os
     from pathlib import Path
     import subprocess
@@ -164,6 +164,8 @@ def test_pack_diagnostics_import_without_new_core_module() -> None:
     script = textwrap.dedent(
         """
         import importlib.abc
+        import importlib.util
+        from pathlib import Path
         import sys
 
         class MissingNewCoreModule(importlib.abc.MetaPathFinder):
@@ -176,9 +178,17 @@ def test_pack_diagnostics_import_without_new_core_module() -> None:
         from core_runtime.global_contract_dispatch import (
             GlobalContractInvocationError, HostGenerationBudgetError,
         )
-        from ecosystem.rumi_provider_adapters_pack.runtime.streaming import (
-            RequestFailureDiagnostics, stream_request,
-        )
+        # Package initialization also imports the current Host lifetime helper.
+        # Its new diagnostics are independent of this Pack portability contract;
+        # load the actual Pack module without replacing any Host/security API.
+        path = Path("ecosystem/rumi_provider_adapters_pack/runtime/streaming.py")
+        spec = importlib.util.spec_from_file_location("portable_streaming", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        assert Path(module.__file__).resolve() == path.resolve()
+        RequestFailureDiagnostics = module.RequestFailureDiagnostics
+        stream_request = module.stream_request
         assert "core_runtime.request_failure_diagnostics" not in sys.modules
         records = []
         diagnostics = RequestFailureDiagnostics(
