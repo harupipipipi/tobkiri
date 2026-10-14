@@ -46,17 +46,32 @@ def _require_asset_only(manifest: Mapping[str, Any]) -> None:
         manifest["pack"]["kind"] != "normal_sandbox"
         or any(
             manifest[field]
-            for field in ("functions", "contracts", "operation_catalog", "provider_catalog")
+            for field in (
+                "functions",
+                "contracts",
+                "operation_catalog",
+                "provider_catalog",
+            )
         )
         or any(
             requirements[field]
-            for field in ("capabilities", "secrets", "pack_dependencies", "contract_dependencies")
+            for field in (
+                "capabilities",
+                "secrets",
+                "pack_dependencies",
+                "contract_dependencies",
+            )
         )
         or requirements["execution_boundary"] not in {"sandbox", "declarative_only"}
         or any(requirements["network"].values())
-        or any(item["kind"] not in {"asset", "sidecar", "schema"} for item in manifest["artifacts"])
+        or any(
+            item["kind"] not in {"asset", "sidecar", "schema"}
+            for item in manifest["artifacts"]
+        )
     ):
-        raise CapturedPackUIAssetDenied("UI delegation requires an asset-only Normal Pack")
+        raise CapturedPackUIAssetDenied(
+            "UI delegation requires an asset-only Normal Pack"
+        )
 
 
 class CapturedAssetOnlyUIPacks:
@@ -101,7 +116,9 @@ class CapturedAssetOnlyUIPacks:
         ):
             raise CapturedPackUIAssetDenied("UI delegation install policy differs")
         if is_legacy_publisher_key(policy, publisher_id=publisher_id, key_id=key_id):
-            raise CapturedPackUIAssetDenied("UI delegation requires an exact nonlegacy scope")
+            raise CapturedPackUIAssetDenied(
+                "UI delegation requires an exact nonlegacy scope"
+            )
         signed_digest = canonical_digest(signed)
         resolve_publisher_key(
             policy,
@@ -139,7 +156,7 @@ class CapturedAssetOnlyUIPacks:
             return None
         key = pack_id, index_file
         if key in self._assets:
-            self.assert_current()
+            self._assets[key]._assert_current()
             return self._assets[key]
         pin = self._pins[pack_id]
         from .bootstrap.profile_capture import runtime_user_data_scope
@@ -150,6 +167,9 @@ class CapturedAssetOnlyUIPacks:
         entry = admitted.entries.get(pack_id)
         if root is None or entry is None or entry["artifact_digest"] != pin:
             raise CapturedPackUIAssetDenied("selected UI delegation is not admitted")
+        admitted_identity = entry["root_device"], entry["root_inode"]
+        if _directory_identity(root) != admitted_identity:
+            raise CapturedPackUIAssetDenied("UI delegation admission root changed")
         manifest = validate_document(_read_document(root, "pack.v4.json"), "pack")
         _require_asset_only(manifest)
         delegation, policy_identity = self._authorization(pack_id, root, pin)
@@ -157,6 +177,8 @@ class CapturedAssetOnlyUIPacks:
         if (
             entry["publisher_id"] != delegation.publisher_id
             or entry["key_id"] != delegation.key_id
+            or manifest["pack"].get("publisher_id", delegation.publisher_id)
+            != delegation.publisher_id
             or entry["content_digest"]
             != canonical_digest(
                 {
@@ -202,6 +224,8 @@ class CapturedAssetOnlyUIPacks:
             ),
             delegation=delegation,
         )
+        if assets.root_identity != admitted_identity:
+            raise CapturedPackUIAssetDenied("UI delegation admission root changed")
         self._assets[key] = assets
         self._policy_identities[pack_id] = policy_identity
         assets._assert_current()

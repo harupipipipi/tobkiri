@@ -18,7 +18,10 @@ from core_runtime.captured_pack_ui_assets_v4 import (
     bind_captured_pack_web_mounts,
 )
 from core_runtime.captured_ui_asset_delegation_v4 import CapturedAssetOnlyUIPacks
-from core_runtime.pack_artifact_integrity import _policy_digest, read_host_policy_snapshot
+from core_runtime.pack_artifact_integrity import (
+    _policy_digest,
+    read_host_policy_snapshot,
+)
 from core_runtime.pack_signature import (
     SIGNED_MANIFEST_RELATIVE,
     build_signed_manifest,
@@ -28,8 +31,8 @@ from core_runtime.publisher_key_versions import (
     prepare_publisher_key_version,
     write_publisher_key_version,
 )
-from tests.test_captured_pack_ui_assets_v4 import admit_ui_source, signed_ui_source
-from tests.test_host_extension_update_v4 import _refresh
+from core_runtime.ui_asset_pack_authoring import build_ui_asset_pack
+from tests.test_captured_pack_ui_assets_v4 import admit_ui_source
 from tests.test_publisher_key_versions import CONTEXT, _public
 from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.canonical import canonical_digest
@@ -40,44 +43,33 @@ PUBLISHER = "tobkiri.repository"
 
 
 def _asset_only_source(tmp_path: Path) -> tuple[Path, Path]:
-    source, public = signed_ui_source(tmp_path)
-    (source / SIGNED_MANIFEST_RELATIVE).unlink()
-    manifest = json.loads((source / "pack.v4.json").read_bytes())
-    manifest["pack"].update(id=PACK_ID, publisher_id=PUBLISHER)
-    for field in ("functions", "contracts", "operation_catalog", "provider_catalog"):
-        manifest[field] = []
-    removed = {item["path"] for item in manifest["artifacts"] if item["kind"] == "executable"}
-    for name in removed:
-        (source / name).unlink()
-    manifest["artifacts"] = [item for item in manifest["artifacts"] if item["path"] not in removed]
-    (source / "pack.v4.json").write_text(json.dumps(manifest))
-    for filename, field in (
-        ("contracts.v4.json", "contracts"),
-        ("executables.v4.json", "variants"),
-    ):
-        document = json.loads((source / filename).read_bytes())
-        document["pack_id"] = PACK_ID
-        document[field] = []
-        (source / filename).write_text(json.dumps(document))
-    index = json.loads((source / "artifact-index.v4.json").read_bytes())
-    index["pack_id"] = PACK_ID
-    index["artifacts"] = [item for item in index["artifacts"] if item["path"] not in removed]
-    (source / "artifact-index.v4.json").write_text(json.dumps(index))
-    _refresh(source)
+    source = build_ui_asset_pack(
+        tmp_path / "source" / PACK_ID,
+        pack_id=PACK_ID,
+        version="1.0.0",
+        display_name="Tobkiri application UI delegation test",
+        assets={
+            "ui/shell.html": b"<!doctype html><p>signed-selected-ui</p>",
+            "ui/shell-app.js": b"console.log('signed-selected-ui');",
+        },
+    )
     private = Ed25519PrivateKey.generate()
     signed = sign_manifest(
         build_signed_manifest(
             source,
             pack_id=PACK_ID,
             publisher_id=PUBLISHER,
-            version=manifest["pack"]["version"],
+            version="1.0.0",
             core_compatibility=">=0",
             contract_versions={},
             requested_capabilities=[],
         ),
         private,
     )
-    (source / SIGNED_MANIFEST_RELATIVE).write_text(json.dumps(signed))
+    signed_path = source / SIGNED_MANIFEST_RELATIVE
+    signed_path.parent.mkdir(mode=0o700)
+    signed_path.write_text(json.dumps(signed))
+    public = tmp_path / "publisher.pem"
     public.write_bytes(
         private.public_key().public_bytes(
             serialization.Encoding.PEM,
@@ -236,7 +228,9 @@ def test_delegated_capture_identity_cannot_be_promoted_or_mixed(
     else:
         assets = replace(assets, delegation=None)
     with pytest.raises(CapturedPackUIAssetDenied):
-        bind_captured_pack_web_mounts(_mount(tmp_path / "defaultspack"), lambda *_: assets)
+        bind_captured_pack_web_mounts(
+            _mount(tmp_path / "defaultspack"), lambda *_: assets
+        )
 
 
 def test_selected_missing_or_unknown_pin_never_falls_back(
