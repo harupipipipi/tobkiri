@@ -123,6 +123,11 @@ def compiled_ui_artifacts(ui_root: Path) -> list[dict[str, str]]:
             metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
             if stat.S_ISLNK(metadata.st_mode):
                 raise ValueError("compiled UI contains a symlink")
+            if not prefix and name == "__init__.py":
+                # The existing empty package marker is not a public UI asset.
+                # A nonempty or substituted marker must still fail closed.
+                _digest_file(descriptor, name, 0)
+                continue
             if not prefix and name in _EXCLUDED:
                 if not stat.S_ISREG(metadata.st_mode):
                     raise ValueError("excluded UI metadata is not a regular file")

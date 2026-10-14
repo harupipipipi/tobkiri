@@ -51,6 +51,35 @@ def test_non_public_paths_are_rejected(tmp_path: Path, path: str) -> None:
         compiled_ui_artifacts(root)
 
 
+def test_empty_root_package_marker_is_not_published(tmp_path: Path) -> None:
+    root = _ui(tmp_path)
+    (root / "__init__.py").write_bytes(b"")
+    assert [item["path"] for item in compiled_ui_artifacts(root)] == [
+        "ui/shell-app.js",
+        "ui/shell.html",
+    ]
+
+
+@pytest.mark.parametrize("kind", ["nonempty", "hardlink", "directory", "nested"])
+def test_package_marker_cannot_hide_code_or_special_paths(
+    tmp_path: Path, kind: str,
+) -> None:
+    root = _ui(tmp_path)
+    marker = root / "__init__.py"
+    if kind == "nonempty":
+        marker.write_text("raise RuntimeError('not a public asset')")
+    elif kind == "hardlink":
+        (root / "empty.txt").write_bytes(b"")
+        os.link(root / "empty.txt", marker)
+    elif kind == "directory":
+        marker.mkdir()
+    else:
+        (root / "nested").mkdir()
+        (root / "nested" / "__init__.py").write_bytes(b"")
+    with pytest.raises((OSError, ValueError)):
+        compiled_ui_artifacts(root)
+
+
 @pytest.mark.parametrize("kind", ["root", "ancestor", "leaf", "hidden"])
 def test_ui_symlinks_are_rejected(tmp_path: Path, kind: str) -> None:
     root = _ui(tmp_path)
