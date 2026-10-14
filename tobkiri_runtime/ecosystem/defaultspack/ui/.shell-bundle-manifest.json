@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "ca66fbb3ac03237f66605c6f009f01d27dd98786c08986a3c4fa07b7888ce2a3",
+    "digest": "dd9e780fdd11f84da1f9143168eabad5c777ab88622413809031be8c3f4e0246",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9754,
-        "sha256": "589c5882103a7421b19c692ed275d34870aafec39d6fa676355475eb23b8b746"
+        "size": 9854,
+        "sha256": "07ea9c9e9ea8a57904741c59574df773b7c67da25875a3d6a3b5126bc63dcad9"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 446465,
-        "sha256": "9526005f404e7a0238049e0e9ffbbfd01fe93ec8b603fbb8a7cc5b6a60cd0407"
+        "size": 446575,
+        "sha256": "094ce469c6585756060ba1f783a6fbed9f1706c4fbdd1a00b886caa3c2513189"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -550,13 +550,13 @@
       },
       {
         "path": "src/components/ToolExperienceSettingsPanel.test.tsx",
-        "size": 2372,
-        "sha256": "4c525394eac63065fff305302cd1bcaddddd58314c465c792df31079c4a60549"
+        "size": 2965,
+        "sha256": "8ea467fd2cf082be85598871143e47bc869815f4b50a368efe6e338208062ae6"
       },
       {
         "path": "src/components/ToolExperienceSettingsPanel.tsx",
-        "size": 40257,
-        "sha256": "084ef528f877d79e3e2a8d6cfeb8bc3fd8f61ade71403e2b302a6ccfff6321b1"
+        "size": 40079,
+        "sha256": "3298092e4514e238c6a00816b0aefe1997b35caf43d4be6740cfcdebe1d54d50"
       },
       {
         "path": "src/components/ToolPreview.test.ts",
@@ -567,6 +567,16 @@
         "path": "src/components/ToolPreview.tsx",
         "size": 41089,
         "sha256": "310c916d2b6a927b6708b24360c72907c6a115ba38371ef5f9d497a674f3f917"
+      },
+      {
+        "path": "src/components/ToolSelectionControlSettings.test.tsx",
+        "size": 2724,
+        "sha256": "4d264399d29a2aa727d47c732fb7065f85b10d98c2e2721f3371d4d4393ac522"
+      },
+      {
+        "path": "src/components/ToolSelectionControlSettings.tsx",
+        "size": 2369,
+        "sha256": "9081b2751fcb7c7524132c8b70a1fd21f1cd1b41d5321bc47470c43e4d5699b8"
       },
       {
         "path": "src/components/ToolSettingsPanel.tsx",
@@ -2614,6 +2624,16 @@
         "sha256": "d1b3bbdef43044a70215fe2979f9444ef55358b4accf7340e721ccc594adea5a"
       },
       {
+        "path": "src/lib/toolSelectionControlPreference.test.ts",
+        "size": 5263,
+        "sha256": "bf4fbeac9d97f53a5076ebf0c8e35b9b884063ca5a60afdd1f6dfe8334a82620"
+      },
+      {
+        "path": "src/lib/toolSelectionControlPreference.ts",
+        "size": 2944,
+        "sha256": "e86c6f2692f749544b93934aadc470f74fe73e45a942aec932761f9dd52702a5"
+      },
+      {
         "path": "src/lib/toolStatus.test.ts",
         "size": 3054,
         "sha256": "e4187905bed05ec90f9dfd05108ed7f83fe1766aa9ba16a514629bfce7dcde82"
@@ -2785,13 +2805,13 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.test.tsx",
-        "size": 81499,
-        "sha256": "77b36af2210912d3b3a67adecf1739e35b7c2d2b31869ee2895c43f979881bae"
+        "size": 82467,
+        "sha256": "856da5d592d862b0ae1a645c3bce1166ff7d76dba0ce1041feddd40e4e308ec3"
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-        "size": 273222,
-        "sha256": "19c278f5850164322550bfba343fca1c5988ebe02aac0fe68ca60f3b3a652ab9"
+        "size": 273315,
+        "sha256": "8ec3cf4bbbe433137d47ab4a4fa458c68fb374ebc93e954566d6063f7c3b92e4"
       },
       {
         "path": "src/renderers/SpotlightShortcutRecorder.test.tsx",
@@ -3051,7 +3071,7 @@
     ]
   },
   "bundle": {
-    "digest": "d849f4225feb5ddbe335cb98c452d2441cccf3d94e0641029150352644f9724a",
+    "digest": "53a4a8dcc10839169a5e5f77950813960143eb41fe0cc520535984127271f587",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3065,8 +3085,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2680514,
-        "sha256": "33114e9b0693da6752f4a5cf9f9aaaf2c8f0c808fac09283791f84e2c14fb9c0"
+        "size": 2682626,
+        "sha256": "ca29efb792b792d666cf20ca52dc0b564cf4600b4fba3bb0b4af849152e98fad"
       },
       {
         "path": "shell-icons.js",
