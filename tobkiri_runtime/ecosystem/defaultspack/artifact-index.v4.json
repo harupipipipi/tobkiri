@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:a93b12c2a79d679fd5cc760597d9a84bd54b97835001f3059eea169d275a3fdd",
+  "artifact_set_digest": "sha256:28c50599a3b0018f807258169450f53ca360cd094a23e21edd629fd996656547",
   "artifacts": [
     {
-      "digest": "sha256:0e5ed093d1d224c5ee66af2a9773ce8fd5a88e61b6bf7704fb6bbd4de2624f09",
+      "digest": "sha256:ace3b81010072c8eb19a218f88115cd8b0684b4575c60dfbdb5a73b1435dc0bd",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:3a7b384c37cf8afa43d5192d3b83b6de5a9de1bdb9c7d6234b1b3e8c4abf01dc",
+      "digest": "sha256:6df8e4db190e32a6dd82f6ecdab82bd2f52868e91e1aba877cdf9eeaea3c775e",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -67,7 +67,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:6ee7f2a381ea9e5dc1a299ba3dec4c49a4f1a3a926dacadd9bcf7e86afb14f65",
+      "digest": "sha256:9f1dcdce4c639ddfb4d8f2093dedfcf4ecd2b23a4c67ff8c84536870d3dd07ba",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -677,106 +677,6 @@
       "role": "sidecar"
     },
     {
-      "digest": "sha256:705b03aa96998b10affc7ed2d1b45aee639aa1bb7e2bce48248cbf0ed95e60af",
-      "path": "ui/assets/tobkiri-startup-blade-cut.svg",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:de7d43f3386105ab20952958c2c25beb0d903e2aeb6e1aef57c49a648c0d1c07",
-      "path": "ui/codex.png",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:fc4029a648877c8fcc29da22a49ec7e495aafacd0848e5f4a2c5647c261bc25b",
-      "path": "ui/dev_panel.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:27aa18de562bc702c2b88e3548cb1823661a3077c4951f132e103cbaa24ca1eb",
-      "path": "ui/licenses/Beautiful-UI-MIT.txt",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:b72c00e3990064d4f87009d62fb1fbd3e7154c39d41eb23c94342d209f6defc0",
-      "path": "ui/mediapipe/NOTICE.md",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:11fdcbe35b15e222bd60f02c1be7e5f8dd8a73721a0a55cf8adcf38b88977b9e",
-      "path": "ui/mediapipe/wasm/vision_wasm_internal.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:6a5c64584c2ab61c763b6e204afbdbc7ce1caf7f5216187322bca8df94f646bc",
-      "path": "ui/mediapipe/wasm/vision_wasm_internal.wasm",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:e23be0c990685926cc0a13a46936015527f36e95adf965250ea08d3b9fd28ef2",
-      "path": "ui/mediapipe/wasm/vision_wasm_module_internal.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:617b8e0248dbd27e9d7ece4218004eae4cefb499196d1bb4fa0e3fef21708756",
-      "path": "ui/mediapipe/wasm/vision_wasm_module_internal.wasm",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:df375e4da93bbc1078481da6e2e519fd55ea125a14a00379a9b7bb395fb56c80",
-      "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:8a3092d34c79d3f57e6ba8592105e8a90f6b07c27891ffecd14cca428bfd3e31",
-      "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
-      "path": "ui/models/hand_landmarker.task",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:45506ec23dc49905a1ba7387454e558a33e3fca8833b072fde0fe6b908bf0ab0",
-      "path": "ui/pet/tobkiri-pet.png",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:9d44b1d8ed20fce06be193b5d704356cf471c45f4a3e534a92ec3870840d5597",
-      "path": "ui/shell-app.css",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:0d8104d33ed109481722b7ab83997ca555b769593db0ab3477b3fca8b4649f4e",
-      "path": "ui/shell-app.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:8268809d3d38288c5c643c7cfbfe66229dafd74f7a21d5f8149b82981583d234",
-      "path": "ui/shell-defaultspack-app.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:8c9df56aeeebf2c268ac745246696c22b4ef074941a55802de5d1c88fab83807",
-      "path": "ui/shell-icons.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:6f5330f281c713c1b765ec52977b36599538b8d52c5dd3ce94d211f5b0e7debf",
-      "path": "ui/shell-rolldown-runtime.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:2710d017c11571b9cb3dd7fb175ccfb6c0b085d6c06e99b1b221da67d44a6562",
-      "path": "ui/shell-vendor.js",
-      "role": "asset"
-    },
-    {
-      "digest": "sha256:818fdd2381f16aa51cfbc03c8b9686b13a1b437da6a753d27fb3967f5dadfeab",
-      "path": "ui/shell.html",
-      "role": "asset"
-    },
-    {
       "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
       "path": "update_metadata.v1.json",
       "role": "host_contract_update_metadata"
@@ -785,8 +685,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:032f816faa68d599e4c54e2e8b1283ee5b4474d6cd5f88b3246d127eb799e15e"
+    "signed_digest": "sha256:02ba01d490a1fe7052dc958036a1bf301610331c926441c3bc3db36e7ea9d31d"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:8aee4717b340358b45e800956faed2337f66c60b703d16c9c4e71414b07b371c"
+  "source_identity": "sha256:9bbc8840a4695c837188176fd490a877edbe6a392b61c5744f9dbc0b8fcf7ebe"
 }
