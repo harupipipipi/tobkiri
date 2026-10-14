@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -108,7 +109,16 @@ def _parser() -> argparse.ArgumentParser:
 
     sign = subcommands.add_parser("sign")
     sign.add_argument("pack_root", type=Path)
-    sign.add_argument("--private-key", type=Path, required=True)
+    signing_key = sign.add_mutually_exclusive_group(required=True)
+    signing_key.add_argument("--private-key", type=Path)
+    signing_key.add_argument("--dev-signer-store", type=Path)
+    sign.add_argument(
+        "--dev-signer-key-id",
+        help="Public key ID recorded by dev-signer-init; required for store signing.",
+    )
+    sign.add_argument(
+        "--dev-signer-forbidden-root", type=Path, action="append", default=[]
+    )
     sign.add_argument("--pack-id", required=True)
     sign.add_argument("--version", required=True)
     sign.add_argument("--publisher-id", required=True)
@@ -127,6 +137,12 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Defaults to PACK_ROOT/{SIGNED_MANIFEST_RELATIVE}",
     )
     sign.set_defaults(handler=_sign)
+
+    dev_signer = subcommands.add_parser("dev-signer-init")
+    dev_signer.add_argument("store", type=Path)
+    dev_signer.add_argument("--publisher-id", required=True)
+    dev_signer.add_argument("--forbidden-root", type=Path, action="append", default=[])
+    dev_signer.set_defaults(handler=_dev_signer_init)
 
     verify = subcommands.add_parser("verify")
     verify.add_argument("pack_root", type=Path)
@@ -265,6 +281,28 @@ def _project_legacy(args: argparse.Namespace) -> dict[str, object]:
 
 def _sign(args: argparse.Namespace) -> dict[str, object]:
     pack_root = args.pack_root.resolve()
+    if args.dev_signer_store is not None:
+        from scripts.dev_pack_signing_key import open_dev_signer
+
+        if not args.dev_signer_key_id:
+            raise ValueError("--dev-signer-store requires --dev-signer-key-id")
+        output = _sign_output(args, pack_root)
+        store = args.dev_signer_store.absolute()
+        if output == store or store in output.parents:
+            raise ValueError("signed manifests must be outside the DEV signer store")
+        with open_dev_signer(
+            args.dev_signer_store,
+            publisher_id=args.publisher_id,
+            expected_key_id=args.dev_signer_key_id,
+            forbidden_roots=(pack_root, *args.dev_signer_forbidden_root),
+        ) as signer:
+            return _sign_with_key(
+                args,
+                pack_root,
+                output,
+                signer.private_key,
+                before_publish=signer.assert_current,
+            )
     private_key_path = args.private_key.resolve()
     try:
         private_key_path.relative_to(pack_root)
@@ -272,6 +310,17 @@ def _sign(args: argparse.Namespace) -> dict[str, object]:
         pass
     else:
         raise ValueError("private signing keys must be outside the Pack root")
+    output = _sign_output(args, pack_root)
+    key = serialization.load_pem_private_key(
+        private_key_path.read_bytes(),
+        password=None,
+    )
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("Pack signing requires an Ed25519 private key")
+    return _sign_with_key(args, pack_root, output, key)
+
+
+def _sign_output(args: argparse.Namespace, pack_root: Path) -> Path:
     output = (args.output or pack_root / SIGNED_MANIFEST_RELATIVE).resolve()
     try:
         relative_output = output.relative_to(pack_root).as_posix()
@@ -281,12 +330,17 @@ def _sign(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError(
             "signed manifests written inside a Pack must use the reserved path"
         )
-    key = serialization.load_pem_private_key(
-        private_key_path.read_bytes(),
-        password=None,
-    )
-    if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("Pack signing requires an Ed25519 private key")
+    return output
+
+
+def _sign_with_key(
+    args: argparse.Namespace,
+    pack_root: Path,
+    output: Path,
+    key: Ed25519PrivateKey,
+    *,
+    before_publish: Callable[[], None] | None = None,
+) -> dict[str, object]:
     manifest = build_signed_manifest(
         pack_root,
         pack_id=args.pack_id,
@@ -302,6 +356,8 @@ def _sign(args: argparse.Namespace) -> dict[str, object]:
         ),
     )
     signed = sign_manifest(manifest, key)
+    if before_publish is not None:
+        before_publish()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(signed, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -311,6 +367,19 @@ def _sign(args: argparse.Namespace) -> dict[str, object]:
         "signed": True,
         "manifest": str(output),
         "key_id": signed["signature"]["key_id"],
+    }
+
+
+def _dev_signer_init(args: argparse.Namespace) -> dict[str, object]:
+    from scripts.dev_pack_signing_key import initialize_dev_signer_store
+
+    return {
+        "initialized": True,
+        **initialize_dev_signer_store(
+            args.store,
+            publisher_id=args.publisher_id,
+            forbidden_roots=args.forbidden_root,
+        ),
     }
 
 
