@@ -10,6 +10,7 @@ import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -160,6 +161,44 @@ def test_dashboard_rejects_stale_inactive_install_binding(
 
     monkeypatch.setattr(pack_control, "_require_install_binding", reject_target)
     with pytest.raises(pack_control.PackControlDigestMismatch, match="stale inactive install"):
+        _invoke(session, "dashboard.read")
+
+
+@pytest.mark.parametrize("when", ["projection", "physical_exit"])
+def test_dashboard_rejects_control_state_change_before_return(
+    captured_session, monkeypatch: pytest.MonkeyPatch, when: str,
+) -> None:
+    """A real concurrent state publication cannot escape the read exit guard."""
+    session, _state_path, _user_data = captured_session
+    _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
+    profile_id = session.profile_id
+    assert TARGET_PACK in pack_control._read_control_state(profile_id, read_only=True)
+
+    if when == "projection":
+        original_binding_check = pack_control._require_install_binding
+
+        def remove_install_after_check(pack_id, record, entry, binding):
+            original_binding_check(pack_id, record, entry, binding)
+            if pack_id == TARGET_PACK:
+                pack_control._write_control_state(profile_id, {})
+
+        monkeypatch.setattr(
+            pack_control, "_require_install_binding", remove_install_after_check,
+        )
+    else:
+        original_read = pack_control._catalog_metadata_read
+
+        @contextmanager
+        def remove_install_at_exit(*args, **kwargs):
+            with original_read(*args, **kwargs) as read:
+                yield read
+                pack_control._write_control_state(profile_id, {})
+
+        monkeypatch.setattr(
+            pack_control, "_catalog_metadata_read", remove_install_at_exit,
+        )
+
+    with pytest.raises(pack_control.PackControlStaleRevision, match="control state"):
         _invoke(session, "dashboard.read")
 
 

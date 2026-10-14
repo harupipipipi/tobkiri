@@ -616,17 +616,31 @@ class CapturedPackControlSession:
                     return self._revoke_approval(arguments)
             from .bootstrap.profile_capture import invalidate_profile_capture_scope
 
-            if operation_id not in {
+            if operation_id in {
                 "catalog.read",
                 "dashboard.read",
                 "pack.status",
             }:
-                # The HTTP boundary has already checked the captured session.
-                # Every operation that can mutate authority, Profile state, or
-                # restart behavior must discard that snapshot before its own
-                # binding check. Read-only projections may reuse it only within
-                # this one explicit operation scope.
-                invalidate_profile_capture_scope()
+                # Keep exact roots and the authenticated bundled baseline live
+                # through projection. All exit guards run before return.
+                with _physical_catalog_read() as (read, active):
+                    current_binding = _capture_binding(active, _read=read)
+                    with self._lock:
+                        self._require_captured_binding(current_binding)
+                        if operation_id == "catalog.read":
+                            return self._catalog_payload(
+                                active_snapshot=active, _read=read,
+                            )
+                        if operation_id == "dashboard.read":
+                            return self._dashboard(
+                                active_snapshot=active, _read=read,
+                            )
+                        return self._status(
+                            arguments, active_snapshot=active, _read=read,
+                        )
+            # Mutation and restart paths must discard the captured snapshot
+            # and never borrow a read-only bundled baseline scope.
+            invalidate_profile_capture_scope()
             if operation_id == "profile.reload":
                 with self._lock:
                     self._recapture()
@@ -634,10 +648,6 @@ class CapturedPackControlSession:
             current_binding, active = self._capture_current_binding()
             with self._lock:
                 self._require_captured_binding(current_binding)
-                if operation_id == "catalog.read":
-                    return self._catalog_payload(active_snapshot=active)
-                if operation_id == "dashboard.read":
-                    return self._dashboard(active_snapshot=active)
                 if operation_id == "pack.install":
                     return self._install(arguments)
                 if operation_id == "approval.candidate":
@@ -648,8 +658,6 @@ class CapturedPackControlSession:
                     return self._set_enabled(arguments, True)
                 if operation_id == "pack.disable":
                     return self._set_enabled(arguments, False)
-                if operation_id == "pack.status":
-                    return self._status(arguments, active_snapshot=active)
                 if operation_id == "runtime.restart":
                     from .restart_control import request_kernel_restart
 
@@ -884,8 +892,15 @@ class CapturedPackControlSession:
         self,
         *,
         active_snapshot: Any | None = None,
+        _read: _CatalogRead | None = None,
     ) -> dict[str, Any]:
-        return _catalog_payload(self._binding, active_snapshot=active_snapshot)
+        if _read is None:
+            with _physical_catalog_read(active_snapshot) as (read, active):
+                self._require_captured_binding(_capture_binding(active, _read=read))
+                return self._catalog_payload(active_snapshot=active, _read=read)
+        return _catalog_payload(
+            self._binding, active_snapshot=active_snapshot, _read=_read,
+        )
 
     def _install(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         pack_id, record, root = _pack(arguments)
@@ -1056,9 +1071,10 @@ class CapturedPackControlSession:
         arguments: Mapping[str, Any],
         *,
         active_snapshot: Any | None = None,
+        _read: _CatalogRead | None = None,
     ) -> dict[str, Any]:
         pack_id = str(arguments.get("pack_id") or "").strip()
-        catalog = self._catalog_payload(active_snapshot=active_snapshot)
+        catalog = self._catalog_payload(active_snapshot=active_snapshot, _read=_read)
         if not pack_id:
             return catalog
         match = next((item for item in catalog["packs"] if item["pack_id"] == pack_id), None)
@@ -1070,28 +1086,50 @@ class CapturedPackControlSession:
         self,
         *,
         active_snapshot: Any | None = None,
+        _read: _CatalogRead | None = None,
     ) -> dict[str, Any]:
         """Return the finite Home projection from the captured Pack state."""
 
-        records = load_pack_catalog()
-        installed = _read_control_state(self._binding.profile_id)
-        _state, active_profile = _active_profile(active_snapshot)
+        if _read is None:
+            with _physical_catalog_read(active_snapshot) as (read, active):
+                self._require_captured_binding(_capture_binding(active, _read=read))
+                return self._dashboard(active_snapshot=active, _read=read)
+        _require_catalog_read(_read)
+        binding = self._binding
+        records = _read.catalog()
+        installed = _read_control_state(binding.profile_id, read_only=True)
+        approval_identity = _approval_read_identity(binding.profile_id, tuple(records))
+        _state, active_profile = _active_profile(active_snapshot, _read=_read)
         active = set(active_profile.get("packs") or [])
         required = _required_profile_pack_ids(
-            self._binding.profile_id,
+            binding.profile_id,
             active_snapshot=active_snapshot,
         )
         # Keep the catalog's fail-closed install check, including for inactive
         # Packs, without building operation and Authority grant projections that
         # the Home counts never return.
         for pack_id, entry in installed.items():
-            _require_install_binding(pack_id, records[pack_id], entry, self._binding)
+            _require_install_binding(pack_id, records[pack_id], entry, binding)
         enabled = sum(
             pack_id in required
-            or _approval_status(pack_id, records[pack_id], self._binding)[0]
+            or _approval_status(pack_id, records[pack_id], binding, read_only=True)[0]
             for pack_id in active & records.keys()
         )
         total = len(records)
+
+        def check_mutable_state() -> None:
+            if (
+                self._binding != binding
+                or _read_control_state(binding.profile_id, read_only=True) != installed
+                or _approval_read_identity(binding.profile_id, tuple(records))
+                != approval_identity
+            ):
+                raise PackControlStaleRevision(
+                    "Pack control state or approvals changed during dashboard read"
+                )
+
+        check_mutable_state()
+        _read.register_final_check(check_mutable_state)
         return {
             "packs": {
                 "total": total,
