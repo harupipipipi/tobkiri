@@ -20,6 +20,7 @@
 | この runtime の思想を知りたい | この README の `思想` | Flow 中心、Pack 前提、Fail-Soft の考え方 |
 | ディレクトリの役割を知りたい | この README の `プロジェクト構造` | `core_runtime/`, `ecosystem/`, `user_data/` の役割 |
 | Pack を作る・直す | [`docs/pack-development.md`](./docs/pack-development.md) | `ecosystem.json`, `routes.json`, `permissions.json`, secrets 利用 |
+| Tobkiri Launcher・VM・キーを保持して Pack を更新したい | [`docs/pack-only-updates.md`](./docs/pack-only-updates.md) | 署名付き更新、Profile の選択と承認、既存の正確な Pack の保持条件 |
 | defaultspack の chat / ai を追いたい | [`ecosystem/defaultspack/README.md`](./ecosystem/defaultspack/README.md) | defaultspack の実装面 |
 | defaultspack frontend の今後の作業を見たい | [`ecosystem/defaultspack/docs/frontend_todo.md`](./ecosystem/defaultspack/docs/frontend_todo.md) | registry 化の進捗と次の作業 |
 | API キーや secrets を設定したい | [`docs/operations.md`](./docs/operations.md) の Secrets 節 | `user_data/secrets/` と API 経路 |

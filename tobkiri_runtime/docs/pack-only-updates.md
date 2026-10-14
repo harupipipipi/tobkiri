@@ -99,6 +99,34 @@ it does not delete registered VM storage or user workspaces. APFS clones share
 blocks, so measure reclaimed capacity with filesystem free space rather than
 adding apparent raw-image sizes. Capacity checks remain enforced.
 
+### Retaining an already active bundled Host Extension
+
+A development checkout can advance while an active Profile still pins an older
+bundled Host Extension. Host-owned retention preserves those exact old bytes;
+it does not enroll a publisher or admit, select, approve, or activate a revision.
+The origin comes from normal full active capture, including its Authority
+reservation, epoch, fence, selected Shell, and final pointer checks.
+
+The authenticated Plan's raw bundle-lock digest anchors the retained lock,
+projection, source manifest, canonical source record, and exact finite artifact
+inventory. A matching file path or an artifact index's own seal is insufficient.
+Retention rejects extra files, directories, changed roles, symlinks, and owner
+or publication races. Verification repeats the complete byte chain and current
+activation checks before retained data can leave a read or materialization.
+
+Only the exact active pin can use this store. Discovery without a pin and new
+candidate resolution retain the current Source baseline. Signed external CAS
+verification keeps priority; a missing, unsafe, or invalid canonical Source
+root cannot be hidden by retention. Reading does not copy or publish artifacts,
+although normal Authority-store initialization and activation recovery remain
+part of canonical active capture.
+
+An origin is bound to its activation and bundle digest. It expires when that
+binding changes; an old container cannot be renamed into a new bundle's origin.
+This mechanism cannot bypass Shell reconfirmation or make a partial predecessor
+read into execution authority. Keep the old active plan until the ordinary
+signed-successor ceremony has completed.
+
 ## Development and verification
 
 This capability requires Host runtime support. An explicit development

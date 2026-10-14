@@ -1635,10 +1635,24 @@ def capture_production_dispatch(
         raise AuthorityDenied("Authority store is not bound to the captured Profile activation")
     active = persisted_active
     from .external_profile_catalog import catalog_for_verified_active_profile
-
-    catalog = catalog_for_verified_active_profile(
-        catalog, active, user_data=authority_user_data,
+    from ..retained_bundled_context_v4 import (
+        retained_origin_for_verified_active_profile,
     )
+
+    retained_origin = retained_origin_for_verified_active_profile(
+        active, user_data_root=authority_user_data
+    )
+    if retained_origin is None:
+        catalog = catalog_for_verified_active_profile(
+            catalog, active, user_data=authority_user_data,
+        )
+    else:
+        catalog = catalog_for_verified_active_profile(
+            catalog,
+            active,
+            user_data=authority_user_data,
+            retained_bundled_origin=retained_origin,
+        )
     activation_suffix = str(active.activation["fencing_token"])
 
     profile = active.resolved.profile
@@ -1754,6 +1768,9 @@ def capture_production_dispatch(
     binding_pack_ids = {str(item["pack_id"]) for item in plan["bindings"]}
     from .profile_capture import runtime_user_data_scope
 
+    retained_root_options = (
+        {"origin": retained_origin} if retained_origin is not None else {}
+    )
     with runtime_user_data_scope(authority_user_data):
         pack_roots = resolve_admitted_pack_roots(
             tuple(sorted(binding_pack_ids)),
@@ -1762,8 +1779,33 @@ def capture_production_dispatch(
                 str(row["identity"]): str(row["artifact_digest"])
                 for row in lock["effective_set"]
             },
+            **retained_root_options,
         )
     captured_pack_root_identities = _pack_root_identities(pack_roots)
+    retained_pack_roots = {
+        pack_id: root
+        for pack_id, root in pack_roots.items()
+        if retained_origin is not None
+        and root.is_relative_to(
+            authority_user_data / "retained-bundled-artifacts-v4"
+        )
+    }
+
+    def assert_retained_root_current(pack_id: str) -> None:
+        if pack_id not in retained_pack_roots:
+            return
+        from ..bundled_artifact_retention_v4 import (
+            verify_retained_bundled_artifact,
+        )
+
+        assert retained_origin is not None
+        checked = verify_retained_bundled_artifact(
+            retained_origin,
+            pack_id=pack_id,
+            artifact_digest=dict(retained_origin.pack_pins)[pack_id],
+        )
+        if checked != retained_pack_roots[pack_id]:
+            raise AuthorityDenied("retained Pack root changed during capture")
 
     def artifact_resolver(binding: ResolvedOperationBinding) -> Any:
         pack_id = binding.artifact.pack_id
@@ -1774,7 +1816,9 @@ def capture_production_dispatch(
         before = root.lstat()
         if root.is_symlink() or (int(before.st_dev), int(before.st_ino)) != expected_identity:
             raise AuthorityDenied("resolved Pack artifact root identity changed")
+        assert_retained_root_current(pack_id)
         artifact = capture_materialized_artifact(root, binding)
+        assert_retained_root_current(pack_id)
         after = root.lstat()
         if root.is_symlink() or (int(after.st_dev), int(after.st_ino)) != expected_identity:
             raise AuthorityDenied("resolved Pack artifact root changed during materialization")
@@ -3742,7 +3786,8 @@ def capture_production_dispatch(
         # Reuse only the explicit operation-local capture opened by the HTTP
         # boundary or runtime-surface operation. Outside that scope this is
         # still a fresh canonical capture on every assertion.
-        current = capture_active_profile()
+        with runtime_user_data_scope(authority_user_data):
+            current = capture_active_profile()
         if (
             dict(current.activation) != captured_activation
             or dict(current.resolved.profile) != captured_profile
@@ -3759,6 +3804,8 @@ def capture_production_dispatch(
                 "captured Pack filesystem identity changed",
                 code="digest_mismatch",
             )
+        for pack_id in retained_pack_roots:
+            assert_retained_root_current(pack_id)
         host_provider_data.assert_current()
         for pack_id, approval_revision in captured_dynamic_approvals.items():
             try:

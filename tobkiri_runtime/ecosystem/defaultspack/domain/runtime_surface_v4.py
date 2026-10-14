@@ -23,7 +23,7 @@ from concurrent.futures import (
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Generic, Mapping, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Generic, Mapping, TypeVar, cast
 
 from ecosystem.defaultspack.domain.runtime_v4 import (
     ActiveDefaultProfile,
@@ -34,6 +34,9 @@ from ecosystem.defaultspack.domain.runtime_v4 import (
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.ids import DIGEST_PATTERN
 from tobkiri_protocol.validation import validate_document
+
+if TYPE_CHECKING:
+    from core_runtime.bundled_artifact_retention_v4 import BundledArtifactOrigin
 
 RUNTIME_SURFACE_API_VERSION = "io.tobkiri.launcher.runtime-surface.v4"
 NO_ACTIVE_PROFILE_REVISION = canonical_digest(
@@ -100,6 +103,7 @@ class RuntimeSurfaceSnapshot:
 
     active: ActiveDefaultProfile
     catalog: BundledCatalog
+    retained_origin: BundledArtifactOrigin | None = None
 
 
 SnapshotLoader = Callable[[], ActiveDefaultProfile]
@@ -1141,6 +1145,8 @@ class RuntimeSurfaceService:
             deadline.checkpoint()
             catalog = self._catalog_loader()
             deadline.checkpoint()
+            retained_origin = _retained_origin_for_active(active)
+            deadline.checkpoint()
             candidate_records: tuple[Mapping[str, Any], ...] = ()
             if session_id is not None:
                 from core_runtime.bootstrap.profile_capture import runtime_user_data_root
@@ -1162,7 +1168,9 @@ class RuntimeSurfaceService:
                 for profile_id, definition in catalog.profiles.items()
             }
             resolved_catalogs = {
-                str(active.resolved.profile["profile_id"]): _catalog_for_active_closure(catalog, active)
+                str(active.resolved.profile["profile_id"]): _catalog_for_active_closure(
+                    catalog, active, origin=retained_origin
+                )
             }
             resolved_catalogs.update({
                 profile_id: _catalog_for_effective_sets(catalog, (record["review"]["profile_lock"]["effective_set"],))
@@ -1193,7 +1201,9 @@ class RuntimeSurfaceService:
                 "canonical Profile catalog is unavailable",
             ) from error
         deadline.checkpoint()
-        snapshot = RuntimeSurfaceSnapshot(active=active, catalog=catalog)
+        snapshot = RuntimeSurfaceSnapshot(
+            active=active, catalog=catalog, retained_origin=retained_origin
+        )
         return self._read_envelope(
             snapshot,
             surface="profiles",
@@ -1495,6 +1505,18 @@ class RuntimeSurfaceService:
             },
             "data": data_payload,
         }
+        if snapshot.retained_origin is not None:
+            from core_runtime.bundled_artifact_retention_v4 import (
+                assert_retention_origin_current,
+            )
+
+            try:
+                assert_retention_origin_current(snapshot.retained_origin)
+            except (OSError, RuntimeError, ValueError) as error:
+                raise RuntimeSurfaceError(
+                    RuntimeSurfaceErrorCode.STALE_REVISION,
+                    "retained Pack activation changed before read publication",
+                ) from error
         return envelope
 
     def _snapshot(self, deadline: _ReadDeadline) -> RuntimeSurfaceSnapshot:
@@ -1504,7 +1526,11 @@ class RuntimeSurfaceService:
             deadline.checkpoint()
             catalog = self._catalog_loader()
             deadline.checkpoint()
-            catalog = _catalog_for_active_closure(catalog, active)
+            retained_origin = _retained_origin_for_active(active)
+            deadline.checkpoint()
+            catalog = _catalog_for_active_closure(
+                catalog, active, origin=retained_origin
+            )
         except ProfileResolutionDenied as error:
             raise _map_profile_error(error) from error
         except RuntimeSurfaceError:
@@ -1515,7 +1541,9 @@ class RuntimeSurfaceService:
                 "canonical runtime snapshot is unavailable",
             ) from error
         deadline.checkpoint()
-        return RuntimeSurfaceSnapshot(active=active, catalog=catalog)
+        return RuntimeSurfaceSnapshot(
+            active=active, catalog=catalog, retained_origin=retained_origin
+        )
 
     @staticmethod
     def _check_expected_bindings(
@@ -2798,7 +2826,7 @@ def _validated_contract_catalogs(
         for item in snapshot.active.resolved.lock["effective_set"]
     }
     try:
-        with verified_pack_root_read(pins) as roots:
+        with verified_pack_root_read(pins, origin=snapshot.retained_origin) as roots:
             return _contract_catalogs_from_roots(snapshot, roots.resolve)
     except RuntimeSurfaceError:
         raise
@@ -3008,19 +3036,39 @@ def _catalog_for_definition_revisions(catalog: BundledCatalog, definition: Mappi
 
 
 def _catalog_for_active_closure(
-    catalog: BundledCatalog, active: ActiveDefaultProfile
+    catalog: BundledCatalog,
+    active: ActiveDefaultProfile,
+    *,
+    origin: BundledArtifactOrigin | None = None,
 ) -> BundledCatalog:
-    """Add only admitted external manifests selected by the verified lock."""
+    """Add only authenticated exact revisions selected by the active lock."""
 
     return _catalog_for_effective_sets(
         catalog,
         (active.resolved.lock["effective_set"],),
+        origin=origin,
+    )
+
+
+def _retained_origin_for_active(
+    active: ActiveDefaultProfile,
+) -> BundledArtifactOrigin | None:
+    """Bind optional retained bytes after the caller's full active capture."""
+    from core_runtime.bootstrap.profile_capture import runtime_user_data_root
+    from core_runtime.retained_bundled_context_v4 import (
+        retained_origin_for_verified_active_profile,
+    )
+
+    return retained_origin_for_verified_active_profile(
+        active, user_data_root=runtime_user_data_root()
     )
 
 
 def _catalog_for_effective_sets(
     catalog: BundledCatalog,
     effective_sets: object,
+    *,
+    origin: BundledArtifactOrigin | None = None,
 ) -> BundledCatalog:
     """Add admitted external manifests required by exact resolved closures."""
 
@@ -3063,7 +3111,7 @@ def _catalog_for_effective_sets(
     for pack_id in sorted(missing):
         try:
             root = resolve_admitted_pack_root(
-                pack_id, artifact_digest=expected[pack_id]
+                pack_id, artifact_digest=expected[pack_id], origin=origin
             )
         except (OSError, RuntimeError, ValueError) as error:
             raise RuntimeSurfaceError(
@@ -3094,7 +3142,12 @@ def _catalog_for_effective_sets(
         packs[pack_id] = manifest
     from core_runtime.profile_runtime_port import require_profile_runtime
 
-    return require_profile_runtime().catalog_with_packs(catalog, packs)
+    runtime = require_profile_runtime()
+    if origin is not None:
+        return runtime.catalog_with_packs(
+            catalog, packs, retained_bundled_origin=origin
+        )
+    return runtime.catalog_with_packs(catalog, packs)
 
 
 def _commit_authority_profile_approval(
