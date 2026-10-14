@@ -210,17 +210,51 @@ def _raw_active(pack_ids: list[str]) -> SimpleNamespace:
 def test_capture_binding_batches_external_scans_with_real_bundled_pins(
     admitted: dict, monkeypatch: pytest.MonkeyPatch, pack_count: int
 ) -> None:
-    from core_runtime.pack_boundary import load_pack_catalog
-    from core_runtime.pack_control_v4 import _capture_binding, _physical_catalog_read
-    from core_runtime.bootstrap.profile_capture import (
-        capture_default_profile, prepare_default_profile_confirmation,
-    )
+    from copy import deepcopy
 
-    active = capture_default_profile(
+    from core_runtime.pack_boundary import load_pack_catalog
+    from core_runtime.pack_control_v4 import (
+        _capture_binding,
+        _physical_catalog_read,
+        catalog_with_admitted_pack_closure,
+    )
+    from core_runtime.bootstrap.profile_capture import (
+        capture_default_profile,
+        capture_profile,
+        host_profile_catalog,
+        prepare_default_profile_confirmation,
+        prepare_profile_confirmation,
+        runtime_user_data_root,
+    )
+    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+    from core_runtime.profile_runtime_port import require_profile_runtime
+
+    capture_default_profile(
         confirmation=prepare_default_profile_confirmation(),
     )
+    catalog, _ = catalog_with_admitted_pack_closure(host_profile_catalog(), [PACK_ID])
+    profile = deepcopy(catalog.profiles["defaults"])
+    profile_id = "batch-read-profile"
+    profile["profile_id"] = profile_id
+    profile["display_name"] = "Signed Pack read fixture"
+    profile["packs"].append(
+        {"pack_id": PACK_ID, "artifact_digest": admitted["artifact_digest"], "role": "provider"}
+    )
+    profile["requested_edges"].extend(
+        require_profile_runtime().dynamic_profile_edges(catalog, "defaults", (PACK_ID,))
+    )
+    ProfileDefinitionStore(runtime_user_data_root()).create_profile(profile)
+    active = capture_profile(
+        profile_id,
+        confirmation=prepare_profile_confirmation(profile_id),
+    )
+    assert any(
+        row["identity"] == PACK_ID and row["artifact_digest"] == admitted["artifact_digest"]
+        for row in active.resolved.plan["effective_set"]
+    )
     pack_ids = sorted(
-        row["identity"] for row in active.resolved.plan["effective_set"]
+        row["identity"]
+        for row in active.resolved.plan["effective_set"]
         if row["identity"] in load_pack_catalog()
     )[:pack_count]
     assert len(pack_ids) == pack_count
@@ -236,7 +270,7 @@ def test_capture_binding_batches_external_scans_with_real_bundled_pins(
         for pack_id in pack_ids:
             read.resolve(pack_id)
         binding = _capture_binding(captured, _read=read)
-    assert binding.profile_id == "defaults"
+    assert binding.profile_id == profile_id
     assert binding.plan_digest == active.resolved.plan["plan_digest"]
     assert calls == [PACK_ID] * 5
 
