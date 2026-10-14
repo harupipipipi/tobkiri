@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_git_publish_pack",
-  "source_identity": "sha256:37ca62cb6e662a3e1d01fd25a288b770d532212d3320694b216895ce690842fd",
+  "source_identity": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e",
   "variants": [
     {
       "variant_id": "rumi_git_publish_pack.git-publish.service.python",
       "function_id": "rumi_git_publish_pack.git-publish.service",
       "implementation_path": "runtime/publish.py",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -62,7 +62,7 @@
       "variant_id": "rumi_git_publish_pack.git-push-prepare.service.python",
       "function_id": "rumi_git_publish_pack.git-push-prepare.service",
       "implementation_path": "runtime/publish.py",
-      "implementation_digest": "sha256:6109e246015c628e1a42e33556517618c6e8e353158db0f3f24946147b10e147",
+      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -114,6 +114,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:60491b53db177378c90003f8b03eab5f36bfa67ff88ce268ae9362d4343c1fd2",
-  "catalog_digest": "sha256:73bd103a39a675575973304eccaa0395adf3a0e2f3c6e512c863a62a6e184a42"
+  "materialization_catalog_digest": "sha256:61c8c07a5de15b8ba22641b9c7ddf3c999c36c43474d028bd91cc45c84204e56",
+  "catalog_digest": "sha256:18a133577f00868c0fb38f11498f9b6ad543dad4843bf2597148f5ea70e130eb"
 }

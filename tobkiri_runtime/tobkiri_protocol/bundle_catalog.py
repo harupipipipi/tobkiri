@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from typing import Any, Mapping
 
 from .canonical import canonical_digest, strict_loads
@@ -17,6 +20,12 @@ from .validation import validate_document
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUNDLE_SCHEMA = "io.tobkiri.defaultspack-bundle-lock.v1"
 _MAX_CACHED_DOCUMENT_BYTES = 64 * 1024
+_MAX_LARGE_DOCUMENT_BYTES = 256 * 1024
+_MAX_LARGE_CACHE_BYTES = 2 * 1024 * 1024
+_MAX_LARGE_CACHE_ENTRIES = 16
+_LARGE_CACHE: OrderedDict[tuple[bytes, str], dict[str, Any]] = OrderedDict()
+_LARGE_CACHE_LOCK = RLock()
+_LARGE_CACHE_BYTES = 0
 
 
 @lru_cache(maxsize=512)
@@ -28,6 +37,65 @@ def _validated_document(raw: bytes, kind: str) -> dict[str, Any]:
     """
 
     return validate_document(raw, kind)
+
+
+def _clear_large_validation_cache() -> None:
+    """Clear pure validation results without replacing a live thread mutex."""
+    global _LARGE_CACHE_BYTES
+    with _LARGE_CACHE_LOCK:
+        _LARGE_CACHE.clear()
+        _LARGE_CACHE_BYTES = 0
+
+
+def _reset_large_validation_cache_after_fork() -> None:
+    """Drop pure cached data and any mutex owned by a vanished parent thread."""
+    global _LARGE_CACHE, _LARGE_CACHE_LOCK, _LARGE_CACHE_BYTES
+    _LARGE_CACHE = OrderedDict()
+    _LARGE_CACHE_LOCK = RLock()
+    _LARGE_CACHE_BYTES = 0
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_large_validation_cache_after_fork)
+
+
+def _validated_large_document(raw: bytes, kind: str) -> dict[str, Any]:
+    """Reuse pure exact-byte validation within finite raw-byte and entry bounds.
+
+    Schema definitions and format validators are fixed process inputs, as for
+    the existing small-document cache. No path, digest, signature, activation
+    or Authority decision is cached. The caller must deepcopy this private
+    cache-owned value before exposing it.
+    """
+    global _LARGE_CACHE_BYTES
+    if len(raw) <= _MAX_CACHED_DOCUMENT_BYTES:
+        return _validated_document(raw, kind)
+    if (len(raw) > min(_MAX_LARGE_DOCUMENT_BYTES, _MAX_LARGE_CACHE_BYTES)
+            or _MAX_LARGE_CACHE_ENTRIES < 1):
+        return validate_document(raw, kind)
+    key = (raw, kind)
+    with _LARGE_CACHE_LOCK:
+        cached = _LARGE_CACHE.get(key)
+        if cached is not None:
+            _LARGE_CACHE.move_to_end(key)
+            return cached
+    # Independent concurrent misses may validate twice. Neither exceptions nor
+    # partially validated values are ever retained.
+    document = validate_document(raw, kind)
+    with _LARGE_CACHE_LOCK:
+        cached = _LARGE_CACHE.get(key)
+        if cached is not None:
+            _LARGE_CACHE.move_to_end(key)
+            return cached
+        while _LARGE_CACHE and (
+            len(_LARGE_CACHE) >= _MAX_LARGE_CACHE_ENTRIES
+            or _LARGE_CACHE_BYTES + len(raw) > _MAX_LARGE_CACHE_BYTES
+        ):
+            evicted_key, _ = _LARGE_CACHE.popitem(last=False)
+            _LARGE_CACHE_BYTES -= len(evicted_key[0])
+        _LARGE_CACHE[key] = document
+        _LARGE_CACHE_BYTES += len(raw)
+    return document
 
 
 class DefaultProfileV4Error(RuntimeError):
@@ -123,6 +191,8 @@ class BundledCatalog:
                 document = (
                     copy.deepcopy(_validated_document(raw, kind))
                     if len(raw) <= _MAX_CACHED_DOCUMENT_BYTES
+                    else copy.deepcopy(_validated_large_document(raw, kind))
+                    if len(raw) <= _MAX_LARGE_DOCUMENT_BYTES
                     else validate_document(raw, kind)
                 )
             except SchemaValidationError as exc:

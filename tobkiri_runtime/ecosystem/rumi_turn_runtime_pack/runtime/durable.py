@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 from core_runtime.profile_workspace import validate_profile_id
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict, TurnRuntime
+from tobkiri_protocol.saved_workflow_admission import SavedWorkflowAdmission
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
@@ -29,6 +30,14 @@ _ACTIONS = {
     "consume_guidance": {"guidance_ids"},
     "cancel_guidance": {"guidance_id"},
 }
+
+
+def _saved_claim_available(record: Mapping[str, Any]) -> bool:
+    """Do not admit new execution after the owner has recorded a stop request."""
+    return record["status"] == "queued" and not any(
+        event.get("name") == "turn.cancellation_requested"
+        for event in record.get("events", [])
+    )
 
 
 class DurableTurnRuntime:
@@ -276,7 +285,7 @@ class DurableTurnRuntime:
                 validate_saved_conversation_input(payload)
             ):
                 raise TurnConflict("turn input identity was rebound")
-            if current["status"] != "queued":
+            if not _saved_claim_available(current):
                 return {"claimed": False, "turn": current}
             from ecosystem.rumi_turn_runtime_pack.runtime.delivery import (
                 assert_conversation_idle,
@@ -302,6 +311,68 @@ class DurableTurnRuntime:
             self._save(connection, record)
             connection.commit()
             return {"claimed": True, "turn": record}
+        finally:
+            connection.close()
+
+    def claim_saved_workflow(
+        self, payload: Mapping[str, Any], admission: SavedWorkflowAdmission,
+    ) -> dict[str, Any]:
+        """Atomically bind a captured graph identity while winning the turn claim.
+
+        This is an owner-internal method, not a public lifecycle operation.
+        It does not create a run, grant authority or replay an existing claim.
+        """
+        if not isinstance(admission, SavedWorkflowAdmission):
+            raise PermissionError("saved Workflow admission requires captured owner data")
+        admission.bind_input(self.profile_id, payload)
+        return self._claim_saved_workflow(payload, admission)
+
+    def _claim_saved_workflow(
+        self, payload: Mapping[str, Any], admission: SavedWorkflowAdmission,
+    ) -> dict[str, Any]:
+        record = self.begin_saved(payload)
+        if not _saved_claim_available(record):
+            return {"claimed": False, "turn": record}
+        initial = validate_saved_conversation_input(payload)
+        request = initial["request"]
+        message_ids = {
+            role: "message:" + canonical_digest(
+                [request["conversation_id"], request["turn_id"], role]
+            ).removeprefix("sha256:")
+            for role in ("user", "assistant")
+        }
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?", (record["id"],)
+            ).fetchone()
+            if row is None:
+                raise TurnConflict("saved turn disappeared before claim")
+            current = self._record(row)
+            if current.get("input_digest") != canonical_digest(initial):
+                raise TurnConflict("turn input identity was rebound")
+            if not _saved_claim_available(current):
+                return {"claimed": False, "turn": current}
+            if "saved_workflow" in current:
+                raise TurnConflict("queued saved turn already has an execution binding")
+            from ecosystem.rumi_turn_runtime_pack.runtime.delivery import (
+                assert_conversation_idle,
+            )
+            assert_conversation_idle(
+                self, connection, current["conversation_id"], current["id"]
+            )
+            runtime = self._restore(row)
+            claimed = runtime.transition(
+                current["id"], expected_revision=current["revision"], status="running",
+                details={"phase": "saved_execution_claimed",
+                         "user_message_id": message_ids["user"],
+                         "assistant_message_id": message_ids["assistant"]},
+            )
+            claimed["saved_workflow"] = admission.to_mapping()
+            self._save(connection, claimed)
+            connection.commit()
+            return {"claimed": True, "turn": claimed}
         finally:
             connection.close()
 
@@ -985,6 +1056,15 @@ class DurableTurnRuntime:
             raise ValueError("persisted turn identity does not match its index")
         if "input_digest" in record:
             _input_digest(record["input_digest"])
+        if "saved_workflow" in record:
+            value = record["saved_workflow"]
+            if not isinstance(value, Mapping):
+                raise ValueError("persisted saved Workflow admission is invalid")
+            admission = SavedWorkflowAdmission.from_mapping(value)
+            if (admission.profile_id != self.profile_id or admission.turn_id != turn_id
+                    or admission.conversation_id != record.get("conversation_id")
+                    or admission.input_digest != record.get("input_digest")):
+                raise ValueError("persisted saved Workflow admission was rebound")
         for field in ("id", "request_id", "conversation_id"):
             value = record.get(field)
             if not isinstance(value, str) or not _ID.fullmatch(value):

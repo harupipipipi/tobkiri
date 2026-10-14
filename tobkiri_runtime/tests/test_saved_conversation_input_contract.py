@@ -12,7 +12,7 @@ from jsonschema import Draft202012Validator
 
 import pytest
 
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.validation import validate_document
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
@@ -271,13 +271,13 @@ def test_saved_function_is_sealed_with_only_the_initial_input_schema(
 ) -> None:
     """The guest adds only an owner snapshot to the sealed public initial ABI."""
     root = Path(__file__).resolve().parents[1]
-    variants = json.loads((root / "ecosystem/defaultspack/executables.v4.json").read_text())["variants"]
-    selected = [item for item in variants if item["function_id"] == "defaultspack.conversation.saved"]
+    variants = json.loads((root / "ecosystem/tobkiri_conversation_orchestration_pack/executables.v4.json").read_text())["variants"]
+    selected = [item for item in variants if item["function_id"] == "tobkiri_conversation_orchestration_pack.saved"]
     assert len(selected) == 1
     variant = selected[0]
     assert variant["implementation_path"] == "runtime/saved_conversation.py"
     assert variant["implementation_digest"] == "sha256:" + hashlib.sha256(
-        (root / "ecosystem/defaultspack/runtime/saved_conversation.py").read_bytes()
+        (root / "ecosystem/tobkiri_conversation_orchestration_pack/runtime/saved_conversation.py").read_bytes()
     ).hexdigest()
     assert variant["execution_kind"] == "pack_vm"
     assert variant["backend"] == "tobkiri.python-pack-v4"
@@ -375,9 +375,9 @@ def test_defaults_saved_edge_requires_coordinator_and_ui_remains_separate() -> N
             for edge in saved_edges
         ) == [
             ("rumi_turn_runtime_pack.chat-saved-job-adapter",
-             "defaultspack.conversation.saved", "saved_complete"),
+             "tobkiri_conversation_orchestration_pack.saved", "saved_complete"),
             ("rumi_turn_runtime_pack.turn-runtime.saved",
-             "defaultspack.conversation.saved", "saved_complete"),
+             "tobkiri_conversation_orchestration_pack.saved", "saved_complete"),
         ]
         assert any(edge["caller_function_id"] == "shell.tauri.default"
                    and edge["contract_id"] == "tobkiri.action.turn.saved.v1" for edge in edges)

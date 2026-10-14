@@ -1,6 +1,6 @@
 import type {FormEvent} from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {Link, useSearchParams, useOutletContext} from 'react-router';
+import {Link, useSearchParams, useOutletContext, useNavigate} from 'react-router';
 import {
   AlertCircle,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
 
 import type {LayoutOutletContext} from '@/src/components/layout/Layout';
 import {ProfileCard} from '@/src/components/dashboard/ProfileCard';
+import {useAutoRefresh} from '@/src/hooks/useAutoRefresh';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Badge} from '@/src/components/ui/Badge';
@@ -28,19 +29,20 @@ import {
   type NamedProfileRegistry,
 } from '@/src/lib/hostClient';
 import {fetchDashboard} from '@/src/lib/defaultspackClient';
+import {transformDashboard} from '@/src/lib/transforms';
+import type {DashboardData} from '@/src/store';
 import {ApiContractError, ApiRequestTimeoutError} from '@/src/lib/apiTransport';
 import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {isDesktopShellAvailable, launchSelectedPresentation, openExternalUrl} from '@/src/lib/desktopHost';
 import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
-import {panelRoutes} from '@/src/lib/routes';
+import {useProfileSelection} from '@/src/lib/profileSelection';
+import {panelRoutes, profileHref} from '@/src/lib/routes';
 import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
   namedProfileDisplayName,
   type NamedProfileSortMode,
 } from '@/src/lib/profileRegistryView';
-import {transformDashboard} from '@/src/lib/transforms';
-import type {DashboardData} from '@/src/store';
 import {useAppStore} from '@/src/store';
 
 const defaultDashboard: DashboardData = {
@@ -77,11 +79,6 @@ function isActiveExecutionProfile(
   // not compared with the immutable definition revision on the registry row.
   return registry.active_profile_id === entry.profile_id
     && registry.active_profile_revision !== null;
-}
-
-function profileHref(profileId: string, hash?: string): string {
-  const query = `?profile_id=${encodeURIComponent(profileId)}`;
-  return `${panelRoutes.profile}${query}${hash ? `#${hash}` : ''}`;
 }
 
 function sortModeFromParam(value: string | null): NamedProfileSortMode {
@@ -150,6 +147,7 @@ function packProfileTransitionPending(): boolean {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const verificationBanner = useOutletContext<LayoutOutletContext | undefined>()?.verificationBanner;
   const addToast = useAppStore((state) => state.addToast);
   const showDialog = useAppStore((state) => state.showDialog);
@@ -183,7 +181,8 @@ export function Dashboard() {
   const [profileBusy, setProfileBusy] = useState<string | null>(null);
   const profileOperationKeyRef = useRef<string | null>(null);
   const dashboardReadGeneration = useRef(0);
-  const profileReadGeneration = useRef(0);
+  const profileReadVersion = useRef(0);
+  const notifiedProfileError = useRef('');
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileSourceId, setNewProfileSourceId] = useState('');
@@ -194,6 +193,13 @@ export function Dashboard() {
   const profileQuery = searchParams.get('q') ?? '';
   const sortMode = sortModeFromParam(searchParams.get('sort'));
   const browsingProfileId = searchParams.get('profile_id');
+  const {selectProfile} = useProfileSelection();
+
+  // Browsing a Profile on Home also marks it as the panel-wide inspection
+  // selection so Dev surfaces can say which identity they would act on.
+  useEffect(() => {
+    selectProfile(browsingProfileId);
+  }, [browsingProfileId, selectProfile]);
 
   const updateProfileSearch = (key: 'q' | 'sort', value: string) => {
     setSearchParams((current) => {
@@ -222,18 +228,28 @@ export function Dashboard() {
     }
   };
 
-  const refreshProfiles = async () => {
-    const generation = ++profileReadGeneration.current;
+  const refreshProfiles = async (signal?: AbortSignal): Promise<boolean> => {
+    if (!useAppStore.getState().hostCatalogVerified || packProfileTransitionPending()
+      || profileOperationKeyRef.current !== null) return true;
+    const version = ++profileReadVersion.current;
     try {
-      const nextRegistry = await fetchNamedProfiles();
-      if (generation !== profileReadGeneration.current || packProfileTransitionPending()) return;
-      setRegistry(nextRegistry);
+      const next = await fetchNamedProfiles();
+      if (signal?.aborted || version !== profileReadVersion.current || packProfileTransitionPending()) return true;
+      setRegistry((current) => current && current.generation > next.generation ? current : next);
       setProfileLoadError(null);
-      setProfileActionError(null);
+      if (!signal) setProfileActionError(null);
+      notifiedProfileError.current = '';
+      return true;
     } catch (error) {
-      if (generation !== profileReadGeneration.current) return;
-      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return;
-      setProfileLoadError(error instanceof Error ? error.message : 'Named Profiles could not be loaded.');
+      if (signal?.aborted || version !== profileReadVersion.current) return true;
+      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return true;
+      const message = error instanceof Error ? error.message : 'Named Profiles could not be loaded.';
+      setProfileLoadError(message);
+      if (notifiedProfileError.current !== message) {
+        notifiedProfileError.current = message;
+        addToast(message, 'error');
+      }
+      return false;
     }
   };
 
@@ -245,21 +261,25 @@ export function Dashboard() {
     } else {
       setDashboardLoading(false);
     }
+    return () => { dashboardReadGeneration.current += 1; };
   }, [runtimeReady, profileTransitionPending]);
 
-  useEffect(() => {
-    // The Host verifies the sealed catalog during startup. Starting another
-    // capture before that readiness fence competes with the cold read, and a
-    // failed request otherwise stays visible even after the Host recovers.
-    if (hostCatalogVerified && !profileTransitionPending) void refreshProfiles();
-    return () => { profileReadGeneration.current += 1; };
-  }, [hostCatalogVerified, profileTransitionPending]);
+  // Wait for the Host's startup catalog fence. Disabling the refresh also
+  // aborts pre-fence reads so readiness recovery cannot accept stale results.
+  useAutoRefresh(refreshProfiles, {
+    enabled: hostCatalogVerified,
+    paused: profileBusy !== null || profileTransitionPending,
+  });
 
   useEffect(() => {
     if (desktopShellAvailable && runtimeReady && !packVmDoctor) {
       void refreshPackVMDoctor({reconcile: false});
     }
   }, [desktopShellAvailable, runtimeReady, packVmDoctor, refreshPackVMDoctor]);
+
+  useEffect(() => () => {
+    profileReadVersion.current += 1;
+  }, [hostCatalogVerified, profileTransitionPending]);
 
   const visibleProfiles = useMemo(() => filterAndSortNamedProfiles(
     registry?.profiles ?? [],
@@ -291,6 +311,7 @@ export function Dashboard() {
 
   const beginProfileOperation = (key: string): boolean => {
     if (profileOperationKeyRef.current !== null) return false;
+    profileReadVersion.current += 1;
     profileOperationKeyRef.current = key;
     setProfileBusy(key);
     return true;
@@ -317,7 +338,7 @@ export function Dashboard() {
     if (!beginProfileOperation(key)) return false;
     try {
       const nextRegistry = await operation();
-      profileReadGeneration.current += 1;
+      profileReadVersion.current += 1;
       setRegistry(nextRegistry);
       setProfileActionError(null);
       addToast(successMessage, 'success');
@@ -370,6 +391,7 @@ export function Dashboard() {
     setNewProfileName('');
     setNewProfileSourceId('');
     setShowAddProfile(false);
+    navigate(profileHref(profileId, 'profile-packs'));
   };
 
   const submitProfileName = async (
@@ -403,7 +425,7 @@ export function Dashboard() {
       registry.profiles.map((profile) => profile.profile_id),
     );
     const displayName = `${namedProfileDisplayName(entry)} Copy`;
-    await commitProfileMutation(
+    const duplicated = await commitProfileMutation(
       `duplicate:${entry.profile_id}`,
       () => duplicateNamedProfile({
         profile_id: entry.profile_id,
@@ -414,6 +436,7 @@ export function Dashboard() {
       }),
       `Profile ${displayName} created.`,
     );
+    if (duplicated) navigate(profileHref(candidate, 'profile-packs'));
   };
 
   const removeProfile = (entry: NamedProfileRecord) => {
@@ -441,7 +464,7 @@ export function Dashboard() {
 
   const launchProfile = async (entry: NamedProfileRecord) => {
     if (!registry || !isActiveExecutionProfile(registry, entry)) return;
-    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady});
+    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
     if (
       !activeProfileReady
       || !launchReady
@@ -709,6 +732,12 @@ export function Dashboard() {
           )}
 
           <div aria-live="polite" className="mt-5">
+            {profileLoadError && (
+              <p className="mb-3 flex items-center gap-2 text-xs text-text-muted" role="status">
+                <TobkiriLoadingMark />
+                {registry ? 'Updating Profiles…' : 'Connecting to Profiles…'}
+              </p>
+            )}
             {!registry && !profileError && (
               <div className="flex items-center justify-center py-8"><TobkiriLoadingMark /></div>
             )}
@@ -736,7 +765,7 @@ export function Dashboard() {
               <div className="grid min-w-0 auto-rows-fr gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
                 {visibleProfiles.map((entry) => {
                   const active = isActiveExecutionProfile(registry, entry);
-                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady});
+                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
                   // Only the card whose own action is in flight reports busy.
                   // Any pending mutation still locks the catalog for every card
                   // through mutationsAvailable, so a create cannot race a rename.
@@ -782,6 +811,9 @@ export function Dashboard() {
                 })}
               </div>
             )}
+            {registry && visibleProfiles.length > 0 && !desktopShellAvailable ? (
+              <p className="mt-3 text-xs text-text-muted">Launch is available in Tobkiri Launcher.</p>
+            ) : null}
           </div>
         </section>
 

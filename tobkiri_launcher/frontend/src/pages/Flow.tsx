@@ -1,3 +1,6 @@
+import {ActiveProfileConnections} from '@/src/components/connections/ActiveProfileConnections';
+import {bindWorkflowProfile} from '@/src/lib/workflowProfileBinding';
+import {useProfileMutationBlocked, useProfileSelection} from '@/src/lib/profileSelection';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   CheckCircle2,
@@ -15,6 +18,8 @@ import {OperationInputForm} from '@/src/components/advanced/OperationInputForm';
 import {OperationInvocationMetadata} from '@/src/components/advanced/OperationInvocationMetadata';
 import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
 import {Badge} from '@/src/components/ui/Badge';
+import {WorkflowCanvas} from '@/src/components/workflow/WorkflowCanvas';
+import {WorkflowRunPanel} from '@/src/components/workflow/WorkflowRunPanel';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
@@ -66,7 +71,7 @@ import {
 } from '@/src/lib/workflowEditor';
 
 type FlowTab = 'authoring' | 'profile';
-type WorkflowEditorMode = 'visual' | 'source';
+type WorkflowEditorMode = 'canvas' | 'visual' | 'source';
 
 const EMPTY_WORKFLOW_DOCUMENT = JSON.stringify({
   workflow_api_version: 'io.tobkiri.workflow.v4',
@@ -141,27 +146,34 @@ function WorkflowAuthoringNotice({kind, message}: WorkflowAuthoringNoticeProps) 
 }
 
 export interface WorkflowAuthoringPanelProps {
+  /** Preserve drafts across tabs while suspending local run controls. */
+  isVisible?: boolean;
+  boundProfileId?: string | null;
+  boundPlanDigest?: string | null;
   /** Injectable only for deterministic authoring/recovery UI tests. */
   dependencies?: WorkflowAuthoringDependencies;
 }
 
 export function WorkflowAuthoringPanel({
-  dependencies,
+  dependencies, boundProfileId, boundPlanDigest, isVisible = true,
 }: WorkflowAuthoringPanelProps) {
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [palette, setPalette] = useState<WorkflowPalette | null>(null);
   const [definitionId, setDefinitionId] = useState('');
   const [documentText, setDocumentText] = useState(EMPTY_WORKFLOW_DOCUMENT);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<string | null>(null);
   const [validation, setValidation] = useState<WorkflowValidation | null>(null);
   const [notice, setNotice] = useState<WorkflowAuthoringNoticeProps | null>(null);
   const [loading, setLoading] = useState(false);
   const [mutating, setMutating] = useState(false);
-  const [editorMode, setEditorMode] = useState<WorkflowEditorMode>('source');
+  const [editorMode, setEditorMode] = useState<WorkflowEditorMode>('canvas');
   const [unknownMutationBlocked, setUnknownMutationBlocked] = useState(
     hasUnknownWorkflowMutation,
   );
   const selectionRequest = useRef(0);
+  const active = useRef(false);
+  const writeInFlight = useRef(false);
 
   const selectedDefinition = definitions.find((item) => (
     item.definition_id === selectedDefinitionId
@@ -169,7 +181,8 @@ export function WorkflowAuthoringPanel({
   // The selected Definition's ETag is refreshed through definition.get. Keep
   // every authoring write disabled while that read (or a refresh/validation)
   // is in flight; otherwise a list-projected stale ETag could be submitted.
-  const mutationsBlocked = loading || mutating || unknownMutationBlocked;
+  const profileMutationBlocked = useProfileMutationBlocked(boundProfileId);
+  const mutationsBlocked = profileMutationBlocked || loading || mutating || unknownMutationBlocked;
   const visualDocument = useMemo(
     () => parseVisualWorkflowDocument(documentText),
     [documentText],
@@ -199,13 +212,16 @@ export function WorkflowAuthoringPanel({
   };
 
   const refresh = async () => {
-    selectionRequest.current += 1;
+    if (writeInFlight.current) return;
+    const request = ++selectionRequest.current;
     setLoading(true);
     try {
       let next = await loadAuthoringState();
+      if (!active.current || request !== selectionRequest.current) return;
       const recovered = await reconcileUnknownWorkflowMutations(async () => {
         next = await loadAuthoringState();
       }, dependencies);
+      if (!active.current || request !== selectionRequest.current) return;
       const unresolved = recovered.filter((item) => (
         item.state === 'pending'
           || item.state === 'indeterminate'
@@ -242,15 +258,18 @@ export function WorkflowAuthoringPanel({
       }
       setSelectedDefinitionId(refreshedSelection?.definition_id ?? null);
     } catch (error) {
+      if (!active.current || request !== selectionRequest.current) return;
       setUnknownMutationBlocked(hasUnknownWorkflowMutation());
       setNotice({kind: 'error', message: errorMessage(error)});
     } finally {
-      setLoading(false);
+      if (active.current && request === selectionRequest.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    active.current = true;
     void refresh();
+    return () => {active.current = false; ++selectionRequest.current;};
   }, []);
 
   const selectDefinition = async (definition: WorkflowDefinition) => {
@@ -262,7 +281,7 @@ export function WorkflowAuthoringPanel({
       // A list projection is not an ETag refresh. Load the exact selected
       // Definition before an update, so a stale list cannot overwrite it.
       const current = await getWorkflowDefinition(definition.definition_id, dependencies);
-      if (request !== selectionRequest.current) return;
+      if (!active.current || request !== selectionRequest.current) return;
       setDefinitions((items) => [
         ...items.filter((item) => item.definition_id !== current.definition_id),
         current,
@@ -272,11 +291,11 @@ export function WorkflowAuthoringPanel({
       setDocumentText(JSON.stringify(current.document, null, 2));
       setValidation(null);
     } catch (error) {
-      if (request === selectionRequest.current) {
+      if (active.current && request === selectionRequest.current) {
         setNotice({kind: 'error', message: errorMessage(error)});
       }
     } finally {
-      if (request === selectionRequest.current) setLoading(false);
+      if (active.current && request === selectionRequest.current) setLoading(false);
     }
   };
 
@@ -313,20 +332,24 @@ export function WorkflowAuthoringPanel({
   };
 
   const validate = async () => {
+    if (mutationsBlocked || writeInFlight.current) return;
+    const request = ++selectionRequest.current;
     const parsed = document();
     if (!parsed) return;
     setLoading(true);
     setNotice(null);
     try {
-      setValidation(await validateWorkflowDefinition(parsed, dependencies));
+      const next = await validateWorkflowDefinition(parsed, dependencies);
+      if (active.current && request === selectionRequest.current) setValidation(next);
     } catch (error) {
-      setNotice({kind: 'error', message: errorMessage(error)});
+      if (active.current && request === selectionRequest.current) setNotice({kind: 'error', message: errorMessage(error)});
     } finally {
-      setLoading(false);
+      if (active.current && request === selectionRequest.current) setLoading(false);
     }
   };
 
   const save = async () => {
+    if (writeInFlight.current) return;
     const normalizedId = definitionId.trim();
     const parsed = document();
     if (!normalizedId) {
@@ -344,6 +367,7 @@ export function WorkflowAuthoringPanel({
       });
       return;
     }
+    writeInFlight.current = true;
     setMutating(true);
     setNotice(null);
     try {
@@ -355,6 +379,7 @@ export function WorkflowAuthoringPanel({
           dependencies,
         )
         : await createWorkflowDefinition(normalizedId, parsed, dependencies);
+      if (!active.current) return;
       setDefinitions((current) => [
         ...current.filter((item) => item.definition_id !== saved.definition_id),
         saved,
@@ -363,6 +388,7 @@ export function WorkflowAuthoringPanel({
       setDocumentText(JSON.stringify(saved.document, null, 2));
       setValidation(null);
     } catch (error) {
+      if (!active.current) return;
       const unknown = isMutationResultUnknown(error);
       if (unknown) setUnknownMutationBlocked(true);
       setNotice({
@@ -370,12 +396,14 @@ export function WorkflowAuthoringPanel({
         message: errorMessage(error),
       });
     } finally {
-      setMutating(false);
+      writeInFlight.current = false;
+      if (active.current) setMutating(false);
     }
   };
 
   const publish = async () => {
-    if (!selectedDefinition || selectedDefinition.state !== 'draft' || mutationsBlocked) return;
+    if (!selectedDefinition || selectedDefinition.state !== 'draft' || mutationsBlocked || writeInFlight.current) return;
+    writeInFlight.current = true;
     setMutating(true);
     setNotice(null);
     try {
@@ -384,10 +412,12 @@ export function WorkflowAuthoringPanel({
         selectedDefinition.etag,
         dependencies,
       );
+      if (!active.current) return;
       setDefinitions((current) => current.map((item) => (
         item.definition_id === published.definition_id ? published : item
       )));
     } catch (error) {
+      if (!active.current) return;
       const unknown = isMutationResultUnknown(error);
       if (unknown) setUnknownMutationBlocked(true);
       setNotice({
@@ -395,12 +425,14 @@ export function WorkflowAuthoringPanel({
         message: errorMessage(error),
       });
     } finally {
-      setMutating(false);
+      writeInFlight.current = false;
+      if (active.current) setMutating(false);
     }
   };
 
   const remove = async () => {
-    if (!selectedDefinition || selectedDefinition.state !== 'draft' || mutationsBlocked) return;
+    if (!selectedDefinition || selectedDefinition.state !== 'draft' || mutationsBlocked || writeInFlight.current) return;
+    writeInFlight.current = true;
     setMutating(true);
     setNotice(null);
     try {
@@ -409,6 +441,7 @@ export function WorkflowAuthoringPanel({
         selectedDefinition.etag,
         dependencies,
       );
+      if (!active.current) return;
       setDefinitions((current) => current.filter((item) => (
         item.definition_id !== selectedDefinition.definition_id
       )));
@@ -417,6 +450,7 @@ export function WorkflowAuthoringPanel({
       setDocumentText(EMPTY_WORKFLOW_DOCUMENT);
       setValidation(null);
     } catch (error) {
+      if (!active.current) return;
       const unknown = isMutationResultUnknown(error);
       if (unknown) setUnknownMutationBlocked(true);
       setNotice({
@@ -424,7 +458,8 @@ export function WorkflowAuthoringPanel({
         message: errorMessage(error),
       });
     } finally {
-      setMutating(false);
+      writeInFlight.current = false;
+      if (active.current) setMutating(false);
     }
   };
 
@@ -433,7 +468,7 @@ export function WorkflowAuthoringPanel({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><FilePenLine className="h-4 w-4" aria-hidden="true" />Workflow definitions (v4)</CardTitle>
-          <p className="text-sm leading-6 text-text-muted">Author JSON definitions through currently Profile-admitted Workflow v4 actions. This surface does not use the retired Flow endpoint or ReactFlow.</p>
+          <p className="text-sm leading-6 text-text-muted">処理をノードとして追加し、端子をつないでFlowを作成します。このProfileに許可された操作だけを利用できます。</p>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -462,7 +497,13 @@ export function WorkflowAuthoringPanel({
               setNotice(null);
             }}>New draft</Button>
           </div>
+          <details className="rounded-lg border border-border p-3" onToggle={event => setConnectionsOpen(event.currentTarget.open)}>
+            <summary className="cursor-pointer text-sm font-medium">接続・モデルをこの画面で登録</summary>
+            <p className="mt-2 text-xs text-text-muted">Settingsと同じProfileの登録情報を使います。Flowの編集中でも登録でき、APIキーはノードやFlow定義に保存されません</p>
+            {isVisible && connectionsOpen && <div className="mt-4"><ActiveProfileConnections/></div>}
+          </details>
           <div role="tablist" aria-label="Workflow editor mode" className="flex flex-wrap gap-2">
+            <Button role="tab" type="button" variant={editorMode === 'canvas' ? 'default' : 'outline'} size="sm" aria-selected={editorMode === 'canvas'} onClick={() => setEditorMode('canvas')}>Node canvas</Button>
             <Button
               role="tab"
               type="button"
@@ -484,7 +525,18 @@ export function WorkflowAuthoringPanel({
               Source JSON
             </Button>
           </div>
-          {editorMode === 'visual' ? (
+          {editorMode === 'canvas' ? (
+            visualDocument ? <WorkflowCanvas
+              key={`${selectedDefinitionId ?? 'new-draft'}:${palette?.catalog_digest ?? 'unloaded'}`}
+              document={visualDocument}
+              profileId={boundProfileId ?? undefined}
+              planDigest={boundPlanDigest ?? undefined}
+              layoutKey={boundProfileId && definitionId.trim() ? JSON.stringify([boundProfileId,definitionId.trim()]) : undefined}
+              operations={palette?.operations ?? []}
+              disabled={mutationsBlocked}
+              onChange={(next) => {setDocumentText(workflowDocumentJson(next)); setValidation(null);}}
+            /> : <WorkflowAuthoringNotice kind="error" message="JSONに構文エラーがあります。Source JSONで修正してください。入力内容は保持されています。" />
+          ) : editorMode === 'visual' ? (
             <div className="grid gap-3 rounded-lg border border-border bg-bg-main p-3">
               <div>
                 <p className="text-sm font-medium text-text-main">Visual steps and dependencies</p>
@@ -570,6 +622,7 @@ export function WorkflowAuthoringPanel({
           ) : null}
         </CardContent>
       </Card>
+      {isVisible && <WorkflowRunPanel key={`${selectedDefinitionId ?? 'new'}:${palette?.catalog_digest ?? 'unloaded'}`} operations={palette?.operations ?? []} contextKey={palette?.catalog_digest ?? "unloaded"} definition={selectedDefinition} dirty={Boolean(selectedDefinition && JSON.stringify(selectedDefinition.document) !== JSON.stringify(visualDocument))} disabled={mutationsBlocked} stopDisabled={profileMutationBlocked} dependencies={dependencies}/>}
       <Card>
         <CardHeader>
           <CardTitle>Saved definitions</CardTitle>
@@ -591,6 +644,8 @@ export function WorkflowAuthoringPanel({
           )) : <p className="text-sm text-text-muted">No Workflow definitions are currently visible.</p>}
         </CardContent>
       </Card>
+      <details className="rounded-lg border border-border">
+        <summary className="cursor-pointer px-4 py-3 text-sm text-text-muted">詳細：操作の識別子・検証情報</summary>
       <Card>
         <CardHeader>
           <CardTitle>Active operation palette</CardTitle>
@@ -621,6 +676,7 @@ export function WorkflowAuthoringPanel({
           )) : <p className="text-sm text-text-muted">Reload to retrieve the active palette.</p>}
         </CardContent>
       </Card>
+      </details>
     </div>
   );
 }
@@ -662,7 +718,12 @@ export interface FlowProps {
 }
 
 export function Flow({operationsClient, authoringDependencies}: FlowProps = {}) {
+  const {selectedProfileId} = useProfileSelection();
   const surface = useRuntimeSurface<unknown>('operations', operationsClient);
+  const authoringBindingKey = JSON.stringify([selectedProfileId ?? surface.data?.profile_id,surface.data?.profile_id,surface.data?.profile_revision,surface.data?.plan_digest,surface.data?.records.activation_record.digest]);
+  const boundAuthoringDependencies = useMemo(()=>bindWorkflowProfile(surface.data ? {
+    profileId:surface.data.profile_id,profileRevision:surface.data.profile_revision,planDigest:surface.data.plan_digest,
+  } : null,authoringDependencies),[authoringBindingKey,authoringDependencies]);
   const descriptor = LAUNCHER_ADVANCED_VIEWS.flow;
   const flows = surface.data ? extractExactFlowDescriptors(surface.data.data) : null;
   const operations = surface.data ? extractExactOperationDescriptors(surface.data.data) : [];
@@ -722,7 +783,7 @@ export function Flow({operationsClient, authoringDependencies}: FlowProps = {}) 
   return (
     <AdvancedSurfaceFrame
       descriptor={descriptor}
-      state={{status: surface.status, stale: surface.stale, error: surface.error}}
+      state={{status: surface.status, stale: surface.stale, error: surface.error, profileId: surface.data?.profile_id}}
       onRetry={() => void refreshFlow()}
     >
       <Card>
@@ -751,7 +812,7 @@ export function Flow({operationsClient, authoringDependencies}: FlowProps = {}) 
           </div>
         </CardContent>
       </Card>
-      {activeTab === 'authoring' ? <WorkflowAuthoringPanel dependencies={authoringDependencies} /> : null}
+      <div hidden={activeTab !== 'authoring'}><WorkflowAuthoringPanel key={authoringBindingKey} isVisible={activeTab === 'authoring'} boundProfileId={surface.data?.profile_id} boundPlanDigest={surface.data?.plan_digest} dependencies={boundAuthoringDependencies} /></div>
       {activeTab === 'profile' && surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Flow catalog provenance" /> : null}
       {activeTab === 'profile' ? (
         surface.status === 'ready' && hasDeclaredCompositions ? (

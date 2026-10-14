@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 from .models import AuthorityReservation, DispatchAuthority, InvocationOutcome
 
@@ -43,11 +44,21 @@ class ContractInvocationProvider(Protocol):
         request: Mapping[str, Any],
         *,
         authority: DispatchAuthority,
+        dispatch_fence: Callable[[str], None] | None = None,
     ) -> InvocationOutcome:
-        """Invoke the pinned Function principal with ephemeral authority."""
+        """Invoke the pinned Function principal with ephemeral authority.
+
+        When supplied, ``dispatch_fence`` MUST run exactly once after the
+        tracked child registers and before any effect. It durably records
+        admission and fences Stop; ignoring it invalidates non-dispatch proof.
+        """
 
     def cancel(self, request_id: str) -> None:
-        """Propagate cancellation to the in-flight Provider request."""
+        """Return only with verified drain, otherwise raise unconfirmed.
+
+        The engine separately recognizes sealed undispatched/terminal state;
+        an absent live handle alone must raise WorkflowCancellationUnconfirmed.
+        """
 
 
 class InputValidator(Protocol):

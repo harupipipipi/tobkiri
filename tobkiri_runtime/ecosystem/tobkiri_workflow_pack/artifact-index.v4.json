@@ -1,43 +1,43 @@
 {
-  "artifact_set_digest": "sha256:7a603507b018bf0c962ea3513620a6d14c5310bd0d5b0a30d16087f6115bf97d",
+  "artifact_set_digest": "sha256:284fbf0814fae677bc58262193479713cdc577ed8aeaa89c336b3ebcd27f32e0",
   "artifacts": [
     {
-      "digest": "sha256:3e408fed40dafd8e100c04c377645bb42a2d331375e7a3f16644910289c4578e",
+      "digest": "sha256:a54c4697b86c2bda62695613150dedd4841c9feaafb19f2811b8228a4ade09b5",
       "path": "backend-integrity.v4.json",
       "role": "asset"
     },
     {
-      "digest": "sha256:363a8194f0154a7901c2360da5f4f9dfc7927d39ebb305468cd7bc0da771197c",
+      "digest": "sha256:9636dae08664425151eb14ed79bc4000335fba89bb6902a7015b3364630e21a4",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:9163fe79211ee6763a04899ca14b5dfedd6490c034c3d4cd8138ca91fe654468",
+      "digest": "sha256:ce4429b377080880f6971dd677bf2f297fc5bf7e86f91daa2a4a5b353da8378f",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:485ff06608e706767c16c597fcd79ace48aa5d22ea000dc07eba27b548a4abe4",
+      "digest": "sha256:8586209456b2cf10cad7a90e958fb9d5c4cf3435de3fe6b759c701e0448cea2c",
       "path": "frontend_contract_map.v4.json",
       "role": "asset"
     },
     {
-      "digest": "sha256:3aad3f30c08d95128bb87d58a4ccad1015910f404171b83baaa3c0d5eba9b7fa",
+      "digest": "sha256:f74da20bc01245b7c83149eb72d81a2853cbcac0ea079c09a104f6c07c49350a",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
       "path": "runtime/provider.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:6f8979544b0979978815aecc6c59f1372f036e6d128318687a0e4e71ba6f8b9e",
+      "digest": "sha256:cedae53c8689c63b51ed41d5e8438ea0249e0dd8ffaa1cb1dd1f528b5e84da5d",
       "path": "schemas/frontend-contract-map.v4.schema.json",
       "role": "schema"
     },
     {
-      "digest": "sha256:6ce340ccfa37ae1f4bb14106d80e202d98b618b92a646eb8e1cbbedcc44f8fcd",
+      "digest": "sha256:771666139606d1ed36dc71eb1eb8de226d3c5496d75eb8fdd5e80382a3b4cacc",
       "path": "schemas/workflow-definition.v4.schema.json",
       "role": "schema"
     },
@@ -60,8 +60,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:9defe0060d23704456fbea08d3dedff4d990ec985aeb8cf7e6edf46cc3755ce5"
+    "signed_digest": "sha256:e698a62125726722f59b0345f07fb0d276b52c60d816a5d3357025c2f4c8d067"
   },
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:63edbbf67a93ff252c86b5e928031bdb6040b0fbe98e61b504f1dd1ed2d00385"
+  "source_identity": "sha256:28811e49e6f986902d2afb4653bfa77edd52c6792383f17b3154e8afaf50b6b0"
 }

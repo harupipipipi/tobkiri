@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:2360e91a7ea0b3895d47300832a4f13b370d0b76eb9b9ccfd99b6841c5a4a02c",
+      "digest": "sha256:370aca11f174fa2dad0e80fdc176f1fa4f46a4eff4cc3aa6a6df88cce07bf31b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "kind": "executable",
       "path": "runtime/calendar.py"
     },
@@ -55,7 +55,7 @@
     {
       "contract_revision_digest": "sha256:1106c9707b6ca3270c266cece7df802999c0ca4adcec79c3ec33eac32f09a137",
       "id": "rumi_schedule_store_pack.calendar.manage",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_schedule_store_pack.calendar-manage"
@@ -65,7 +65,7 @@
     {
       "contract_revision_digest": "sha256:c7713c5d19af7b083a9e77759be115d387722acbc4466a8212f80a61df6f51a3",
       "id": "rumi_schedule_store_pack.calendar.resource",
-      "implementation_digest": "sha256:314b38179518e773d4edebff255a5603c507ab3c53d518c9957236ce0a486a44",
+      "implementation_digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_schedule_store_pack.calendar-read"
@@ -94,9 +94,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
-    "contract_catalog_digest": "sha256:9166bdac2ce939046908514992743c24955bc8064887fe7aefbf4c9026f97f78",
-    "source_identity": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b"
+    "artifact_set_digest": "sha256:dbe0ed2b076aab0cbbee30d57c73aceb662fc597aac0a66145439a89cd52daa0",
+    "contract_catalog_digest": "sha256:5672d985156898da3d84e4ffbf4561435f5b0cd5aab7d8f0d704a2ff8a7bf1bf",
+    "source_identity": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43"
   },
   "migration": {
     "compatibility": "read_only",
@@ -154,7 +154,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f099f40087f1b9f2ccbb3eb8525e39784ea1afb89817482db0d7bd1d2f728ad7",
+    "artifact_digest": "sha256:dbe0ed2b076aab0cbbee30d57c73aceb662fc597aac0a66145439a89cd52daa0",
     "display_name": "Rumi Schedule Store",
     "id": "rumi_schedule_store_pack",
     "kind": "host_extension",
@@ -164,7 +164,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+        "digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -175,7 +175,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+    "source_digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
   },

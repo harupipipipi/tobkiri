@@ -41,3 +41,21 @@ test("application shell owns the viewport while panes own scrolling", () => {
     /@container\s*\(max-width:\s*560px\)[\s\S]*?\.rumi-composer-model-dock\s*\{[^}]*display:\s*flex;[\s\S]*?\.rumi-composer-model-dock \.rumi-composer-widget:not\(\[data-composer-widget="send"\]\)\s*\{[^}]*display:\s*none;/s,
   );
 });
+
+
+test("coarse-pointer attachment targets and their layout slot share a 44px token without enlarging desktop controls", () => {
+  assert.match(indexCss, /--rumi-composer-control-height:\s*38px;/);
+  assert.match(indexCss, /--rumi-composer-send-size:\s*28px;/);
+  assert.match(indexCss, /--rumi-composer-attachment-size:\s*32px;/);
+  const touch = indexCss.slice(indexCss.indexOf("@media (pointer: coarse)"));
+  assert.match(touch, /--rumi-composer-attachment-size:\s*44px;/);
+  const attachment = indexCss.match(/\.rumi-icon-button\.rumi-attachment-button\s*\{([^}]+)\}/)?.[1] ?? "";
+  for (const dimension of ["width", "height", "min-width", "min-height"]) {
+    assert.ok(attachment.includes(`${dimension}: var(--rumi-composer-attachment-size, 32px)`));
+  }
+  const renderer = readFileSync(path.join(WEBAPP_ROOT, "src/renderers/ComposerRenderer.tsx"), "utf8");
+  const attachmentSlot = renderer.slice(renderer.indexOf('id: "file-attach"'), renderer.indexOf('render: () => (', renderer.indexOf('id: "file-attach"')));
+  for (const dimension of ["basis", "min", "max"]) {
+    assert.ok(attachmentSlot.includes(`${dimension}: "var(--rumi-composer-attachment-size, 32px)"`));
+  }
+});

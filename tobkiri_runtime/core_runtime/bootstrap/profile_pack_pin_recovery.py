@@ -179,6 +179,8 @@ def _only_existing_provider_pins_changed(
             return False
         if old.get("pack_id") != new.get("pack_id"):
             return False
+        old = dict(old)
+        new = dict(new)
         old_pin = old.get("artifact_digest")
         new_pin = new.get("artifact_digest")
         old.pop("artifact_digest", None)

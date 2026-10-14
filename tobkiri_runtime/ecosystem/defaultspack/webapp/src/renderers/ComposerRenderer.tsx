@@ -1,3 +1,4 @@
+import { approvalCommandOwnsDraft } from "../lib/approvalCommandDraft";
 import { modelProfileConnectionId } from "../features/models/modelSelectionIdentity";
 import type { ComposerEntityCandidate } from "../lib/composerEntityCandidates";
 import { HISTORY_REFERENCE_DROP_MIME, HISTORY_REFERENCE_DROP_EVENT, type HistoryReferenceDropDetail } from "../lib/historyReferences";
@@ -143,7 +144,7 @@ import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
 import { declarativeIconForName } from "../lib/declarativeIcons";
 import { startPinchAudioRecorder, type ActiveAudioRecorder } from "../ambient/ambientMedia";
-import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
+import composerPaletteTemplateJson from "../templates/composerPalette.template.json" with { type: "json" };
 
 export { composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
 
@@ -3294,7 +3295,7 @@ export function ComposerRenderer({
       const source = commands.find((command) => command.id === protocolOption.protocol_source_command_id);
       if (!source || source.availability?.status === "unavailable") return;
       onCommandSelect?.(source.id, `/${source.name} ${protocolOption.protocol_option_value}`);
-      onInputChange("");
+      if (!approvalCommandOwnsDraft(source)) onInputChange("");
       return;
     }
 
@@ -3332,7 +3333,8 @@ export function ComposerRenderer({
     const localCommandInput = command && isLocalTaskPetCommand(command) ? "/pet" : rawInput;
     if (onLocalCommandSubmit?.(localCommandInput)) return;
     onCommandSelect?.(commandId, rawInput);
-    if (hasSlashCommandPrefix && !(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
+    if (hasSlashCommandPrefix && !approvalCommandOwnsDraft(command)
+      && !(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
       onInputChange("");
     }
   };
@@ -4125,7 +4127,7 @@ export function ComposerRenderer({
       homeSlot: "editor-leading",
       order: 20,
       visible: templateAllowsFileAttachments || templateAllowsSlashCommands,
-      width: { basis: "32px", min: "32px", max: "32px" },
+      width: { basis: "var(--rumi-composer-attachment-size, 32px)", min: "var(--rumi-composer-attachment-size, 32px)", max: "var(--rumi-composer-attachment-size, 32px)" },
       className: "relative overflow-visible",
       render: () => (
         <>

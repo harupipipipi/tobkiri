@@ -100,6 +100,13 @@ test('every Advanced descriptor has capability/action metadata parity', () => {
   assert.equal(LAUNCHER_ADVANCED_VIEWS.apiMap.actions, 'read_only');
 });
 
+test('only Flow is a primary task surface outside the Devtools preference gate', () => {
+  for (const id of ADVANCED_VIEW_ORDER) {
+    const descriptor = LAUNCHER_ADVANCED_VIEWS[id];
+    assert.equal(descriptor.devtoolsGated ?? true, id === 'flow' ? false : true, id);
+  }
+});
+
 test('read-only descriptors cannot expose an invoke operation even with authoritative evidence', () => {
   for (const id of ADVANCED_VIEW_ORDER) {
     const descriptor = LAUNCHER_ADVANCED_VIEWS[id];

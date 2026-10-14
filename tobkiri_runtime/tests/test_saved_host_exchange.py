@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from tests.test_saved_bridge_callbacks import _setup
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.continuation_envelope import seal_continuation_intent

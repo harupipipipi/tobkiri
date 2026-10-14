@@ -119,6 +119,9 @@ def definitions_from_pack_data(
                         ),
                         "description": raw.get("description") or config.get("summary", ""),
                         "input_schema": schema["parameters"],
+                        "result_schema": schema.get("result", {}),
+                        **({"result_schema_format": schema["result_format"]}
+                           if "result_format" in schema else {}),
                         "execution": _execution(config),
                         "authority": authority,
                         "risk": config.get("risk", "unknown"),

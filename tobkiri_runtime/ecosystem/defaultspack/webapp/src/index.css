@@ -397,10 +397,10 @@ body {
 }
 
 .rumi-icon-button.rumi-attachment-button {
-  min-height: 32px;
-  min-width: 32px;
-  height: 32px;
-  width: 32px;
+  min-height: var(--rumi-composer-attachment-size, 32px);
+  min-width: var(--rumi-composer-attachment-size, 32px);
+  height: var(--rumi-composer-attachment-size, 32px);
+  width: var(--rumi-composer-attachment-size, 32px);
   align-self: center;
 }
 
@@ -1871,6 +1871,7 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 .rumi-composer-frame {
   --rumi-composer-control-height: 38px;
   --rumi-composer-send-size: 28px;
+  --rumi-composer-attachment-size: 32px;
 }
 
 .rumi-composer-frame .rumi-composer-control-surface,
@@ -1926,5 +1927,6 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
   .rumi-composer-frame {
     --rumi-composer-control-height: 44px;
     --rumi-composer-send-size: 44px;
+    --rumi-composer-attachment-size: 44px;
   }
 }

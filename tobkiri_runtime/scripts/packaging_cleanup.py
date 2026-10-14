@@ -171,20 +171,32 @@ class _WindowsApi:
         directory: bool,
         delete_access: bool = True,
         share_mode: int = _WINDOWS_HANDLE_SHARE_MODE,
+        ancestor: bool = False,
     ) -> int:
-        """Open a pinned guard or mutation handle without following reparses."""
+        """Pin an ancestor or open a mutation target without delete sharing.
+
+        Ancestors need only traversal and identity rights. Requesting DELETE
+        or directory-list access on these pins can conflict with the kernel
+        destination-directory open performed during quarantine rename.
+        Mutation handles request DELETE only when delete_access is enabled;
+        ancestor pins never request DELETE or directory enumeration rights.
+        """
 
         if share_mode & _WINDOWS_FILE_SHARE_DELETE:
             raise ValueError("Windows cleanup handles must not share delete access")
 
+        if ancestor and not directory:
+            raise ValueError("Windows cleanup ancestor must be a directory")
         access = _WINDOWS_FILE_READ_ATTRIBUTES
-        if delete_access:
+        if delete_access and not ancestor:
             access |= _WINDOWS_DELETE
         flags = _WINDOWS_FILE_FLAG_OPEN_REPARSE_POINT
         if directory:
             # Root/ancestor handles are also the non-delete-sharing trust
             # boundary for relative traversal and identity checks.
-            access |= _WINDOWS_FILE_LIST_DIRECTORY | _WINDOWS_FILE_TRAVERSE
+            access |= _WINDOWS_FILE_TRAVERSE
+            if not ancestor:
+                access |= _WINDOWS_FILE_LIST_DIRECTORY
             flags |= _WINDOWS_FILE_FLAG_BACKUP_SEMANTICS
         handle = self._create_file(
             os.fspath(path),
@@ -1448,6 +1460,7 @@ def _bind_windows_handles(
                 # sharing, but do not request DELETE access on it.
                 delete_access=False,
                 share_mode=_WINDOWS_HANDLE_SHARE_MODE,
+                ancestor=True,
             )
             owned_handles.append(_WindowsHandleRecord(expected.path, handle, None))
             native_identity = api.identity(handle)
@@ -2417,10 +2430,12 @@ def _prepare_posix_sealed_tree(
             reason="sealed POSIX reset requires descriptor and mount identity",
             attempts=attempts,
         )
+    mount_identity = binding.posix_mount_identity
+    assert mount_identity is not None
     dynamic_inventory = expected_tree is None
     normalized = (
         {"": True}
-        if dynamic_inventory
+        if expected_tree is None
         else _normalize_expected_tree(
             expected_tree,
             operation=operation,
@@ -2561,7 +2576,7 @@ def _prepare_posix_sealed_tree(
                     )
                     _assert_posix_mount_identity(
                         child_fd,
-                        binding.posix_mount_identity,
+                        mount_identity,
                         path=child_path,
                         operation=operation,
                         attempts=attempts,
@@ -2591,7 +2606,7 @@ def _prepare_posix_sealed_tree(
                     try:
                         _assert_posix_mount_identity(
                             file_fd,
-                            binding.posix_mount_identity,
+                            mount_identity,
                             path=child_path,
                             operation=operation,
                             attempts=attempts,
@@ -2980,10 +2995,8 @@ def run_process_and_wait(
 ) -> None:
     """Run a packaging child to completion and close its process handles."""
 
-    popen_kwargs: dict[str, object] = {"cwd": os.fspath(cwd)}
-    if env is not None:
-        popen_kwargs["env"] = dict(env)
-    with subprocess.Popen(command, **popen_kwargs) as child:
+    child_env = dict(env) if env is not None else None
+    with subprocess.Popen(command, cwd=os.fspath(cwd), env=child_env) as child:
         return_code = child.wait()
         _close_child_streams(child)
     if return_code:
@@ -3180,7 +3193,7 @@ def remove_owned_path(
     if expected_identity is not None and target_identity.exists:
         actual_identity = target_identity.signature[:2]
         if actual_identity != expected_identity:
-            error = _security_error(
+            identity_error = _security_error(
                 operation=operation,
                 path=target,
                 reason="owned path differs from its creation-time identity",
@@ -3190,9 +3203,9 @@ def remove_owned_path(
                 operation=operation,
                 path=target,
                 attempts=0,
-                primary=error,
+                primary=identity_error,
             )
-            raise error
+            raise identity_error
     if child is not None:
         try:
             _ensure_child_exited(child, operation=operation, path=target)
@@ -3216,6 +3229,11 @@ def remove_owned_path(
                 attempts=0,
             )
         if unseal_read_only:
+            if binding.parent_fd is None:
+                raise _security_error(
+                    operation=operation, path=target, attempts=0,
+                    reason="sealed POSIX reset requires a bound parent descriptor",
+                )
             normalized_expected_tree = _prepare_posix_sealed_tree(
                 binding.parent_fd,
                 target.name,

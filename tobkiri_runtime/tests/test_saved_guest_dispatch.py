@@ -133,7 +133,9 @@ def test_enabled_stream_plan_seals_only_acknowledged_ai_target(
     mode: str, replacement: tuple[str, str] | None,
 ) -> None:
     """Real guest ABI and ledger keep stream selection inside the exact seal."""
-    from ecosystem.defaultspack.runtime import saved_conversation
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+        saved_conversation,
+    )
 
     transport = request()
     transport["payload"]["request"]["tool_selection"] = {"mode": mode}

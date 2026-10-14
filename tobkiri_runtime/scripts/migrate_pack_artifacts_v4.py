@@ -15,7 +15,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Sequence, Iterable, Mapping
+
+from jsonschema import Draft202012Validator, SchemaError
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -655,6 +657,22 @@ def _contract_document(
     )
     operations = []
     for item in source["operations"]:
+        overrides = item.get("schemas", {})
+        if (not isinstance(overrides, Mapping)
+                or set(overrides) - {"input", "output", "error"}
+                or any(not isinstance(value, Mapping) for value in overrides.values())):
+            raise PackV4MigrationError("Operation schema overrides are invalid")
+        try:
+            for schema in overrides.values():
+                Draft202012Validator.check_schema(schema)
+        except SchemaError as exc:
+            raise PackV4MigrationError("Operation schema override is not a valid JSON Schema") from exc
+        operation_schemas = {
+            "input": overrides.get("input", input_schema),
+            "output": overrides.get("output", output_schema),
+            "error": overrides.get("error", error_schema),
+        }
+        schema_catalog.update({_digest(value): value for value in operation_schemas.values()})
         operation_effects = item.get("effect_ceiling", effects)
         if (
             not isinstance(operation_effects, list)
@@ -670,9 +688,9 @@ def _contract_document(
         operations.append(
             {
                 "operation_id": item["id"],
-                "input_schema_digest": _digest(input_schema),
-                "output_schema_digest": _digest(output_schema),
-                "error_schema_digest": _digest(error_schema),
+                "input_schema_digest": _digest(operation_schemas["input"]),
+                "output_schema_digest": _digest(operation_schemas["output"]),
+                "error_schema_digest": _digest(operation_schemas["error"]),
                 "effect_ceiling": operation_effects,
                 "scope_semantics": (
                     "host_broker"
@@ -912,14 +930,14 @@ def _function_sources(record: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     ]
 
 
-def _artifact_set_digest(artifacts: list[Mapping[str, Any]]) -> str:
+def _artifact_set_digest(artifacts: Sequence[Mapping[str, Any]]) -> str:
     return _digest(artifacts)
 
 
 def _manifest_document(
     record: Mapping[str, Any],
     source_identity: str,
-    contracts: list[Mapping[str, Any]],
+    contracts: Sequence[Mapping[str, Any]],
     contract_catalog_digest: str,
     executable_catalog_artifact_digest: str | None = None,
 ) -> dict[str, Any]:
@@ -939,7 +957,7 @@ def _manifest_document(
     artifact_set.sort(key=lambda item: item["path"])
     artifact_set_digest = _artifact_set_digest(artifact_set)
     functions = []
-    operation_catalog = []
+    operation_catalog: list[dict[str, Any]] = []
     provider_catalog = []
     contract_source_by_id = {
         str(source["contract_id"]): source for source in record["provided_contracts"]
@@ -1137,8 +1155,9 @@ def render_artifact_documents(
     """
     manifest = copy.deepcopy(dict(manifest))
     contract_catalog = copy.deepcopy(dict(contract_catalog))
-    executable = copy.deepcopy(dict(executable))
-    executable["catalog_digest"] = _digest(
+    executable_copy = copy.deepcopy(dict(executable))
+    executable = executable_copy
+    executable_copy["catalog_digest"] = _digest(
         {key: value for key, value in executable.items() if key != "catalog_digest"}
     )
     contract_text = _json_text(contract_catalog)
@@ -1313,10 +1332,14 @@ def _verify_function_operation_principals(manifest: Mapping[str, Any]) -> None:
     contracts = manifest.get("contracts")
     operation_catalog = manifest.get("operation_catalog")
     provider_catalog = manifest.get("provider_catalog")
-    if not all(
-        isinstance(value, list)
-        for value in (functions, contracts, operation_catalog, provider_catalog)
-    ) or not isinstance(pack, Mapping) or not isinstance(requirements, Mapping):
+    if (
+        not isinstance(functions, list)
+        or not isinstance(contracts, list)
+        or not isinstance(operation_catalog, list)
+        or not isinstance(provider_catalog, list)
+        or not isinstance(pack, Mapping)
+        or not isinstance(requirements, Mapping)
+    ):
         raise PackV4MigrationError("generated Pack v4 principal fields are malformed")
 
     pack_id = str(pack.get("id") or "")

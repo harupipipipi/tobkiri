@@ -58,6 +58,7 @@ from .ports import (
     StaticAuthorityQuery,
 )
 from tobkiri_protocol.canonical import strict_loads
+from tobkiri_protocol.data_codec import Limits, clone_payload
 
 
 # These Host-owned operations are reads even though their signed executable
@@ -270,7 +271,7 @@ class PreparedInvocationSnapshot:
         object.__setattr__(
             self,
             "normalized_payload",
-            _snapshot_mapping(self.normalized_payload, "snapshot payload"),
+            _snapshot_data_mapping(self.normalized_payload),
         )
         object.__setattr__(
             self,
@@ -1691,6 +1692,21 @@ def _fresh_prepared_deadline(
     if remaining_wall <= 0:
         raise RequestTimedOutError("prepared invocation expired before execution")
     return monotonic_now + min(timeout_ms / 1000, remaining_wall)
+
+
+def _snapshot_data_mapping(value: Any) -> Mapping[str, Any]:
+    """Snapshot bounded finite data without interpreting user-shaped markers.
+
+    The existing encrypted journal retains ordinary JSON floats. Its AEAD
+    authenticates the whole record before from_dict; the v1 snapshot shape and
+    Broker request digest remain unchanged. Authority fingerprints below keep
+    their strict canonical JSON policy.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError("snapshot payload must be an object")
+    return _freeze_payload(clone_payload(
+        _thaw_payload(value), limits=Limits(max_bytes=10 * 1024 * 1024),
+    ))
 
 
 def _snapshot_mapping(value: Any, label: str) -> Mapping[str, Any]:

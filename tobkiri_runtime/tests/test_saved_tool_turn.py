@@ -10,7 +10,7 @@ from core_runtime.authority.v4 import AuthorityDenied
 from core_runtime.bootstrap.saved_bridge import (
     ALLOWED_TARGETS, DEFINITION, READINESS, SavedBridgeCallbacks, project_saved_tool_result,
 )
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, INVOKE_RESULT

@@ -323,7 +323,7 @@ def _configure_http_environment() -> None:
 
 def _parse_cli_args(argv: list[str]) -> None:
     """Parse launcher arguments before runtime setup or imports."""
-    parser = argparse.ArgumentParser(description="Launch the Tobkiri Defaultspack desktop app.")
+    parser = argparse.ArgumentParser(description="Launch the Tobkiri Harness desktop app.")
     parser.parse_args(argv)
 
 

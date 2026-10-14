@@ -6,12 +6,12 @@
       "path": "defaultspack/chat_reference_presentation.py"
     },
     {
-      "digest": "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
+      "digest": "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
       "kind": "asset",
       "path": "defaultspack/frontend_contract_map.v4.json"
     },
     {
-      "digest": "sha256:d5714005b16a5f652ef7dcae72da883625410d8e324c82a6d78524499f2e0c24",
+      "digest": "sha256:92e68f44b161058ef26b212ccc2c8122d81b264270d6b4c06ef257828ce7db6f",
       "kind": "executable",
       "path": "defaultspack/http_surface_presentation.py"
     },
@@ -26,11 +26,6 @@
       "path": "defaultspack/managed_desktop_presentation.py"
     },
     {
-      "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
-      "kind": "executable",
-      "path": "defaultspack/model_access_presentation.py"
-    },
-    {
       "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
       "kind": "executable",
       "path": "defaultspack/provider_status_presentation.py"
@@ -41,7 +36,7 @@
       "path": "defaultspack/turn_progress_presentation.py"
     },
     {
-      "digest": "sha256:6df8e4db190e32a6dd82f6ecdab82bd2f52868e91e1aba877cdf9eeaea3c775e",
+      "digest": "sha256:baf8f5546c24e0c9925b73d14fa69e4670854ea0e629a13b63abf038a4e362a6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -74,11 +69,6 @@
       "digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
       "kind": "executable",
       "path": "runtime/python_sandbox_guest.py"
-    },
-    {
-      "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
-      "kind": "executable",
-      "path": "runtime/saved_conversation.py"
     },
     {
       "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
@@ -666,6 +656,106 @@
       "path": "tools/workflow_status/manifest.json"
     },
     {
+      "digest": "sha256:705b03aa96998b10affc7ed2d1b45aee639aa1bb7e2bce48248cbf0ed95e60af",
+      "kind": "asset",
+      "path": "ui/assets/tobkiri-startup-blade-cut.svg"
+    },
+    {
+      "digest": "sha256:de7d43f3386105ab20952958c2c25beb0d903e2aeb6e1aef57c49a648c0d1c07",
+      "kind": "asset",
+      "path": "ui/codex.png"
+    },
+    {
+      "digest": "sha256:fc4029a648877c8fcc29da22a49ec7e495aafacd0848e5f4a2c5647c261bc25b",
+      "kind": "asset",
+      "path": "ui/dev_panel.js"
+    },
+    {
+      "digest": "sha256:27aa18de562bc702c2b88e3548cb1823661a3077c4951f132e103cbaa24ca1eb",
+      "kind": "asset",
+      "path": "ui/licenses/Beautiful-UI-MIT.txt"
+    },
+    {
+      "digest": "sha256:b72c00e3990064d4f87009d62fb1fbd3e7154c39d41eb23c94342d209f6defc0",
+      "kind": "asset",
+      "path": "ui/mediapipe/NOTICE.md"
+    },
+    {
+      "digest": "sha256:11fdcbe35b15e222bd60f02c1be7e5f8dd8a73721a0a55cf8adcf38b88977b9e",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_internal.js"
+    },
+    {
+      "digest": "sha256:6a5c64584c2ab61c763b6e204afbdbc7ce1caf7f5216187322bca8df94f646bc",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_internal.wasm"
+    },
+    {
+      "digest": "sha256:e23be0c990685926cc0a13a46936015527f36e95adf965250ea08d3b9fd28ef2",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_module_internal.js"
+    },
+    {
+      "digest": "sha256:617b8e0248dbd27e9d7ece4218004eae4cefb499196d1bb4fa0e3fef21708756",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_module_internal.wasm"
+    },
+    {
+      "digest": "sha256:df375e4da93bbc1078481da6e2e519fd55ea125a14a00379a9b7bb395fb56c80",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.js"
+    },
+    {
+      "digest": "sha256:8a3092d34c79d3f57e6ba8592105e8a90f6b07c27891ffecd14cca428bfd3e31",
+      "kind": "asset",
+      "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm"
+    },
+    {
+      "digest": "sha256:fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+      "kind": "asset",
+      "path": "ui/models/hand_landmarker.task"
+    },
+    {
+      "digest": "sha256:45506ec23dc49905a1ba7387454e558a33e3fca8833b072fde0fe6b908bf0ab0",
+      "kind": "asset",
+      "path": "ui/pet/tobkiri-pet.png"
+    },
+    {
+      "digest": "sha256:aaa384dfbad2ab3cb07258b2926578aac0046354ca927fad5651d0aec929c3b1",
+      "kind": "asset",
+      "path": "ui/shell-app.css"
+    },
+    {
+      "digest": "sha256:b8515d23cd2f3a09b88fdd9bccafeb165ff36486c75a2804fe1999f97c0e09e1",
+      "kind": "asset",
+      "path": "ui/shell-app.js"
+    },
+    {
+      "digest": "sha256:2de0ff8600aae40dccbe1b274504f645bd084074f849b0e59f22e4dd35bc51e8",
+      "kind": "asset",
+      "path": "ui/shell-defaultspack-app.js"
+    },
+    {
+      "digest": "sha256:8c9df56aeeebf2c268ac745246696c22b4ef074941a55802de5d1c88fab83807",
+      "kind": "asset",
+      "path": "ui/shell-icons.js"
+    },
+    {
+      "digest": "sha256:6f5330f281c713c1b765ec52977b36599538b8d52c5dd3ce94d211f5b0e7debf",
+      "kind": "asset",
+      "path": "ui/shell-rolldown-runtime.js"
+    },
+    {
+      "digest": "sha256:2710d017c11571b9cb3dd7fb175ccfb6c0b085d6c06e99b1b221da67d44a6562",
+      "kind": "asset",
+      "path": "ui/shell-vendor.js"
+    },
+    {
+      "digest": "sha256:ad5457b00ad44c84874d969d129f1094e4d5d86d772ba7f926f9278b19b5b44b",
+      "kind": "asset",
+      "path": "ui/shell.html"
+    },
+    {
       "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
       "kind": "sidecar",
       "path": "update_metadata.v1.json"
@@ -673,11 +763,11 @@
   ],
   "contracts": [
     {
-      "contract_id": "conversation.saved-turn.v1",
+      "contract_id": "conversation.turn.v1",
       "operations": [
-        "saved_complete"
+        "complete"
       ],
-      "revision_digest": "sha256:5bd0b6d464b4d1a254f81b4729d532d8213d9a0d3e1181356af5210044fa5d4c"
+      "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a"
     },
     {
       "contract_id": "tobkiri.resource.application.presentation.v1",
@@ -685,13 +775,6 @@
         "defaultspack.presentation.read"
       ],
       "revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967"
-    },
-    {
-      "contract_id": "conversation.turn.v1",
-      "operations": [
-        "complete"
-      ],
-      "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a"
     },
     {
       "contract_id": "tobkiri.service.python.sandbox.v1",
@@ -723,16 +806,6 @@
       "role": "brokered"
     },
     {
-      "contract_revision_digest": "sha256:5bd0b6d464b4d1a254f81b4729d532d8213d9a0d3e1181356af5210044fa5d4c",
-      "id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
-      "isolation": "pack_vm",
-      "operations": [
-        "saved_complete"
-      ],
-      "role": "brokered"
-    },
-    {
       "contract_revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
       "id": "defaultspack.python-sandbox-guest",
       "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
@@ -744,9 +817,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:28c50599a3b0018f807258169450f53ca360cd094a23e21edd629fd996656547",
-    "contract_catalog_digest": "sha256:ace3b81010072c8eb19a218f88115cd8b0684b4575c60dfbdb5a73b1435dc0bd",
-    "source_identity": "sha256:9bbc8840a4695c837188176fd490a877edbe6a392b61c5744f9dbc0b8fcf7ebe"
+    "artifact_set_digest": "sha256:bd3693f15c5801741d8f280e7a1df79dc9cd5a12e4cc5ad17ab625dc7230e20f",
+    "contract_catalog_digest": "sha256:1519eda3b9be5e7084b9efe2732bf2f4072aa92de18d421bced0c4727fb426f6",
+    "source_identity": "sha256:03a0bd6b9ccb1cc649872e59ec2fcccd2b2872c51586a19c3aa55485a91cc319"
   },
   "migration": {
     "compatibility": "none",
@@ -778,19 +851,11 @@
       "owner": "defaultspack",
       "provider_id": "defaultspack.python-sandbox-guest",
       "source_kind": "canonical_v4_contract"
-    },
-    {
-      "contract_reference": "conversation.saved-turn.v1",
-      "effect_ceiling": [],
-      "operation_id": "saved_complete",
-      "owner": "defaultspack",
-      "provider_id": "defaultspack.conversation.saved",
-      "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:28c50599a3b0018f807258169450f53ca360cd094a23e21edd629fd996656547",
-    "display_name": "Tobkiri Defaults Providers",
+    "artifact_digest": "sha256:bd3693f15c5801741d8f280e7a1df79dc9cd5a12e4cc5ad17ab625dc7230e20f",
+    "display_name": "Tobkiri Harness Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
     "version": "4.0.1"
@@ -799,7 +864,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:9bbc8840a4695c837188176fd490a877edbe6a392b61c5744f9dbc0b8fcf7ebe",
+        "digest": "sha256:03a0bd6b9ccb1cc649872e59ec2fcccd2b2872c51586a19c3aa55485a91cc319",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -810,7 +875,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:9bbc8840a4695c837188176fd490a877edbe6a392b61c5744f9dbc0b8fcf7ebe",
+    "source_digest": "sha256:03a0bd6b9ccb1cc649872e59ec2fcccd2b2872c51586a19c3aa55485a91cc319",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
@@ -830,14 +895,6 @@
       ],
       "owner": "defaultspack",
       "provider_id": "defaultspack.conversation"
-    },
-    {
-      "contract_reference": "conversation.saved-turn.v1",
-      "operations": [
-        "saved_complete"
-      ],
-      "owner": "defaultspack",
-      "provider_id": "defaultspack.conversation.saved"
     },
     {
       "contract_reference": "tobkiri.service.python.sandbox.v1",

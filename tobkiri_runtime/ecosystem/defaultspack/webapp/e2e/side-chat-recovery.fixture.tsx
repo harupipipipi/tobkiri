@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import descriptor from "../../../tobkiri_side_chat_pack/frontend/contributions/side-chat.json";
+import descriptor from "../../../tobkiri_side_chat_pack/frontend/contributions/side-chat.json" with { type: "json" };
 import { FrontendViewSlot } from "../src/host/FrontendViewSlot";
 import type { FrontendCatalog, CapturedCapabilityInvocation, VerifiedFrontendContribution } from "../src/host/frontendContracts";
 

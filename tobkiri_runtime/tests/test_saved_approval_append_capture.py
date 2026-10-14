@@ -4,7 +4,7 @@ from copy import deepcopy
 import pytest
 from core_runtime.authority.v4 import AuthorityDenied
 from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
-from ecosystem.defaultspack.runtime import saved_conversation as guest
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as guest
 
 
 @pytest.mark.parametrize("mode", [None, "ask", "agent", "full"])

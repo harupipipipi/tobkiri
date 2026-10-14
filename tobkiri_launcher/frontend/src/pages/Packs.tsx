@@ -12,7 +12,9 @@ import { Button } from '@/src/components/ui/Button';
 import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
+import { InspectedProfileNotice } from '@/src/components/advanced/InspectedProfileNotice';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
+import { isProfileMutationBlocked, useProfileSelection } from '@/src/lib/profileSelection';
 import {
   admitSignedPackFromFolder,
   fetchSignedPackAdmissionStatus,
@@ -120,6 +122,8 @@ export function Packs() {
 
   const filteredPacks = packs.filter(pack => pack.name.toLowerCase().includes(search.toLowerCase()));
   const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
+  const {selectedProfileId} = useProfileSelection();
+  const profileWriteBlocked = isProfileMutationBlocked(selectedProfileId, packCatalogBinding?.profile_id ?? null);
 
   const handleApprove = async (packId: string) => {
     setApprovingPackId(packId);
@@ -195,7 +199,7 @@ export function Packs() {
 
   return (
     <div className="flex-1 overflow-y-auto page-enter">
-      <div className="w-full py-8 pr-6 flex flex-col gap-6">
+      <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-text-main">{t('packs.title')}</h1>
@@ -203,13 +207,13 @@ export function Packs() {
           {isDesktopShellAvailable() ? (
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {onboardingSupported ? (
-                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(true)} loading={admittingPack}>
+                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(true)} loading={admittingPack} disabled={admittingPack || profileWriteBlocked}>
                   <FolderPlus className="h-4 w-4" aria-hidden="true" />
                   Trust and add signed Pack
                 </Button>
               ) : null}
               {admissionReady ? (
-                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(false)} disabled={admittingPack}>
+                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(false)} disabled={admittingPack || profileWriteBlocked}>
                   Add from trusted folder
                 </Button>
               ) : null}
@@ -235,6 +239,7 @@ export function Packs() {
           stale={Boolean(packsError && packs.length > 0)}
           transitioning={profileTransitionPending}
         />
+        <InspectedProfileNotice surfaceProfileId={packCatalogBinding?.profile_id ?? null} />
 
         {packsError ? (
           <InlineLoadError
@@ -373,7 +378,7 @@ export function Packs() {
                         size="sm"
                         onClick={() => void handleInstall(pack.id)}
                         loading={installingPackId === pack.id || Boolean(packInstallPending[pack.id])}
-                        disabled={!packScopeAuthoritative || installingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                        disabled={!packScopeAuthoritative || profileWriteBlocked || installingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                       >
                         Install
                       </Button>
@@ -382,7 +387,7 @@ export function Packs() {
                         size="sm"
                         onClick={() => void handleApprove(pack.id)}
                         loading={approvingPackId === pack.id}
-                        disabled={!packScopeAuthoritative || approvingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                        disabled={!packScopeAuthoritative || profileWriteBlocked || approvingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                       >
                         Approve
                       </Button>
@@ -406,7 +411,7 @@ export function Packs() {
                           onClick={() => handleRevoke(pack)}
                           loading={Boolean(packApprovalPending[pack.id])}
                           aria-busy={Boolean(packApprovalPending[pack.id])}
-                          disabled={!packScopeAuthoritative || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                          disabled={!packScopeAuthoritative || profileWriteBlocked || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                           aria-label={`Revoke approval for ${pack.name}`}
                           title={pack.type === 'core' ? 'Core Packs cannot have approval revoked.' : undefined}
                         >
@@ -416,8 +421,8 @@ export function Packs() {
                           checked={pack.enabled}
                           disabled={
                             !packScopeAuthoritative
-                            ||
-                            pack.type === 'core'
+                            || profileWriteBlocked
+                            || pack.type === 'core'
                             || Boolean(packTogglePending[pack.id])
                             || Boolean(packApprovalPending[pack.id])
                             || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)

@@ -62,8 +62,10 @@ from ecosystem.defaultspack.backend.sandbox.isolation.resources import (
     packvm_guest_runner,
 )
 from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
+from scripts.build_packvm_guest_bundle import build_guest_bundle
 
 
+ROOT = Path(__file__).resolve().parents[1]
 MACHINE_ID = "0123456789abcdef0123456789abcdef"
 
 
@@ -3099,7 +3101,8 @@ def test_windows_operation_lock_rejects_hardlink_before_acl_mutation(
 
 
 def test_guest_runner_executes_only_the_explicit_staged_python_abi(tmp_path: Path) -> None:
-    from ecosystem.defaultspack.backend.sandbox.isolation import lima_runtime
+    archive = tmp_path / "runner.pyz"
+    archive.write_bytes(build_guest_bundle(ROOT))
 
     implementation = tmp_path / "operation.py"
     implementation.write_text(
@@ -3119,7 +3122,7 @@ def test_guest_runner_executes_only_the_explicit_staged_python_abi(tmp_path: Pat
             sys.executable,
             "-I",
             "-S",
-            str(lima_runtime._PACKVM_RUNNER),
+            str(archive),
             "--execute",
             str(implementation),
         ),
@@ -3144,7 +3147,7 @@ def test_guest_runner_executes_only_the_explicit_staged_python_abi(tmp_path: Pat
             sys.executable,
             "-I",
             "-S",
-            str(lima_runtime._PACKVM_RUNNER),
+            str(archive),
             "--execute",
             str(implementation),
         ),

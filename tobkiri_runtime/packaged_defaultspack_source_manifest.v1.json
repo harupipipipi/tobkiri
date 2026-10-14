@@ -14,8 +14,8 @@
     {
       "path": "ecosystem/defaultspack/artifact-index.v4.json",
       "type": "regular-file",
-      "size": 25216,
-      "sha256": "205cf7f566dad762aeb7129ffa16098b1c4fe9c8ef6b905f14efd64b72d34b97",
+      "size": 28321,
+      "sha256": "c5b475587d4cd6634c9e6dcadedf20bdda1bdf71ca31bb2533a11017c043a856",
       "executable": false
     },
     {
@@ -28,8 +28,8 @@
     {
       "path": "ecosystem/defaultspack/contracts.v4.json",
       "type": "regular-file",
-      "size": 37024,
-      "sha256": "ace3b81010072c8eb19a218f88115cd8b0684b4575c60dfbdb5a73b1435dc0bd",
+      "size": 15239,
+      "sha256": "1519eda3b9be5e7084b9efe2732bf2f4072aa92de18d421bced0c4727fb426f6",
       "executable": false
     },
     {
@@ -105,8 +105,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/desktop_app.py",
       "type": "regular-file",
-      "size": 39068,
-      "sha256": "ca6f3372e5e36c5f37e12837a0d654738450ec9255fe8ba10b3843600da2708b",
+      "size": 39063,
+      "sha256": "b7c2a179a5440934220b69c6ec4b33680d30b38ffc34ad938270218558f1255d",
       "executable": false
     },
     {
@@ -140,8 +140,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 65483,
-      "sha256": "3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
+      "size": 65512,
+      "sha256": "e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
       "executable": false
     },
     {
@@ -154,15 +154,15 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_dynamic_targets.py",
       "type": "regular-file",
-      "size": 6966,
-      "sha256": "6f18dc66a28cc4b702cfc224b5d98e90d158dbe3e80a4f9e37fdd09cbb498c99",
+      "size": 7884,
+      "sha256": "0e147f3a9ac3abe33ce92590b402d712c3b155c99228d91ea05169af3517f4e5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 45096,
-      "sha256": "d5714005b16a5f652ef7dcae72da883625410d8e324c82a6d78524499f2e0c24",
+      "size": 45719,
+      "sha256": "92e68f44b161058ef26b212ccc2c8122d81b264270d6b4c06ef257828ce7db6f",
       "executable": false
     },
     {
@@ -180,17 +180,10 @@
       "executable": false
     },
     {
-      "path": "ecosystem/defaultspack/defaultspack/model_access_presentation.py",
-      "type": "regular-file",
-      "size": 3048,
-      "sha256": "8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
-      "executable": false
-    },
-    {
       "path": "ecosystem/defaultspack/defaultspack/model_profile_presentation.py",
       "type": "regular-file",
-      "size": 5960,
-      "sha256": "f85a51c183bbe07b4eb29872feda0c4f0159a79222f068b9592a48d000b42dac",
+      "size": 5962,
+      "sha256": "1eea752e06dd66888c4fe40ad01d11b59003f93b3c61199dbe4e47e621e3e87b",
       "executable": false
     },
     {
@@ -203,8 +196,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
       "type": "regular-file",
-      "size": 20026,
-      "sha256": "0483f9cbe974dea948fea96c58eb219f6f895fed9ce09408a30a835cfd38fa64",
+      "size": 20021,
+      "sha256": "71ed19a912d71ede9e36665d7b09d76e686e8b66279c27edf863c67b8dd9895f",
       "executable": false
     },
     {
@@ -245,8 +238,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/tool_catalog_presentation.py",
       "type": "regular-file",
-      "size": 3741,
-      "sha256": "39257fbe4884693f3a1b2f7a29c247a8d183d478fb180f2900deda518e1bd555",
+      "size": 5137,
+      "sha256": "9e475fbbae3f25b05450a2a229835ed4b332fd4b4b3028a0297f6720ebbe55df",
       "executable": false
     },
     {
@@ -275,6 +268,13 @@
       "type": "regular-file",
       "size": 12765,
       "sha256": "8df8a3c9ddb0eda98d1573201bee22f4487baf6b69fab9b9c673afa93359f76e",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/defaultspack/workflow_presentation.py",
+      "type": "regular-file",
+      "size": 7570,
+      "sha256": "e3b665d35d06973fea36e5487edcb2b6eb63f58e0b4f290ed26895beb2e254f1",
       "executable": false
     },
     {
@@ -315,8 +315,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_surface_v4.py",
       "type": "regular-file",
-      "size": 137598,
-      "sha256": "8797695f81437d40342e60c74f67442717b3e93193443a64e8aa4c23a5be7f5e",
+      "size": 141570,
+      "sha256": "a86cf9b7e3f091d1d1d19b940f0bfb26cf9f20b4a91f2d066df3fd4c3d3dc1e8",
       "executable": false
     },
     {
@@ -327,17 +327,24 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/domain/runtime_v4/_record_validation_cache.py",
+      "type": "regular-file",
+      "size": 5019,
+      "sha256": "7815bc3c9c1783ecd2148b8b4a4eb6693f5e755ab9c5489ffb40f52fba8cecb4",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/domain/runtime_v4/service.py",
       "type": "regular-file",
-      "size": 138774,
-      "sha256": "459b80de0a42454d89e6013a2cb972b9c3318ea9ae143ee295ba5feb6465db9f",
+      "size": 139039,
+      "sha256": "d40d5c88ef21b5cd0db90a46d6e32209cf5160166b0cd258256f47f680d3cc1d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/executables.v4.json",
       "type": "regular-file",
-      "size": 33678,
-      "sha256": "6df8e4db190e32a6dd82f6ecdab82bd2f52868e91e1aba877cdf9eeaea3c775e",
+      "size": 12098,
+      "sha256": "baf8f5546c24e0c9925b73d14fa69e4670854ea0e629a13b63abf038a4e362a6",
       "executable": false
     },
     {
@@ -364,8 +371,8 @@
     {
       "path": "ecosystem/defaultspack/pack.v4.json",
       "type": "regular-file",
-      "size": 32499,
-      "sha256": "9f1dcdce4c639ddfb4d8f2093dedfcf4ecd2b23a4c67ff8c84536870d3dd07ba",
+      "size": 34508,
+      "sha256": "ddee547163bab97578311b876b784e6e2bd49273f81860cb285763ee3ca4e627",
       "executable": false
     },
     {
@@ -387,13 +394,6 @@
       "type": "regular-file",
       "size": 10274,
       "sha256": "316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
-      "executable": false
-    },
-    {
-      "path": "ecosystem/defaultspack/runtime/saved_conversation.py",
-      "type": "regular-file",
-      "size": 30784,
-      "sha256": "361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
       "executable": false
     },
     {
@@ -1232,92 +1232,92 @@
     {
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
-      "size": 60086,
-      "sha256": "29b11196f6dae0da1ce5d34043747b9251b1bfbe3afb7be83e90993ed6462502",
+      "size": 60509,
+      "sha256": "a6498bf760b8fbcaeee579c3b5cb30db90ac72311d58ee8c497ac68f66716bba",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
       "type": "regular-file",
       "size": 2348,
-      "sha256": "9b9fbd48ceba136286f91acc1c421d3c443b3b62c7792a1ab6db9d3ce7d32495",
+      "sha256": "d00e2c5f9630f65f5693c9bae707aa212a361cafe37e622ba52447269890b67d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 188195,
-      "sha256": "075033c63c98025c3b68d8318928a79b709a57e4ec2245762ce0540c7eab4444",
+      "size": 220761,
+      "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
-      "size": 74085,
-      "sha256": "baccd859a4023bc5ddd6b69f33ab022ed242c7c67ced05131c70cea35267e6bf",
+      "size": 79696,
+      "sha256": "7053f4f6e785a04f8c02ea97319dc6ee7afdf1ebd58a61afb3a1ce6f3ebc58b7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
       "type": "regular-file",
-      "size": 217643,
-      "sha256": "45a80d0863e290cc971cfd7454f06ed818e557bbf90a303b67cf411f85d38ce6",
+      "size": 255256,
+      "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
-      "size": 69047,
-      "sha256": "9e1f5d940a0a9ef2b4be74feb21cfc19ebbb589a4c3b3da43787fa07a0649098",
+      "size": 69649,
+      "sha256": "ead8d548603247527f5ccf29dc8051f17cbe001abadaeb35ddce6a72bce2ec2c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
       "type": "regular-file",
       "size": 2509,
-      "sha256": "f725beab6491289d1a8dcd01b7f9ea090dcf340ac376ff421c27f0105e17975f",
+      "sha256": "c241124349dcc4116694f7de110673f19c119f0c20cc8b84dbada15c027270ab",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.executables.v4.json",
       "type": "regular-file",
-      "size": 33789,
-      "sha256": "e103c3de58d0fc5f0ed5976d816e43232e04b574cdfe59f47117de911ca4d235",
+      "size": 12209,
+      "sha256": "e09c8e58f92448ff0bb3b63c4b2051ebbefd4a1063ea0b8cd0a29889fad2559a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json",
       "type": "regular-file",
-      "size": 33057,
-      "sha256": "625f70f4d3ba7c0e39fc99a83b99196982ee322cbe5e61446600253ab18877f6",
+      "size": 35066,
+      "sha256": "bff0eabe19bb2a7943b32633ab48a4f02021437b03531f1ea356d17254b7c222",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
       "type": "regular-file",
       "size": 3872,
-      "sha256": "2516d55c328871ae719155b2fbd5f12158fb061098fcc3346f1ba2af60b2ca3a",
+      "sha256": "835cbb41f60fa9fb6a500957ab107408648deb70c3db71ffd731a1a2ddb0add8",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-file-inspect.pack.v4.json",
       "type": "regular-file",
       "size": 5678,
-      "sha256": "7c192f1372dfdaa3a3241b38d4d0a59af10d89c639114cf3152057715d43b34b",
+      "sha256": "354925136fea7ab5c2e75ec2a3906061062c51afc73ab209d29f97796c8b60af",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
       "type": "regular-file",
       "size": 17350,
-      "sha256": "e9531d10e0e0d36eb105b3356e79511bae81b60c7d76475826069297eb7b25df",
+      "sha256": "d368e321da59d191b94278f23f353a82bbc141bada4852ace64f1c25b8b2461d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json",
       "type": "regular-file",
       "size": 9528,
-      "sha256": "39529ce70d25d7c9eaff44d32b783912e3662f2513d498458b04b63966fcc626",
+      "sha256": "ccdcfe67ab43fabbbb671ebeb28b74fc9ea695fd9a7e802e9e68abab765c827c",
       "executable": false
     },
     {
@@ -1331,35 +1331,35 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_continuity_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3362,
-      "sha256": "a3fc232c55ef92d6d1fe59be09c0abe6166c3f7f1926065a22555fc771bfa7ee",
+      "sha256": "06c585085d4020b6c53a764ca18f7ae316b293634781459308ab4d2fb9656c72",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_runtime_service_pack.executables.v4.json",
       "type": "regular-file",
       "size": 4305,
-      "sha256": "506b4b2e953734e731c87df8cf2d1f4fa3734a9d9655e3439a46540a07faf11d",
+      "sha256": "19a84e16eda394b6536ea6c9ec79c17ae6b6354cd3feddb1f877d824f1e59a9e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_runtime_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9710,
-      "sha256": "c8c0a4ec4d4976444e46c030dca991c731e48d8f5f26976273a44a37b451262b",
+      "sha256": "8b578a32e268a538501472dc7202745e8e65a9a41d7c5f4e2d78bfa1d963d870",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_state_store_pack.executables.v4.json",
       "type": "regular-file",
       "size": 2970,
-      "sha256": "986a23b8b592fe228d88ac6f7514a770669a485809332ff411094a5d47f47d61",
+      "sha256": "53ba873692866e01f96948d1799470a6d2fb0902a454d3a4867c67b6da5dda05",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_state_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6052,
-      "sha256": "a891d0405aaa4e266d6613a6cc8bd574a801eb9f05657f326a9e3cb9289d6c07",
+      "sha256": "52d9d35209db92feda371426ecc35c6fe42a3c2429ad0d5597e1c8c09bb54fec",
       "executable": false
     },
     {
@@ -1373,7 +1373,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_agent_workroom_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2971,
-      "sha256": "31a8417c2bde7d9a606594700636d620110c1ce5558102aca797a184b847fd8e",
+      "sha256": "1dc83900eb38c5444e6a38a6199fe1f609fea4d253d9ccf9612fb8d54ad43f14",
       "executable": false
     },
     {
@@ -1387,35 +1387,35 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_agentic_qa_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2961,
-      "sha256": "1346035dce3c733b75d1004edf64b7aaefa20f83d99c91ec985e2eeda881e69a",
+      "sha256": "7ffe1a8a5956343acc0387db3abc90ee3a49d36442c04b8e1836efabc67726d4",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 11324,
-      "sha256": "02bfaab76144fa78745f5ffc7cbd8a6df0a493134090195f639a07bfa07c7201",
+      "size": 18442,
+      "sha256": "c0eba5abe6cd671e4a19f1ee01c8a1153ba436b3b0125001fee48a7c370aee4f",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 11370,
-      "sha256": "059784023cc8cc0c82e43bf05ec46967cd201dff4734ded5d081790fb150cb63",
+      "size": 14480,
+      "sha256": "13ca4bc0f80e84f5fe5eeffbf832cd044f624500df9e8698b37f1be2ea451ca9",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 5500,
-      "sha256": "32b5194020a6ce40ac055efc370211ac1161a44fbf0ef3ce696db71bd27d8ed1",
+      "size": 15497,
+      "sha256": "0b9ec782fecd51f4679913f57ac9249e3175a847174dd3921da4cb6308471668",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 9164,
-      "sha256": "674cecf9c6bb2fa83516719c197631c91a20030f5533fdf855aa0f6f476ee32c",
+      "size": 9343,
+      "sha256": "4f06d2fde6b857e98222567ca16e0384261b5870921b685d7dda5c96d24b36a2",
       "executable": false
     },
     {
@@ -1429,7 +1429,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_pipeline_pack.pack.v4.json",
       "type": "regular-file",
       "size": 7948,
-      "sha256": "2f5106cc87010e59cb2963629e22d876c8b25f065016c90bab84943d9eba8793",
+      "sha256": "d60a1ae0c75dcc265fdb0e1764ba2fc83e4aab4d980b357e5ebe6817fff260d8",
       "executable": false
     },
     {
@@ -1443,7 +1443,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_routing_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5317,
-      "sha256": "b8044b176b7e0a2f0d79d7467603d6a5ed1c7069028511ddfec9bc2c7961d729",
+      "sha256": "55594f5d552f7acbe2bebdf1df66f125e9a8c6c1b3ffa5184b323a3da2a1b06c",
       "executable": false
     },
     {
@@ -1457,7 +1457,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_strategy_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6264,
-      "sha256": "e66f46ff4acc690a6aa557fa45e69b4a59fc796f9ec65566d1548f16770f482e",
+      "sha256": "8dfdb96f2de2b92ef0263007dda72c01dea863ac6ce81fec73da651a44c264a8",
       "executable": false
     },
     {
@@ -1471,7 +1471,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_stream_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4492,
-      "sha256": "4fea6652288d26d690da4cdeff274dbda80d8c91514e09f4c9ee70b23dda4190",
+      "sha256": "a6702a54201dfb387733f16eb0ec810562d25b9324b65289a4207cc7b74c4654",
       "executable": false
     },
     {
@@ -1485,7 +1485,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_tool_bridge_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5759,
-      "sha256": "ede8d025fd6be5f5a7b35b2a59b5277e9907ad981fd77cac90ba8a96764e03ea",
+      "sha256": "92ddc928a28f5b0de2dcca00a50528ec7af0b91bc4c3a632e3c56831c632a46f",
       "executable": false
     },
     {
@@ -1499,7 +1499,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_usage_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6608,
-      "sha256": "41ee8da949122ddcdad9acd4fa2e15344a8cd4d1e76351c6b7f118126b9ee5ef",
+      "sha256": "7b0c113eac3892335f6ec230a2d357c4ca248644900318588baa056e9773e966",
       "executable": false
     },
     {
@@ -1513,7 +1513,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ambient_trigger_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3116,
-      "sha256": "a31d05e4bad8231f8e46a1b4499561dde6bb9d64a7bdcf9c286e1ba47c159434",
+      "sha256": "31bf4e50044d4ea3a6781c16a8b8f8cf892d3f3eb46cbea98162d8ed6ce1c61a",
       "executable": false
     },
     {
@@ -1527,7 +1527,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_api_toolsmith_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2985,
-      "sha256": "80c274de02b5ed94c585d88a46f80041af2abbbe7658fb1261980d3ea2208ce3",
+      "sha256": "970cf51772ff0252e85cb65086ffe872cd355595fba2cd76d87f68d5bf14057e",
       "executable": false
     },
     {
@@ -1541,7 +1541,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_artifact_app_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3035,
-      "sha256": "ad82c768c6f370c697bab0445b24c60df9e5478cd8ff7f20f7d05dbb4a5f08db",
+      "sha256": "5c7596f30fb61945df62322b4bfa9c9ca13388e413ed6491aece13106192edad",
       "executable": false
     },
     {
@@ -1555,7 +1555,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_browser_automation_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2883,
-      "sha256": "fded8c1e2d0fac0246fae94262704efecc8a7b537e164ffe8ec2a37835e53b24",
+      "sha256": "984e00ff01df71e0b8d43ed9b73904f78d685d0da1678813060f9309e128e88d",
       "executable": false
     },
     {
@@ -1569,7 +1569,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_browser_element_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2988,
-      "sha256": "7928db76a3c17abdb5badcbb0445bb2bfa26d33036861be1c3f6c903ee25d25a",
+      "sha256": "7b3e3536ffd924e83a0ff1a520cb19261f95d84187da874342d160a58e7f829d",
       "executable": false
     },
     {
@@ -1583,7 +1583,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_browser_form_operator_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3029,
-      "sha256": "5acc86d1435122cf6b5194185e648da2633b013b6806e1e2d1ea0c84d6b5db68",
+      "sha256": "c939cf1f3381cf9dcac5b8113049b58a19dd6046404092afd0f1f8cef8c74f17",
       "executable": false
     },
     {
@@ -1597,7 +1597,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_browser_host_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6361,
-      "sha256": "894fe2b80987f467e13e6208ef6862bf0706daa34a99b5b544684b8ba417701d",
+      "sha256": "94d9c0e1aaa09f8e631b5c99887f5d3cd5557f575e3a8b7784baf010f458f26d",
       "executable": false
     },
     {
@@ -1611,7 +1611,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_browser_session_replay_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3432,
-      "sha256": "13f724416df016caea4ae6fa3a56403f75ca205a237e8cb95c6cde09a9117ed9",
+      "sha256": "9f93b8ce4d0703dfb28ca16f072a29cd368cc39db8c470f211e4aee6c14f7f2d",
       "executable": false
     },
     {
@@ -1625,7 +1625,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_business_ops_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2978,
-      "sha256": "fe519775b7ce59e5fc036a6b5a58974b41185eacbf7975930aafaa8040b996f4",
+      "sha256": "87ff5c982cffda607df31fd6cbb47acbae4b1c8e2e0ef80a24fa77558c9779b9",
       "executable": false
     },
     {
@@ -1639,7 +1639,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_clipboard_host_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6297,
-      "sha256": "29d14ac599fa7c908abf7ec2ddcda0b7a5bd4dbaebb9ab1f41f81f6ff425b3fe",
+      "sha256": "69a9769a6643ad8e1cd797d2c4f8bf994b49d30fed436d9a84e06e515cbc4b08",
       "executable": false
     },
     {
@@ -1653,7 +1653,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_code_ide_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2823,
-      "sha256": "c11a5880e4a2dbfc2a17f8a2543f64e758a0fd5de385665c8f5cf5132ae7d8f4",
+      "sha256": "4200a8444d7da6339839962a42140311526e72fc9bed5337d7288e76b183d4e6",
       "executable": false
     },
     {
@@ -1667,7 +1667,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_code_migration_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3269,
-      "sha256": "e9b23a7ddc3549bc6761150b7760ac557d9171dd9c11464ff79e6ca89659562a",
+      "sha256": "c7430c976205d6672e33aba996ae2ac7befd8362034d1d379fa190201c36a939",
       "executable": false
     },
     {
@@ -1681,7 +1681,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_coding_sandbox_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 11988,
-      "sha256": "da476bb38669c1a3fd49292e2c7cba9a514799d91c7f14ae56623bc48bd351da",
+      "sha256": "d55488b95b5868aa9e764b9e4a16544ab888462d49aed0ca1338c757f4d41822",
       "executable": false
     },
     {
@@ -1695,7 +1695,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json",
       "type": "regular-file",
       "size": 10973,
-      "sha256": "0b29846d63d070a96a780739047907e64d34f9021ebfb5c568cdb006fb81df9c",
+      "sha256": "554c15c6bc86902a4ef5d7c2ec59ee528e76c304b4834d3b69d5d808b1a38252",
       "executable": false
     },
     {
@@ -1709,7 +1709,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_company_agent_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5345,
-      "sha256": "3651c8795313776a686dcef26e5753b3f3e1dfa42ce010b6372b99f106c2ee97",
+      "sha256": "d3164912873b17a7a8c52dfabc90be9b80dfcfccff5e69542b14d6b78d180346",
       "executable": false
     },
     {
@@ -1723,7 +1723,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_company_coordinator_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8333,
-      "sha256": "4f85e376deb7e0b5da439a5232bc293d5b6e2117e2a754d47a3aeb52424d9c06",
+      "sha256": "ef6f96352742620eb7243d04c935e5b0bac83ab0f9b76003331ba5620bd7e52c",
       "executable": false
     },
     {
@@ -1737,7 +1737,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_company_state_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6155,
-      "sha256": "e84fa6b42906bf760c013db7ab3a446deffb280553aa3bfca5478c780630968c",
+      "sha256": "33d27de0937a8929cf2e1504b64df57c8b30d7cb98440e41311b704ef09c1aa7",
       "executable": false
     },
     {
@@ -1751,7 +1751,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_company_surface_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3993,
-      "sha256": "363fc8e5fcaf132bef6aaea8b396369601142666c8307bfd3b00bd7d4f611a15",
+      "sha256": "eeb2158ba8859216efa434007ea79e40a889cfca735d3c97c677e40d96d085fe",
       "executable": false
     },
     {
@@ -1765,7 +1765,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_computer_control_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2871,
-      "sha256": "c7d109c33036fb47b44cc7dc75767077ef7827feec69a53217796a4a1c4795f5",
+      "sha256": "bc690fe787c7f8de10258186f4b0452d9c1405992a447911974e489fccc8e500",
       "executable": false
     },
     {
@@ -1779,7 +1779,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_company_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5539,
-      "sha256": "cb86184f621cc11e05d660ca92d460baadf1547ce92b2ada1e98777ed2442194",
+      "sha256": "c62132df5af94c17f4c5a1c844bb8cea0e1c5c541a5be568b6ca865eebfa75bc",
       "executable": false
     },
     {
@@ -1793,7 +1793,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_gateway_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3004,
-      "sha256": "56b52d89d3013d64895bcceb1d29d8932a8f41c3064e874e30389bb8b77dc51a",
+      "sha256": "40872b8a3fa297febf32e029fa7cf70660a1920a60c42a16447dedbfbc1ebe13",
       "executable": false
     },
     {
@@ -1807,7 +1807,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_inbound_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5236,
-      "sha256": "60d295a980f87e0e30426d7aca97351e47ba46eac44450ed16e520d89a6c11b8",
+      "sha256": "e5791c93b00bee152b1605568683430ccd8000673b20c8a5fa83e26a44984c85",
       "executable": false
     },
     {
@@ -1821,7 +1821,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_oauth_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8739,
-      "sha256": "c6a22ae1916a58825458f461bbec01250921ed5ecced60ea632c5636d218142a",
+      "sha256": "d3deadec24810a25059152fc985da548baf2840e0f1c724ad143f84d882fd4cc",
       "executable": false
     },
     {
@@ -1835,7 +1835,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_outbound_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6903,
-      "sha256": "29ab05e03b0c3c60a8b7b2c24a7b709969c1620c0d8be5564fad4d1d3ad0e9bf",
+      "sha256": "b7034b4ec35d464d51bacfa03699d3e0c7746e509ed9cd695f715ebe5318c3b7",
       "executable": false
     },
     {
@@ -1849,7 +1849,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_registry_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6439,
-      "sha256": "fb9dc43ec3a7116cc26fa8e96c6294ebdc3136681ab7ddf49bb4a5e0d1247c80",
+      "sha256": "2ea1c12b5d95a01170c80e4a6606560d5096ff5d2e151ec7b7515f4e3aa1f6b9",
       "executable": false
     },
     {
@@ -1863,7 +1863,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_settings_surface_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4015,
-      "sha256": "1455dd94144c9ba69d0436735c4e07a7c5c482e413609c84b16ae176f2193c4c",
+      "sha256": "a6decab80fe5a0eb712d58bd6a266da9f54857d77866b129f793ae7bf5414f9f",
       "executable": false
     },
     {
@@ -1877,7 +1877,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_transport_gateway_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9058,
-      "sha256": "0b78fd0c070b311d5f96c2d9fd964cf675cb767fb71c823ab1acd55aa057af48",
+      "sha256": "0356d726e13a7d658ce3e207d502bc11c5db7b54065d8b300e25b2073506d4a4",
       "executable": false
     },
     {
@@ -1891,7 +1891,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_connector_turn_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5389,
-      "sha256": "e26b54f19a048f2d604bdb9c2c98ee4cba52a7aa80adad8be667c8c74d300b8d",
+      "sha256": "5cc0435631bbc9df603a278c9d83d31675c7766e8ab7323378ce9f861c80b5e8",
       "executable": false
     },
     {
@@ -1905,21 +1905,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_context_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5075,
-      "sha256": "cc72ad54c3bebd52be0df1af3b16c410c8e13dbaa549fa797ab0fe2ec2ff6a26",
+      "sha256": "2e870927acd1c58b6024aa1a6d90473ac5d25688f6f8af455668142e03c6b41c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.executables.v4.json",
       "type": "regular-file",
       "size": 17359,
-      "sha256": "256afdef124bdf2fea237cf5b427e50f6c4e2294cb9121c51cb205cc0b08b1ca",
+      "sha256": "724ff68ddb72ad081ff06e83e531f763f87d80b914e82fae41a1d4e8d9f92589",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 15245,
-      "sha256": "6a7c968e0ef3b2f20825ed4f360430b0d42b836d10b0d678fdc68c83305c99fa",
+      "sha256": "186c8d0626fa8c689594a7898e9aa33eb3bd1804a7f737cdc0aaa5f308be24e6",
       "executable": false
     },
     {
@@ -1933,7 +1933,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_credential_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9271,
-      "sha256": "60b67bc9483adfd09bd9312b78b2a97a4e6dcb8656dea664b05362964da3af5b",
+      "sha256": "652d91d908ecddc6d7c80dc74185f1acaf07c7c8af55198dfccb4e6bf208b7e5",
       "executable": false
     },
     {
@@ -1947,7 +1947,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_customer_research_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3014,
-      "sha256": "ce25e6a64bed1d399ed7e426afbefe503467110ef5069784a5e7ad70486bef89",
+      "sha256": "976ee357befae11c40f58d2dcca720b1ceb9b5ceb451f756e9eb54ba5514f535",
       "executable": false
     },
     {
@@ -1961,7 +1961,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_data_analysis_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2986,
-      "sha256": "792afedf29724f5b63a5ab610b341de4922ec4c03be365b33e4631ebe85daa62",
+      "sha256": "5820280ccdcc729520ba6cd5d537f871c0c5f2e8509f8714f7487b62d56a6157",
       "executable": false
     },
     {
@@ -1975,7 +1975,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_deepthink_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4873,
-      "sha256": "a99d303dfccf6d58ff96119e9ea9bf49889102e61a0407fc36e2b54aad42b30a",
+      "sha256": "9f7053c07fad5171bf257f0076227ab0c4c150dce0b92fc090a09f0849ce0635",
       "executable": false
     },
     {
@@ -1989,21 +1989,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_default_tool_projection_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6255,
-      "sha256": "9f36049235d7d8a08d54bdd62e9ecd9ae1e74ef7569a1c3c20b42d27407aef2a",
+      "sha256": "0e1674ea380bc408c213762b90617c140ade5c5fa4cc26af77fbfe843107cb1f",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_default_tools_pack.executables.v4.json",
       "type": "regular-file",
       "size": 71844,
-      "sha256": "80cb9d51dd31d9b03eef91eb832e1c155389f94693aa719781a6c0b1241ddae4",
+      "sha256": "277637f52e9fb98afa9265d6f0d1539a1977be0c852581ea2f32c6ccc0d5c700",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_default_tools_pack.pack.v4.json",
       "type": "regular-file",
       "size": 23597,
-      "sha256": "c5949f8fdd28b71a682ce3b00553ffc6fffbf7d1fd6803bc926230fb98e8e215",
+      "sha256": "40ebb851e84930bc5dcaa3201bea3e5f6ef41aaed6e04270672bcd575c252fe6",
       "executable": false
     },
     {
@@ -2017,7 +2017,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_desktop_host_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6154,
-      "sha256": "866f04c5397abdf2b50cb58a0742c111001b376e2be5f13bd02a9143e5f38dee",
+      "sha256": "b7b7bdee0c1ee55d4ab154a30baaff944811cb59a5eeb00ba7c2dacd1d99e338",
       "executable": false
     },
     {
@@ -2031,7 +2031,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_devops_release_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2859,
-      "sha256": "93ebc3365904d47088b79f73f85db297baf7998bed0336c6a11541c9cb70aa43",
+      "sha256": "3fab550f1f90b7e38056f0198ee9c87fbc03e2be28dcf44560918320bf650196",
       "executable": false
     },
     {
@@ -2045,7 +2045,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_discord_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5002,
-      "sha256": "540c4dcb0e9f575c387a283fa741de866938b41aaa24762073625f19a45fed76",
+      "sha256": "9d398e80ddc0aa51a01bc083850bcd3ba1ab4c631e2f69a3d44c5a7c38894e73",
       "executable": false
     },
     {
@@ -2059,7 +2059,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_document_intelligence_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3031,
-      "sha256": "d281947831fc95d9bd23097b23a8ef5a9eaf7ab58321881d9039839939e35f2f",
+      "sha256": "58d37938041936ae864598b975af074191f19d06b45d468cfa8da04371550199",
       "executable": false
     },
     {
@@ -2073,7 +2073,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_email_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4958,
-      "sha256": "58efcf51735705ab835aed2ba4994b1e0ee454e92ae2018b391cd6320513a9f3",
+      "sha256": "e0a2033e0d34d8fba708acc18a20e54698886318308fe60fb5c7b9b820519247",
       "executable": false
     },
     {
@@ -2087,7 +2087,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_evidence_dossier_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2983,
-      "sha256": "59fd27d985a35ddbddb472ff79a035c0be3238b745344f017a4af2d9c6091ee9",
+      "sha256": "16ed6db69198efb1a01f4560644af89194117e3dae6c4f4a9b8478c211ca4085",
       "executable": false
     },
     {
@@ -2101,7 +2101,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_experiment_design_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2989,
-      "sha256": "d7f20a4484f70f9cc6252e5fa89d916b1522cab469c49b968e94936e345952ef",
+      "sha256": "906dae48bf24014a9119d49b9b596b38072db0432669e97be966142f51b44b21",
       "executable": false
     },
     {
@@ -2122,7 +2122,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_file_mutation_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4867,
-      "sha256": "95fdcd3eb3f3d03e9fd943f154781de7b6c540c67efa2832460e919c10c2caff",
+      "sha256": "ccef9c36d8f0134f08c1f5f0429a59f5f25d1a4aef0b204de14c26573b394242",
       "executable": false
     },
     {
@@ -2136,7 +2136,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_file_patch_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4795,
-      "sha256": "9db2e20346773c892c7c02a8b4744e2d75e909e6a157078cc5b4d670b00c6cfb",
+      "sha256": "e1196e1b285f8b11f3b75bb9fbd8df52b90e90a7e55cec1f0dc9f54ecce49a6f",
       "executable": false
     },
     {
@@ -2150,7 +2150,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_frontend_design_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3001,
-      "sha256": "c85b31ceaa3b39840dbe25dca594a52e6c9d5387edc45c427c92484f835fe077",
+      "sha256": "62fc908f5b13b296b3a2c314edb594e558ec19fcb561ad91c633ba488474122e",
       "executable": false
     },
     {
@@ -2164,21 +2164,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_generic_webhook_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5178,
-      "sha256": "b9f478f8ac0e9d65ce4b3457e748ce577f2f39d875dc801475808b4d475b4ca0",
+      "sha256": "af457910974cc70202b7fe5d7b8656346e5bb66dcdb19b353147b01411c4b68d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_git_publish_pack.executables.v4.json",
       "type": "regular-file",
       "size": 4090,
-      "sha256": "1f6bafadce9c2e65c7dc5128faefc1512ded1dd4cdb0679662614079b9e3da02",
+      "sha256": "208afa0a24bbdfbbc1e9bc648f3fdc91b4082d3fc8e39796bb90af6170b520ac",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_git_publish_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5868,
-      "sha256": "d477a2abcd3ddc3f06aa535bea9eb1936915d9cb827d7e518fe280964d3aa3ae",
+      "sha256": "d01b1927a0eb8921bccded5c13a6662719bec9222de4c48c34c5a6f444f38761",
       "executable": false
     },
     {
@@ -2192,7 +2192,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_git_read_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4461,
-      "sha256": "a38b83c7fe2d2e49279ddba78a7380758761feb57fde92ffefb2a4307e1e489e",
+      "sha256": "1a0317d8ee828984089853e3223cd89279eb811fcdf5479b5576743d71a79b9f",
       "executable": false
     },
     {
@@ -2206,7 +2206,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_git_write_pack.pack.v4.json",
       "type": "regular-file",
       "size": 10119,
-      "sha256": "ab57aedff6fa0838677738245c2bd2d562db420732053e7aa05d9f511ef72bf4",
+      "sha256": "9b94a52b0f535387aefd82f9a7aca7f606fab939b9ab724e6141177bd0d3966d",
       "executable": false
     },
     {
@@ -2227,7 +2227,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3093,
-      "sha256": "fd5dddcfbba700a64e1cb8f65078d9bde81d582143cc43cfeaccc163c20cf63c",
+      "sha256": "7905e0dd87e1c511d7c80fe23e39b1460afc749e4d604c6b4bc165fc00d54194",
       "executable": false
     },
     {
@@ -2241,7 +2241,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_http_api_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5024,
-      "sha256": "df2bd7d7e38edcde42af69cdd565c72dbed77faa9937705d154b634b90549754",
+      "sha256": "3a607cce1242c006c95056f66c65e60f3f8181e12f36ba7c049d05443273800b",
       "executable": false
     },
     {
@@ -2255,7 +2255,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_human_operator_provider_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6190,
-      "sha256": "389f4904feeeaaf94d4e8037c8cf4281da4efa6f913e388e3c21b423cf39a208",
+      "sha256": "7169c8400389e738ce6fbc729fc8c78ca4cf389c6333b83d459dcf335e540c4a",
       "executable": false
     },
     {
@@ -2269,7 +2269,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ide_bridge_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6279,
-      "sha256": "ce49de00d68e3c255a01dd16b9f2c10ce3747e8b25ab8c00751316a7aba2787a",
+      "sha256": "3ac73a76fcac464db027ae2f599b38085621c341b490337ac4b1752d3cc9ad65",
       "executable": false
     },
     {
@@ -2283,7 +2283,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_job_action_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4745,
-      "sha256": "c69bdef24d0994ec19313f333c650b60d6d311d45a2d468b26f17217cbe7b279",
+      "sha256": "38019268ca8792770a28e9d596b3cd76cd8a3ceb263f523b901aa5de50493a29",
       "executable": false
     },
     {
@@ -2297,7 +2297,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_conversation_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5639,
-      "sha256": "bd422db492f2d66c25f3fca948e2360d0f1c86b598393fbdaf2e411b49a67966",
+      "sha256": "7fed5e281b28d13ecc80df25a34c636c70f35dafe285cfe40f721c0eab6d912e",
       "executable": false
     },
     {
@@ -2311,7 +2311,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_state_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6327,
-      "sha256": "c8d91a76f0d806e46484de008f8b6a0be6990e5f89eb1e39146016d4f58555c6",
+      "sha256": "63163c529f197cda3bc8999c5a25fbfee13023aeb78b32c8165a1f69a8f8c57d",
       "executable": false
     },
     {
@@ -2325,7 +2325,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_kanban_surface_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3713,
-      "sha256": "5c5d9e87bc1ad1f051895e195ee7b9179201fe464d00d005c5bdada68bd477ca",
+      "sha256": "733e692bfd664283694ea604d5980c39ccde25225d7d540f55608c4545b20ad9",
       "executable": false
     },
     {
@@ -2339,7 +2339,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_marketplace_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3044,
-      "sha256": "ba00c99d7193e74f25a9cdbc3cc8e6d85e1bdb3fa0541d9f37b7cc2b02dcf609",
+      "sha256": "77c45437cff4bac20cd3fdc881933acace2244aa53461e13de811521ec6000bb",
       "executable": false
     },
     {
@@ -2353,7 +2353,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_knowledge_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 7193,
-      "sha256": "d6132fd34dfa0234bc7fc1491cdb7052b4cff583aa976cef14960c63bd96d55d",
+      "sha256": "1a78d168739a3bff735825fb95579e0944118f392c28cd597fcf2b8bfaca04be",
       "executable": false
     },
     {
@@ -2367,7 +2367,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_line_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4936,
-      "sha256": "8ebdf6592c916ae13adcbaaf5ebb4d5942d6e66a45e2803d4d80db3b576427c0",
+      "sha256": "e7e46391fa1b0b126b5c574dfe405d233e61da9f9b849b9f50d0c38ab1fab261",
       "executable": false
     },
     {
@@ -2381,7 +2381,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_localization_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2975,
-      "sha256": "2f48871649813c2239698adfef0dc24b76940a27c9e62e6bbe5d29d021d69228",
+      "sha256": "b792b88216d9edabd7d95c6c58382702c070b639911b6a21bd57ba35d073b946",
       "executable": false
     },
     {
@@ -2395,7 +2395,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_gateway_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4470,
-      "sha256": "43501d1ee094a69bfe9976dccef4b0e2dbb35889665173a48b04201aa977e543",
+      "sha256": "30049fcea701e4f12d090df9a54d10c812b334e7ae51942607bb711b997a4fc2",
       "executable": false
     },
     {
@@ -2409,7 +2409,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_mcp_server_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6080,
-      "sha256": "9a39ea2f5710e30ead908ed829735b61cf8ade88cc714677182a58b1681bc270",
+      "sha256": "f3586d200dec8b8c81b85abab463d8ed4135237fb44857f2933d6c386026b36b",
       "executable": false
     },
     {
@@ -2423,7 +2423,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_media_analysis_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5167,
-      "sha256": "d350fdd705d29a861af33b4b8d687c22a98be285ae7ddf9330479ef6107b0adb",
+      "sha256": "7bec01c3ff998c76a0cbde5e380d1be2e2595ec29b7f8ced06df4cdb3d346c5c",
       "executable": false
     },
     {
@@ -2437,7 +2437,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_media_capture_host_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6174,
-      "sha256": "fb266d2a4b7b77146d7ba2e7d71d038bf9d0682f87316948bf84109004956f30",
+      "sha256": "330663cd6eabc7a65556ab3c9395d98269fca467cf2ed02d01f834d09c386e26",
       "executable": false
     },
     {
@@ -2451,7 +2451,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_media_inspect_service_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4783,
-      "sha256": "1714c513c6eac80148edf4cf80c7f2992e0c213d8a642cc96cb174355a7f7385",
+      "sha256": "95d0e35a93ccf7b3fd6e0657d2007360af253be54f67c15cfa5ffa2b85abfc84",
       "executable": false
     },
     {
@@ -2465,7 +2465,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_meeting_intelligence_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3007,
-      "sha256": "e19f8a97136f53a994ec1e5bec07184282185d560dd31a0328cc4a5a601a85bc",
+      "sha256": "2211a428418f491c7121e8d8893d11a50e2140be7beefaefb2da103ecf3b296b",
       "executable": false
     },
     {
@@ -2479,7 +2479,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_memory_knowledge_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2999,
-      "sha256": "8ab5eb87468a4f29eab4062b608add823666e9a43a7c8c631a1e90c8686ddc4f",
+      "sha256": "8f87fa5578d921162bf3ff268405e0a427766386f9f7287dcc34e6e3277d0e48",
       "executable": false
     },
     {
@@ -2493,7 +2493,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_memory_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6986,
-      "sha256": "71f4d1132c2b5640e5b9e3639c9b3c12841188eae1df27851fbf4629c9e555cb",
+      "sha256": "8981002b85385d63fd786f60e0e8887dc212ea36c8d53709a73f06fd2b6e767d",
       "executable": false
     },
     {
@@ -2507,21 +2507,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_mobile_pairing_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5333,
-      "sha256": "31e70ee738aa90a8e75567d645d6097a1aaf76655e4c7991ef220d9d5ccdf2f8",
+      "sha256": "ee532a55876d1ab708c47177a4c78f09f2159748054ef7a7f1e96c9bfdc621d7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_model_catalog_pack.executables.v4.json",
       "type": "regular-file",
       "size": 3068,
-      "sha256": "52a6bd7af6e516297edaa3690e579f2e1a59c1b968785e970fc2e0458d334677",
+      "sha256": "7d7ac18d44b2c9380c003f9a0aecd0cf15e0f8855bb4c350f09ba81566b0a25d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_model_catalog_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 12475,
-      "sha256": "fc39669328618c848118aa4d5f5abe51a9235b38bd113cbe494427ae61178bb4",
+      "size": 40554,
+      "sha256": "78dc8071d638800789b3b0c6ef5e761c8154303f2ab193429694a8a6f5561ab4",
       "executable": false
     },
     {
@@ -2535,21 +2535,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_model_evals_pack.pack.v4.json",
       "type": "regular-file",
       "size": 7084,
-      "sha256": "4d876131be894406bb6bd5246a040a63a71baf0c846591dc549e1cfa1bdbecd3",
+      "sha256": "eced0866e59534047847bdb2e7348d8b94b943ae1e07841b0abe91a7187d47cc",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_model_registry_pack.executables.v4.json",
       "type": "regular-file",
       "size": 19387,
-      "sha256": "ee82c81d0e4c1e70329fc6517b56fa9f8177568522ef2e3179ad08ef855f6e6f",
+      "sha256": "214c4696f5fc7f7f21fc2b5aaeec44bfa22c9dee6517e78760ec96111c495768",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_model_registry_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9103,
-      "sha256": "9bd36b962e00d61be9674292a7b545d61364d3fc1c1f8ae3cf891624b7f41c71",
+      "sha256": "b26a2ed7dbbdce0f2d7acfc2cdb3d6e6a4fe09846ebe4015e0628f91dcf276e1",
       "executable": false
     },
     {
@@ -2563,7 +2563,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_multimodal_media_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3001,
-      "sha256": "609b4e2c57204ccef9b60d2827db93ed56804d1a933d754ede22793c7b19a9b5",
+      "sha256": "287de221c96c36e110884a1fd3fa24285df95d9d9b1a6995bbb38305db0df27d",
       "executable": false
     },
     {
@@ -2577,7 +2577,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_observability_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2988,
-      "sha256": "234befda9770035c23ed516d4f65bdc22aabcbcb0bbda91ee8e69288ac2195c0",
+      "sha256": "e3b0f3b69d27f623d13124143b0645fe49824cd3059030b962490887990b46d4",
       "executable": false
     },
     {
@@ -2591,7 +2591,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_office_authoring_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3007,
-      "sha256": "0d7ee969968978911cab58727ef5e424662579092d7b5ca8b409ae510ab1d3a6",
+      "sha256": "bb5f69370c179deb51eb503d7d7926cd2c540978e6f350b99e62baca34ccd551",
       "executable": false
     },
     {
@@ -2605,7 +2605,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_omnichannel_agent_inbox_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3025,
-      "sha256": "15131e396dc2c8bd448e8a2fe30aeb6da03484ed4b68e5f194e0a4d9847e5f38",
+      "sha256": "c4c0459232bbcaad8def9565e915dbc84971e37ae2d50c612086bc36da439390",
       "executable": false
     },
     {
@@ -2619,7 +2619,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_operations_company_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3025,
-      "sha256": "8814c62a246ce8aa7e0f8279c5ebb807e438c6591a0a5ba87a61b94a2293cc64",
+      "sha256": "d76a2b6f5572311ccd6ca09ce22dd545636d561c3b564fe70c6eead5d09213f1",
       "executable": false
     },
     {
@@ -2633,7 +2633,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_p2p_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4914,
-      "sha256": "f633347d8aa1c794c2b648a73f6981a87adb4b76569dd19a5844cbc760512507",
+      "sha256": "c8e79b02230fd7832c1e78e3c6bab63c8c382288b7f140d8e41369dea2f11a8d",
       "executable": false
     },
     {
@@ -2647,35 +2647,35 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_prompt_studio_pack.pack.v4.json",
       "type": "regular-file",
       "size": 11770,
-      "sha256": "a1cd7efd33d625774d246d9b1703640ce73eec7569165d666a172d7988466df2",
+      "sha256": "c5cb2d59841e32c5ad0cdb72319024e9d203ef7ea82d486d0fe29e5dd47a3e81",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 5708,
-      "sha256": "143c142e336d51df6884ef693b7483d556a8b9761df7e9639388860ea591b60d",
+      "size": 8402,
+      "sha256": "6d8bfae8675fa09d1832657814b1a57dfa78152921e0bbb816d6f831377c9559",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 9803,
-      "sha256": "d11d167e767069d219bdb6fd8b66e2e775cbd1cfe37bb4d3a2f93789ae49994a",
+      "size": 12883,
+      "sha256": "5ec08584dd1b59bff70ef2abc15b75c2eef836092dae6051d831f22a7fc9c78b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.executables.v4.json",
       "type": "regular-file",
       "size": 15063,
-      "sha256": "91ddc877d99822baaedee01632f02227319185c75cee9f07a060b1600a9c37ab",
+      "sha256": "cf07a29122598024c1ce30193e3fbdea69bcb7ddf21ce4f81914fb6f87978e95",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 20983,
-      "sha256": "8dab527b35da0b4a1f5dcbab788385f549ef74798293a5a28a17acc6482befff",
+      "size": 21168,
+      "sha256": "fd6ee03954c8e6b49e1b2ae40589c04ffa9604fd2bff4c37e651113f5fe4241a",
       "executable": false
     },
     {
@@ -2689,7 +2689,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_qr_pairing_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5234,
-      "sha256": "6c1478599fde08cea7f4aeaad6c1b748e69eefcbd879830266bfce1486de35c7",
+      "sha256": "6e34586963149961c7c35c25637d015c9d4d4db31d73607672a25dc68d5760c9",
       "executable": false
     },
     {
@@ -2703,7 +2703,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_repository_context_pack.pack.v4.json",
       "type": "regular-file",
       "size": 11461,
-      "sha256": "f4ca3644b58c1343f3aa49e5316ffd7d41c66d99759f2279837e332b3cfe35bf",
+      "sha256": "5fe1a4784b9259be6c509263fc0617c6c1d9040a24cf02aaf0aa78fa7e00084d",
       "executable": false
     },
     {
@@ -2717,7 +2717,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_research_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2951,
-      "sha256": "f8c5b1cf3f7280a8a99ea1991d3fd799170d33c99ef0b1336269ea3228e158ca",
+      "sha256": "ca85dbde8f7d60479d0f49b524021f679c82633c49f5e4f8399482727f8a1a44",
       "executable": false
     },
     {
@@ -2731,7 +2731,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_runtime_benchmark_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3006,
-      "sha256": "f20d0887bee747759a4e0cc1282b6d94031ef7b85d72aa530cd8fe604fb19cca",
+      "sha256": "3c5f149a634e92270104c06c506bd260f72f22825434b549078146bc63e2d5f7",
       "executable": false
     },
     {
@@ -2745,21 +2745,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_sandbox_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5983,
-      "sha256": "87e1515a1b595ef31510e0e0c99af65f71538f268121376578d19324901c8606",
+      "sha256": "86c3b0c41a20d1c6f3065100c3ddee2be05cffa1b57945e4c840d3b23d314e22",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_schedule_store_pack.executables.v4.json",
       "type": "regular-file",
       "size": 45340,
-      "sha256": "1476c77d41819bd00ad319c1c39dbd8ad9705e46b91e37c6abcb00b81cb2a9fb",
+      "sha256": "f20084decab618769832b823c289914d4e35d8408f98e3f4103837adf477e70b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_schedule_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9431,
-      "sha256": "9c27e82f9a045e7f18840e8d503f9e18c1bc45ccec100a2b31d9810b6ae4d3b0",
+      "sha256": "21584332ee42027e15309ec5431f18c316c2d71276836df2a1f38d140ed35f85",
       "executable": false
     },
     {
@@ -2773,7 +2773,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8452,
-      "sha256": "0707aada3bf300ae833c722a62022f9e7fe9e9dcfbeaad7a5dd1e4098f377288",
+      "sha256": "f3f39358f13425ff09f8cd215d5eef209f040dbbc9b3a8192324d7dbc69fb2e8",
       "executable": false
     },
     {
@@ -2787,7 +2787,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_surface_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3982,
-      "sha256": "01cd5eb375a75df22de975c3589e4960a0c9ef395d3137a6c75b6eef346cc042",
+      "sha256": "087c262485190a4824a4eaa710bcb42fefdca10bafd1e11e2acecb51c854b6a3",
       "executable": false
     },
     {
@@ -2801,7 +2801,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_tool_adapter_pack.pack.v4.json",
       "type": "regular-file",
       "size": 7390,
-      "sha256": "c99815c47e00fbeca4413d62a45361fe6e6615596f8be4cd701503034f56d8db",
+      "sha256": "eee8e338497f4cf458fc519d74c22b417c8afcc5e19702819e847077cd2ee9f8",
       "executable": false
     },
     {
@@ -2815,7 +2815,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_security_review_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2988,
-      "sha256": "232cffb8c0969a1ae2ba721abdd5a3f115a997b6609df5f762fd6b36e292f7b4",
+      "sha256": "8beb44356bc248057e072fbf66a1cd2d51cb29bdf5a195e2520068af4b15e113",
       "executable": false
     },
     {
@@ -2829,7 +2829,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_shell_execute_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5949,
-      "sha256": "b6aaa79c5688566d0e0b99ef55d925c54674f7b3b243d4bb21575d1119d52aa7",
+      "sha256": "7584ea2d4ffcecab7013254ed1d73ae32588141663849ef45b1bc2a63f341cca",
       "executable": false
     },
     {
@@ -2843,7 +2843,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4292,
-      "sha256": "b7f619b14e34fff399a2731055f3ae07140799af0bb809e4ec5b7c44a9f3b1f1",
+      "sha256": "5675db969584245576780c9c90de8d33306525b6642026af4c58d12bcd47a0c3",
       "executable": false
     },
     {
@@ -2857,7 +2857,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_slack_connector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6410,
-      "sha256": "0deff255479f0f43eb7b8cdcdf743ed2314053d42bd7c37349b14a57379012d0",
+      "sha256": "606f3d0be72d34a677a3ddb35d5d0cce5eb24260aab9a87f4d0d368204abf08d",
       "executable": false
     },
     {
@@ -2871,7 +2871,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_sop_mining_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2968,
-      "sha256": "df4ca80d05fd69e41d7aa542ff582e9adeaab2c8dfa8a9ddebab666f485088c3",
+      "sha256": "74d22954a3509ec4650e1cc51f7171ca0dea81c111b5aa18097e365dd38331c4",
       "executable": false
     },
     {
@@ -2885,7 +2885,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_study_coach_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2953,
-      "sha256": "6d22a111d0939739672589b90d64d915293ee614186119eac908c869dc4bcfef",
+      "sha256": "036a13e59cbbe1507788521cf6e3c0497731d25ae1afb0e2248e274ae566f7d6",
       "executable": false
     },
     {
@@ -2899,7 +2899,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_placement_pack.pack.v4.json",
       "type": "regular-file",
       "size": 13383,
-      "sha256": "e2a3fbeb8b702fb6b808da49161ac7b512e75d4c0d57c8ac4102cf687d617c3f",
+      "sha256": "df9740d7c1c789af91c7d97be397c548086565f91adabc90d8e13545c6116fcb",
       "executable": false
     },
     {
@@ -2913,7 +2913,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_subagent_pr_manager_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3018,
-      "sha256": "3b1334895a622de7c9c9ee776a2fa0040a535d1c6b828f886af6476ee905f3e5",
+      "sha256": "72d37c3ddfde4e7a1defd32923f899c4296c5db580efc01c9cba77b879dbb002",
       "executable": false
     },
     {
@@ -2927,7 +2927,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_telephony_delegate_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2995,
-      "sha256": "7b52ea0bc4024b3c7499f292a95ed4380eacee3f7ef0b005c6fc27c735e1c082",
+      "sha256": "4485be379d5fd5df6ec54b1ae5a2efed5a6524115ef9e952d75977ef0ebe5492",
       "executable": false
     },
     {
@@ -2941,7 +2941,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_terminal_session_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6638,
-      "sha256": "ee9549c9001864a0ba6d16a7dabfbb43be4569721ab9cb093b51d23aac4a1372",
+      "sha256": "d9f976a98ac19d929639cc40b2ad98935cfc58b821650910bb5024e84ceb6b24",
       "executable": false
     },
     {
@@ -2955,7 +2955,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_approval_bridge_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4460,
-      "sha256": "926188ce316dcbbe883be98a2221e41ac6045cbe88d6ddbb81355ab6891bde6d",
+      "sha256": "547129d78174b5035a0c54591686506b44ddf5dfc029e3e6ac28c1275e8189a0",
       "executable": false
     },
     {
@@ -2969,7 +2969,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_audit_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4281,
-      "sha256": "4ad86393c50757bc3570c08ac9661bf6afa3fee08e83d529b72578d57edac898",
+      "sha256": "42e04a6686b9e02d784b440f684319fd76dfe6706812c6e9aab0137b68dabf37",
       "executable": false
     },
     {
@@ -2983,21 +2983,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_authoring_pack.pack.v4.json",
       "type": "regular-file",
       "size": 6077,
-      "sha256": "34744ab91f1fe1aa43c0bd4dce8872b5504945650b4c69536d45a61919f13e14",
+      "sha256": "537f40cc5a605d552ae8a5d1ed55eeeba6e96aa0b2f84a73946090321ed8d2fc",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_broker_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 1688,
-      "sha256": "faf4be53e58fc759941e862bea47c7272550cbcbe5e090eced03a1700cd437aa",
+      "size": 4655,
+      "sha256": "9e32251662132d671c1e1981745caf7d90c91b9965647d31ea855deda65d9788",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_broker_pack.pack.v4.json",
       "type": "regular-file",
       "size": 5482,
-      "sha256": "e6449d9d7376d6e0987f778bba30668e55839c5e8aad11a5da65e541a77e9aee",
+      "sha256": "1d1ca21c278fe939b3ef76e8ecd2a25e678822bb49352a5733c1e3734330d604",
       "executable": false
     },
     {
@@ -3011,7 +3011,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_capability_executor_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4543,
-      "sha256": "4a298448f462f6a29768854d690c6be7a465e5e275aadac849d9664476ace526",
+      "sha256": "713d9d695b45bc128d9acb23bf9212c0a4e4c4eba0e170b7ed8b1228616ba723",
       "executable": false
     },
     {
@@ -3025,7 +3025,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_executor_selector_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4556,
-      "sha256": "5713d9045e1b1491ccc5fb960546b61309b0ca489c741f4f8162d803486b26b7",
+      "sha256": "d99b9c354c500d01152eac5a9f12df17a894623b8a07c1e26897ae7342cc7305",
       "executable": false
     },
     {
@@ -3039,7 +3039,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_guard_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4335,
-      "sha256": "42ff32242f47d03c3e9d44d731d6ba68dc4f17381a86d19c5b08a16af4eaf188",
+      "sha256": "2857367f5a0b4f99af1658e0a493281061655621cde056481223276780b5429f",
       "executable": false
     },
     {
@@ -3053,7 +3053,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_local_executor_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4785,
-      "sha256": "30070517aa7a3a448a4b2870d2cd09cad118c90425d1bec5f9832bf4e8432243",
+      "sha256": "0ecc095475ee687607956f393d21ff7ba88e7d83d8c502a9eff617e061349075",
       "executable": false
     },
     {
@@ -3067,7 +3067,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_mcp_executor_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4564,
-      "sha256": "30f274d73f608485f4cd23acffa2adffa1eb3b63ad3142ac2375999bfbba8c4a",
+      "sha256": "88713c660a58fe368531bc9da8f7fcb1a77c279f537de218204e708ff7c5d367",
       "executable": false
     },
     {
@@ -3081,21 +3081,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_policy_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4362,
-      "sha256": "f1100de2a2dda571ac2dc2b34fbfe8f1719798de21b0bf020a85795a0cd409bd",
+      "sha256": "a48b28f4b7bf3c4d60501dfb8eb88154a8f088c602030fc50968c15d89eb33bb",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.executables.v4.json",
       "type": "regular-file",
       "size": 4311,
-      "sha256": "580cbcc96c6d8bb6da771204b8b9aed4d025e1fca248749b89c034e8c4a87ca1",
+      "sha256": "d62cc68f998caf0afd0856ac5fa8d883e674e68ea50b9f22053394bc7cfe5a35",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8690,
-      "sha256": "b203187f1e0beae9fa8895f53af4bc33d80b8e4cfed117a8d1b33305e59e8801",
+      "sha256": "5cbea1a0cef085092544cb999b879205b191a227a125f762c7ff89e81078c784",
       "executable": false
     },
     {
@@ -3109,21 +3109,21 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_remote_executor_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4635,
-      "sha256": "9ca59fcc477dbc069c1575057697988d1e8254bf912e217c8151fda6173f3893",
+      "sha256": "74a484898fcb584568077ede5ede5365c482a4e8d97c9c4eb40978083227aa3d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 1717,
-      "sha256": "393695876f75f4f29b59c894d91620498a5634d850d4531a4243e0667197e63d",
+      "size": 4302,
+      "sha256": "bea6bfb59e3d91c24e3da4b7c24ed9873e14f3bb1a90123655c8074f2c71e3fb",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4378,
-      "sha256": "77506cdf08cbd17076439f139a4c0d00c7a8f83467b7e05717e4a3f059b83b51",
+      "sha256": "28a65035aa11554dc6b6006aa31771ac7b273d2d4836a430c02f6c0a4603a44c",
       "executable": false
     },
     {
@@ -3137,35 +3137,35 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_sandbox_executor_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4477,
-      "sha256": "4d21b3110911859fc853555037452ef7eac65ad0efdbf88bab2b0fb4b9140272",
+      "sha256": "59ed32ac989fc8f7f9d810a5d783701f5caaa5337143a4b6b1800cb9d27f94ab",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_validation_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 1744,
-      "sha256": "9ecb90d8c876494a2f221554c3d242aa6bc28f2e591fc701719a29aee0467d1b",
+      "size": 3421,
+      "sha256": "ccfb729364b49e75f035a06f20d9b7a2e739857d5aed417d80719eaf5a830ec4",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_validation_pack.pack.v4.json",
       "type": "regular-file",
       "size": 4467,
-      "sha256": "58311e96d62742022aaba201b59f4b7dbbe812d56b1f579dda7a12cdb0f6689e",
+      "sha256": "d3246e6d83be77873901386d5d407c9ea1b26fc8b539342221b2935947948577",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
       "type": "regular-file",
       "size": 82578,
-      "sha256": "20e2402a52bbabcc6c5c5606b83d969f34031ff91f9da7ce40b615bedbfb1735",
+      "sha256": "b4c286455b4c51d7ff43fddd3d4fb778c34d09f44360e70098e289214cd2dc74",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 21527,
-      "sha256": "2b802828c1d1750e054022d02da54dbc7552745a7ed5213406ec540d7c0c7c46",
+      "size": 21554,
+      "sha256": "5cc406a026967ff9c911a74fb8f7ccd5cbcd07f69e8bc23ef7e54e7171edaee7",
       "executable": false
     },
     {
@@ -3179,7 +3179,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_voice_mobile_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2978,
-      "sha256": "f816f8c6c563c719cdcd9ca5d6614ca6d705182b5af5f68244eef094e4d16f47",
+      "sha256": "6633c39e8d43cb730a775c9d9608d54a50424f812aad985439463ef453fc6264",
       "executable": false
     },
     {
@@ -3193,7 +3193,7 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_workflow_scheduler_pack.pack.v4.json",
       "type": "regular-file",
       "size": 3009,
-      "sha256": "005cb5cea11a3905c1a8af5fbfbea1b2a207ba53f973582697a62e806c3cf52d",
+      "sha256": "d02a3e4d0a1e9379cae968871d182d96eb7a0cafc921c4e7e1b0d25e1510c78a",
       "executable": false
     },
     {
@@ -3214,14 +3214,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_workspace_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2962,
-      "sha256": "942cf7c5d4b4d121c95693c1c5303c76534f37ef3bae18a5dd7b46d565fecd86",
+      "sha256": "070ec6fb61dcc6bf0d60de68ac66def113a8f8d196eae1bf642643a3867513fb",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "e9b1f23b5a67081c65275ea6ea46a835a35325de2218b2be112e96cf68f353e4",
+      "sha256": "f875bf77546c39ea7eb4392c7c24f051f00d9991023398d59a62ced92234b25e",
       "executable": false
     },
     {
@@ -3235,28 +3235,28 @@
       "path": "ecosystem/defaultspack/v4/packs/search_home_pack.pack.v4.json",
       "type": "regular-file",
       "size": 2942,
-      "sha256": "c0954a552fa7584e7ac6fbef1778fb0cad750220215b721b2c281af9bcf37973",
+      "sha256": "fc8ebc129215d1dc4e2e99c747cda45cf7501d23597818c1d52b02acd9a60a55",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/shell.cli.default.pack.v4.json",
       "type": "regular-file",
       "size": 3508,
-      "sha256": "f147c44cd69d195f8b48a6d1c04f29f84cf6c249366b22a3124b684ab4407f89",
+      "sha256": "377cac0f5fa798f4ac1ec1234a1faa90dc3fd24c7c3b27d5d8edcaa0d84b2d4b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/shell.tauri.default.pack.v4.json",
       "type": "regular-file",
       "size": 4587,
-      "sha256": "26307a559e859262cb45545cd1db18472ed7d6cce701c6280776b78c04c8f0a0",
+      "sha256": "5ce958846f96f4226c01eacb95edf56e002f73e6ac762e0138e2229abd546cc0",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri-host-pack-control.pack.v4.json",
       "type": "regular-file",
       "size": 13516,
-      "sha256": "c4fae65750041811123d3b39ad765ed4ea6346e1fd1537a671277786bd51306b",
+      "sha256": "11eee8cf0ff27535191ca466f449ee73ada1ee254538bce130220bcf596b40c3",
       "executable": false
     },
     {
@@ -3270,7 +3270,7 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_agent_control_pack.pack.v4.json",
       "type": "regular-file",
       "size": 18185,
-      "sha256": "383e4e844b41a62e2a857894fb71edb0394745b21086ec25c310db67a449f30f",
+      "sha256": "ea54477c82752e89fa19564ab41007b83c73acf6c05f84bc472d06c0643f0ecd",
       "executable": false
     },
     {
@@ -3284,7 +3284,7 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_cloud_workspace_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9524,
-      "sha256": "19e1429aab85123ab8970df9e2f65939b01ba0c447e0c28c5a56120e64ca7261",
+      "sha256": "46f1dd1bb8284a716c5f242001459eea4ca0b7fc39f4a09ae24943640b5517b5",
       "executable": false
     },
     {
@@ -3298,7 +3298,21 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_conversation_lifecycle_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8913,
-      "sha256": "56ebd29eda469a600908cf2788e1f7ad007198ebc6be322e9a6385be6b2f4ae2",
+      "sha256": "382127e0faf662831457dfef2cb83e8ef6c8f076408543ea29e8f83a52dcc82c",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_conversation_orchestration_pack.executables.v4.json",
+      "type": "regular-file",
+      "size": 25572,
+      "sha256": "499105283dfed3032f2b58469c36e5c27e1af49c5258eda16320f551a81c10e1",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_conversation_orchestration_pack.pack.v4.json",
+      "type": "regular-file",
+      "size": 8017,
+      "sha256": "f4e2177fa241dfcf23644eadb3703f478a747a3b4cd497b4e97a8c2a0e9defe3",
       "executable": false
     },
     {
@@ -3319,7 +3333,7 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8399,
-      "sha256": "3afa8ff3336a4464ddf9b3db2cd20a6ac1031e670321150d58e1570c67e09155",
+      "sha256": "cde7cde808a64fa4470fe32accc3e10eeeda1a6e6df0fe9af3f2b4510e64a325",
       "executable": false
     },
     {
@@ -3333,7 +3347,7 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_side_chat_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9185,
-      "sha256": "4fe5c396df9a85b9b6cf79de48c365038ee217a3dad16e4912b60d99d3475f54",
+      "sha256": "f7badfa41dc36e6723d53b852ac36c8e0f7c1bbbc96cb83a4a44adf87e4cfd0c",
       "executable": false
     },
     {
@@ -3347,35 +3361,35 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
       "type": "regular-file",
       "size": 17411,
-      "sha256": "49463deb67c593ac4232ddf268c993ebb434844e45f4bdd8231065fb78e610a1",
+      "sha256": "22c5c147878cbac761d75656e5e37517fb87a97039420a6ac73e739202e1dd89",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 35365,
-      "sha256": "11feb11af2e622ce8b4bd7499771f6e47d83206703c237e99cb6ef20e8a3e3b9",
+      "size": 39227,
+      "sha256": "c7ba1efbf122ef325311dc59a90524f18852177722fcf915f9349086cb840024",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 12351,
-      "sha256": "f41f23ead08e0a1cab0d5ca31a27c73af4c0963379e107d20bf8b899fde7f3aa",
+      "size": 13784,
+      "sha256": "8f333f29ae659538d200a9e187920cd83c787af9cbd99ffcaaa031fc25612c9e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/shell.cli.default.shell.v1.json",
       "type": "regular-file",
       "size": 2490,
-      "sha256": "061a322a3167d41e528e0a1395a64da48e60686c6f7f3ef57cbb78f2624ebc23",
+      "sha256": "5ae25ddcd250b7921e2d9ebbb1686db2644c59e58dc13ba83259009fe5fdcc3b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/shell.tauri.default.shell.v1.json",
       "type": "regular-file",
       "size": 3340,
-      "sha256": "23b8820ae8da1d2605534350bd68c91423e6261a15a65bc4bc871f610634804e",
+      "sha256": "9dac1505ea368f8749013588bd03dc82b65e2c722909a26a89980161b66dfc4a",
       "executable": false
     },
     {
@@ -3402,8 +3416,8 @@
     {
       "path": "scripts/build_packvm_guest_bundle.py",
       "type": "regular-file",
-      "size": 4769,
-      "sha256": "ed49d520fee3eb33f9616ff3d1cb399f75d9e8e71e56cf86490ddcb6c0b86b76",
+      "size": 5175,
+      "sha256": "721354f015c28f50072cd6056438df5f71dbde306a18680df6dff9f03652aca2",
       "executable": false
     },
     {
@@ -3451,15 +3465,15 @@
     {
       "path": "scripts/generate_defaultspack_v4_bundle.py",
       "type": "regular-file",
-      "size": 52952,
-      "sha256": "9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
+      "size": 54207,
+      "sha256": "72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
       "executable": false
     },
     {
       "path": "scripts/generate_executable_catalogs_v4.py",
       "type": "regular-file",
-      "size": 14121,
-      "sha256": "3814074a673426868bc2a5155ed4e6f793e131e20382ccc0db0df5e0080e647d",
+      "size": 14162,
+      "sha256": "bef56ea6ed9f01706a7c533b006070253ca95c98ca3b1bdf28ee37e12a1fc45a",
       "executable": false
     },
     {
@@ -3474,6 +3488,13 @@
       "type": "regular-file",
       "size": 3107,
       "sha256": "15759cb4d42ce847cb96127c4d5219dd82f17681e236e79e614336590b5714c8",
+      "executable": false
+    },
+    {
+      "path": "scripts/generate_model_catalog_runtime.py",
+      "type": "regular-file",
+      "size": 1512,
+      "sha256": "40cb49611ff828c8aa211b4ca42fc693713ee66bbb64acbaca8c47f4c6764db5",
       "executable": false
     },
     {
@@ -3514,8 +3535,8 @@
     {
       "path": "scripts/migrate_pack_artifacts_v4.py",
       "type": "regular-file",
-      "size": 69134,
-      "sha256": "b8937f1bb514d59bff21bb6e404abbc48571414409d5a14cd9cd4abf59d932bc",
+      "size": 70294,
+      "sha256": "853841aba5a1b1d65c45ee3306a38f034e754d102735c50de60484df0a863be1",
       "executable": false
     },
     {
@@ -3542,8 +3563,8 @@
     {
       "path": "scripts/packaging_cleanup.py",
       "type": "regular-file",
-      "size": 117644,
-      "sha256": "29b034c3edab4528358cab8c3dbbcd55230cdd6cb83bdffb25c61a9f6ff6e0d0",
+      "size": 118566,
+      "sha256": "d393e32ef482307c419f4b69815e5531558134b63e9af9244c9a5b33308c36e4",
       "executable": false
     },
     {
@@ -3577,15 +3598,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 184590,
-      "sha256": "9df62f19592f6ea913b4206804e6d4beafdcde79b2f312d2563f19823b7c742c",
+      "size": 190140,
+      "sha256": "bf03c8cf655ef0c978baea73ecfea9a6aaab13e5bb85411af4f4ef1ce8f5f9c0",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 1173151,
-      "sha256": "522c2ee5aef370c0677260040e6961513971912837c9b8c603336bebe2e9f2e2",
+      "size": 1233077,
+      "sha256": "c51dc42e42dd67b133f4e4cf49072844a2e7e0dc3c2b790d2e41e5eb4cd23b48",
       "executable": false
     },
     {
@@ -3673,6 +3694,13 @@
       "executable": false
     },
     {
+      "path": "scripts/quality/scan_flow_contracts.py",
+      "type": "regular-file",
+      "size": 3802,
+      "sha256": "94e9656a09e0f7010c195e946f4a18cf796ff8e83abbaec3ca4cf37ff37d5ed7",
+      "executable": false
+    },
+    {
       "path": "scripts/quality/scan_pack_architecture.py",
       "type": "regular-file",
       "size": 44582,
@@ -3738,8 +3766,8 @@
     {
       "path": "scripts/tobkiri_pack.py",
       "type": "regular-file",
-      "size": 14696,
-      "sha256": "7163588383b95faadf32f7ef99c6ec353fa2b4b45477529b5307761f2e65bebf",
+      "size": 15936,
+      "sha256": "a64cf2f80b2e9ffff2831f45813d8946d9570d2cc71877d44bfb42982c464db7",
       "executable": false
     },
     {
@@ -3773,8 +3801,8 @@
     {
       "path": "tobkiri_protocol/bundle_catalog.py",
       "type": "regular-file",
-      "size": 9051,
-      "sha256": "a374c06be81836d6260527e9f5f3cf0744a68967b6b6b5099afcbeb09f7f11c5",
+      "size": 11795,
+      "sha256": "3601c893f33cb53b78178fcafe0515722f6303dab0f4ad0998c94b90c58b9749",
       "executable": false
     },
     {
@@ -3817,6 +3845,13 @@
       "type": "regular-file",
       "size": 8253,
       "sha256": "d645ad36d8248516a619c5dbcd4051c782bdbe909df9df5386e7503301c27ece",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/data_codec.py",
+      "type": "regular-file",
+      "size": 19678,
+      "sha256": "359c29ead49bb69cbd504f9e2f4f6e2ed3301ebaff9deb4ac82e9e7dac4d5484",
       "executable": false
     },
     {
@@ -3911,6 +3946,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/flow_values.py",
+      "type": "regular-file",
+      "size": 3378,
+      "sha256": "b759c6ed92e708f160aa378655986b769d1f7135e4e9e387661c1df7a171b53c",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/frontend_entries.py",
       "type": "regular-file",
       "size": 3071,
@@ -3936,6 +3978,13 @@
       "type": "regular-file",
       "size": 16782,
       "sha256": "69703eebbf1f29b33e4e41c04d501fd48efd2bd785e522da1856cf3f7a6a0292",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/packvm_data_wire.py",
+      "type": "regular-file",
+      "size": 6073,
+      "sha256": "acfc27475d80a89887c93849b6a7733b5f39bfd013e5303f2ded800eaa066ec6",
       "executable": false
     },
     {
@@ -3974,6 +4023,27 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/provider_compiler/__init__.py",
+      "type": "regular-file",
+      "size": 295,
+      "sha256": "642a141e6138595d80fec764c2ab4e3c7079efb5447e26f399951c04ed61eeb6",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/provider_compiler/model_access.py",
+      "type": "regular-file",
+      "size": 3706,
+      "sha256": "06eae9e3eebebb328e64084688609d25d8e0f9042d4ede07918aab88d1eb5900",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/provider_compiler/native_filters.py",
+      "type": "regular-file",
+      "size": 7889,
+      "sha256": "7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/provider_sse_v1.py",
       "type": "regular-file",
       "size": 4987,
@@ -4002,6 +4072,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/saved_messages.py",
+      "type": "regular-file",
+      "size": 8175,
+      "sha256": "911f74c1d25e3e2cdcc8f693d0cd19a8a425c227523834691e790a41212ea996",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/saved_task_context.py",
       "type": "regular-file",
       "size": 3233,
@@ -4016,6 +4093,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/saved_workflow_admission.py",
+      "type": "regular-file",
+      "size": 4025,
+      "sha256": "3bb790e5e84960361ee620dd5d211da22b3e8bb9f024f178a4e194e56486777e",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/scanners.py",
       "type": "regular-file",
       "size": 10046,
@@ -4023,10 +4107,17 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/scheduled_task_v1.py",
+      "type": "regular-file",
+      "size": 3931,
+      "sha256": "c6b23e8876ab4faac960fd57cf3f54377c7bafc72d80ae1fe67a38b86c59ba1f",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/schema_hashes.json",
       "type": "regular-file",
-      "size": 4775,
-      "sha256": "ae004506f4b8b3c6ea564983ff06bba065916f780d582c87eb76580b090673a5",
+      "size": 4897,
+      "sha256": "3dfd6fdfc31d2b19d127e970087266ed2965e96ca90bf06e009f70ff813ca8f4",
       "executable": false
     },
     {
@@ -4254,6 +4345,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/saved_workflow_admission_v1.schema.json",
+      "type": "regular-file",
+      "size": 2678,
+      "sha256": "7ea865d15ec144b633687ad32fc7e202c8d4daf805b5d0131abd4a0c543e9a46",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/schemas/shell_definition_v4.schema.json",
       "type": "regular-file",
       "size": 3340,
@@ -4326,8 +4424,8 @@
     {
       "path": "tobkiri_protocol/secure_persistence.py",
       "type": "regular-file",
-      "size": 36916,
-      "sha256": "aa67304c6b4c07956cdec2aed90c6e11e39e58f19f09deb619da5662da970e2c",
+      "size": 40516,
+      "sha256": "3f3f4496399012cb937fce6ec15984b03c9dec0a55232fe38eceb2e104ee4105",
       "executable": false
     },
     {
@@ -4377,6 +4475,13 @@
       "type": "regular-file",
       "size": 21024,
       "sha256": "91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/windows_private_file.py",
+      "type": "regular-file",
+      "size": 6028,
+      "sha256": "75d0494343007f4bab23f6b6539b0da9554addc1a319020e51013d11ff025d79",
       "executable": false
     },
     {

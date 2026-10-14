@@ -122,7 +122,7 @@ test('activation verification keeps an indeterminate submission locked after a f
     assert.ok(confirmation);
     await act(async () => { confirmation.click(); });
     const activate = [...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Activate Defaults Profile'));
+      .find((button) => button.textContent?.includes('Activate Tobkiri Harness'));
     assert.ok(activate);
     await act(async () => { activate.click(); });
     assert.match(container.textContent ?? '', /Activation was submitted; verification is required/);

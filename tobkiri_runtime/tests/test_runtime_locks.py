@@ -62,3 +62,46 @@ def test_pinned_lock_preserves_mutual_exclusion_with_legacy_writer(
     with second:
         assert (directory.root / "shared.lock").exists()
     assert not (directory.root / "shared.lock").exists()
+
+
+def test_reentrant_lock_is_only_reentrant_in_its_holding_thread(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    lock = FileLock(tmp_path / 'shared.lock', reentrant=True, timeout_ms=20,
+                    poll_interval=0.001)
+    with lock:
+        with lock:
+            assert lock._held == 2
+        assert lock._held == 1
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(lock.acquire)
+            with pytest.raises(LockTimeout):
+                future.result(timeout=2)
+        assert lock._held == 1
+    assert not lock.path.exists()
+
+
+@pytest.mark.parametrize('reentrant', [False, True])
+def test_waiting_thread_allows_same_instance_owner_to_release(tmp_path, reentrant):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    lock = FileLock(tmp_path / 'handoff.lock', reentrant=reentrant,
+                    timeout_ms=1000, poll_interval=0.001)
+    waiting = Event()
+    acquired = Event()
+    lock.acquire()
+
+    def use_lock():
+        waiting.set()
+        with lock:
+            acquired.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(use_lock)
+        assert waiting.wait(timeout=1)
+        assert not acquired.wait(timeout=0.02)
+        lock.release()
+        future.result(timeout=2)
+    assert acquired.is_set()
+    assert not lock.path.exists()

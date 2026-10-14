@@ -104,9 +104,7 @@ def _timing(kind: Any, config: Any, now_ms: int) -> dict[str, Any]:
 def _normalize_task(
     task: Any, profile_id: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    from ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved import (
-        normalize_scheduled_saved_task,
-    )
+    from tobkiri_protocol.scheduled_task_v1 import normalize_scheduled_saved_task
 
     if not isinstance(task, Mapping) or set(task) - {
         "message",

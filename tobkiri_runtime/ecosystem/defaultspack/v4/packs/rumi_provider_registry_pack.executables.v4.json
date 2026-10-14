@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:0777598b3c083ff051622f51617f171263b57396094ad3a0e52c730a93ead011",
+  "source_identity": "sha256:94e49fa6f60332104321cad3011d0256d6eb39bc94a089c8af423dd9c736a45b",
   "variants": [
     {
       "variant_id": "rumi_provider_registry_pack.model-access.catalog.python",
       "function_id": "rumi_provider_registry_pack.model-access.catalog",
       "implementation_path": "runtime/model_access_resource.py",
-      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "operation_id": "rumi_provider_registry_pack.model-access-catalog",
           "input_schema": {
             "type": "object"
@@ -109,7 +109,7 @@
       "variant_id": "rumi_provider_registry_pack.model-access.read.python",
       "function_id": "rumi_provider_registry_pack.model-access.read",
       "implementation_path": "runtime/model_access_resource.py",
-      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -121,7 +121,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "operation_id": "rumi_provider_registry_pack.model-access-read",
           "input_schema": {
             "type": "object"
@@ -329,7 +329,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
           "input_schema": {
             "type": "object"
@@ -348,7 +348,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "operation_id": "rumi_provider_registry_pack.provider-registry-resource.generate",
           "input_schema": {
             "type": "object"
@@ -367,7 +367,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
           "input_schema": {
             "type": "object"
@@ -386,6 +386,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:092099de0fa57a351e380d1242477a96b6a18f41e12489ef6080051c3c3d2c7c",
-  "catalog_digest": "sha256:b1389e689773de54d610bd8242cd748bebea6154b3a2c2b6a5325f018d3270e2"
+  "materialization_catalog_digest": "sha256:f9b65a2c1a25e57eb85605759e8cc5b1b957ad4e4f39966e549bfe0bb785d0eb",
+  "catalog_digest": "sha256:2ef688a4f4ded8e72eeb66d8a0cbab2541d77a9dfbd0cfe8eb07863056c3f529"
 }

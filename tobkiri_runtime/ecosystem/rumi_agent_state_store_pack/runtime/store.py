@@ -93,6 +93,7 @@ class AgentStateStore:
                 current["created_at_ms"] if current else now_ms
             )
             value["updated_at_ms"] = now_ms
+            value["definition_revision"] = int((current or {}).get("definition_revision", 0)) + 1
             state["profiles"][value["id"]] = value
             return {"agent_profile": _copy(value)}
         if name == "profile.delete":
@@ -110,7 +111,14 @@ class AgentStateStore:
             run_id = _identifier(arguments["run_id"])
             known = state["runs"].get(run_id)
             if known is not None:
-                if known["idempotency_key"] != arguments["idempotency_key"]:
+                identity = {
+                    "idempotency_key": arguments["idempotency_key"],
+                    "agent_profile_id": _identifier(arguments["agent_profile_id"]),
+                    "conversation_id": str(arguments["conversation_id"]),
+                    "turn_id": str(arguments["turn_id"]),
+                    "parent_run_id": str(arguments["parent_run_id"] or ""),
+                }
+                if any(known.get(key) != item for key, item in identity.items()):
                     raise AgentStateConflict("agent run ID is already bound")
                 return {"run": _copy(known), "deduplicated": True}
             agent_profile_id = _identifier(arguments["agent_profile_id"])
@@ -121,7 +129,12 @@ class AgentStateStore:
                 parent = state["runs"].get(_identifier(parent_run_id))
                 if parent is None or parent["status"] in _TERMINAL:
                     raise AgentStateConflict("parent run is unavailable")
-                parent_profile = state["profiles"][parent["agent_profile_id"]]
+                parent_profile = parent.get("agent_profile_snapshot")
+                if "agent_profile_snapshot" not in parent:
+                    # Pre-snapshot runs retain their established legacy behavior.
+                    parent_profile = state["profiles"][parent["agent_profile_id"]]
+                elif not isinstance(parent_profile, Mapping) or parent_profile.get("id") != parent["agent_profile_id"]:
+                    raise AgentStateConflict("parent agent definition snapshot is invalid")
                 if not parent_profile["allow_subagents"]:
                     raise PermissionError("agent profile denies subagents")
                 if len(parent["child_run_ids"]) >= int(
@@ -132,6 +145,8 @@ class AgentStateStore:
                 "id": run_id,
                 "idempotency_key": _identifier(arguments["idempotency_key"]),
                 "agent_profile_id": agent_profile_id,
+                "agent_profile_snapshot": _copy(state["profiles"][agent_profile_id]),
+                "agent_definition_revision": int(state["profiles"][agent_profile_id].get("definition_revision", 0)),
                 "conversation_id": str(arguments["conversation_id"]),
                 "turn_id": str(arguments["turn_id"]),
                 "parent_run_id": parent_run_id,
@@ -151,6 +166,7 @@ class AgentStateStore:
                 "created_at_ms": now_ms,
                 "updated_at_ms": now_ms,
             }
+            _validate_run_snapshot(run)
             _event(run, "agent.run.queued", {})
             state["runs"][run_id] = run
             if parent_run_id:
@@ -277,6 +293,10 @@ class AgentStateStore:
             value.get("runs"), Mapping
         ):
             raise ValueError("agent state records are invalid")
+        for run in value["runs"].values():
+            if not isinstance(run, Mapping):
+                raise ValueError("agent run record is invalid")
+            _validate_run_snapshot(run)
         return {
             "version": VERSION,
             "profile_id": self.profile_id,
@@ -421,6 +441,42 @@ def _agent_profile(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_run_snapshot(run: Mapping[str, Any]) -> None:
+    """Reject partial/new malformed pins; only wholly absent pins are legacy."""
+    fields = {"agent_profile_snapshot", "agent_definition_revision"}
+    present = fields.intersection(run)
+    if not present:
+        return
+    snapshot = run.get("agent_profile_snapshot")
+    revision = run.get("agent_definition_revision")
+    if present != fields or not isinstance(snapshot, Mapping) or (
+        snapshot.get("id") != run.get("agent_profile_id")
+        or type(revision) is not int or revision < 0
+        or type(snapshot.get("definition_revision", 0)) is not int
+        or snapshot.get("definition_revision", 0) != revision
+    ):
+        raise ValueError("agent definition snapshot is invalid")
+    for key, minimum, maximum in (
+        ("max_steps", 1, 64), ("context_token_budget", 256, 1_000_000),
+        ("max_children", 0, 32),
+    ):
+        item = snapshot.get(key)
+        if type(item) is not int or not minimum <= item <= maximum:
+            raise ValueError("agent definition snapshot is invalid")
+    if type(snapshot.get("allow_subagents")) is not bool or any(
+        not isinstance(snapshot.get(key), str)
+        for key in ("id", "display_name", "system_prompt", "model_profile_id")
+    ):
+        raise ValueError("agent definition snapshot is invalid")
+    if not _ID.fullmatch(snapshot["id"]) or len(snapshot["display_name"]) > 120 or len(snapshot["system_prompt"]) > 100_000:
+        raise ValueError("agent definition snapshot is invalid")
+    tools = snapshot.get("tools")
+    if not isinstance(tools, list) or len(tools) > 500 or any(
+        not isinstance(item, str) for item in tools
+    ) or not isinstance(snapshot.get("metadata"), Mapping):
+        raise ValueError("agent definition snapshot is invalid")
+
+
 def _default_profile() -> dict[str, Any]:
     return {
         **_agent_profile(
@@ -433,6 +489,7 @@ def _default_profile() -> dict[str, Any]:
         ),
         "created_at_ms": 0,
         "updated_at_ms": 0,
+        "definition_revision": 0,
     }
 
 

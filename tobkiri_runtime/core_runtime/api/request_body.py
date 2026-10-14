@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional, TYPE_CHECKING
 
@@ -12,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .api_response import APIResponse
 from ..validation import MAX_REQUEST_BODY_BYTES
+from tobkiri_protocol.data_codec import CodecError, Limits, loads_data_json
 
 
 logger = logging.getLogger(__name__)
@@ -64,8 +64,8 @@ class RequestBodyMixin(_HTTPHandlerBase):
         if not raw:
             return {}
         try:
-            return json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            return loads_data_json(raw, limits=Limits(max_bytes=MAX_REQUEST_BODY_BYTES))
+        except CodecError:
             self._send_response(
                 APIResponse(False, error="Invalid JSON in request body"),
                 400,

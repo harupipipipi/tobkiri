@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+            "digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+        "source_digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -270,7 +270,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+            "digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -281,7 +281,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+        "source_digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -368,7 +368,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+            "digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -379,7 +379,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+        "source_digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -552,7 +552,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+            "digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -563,7 +563,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b",
+        "source_digest": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -1374,5 +1374,5 @@
     }
   ],
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:fb0f81aa7d1e7106b7edd37fe6fee3b31ac6812f5ff5ef59d06b5581802e391b"
+  "source_identity": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43"
 }

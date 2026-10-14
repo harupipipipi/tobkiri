@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import {
   createProfileCeremonyClient,
-  type ProfileCeremonyTransport,
   validateProfileResolveResult,
+  type ProfileCeremonyTransport,
 } from './profileCeremony';
 import {
   RUNTIME_SURFACE_API_VERSION,
@@ -103,7 +103,7 @@ function hostCandidateReview() {
   // the candidate's digest; the client must preserve their exact values.
   return {
     profile: {profile_id: 'defaults'}, profile_lock: {}, resolved_plan: {},
-    predecessor: {}, catalog_binding: catalogBindingFields(),
+    predecessor: {state: 'active', profile_revision: digest('a'), plan_digest: digest('b'), activation_id: 'activation:defaults-one'}, catalog_binding: catalogBindingFields(),
     candidate_generation: `profile-change-generation:${'1'.repeat(32)}`,
     selection: {
       selected_profile_id: 'defaults', execution_profile_id: 'defaults',
@@ -123,6 +123,7 @@ test('resolve preserves the Host candidate generation and exact selected/executi
   assert.deepEqual(result.review, review);
   const initialReview = {
     ...review,
+    predecessor: {state: 'none', profile_revision: digest('a'), plan_digest: digest('b'), activation_id: null},
     selection: {...review.selection, execution_profile_id: null, execution_activation_id: null},
   };
   assert.deepEqual(validateProfileResolveResult({
@@ -496,4 +497,32 @@ test('Profile ceremony rejects client approval flags and non-digest guards befor
     (error: unknown) => error instanceof RuntimeSurfaceError && error.code === 'INVALID',
   );
   assert.equal(calls.length, 0);
+});
+
+
+test('current Host resolve records preserve candidate generation and exact selection', () => {
+  const input = {
+    profile_id: 'alternate', expected_profile_revision: digest('a'),
+    expected_plan_digest: digest('b'), desired_pack_ids: ['provider-pack'],
+    ...catalogBindingFields(),
+  };
+  const response = {
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
+    state: 'resolved', candidate_id: 'candidate-one', candidate_digest: digest('9'),
+    expires_in: 120, next_action: 'review', write_set: [],
+    review: {
+      candidate_generation: `profile-change-generation:${'c'.repeat(32)}`,
+      profile: {profile_id: 'alternate'}, profile_lock: {}, resolved_plan: {},
+      predecessor: {state: 'active', profile_revision: digest('a'), plan_digest: digest('b'), activation_id: 'activation:defaults'},
+      selection: {selected_profile_id: 'alternate', execution_profile_id: 'defaults', execution_profile_revision: digest('a'), execution_plan_digest: digest('b'), execution_activation_id: 'activation:defaults'},
+      catalog_binding: catalogBindingFields(),
+    },
+  };
+  const parsed = validateProfileResolveResult(response, input);
+  assert.equal(parsed.review.candidate_generation, response.review.candidate_generation);
+  assert.deepEqual(parsed.review.selection, response.review.selection);
+  assert.throws(() => validateProfileResolveResult(response, {...input, expected_plan_digest: digest('f')}), /different selection or predecessor/);
+  assert.throws(() => validateProfileResolveResult({...response, review: {...response.review, approved: true}}, input), /exact candidate review records/);
+  assert.throws(() => validateProfileResolveResult({...response, review: {...response.review, selection: {...response.review.selection, execution_activation_id: 'activation:other'}}}, input), /inconsistent candidate selection/);
+  assert.throws(() => validateProfileResolveResult({...response, review: {...response.review, candidate_generation: 'invalid'}}, input), /inconsistent candidate selection/);
 });

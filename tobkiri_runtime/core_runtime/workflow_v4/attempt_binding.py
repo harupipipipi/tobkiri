@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from core_runtime.workflow_v4.models import WorkflowDenied, digest
+from core_runtime.workflow_v4.data_codec import request_digest
 from core_runtime.workflow_v4.store import WorkflowStoreV4
 
 
@@ -58,7 +59,7 @@ def stored_attempt_for_query(
     attempt = matches[0]
     if (
         digest(dict(query)) != digest(authority_query(run, attempt))
-        or digest(attempt["request"]) != attempt["request_digest"]
+        or request_digest(attempt["request"]) != attempt["request_digest"]
     ):
         raise WorkflowDenied("Workflow attempt reservation request changed")
     return run, attempt

@@ -6,7 +6,7 @@
       "path": "domain/ai_client/provider_compiler/openai_chat.py"
     },
     {
-      "digest": "sha256:6a174363f5d513a7b85f59688acbce6e5120a908f84bf8375f084e8a179e8c4d",
+      "digest": "sha256:d1857163935ed93f7a16729e9fb044e9daaac8e8f70faa5bf561689c92d1a8fc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:689645d22d1d0409988a34507263f31c98f203be4120747abac1b1785ac54863",
+      "digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
       "kind": "executable",
       "path": "runtime/adapter.py"
     },
@@ -27,6 +27,20 @@
     }
   ],
   "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.provider.audio.speech.v1",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-speech"
+      ],
+      "revision_digest": "sha256:e1fb7f4621f93b296292b58d515105ebeb39985186efee3dfcc8862f865020cd"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.provider.audio.transcribe.v1",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-transcribe"
+      ],
+      "revision_digest": "sha256:f7385129824d8dc3b436e837a13e6e726f8f51f69a9db2eb1eb6cd1a2595adcf"
+    },
     {
       "contract_id": "tobkiri.service.ai.provider.embedding.v1",
       "operations": [
@@ -58,9 +72,29 @@
   ],
   "functions": [
     {
+      "contract_revision_digest": "sha256:e1fb7f4621f93b296292b58d515105ebeb39985186efee3dfcc8862f865020cd",
+      "id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-speech"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f7385129824d8dc3b436e837a13e6e726f8f51f69a9db2eb1eb6cd1a2595adcf",
+      "id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-transcribe"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:db8ee8dcc31de8027c11e5365957d215bc0232445215c887b687c284f6fe5900",
       "id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
-      "implementation_digest": "sha256:689645d22d1d0409988a34507263f31c98f203be4120747abac1b1785ac54863",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-embedding"
@@ -70,7 +104,7 @@
     {
       "contract_revision_digest": "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
       "id": "rumi_provider_adapters_pack.provider.compatibility.generate",
-      "implementation_digest": "sha256:689645d22d1d0409988a34507263f31c98f203be4120747abac1b1785ac54863",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-generate"
@@ -80,7 +114,7 @@
     {
       "contract_revision_digest": "sha256:52384fb3134e7721abccba551ecbf00ca5522c4512709746d8b781b4266f9376",
       "id": "rumi_provider_adapters_pack.provider.compatibility.image",
-      "implementation_digest": "sha256:689645d22d1d0409988a34507263f31c98f203be4120747abac1b1785ac54863",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-image"
@@ -90,7 +124,7 @@
     {
       "contract_revision_digest": "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
       "id": "rumi_provider_adapters_pack.provider.compatibility.stream",
-      "implementation_digest": "sha256:689645d22d1d0409988a34507263f31c98f203be4120747abac1b1785ac54863",
+      "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-stream"
@@ -99,13 +133,15 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:c568b8dab5376164d12e08887a0b8e1a4271a61bbba8aa5be9ea6b86dc7038b4",
-    "contract_catalog_digest": "sha256:e3fc34942e6010a2231e668f1752bbab0251e31fa2a2083e60281b0125f05580",
-    "source_identity": "sha256:730dc57ffce34671cb92fc834bc01960f0e695db4d2cabd3b184fa7d734fbc37"
+    "artifact_set_digest": "sha256:1c3ff610f973df03717b6cfe14fa98747d3b3e7eb49c5324ab2c6c0899d0620c",
+    "contract_catalog_digest": "sha256:ad82478a0c8d18a0726124a7d0a2844a69534a16b9307fdb20fc97e30d64b316",
+    "source_identity": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019"
   },
   "migration": {
     "compatibility": "read_only",
     "legacy_ids": [
+      "rumi.service.ai.provider.audio.speech.v1",
+      "rumi.service.ai.provider.audio.transcribe.v1",
       "rumi.service.ai.provider.embedding.v1",
       "rumi.service.ai.provider.generate.v1",
       "rumi.service.ai.provider.image.v1",
@@ -117,6 +153,28 @@
     "sunset_at": "2027-12-31"
   },
   "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.provider.audio.speech.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.audio.speech",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_provider_adapters_pack.provider-audio-speech",
+      "owner": "rumi_provider_adapters_pack",
+      "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.provider.audio.transcribe.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.audio.transcribe",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_provider_adapters_pack.provider-audio-transcribe",
+      "owner": "rumi_provider_adapters_pack",
+      "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
+      "source_kind": "canonical_v4_contract"
+    },
     {
       "contract_reference": "tobkiri.service.ai.provider.embedding.v1",
       "effect_ceiling": [
@@ -163,7 +221,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c568b8dab5376164d12e08887a0b8e1a4271a61bbba8aa5be9ea6b86dc7038b4",
+    "artifact_digest": "sha256:1c3ff610f973df03717b6cfe14fa98747d3b3e7eb49c5324ab2c6c0899d0620c",
     "display_name": "Rumi Provider Adapters",
     "id": "rumi_provider_adapters_pack",
     "kind": "host_extension",
@@ -173,7 +231,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:730dc57ffce34671cb92fc834bc01960f0e695db4d2cabd3b184fa7d734fbc37",
+        "digest": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -184,11 +242,27 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:730dc57ffce34671cb92fc834bc01960f0e695db4d2cabd3b184fa7d734fbc37",
+    "source_digest": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_adapters_pack"
   },
   "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.provider.audio.speech.v1",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-speech"
+      ],
+      "owner": "rumi_provider_adapters_pack",
+      "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.provider.audio.transcribe.v1",
+      "operations": [
+        "rumi_provider_adapters_pack.provider-audio-transcribe"
+      ],
+      "owner": "rumi_provider_adapters_pack",
+      "provider_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe"
+    },
     {
       "contract_reference": "tobkiri.service.ai.provider.embedding.v1",
       "operations": [
@@ -225,6 +299,8 @@
   "requirements": {
     "approval_policy": "none",
     "capabilities": [
+      "ai.provider.audio.speech",
+      "ai.provider.audio.transcribe",
       "ai.provider.embedding",
       "ai.provider.generate",
       "ai.provider.image",

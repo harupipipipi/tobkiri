@@ -203,6 +203,7 @@ def _documents(
         _deny(
             row is None or row["kind"] != kind, "selected prebuilt document is absent"
         )
+        assert row is not None
         raw = bundle.read_bytes_bounded(path, max_bytes=_MAX_METADATA)
         _deny(_digest(raw) != row["digest"], "prebuilt document differs from lock")
         documents.append((path, raw))

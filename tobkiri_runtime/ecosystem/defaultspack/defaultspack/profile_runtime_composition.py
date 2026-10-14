@@ -98,7 +98,7 @@ class DefaultspackProfileRuntime:
         return {
             "available": True,
             "profile_id": profile_id,
-            "name": str(profile.get("display_name") or "Tobkiri Defaults"),
+            "name": str(profile.get("display_name") or "Tobkiri Harness"),
             "base_pack": base_pack,
             "shell": {
                 "provider_id": shell_provider,
@@ -266,7 +266,7 @@ class DefaultspackProfileRuntime:
         if body.get("confirmed") is not True:
             return SetupActivationDecision(
                 response={
-                    "error": "Defaults Profile requires explicit confirmation",
+                    "error": "Harness Profile requires explicit confirmation",
                     "status_code": 409,
                     "state": "confirmation_required",
                     "write_set": [],
@@ -277,7 +277,7 @@ class DefaultspackProfileRuntime:
             if not isinstance(confirmation, Mapping):
                 return SetupActivationDecision(
                     response={
-                        "error": "Defaults Profile confirmation is stale or tampered",
+                        "error": "Harness Profile confirmation is stale or tampered",
                         "status_code": 409,
                         "state": "review_required",
                         "write_set": [],
@@ -295,7 +295,7 @@ class DefaultspackProfileRuntime:
         ):
             return SetupActivationDecision(
                 response={
-                    "error": "Defaults Profile confirmation is stale or tampered",
+                    "error": "Harness Profile confirmation is stale or tampered",
                     "status_code": 409,
                     "state": "review_required",
                     "write_set": [],
@@ -328,7 +328,7 @@ class DefaultspackProfileRuntime:
         """Return Defaultspack's no-write response for a failed commit."""
 
         return {
-            "error": "Defaults Profile activation rejected",
+            "error": "Harness Profile activation rejected",
             "status_code": 409,
             "state": "activation_rejected",
             "write_set": [],

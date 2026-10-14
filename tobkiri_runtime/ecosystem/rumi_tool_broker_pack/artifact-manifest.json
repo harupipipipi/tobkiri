@@ -3,7 +3,7 @@
     {
       "path": "runtime/broker.py",
       "role": "runtime",
-      "sha256": "sha256:bc4209910a4fb14ef836edca8bd21ccace9844deb1b345593a8cafbe9444aa9b"
+      "sha256": "sha256:b60becc683d24e3fee2125b59ae11e7fd0b53aa694ed76d26e8f8992c06b2c29"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

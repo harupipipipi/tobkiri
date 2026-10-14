@@ -14,7 +14,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, cast
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -361,7 +361,7 @@ def write_publisher_key_version(
         policy["policy_digest"] = _policy_digest(policy)
         _versions(policy)
         require_fresh()
-        if approval_verifier(plan, proof) is not None:
+        if cast(Callable[[PublisherKeyVersionPlan, Mapping[str, Any]], object], approval_verifier)(plan, proof) is not None:
             raise ValueError("publisher key verifier must return None after authentication")
         if canonical_bytes(proof) != proof_bytes:
             raise ValueError("publisher key approval proof changed during verification")

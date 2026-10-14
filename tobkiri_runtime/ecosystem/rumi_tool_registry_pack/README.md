@@ -62,3 +62,25 @@ rejected. Reads preserve directory permissions and reject state larger than
 before publication. Invalid stored revisions are rejected without coercion or
 automatic repair. The existing exclusive-file lock protocol still excludes
 legacy writers; switching this owner does not introduce a separate lock domain.
+
+
+## Typed tool results
+
+`result_schema` with `result_schema_format: "normalized-result.v1"` describes
+the normalized `result` value, not the executor's
+raw envelope or the complete Broker response. The Broker checks supported
+schema syntax before execution, then validates the value after extraction and
+secret-field redaction. Invalid output is not published as typed success and
+is never automatically retried; the executor may already have acted.
+An empty schema remains generic JSON. Error results must also satisfy a declared
+schema to be returned through that typed surface.
+
+Legacy definitions without that format retain their advisory schemas and are
+not offered as verified typed outputs. A schema-valid `is_error:true` response
+remains an error response; type conformance is not business success.
+
+Sealed tool manifests may declare `config.schema.result_format` as
+`normalized-result.v1` and `config.schema.result` alongside
+`config.schema.parameters`. Both schemas enter the registered definition hash.
+The Flow picker uses that pinned hash for its input and output ports; execution
+re-resolves the current owner definition and rejects a changed hash.

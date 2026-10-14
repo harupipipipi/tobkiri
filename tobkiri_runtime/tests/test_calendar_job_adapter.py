@@ -187,18 +187,10 @@ def test_crash_recovery_keeps_original_source_for_new_fresh_invocation(
     assert calls == [None, original]
 
 
-def test_null_destination_created_once_per_occurrence_and_model_applied(
-    tmp_path, monkeypatch
-):
+def test_null_destination_created_once_per_occurrence_and_model_applied(tmp_path):
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 
     owner = ConversationStore("profile", user_data_root=tmp_path)
-    normalization = NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task))
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        normalization,
-    )
     writes = []
 
     def dispatch(contract, operation, payload):
@@ -254,12 +246,7 @@ def test_null_destination_created_once_per_occurrence_and_model_applied(
     assert writes[-1]["operation"] == "update"
 
 
-def test_unready_model_blocks_canonical_destination_write(tmp_path, monkeypatch):
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
+def test_unready_model_blocks_canonical_destination_write(tmp_path):
     intent = {
         "message": "Hello",
         "profile_id": "profile",
@@ -301,12 +288,7 @@ def test_null_destination_without_model_rejected_before_owner_write(tmp_path):
         )
 
 
-def test_busy_reservation_rejects_before_model_cas(tmp_path, monkeypatch):
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
+def test_busy_reservation_rejects_before_model_cas(tmp_path):
     task = {
         "message": "hello",
         "profile_id": "profile",
@@ -350,12 +332,7 @@ def test_busy_reservation_rejects_before_model_cas(tmp_path, monkeypatch):
     assert calls == ["get"]
 
 
-def test_bound_preparation_recovers_before_latest_model_read(tmp_path, monkeypatch):
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
+def test_bound_preparation_recovers_before_latest_model_read(tmp_path):
     task = {
         "message": "hello",
         "profile_id": "profile",
@@ -392,14 +369,7 @@ def test_bound_preparation_recovers_before_latest_model_read(tmp_path, monkeypat
     assert ledger.recover_source("key", turn) == source
 
 
-def test_unavailable_selection_rejects_before_reservation_or_model_write(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
+def test_unavailable_selection_rejects_before_reservation_or_model_write(tmp_path):
     task = {
         "message": "hello",
         "profile_id": "profile",
@@ -433,15 +403,10 @@ def test_unavailable_selection_rejects_before_reservation_or_model_write(
         )
 
 
-def test_actual_owner_busy_admission_preserves_target_model(tmp_path, monkeypatch):
+def test_actual_owner_busy_admission_preserves_target_model(tmp_path):
     from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
     from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
     store = DurableTurnRuntime("profile", user_data_root=tmp_path)
     store.begin_saved(
         {
@@ -538,14 +503,7 @@ def test_unknown_workspace_rejected_before_destination_write(tmp_path):
     assert seen == ["tobkiri.resource.workspace.v1"]
 
 
-def test_existing_destination_workspace_mismatch_precedes_model_cas(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
+def test_existing_destination_workspace_mismatch_precedes_model_cas(tmp_path):
     task = {
         "message": "hello",
         "profile_id": "profile",
@@ -601,16 +559,9 @@ def test_existing_destination_workspace_mismatch_precedes_model_cas(
     ]
 
 
-def test_registered_workspace_new_destination_association_is_owner_data_only(
-    tmp_path, monkeypatch
-):
+def test_registered_workspace_new_destination_association_is_owner_data_only(tmp_path):
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 
-    monkeypatch.setitem(
-        sys.modules,
-        "ecosystem.rumi_turn_runtime_pack.runtime.scheduled_saved",
-        NS(normalize_scheduled_saved_task=lambda task, **kwargs: dict(task)),
-    )
     owner = ConversationStore("profile", user_data_root=tmp_path)
     task = {
         "message": "hello",

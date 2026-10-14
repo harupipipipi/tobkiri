@@ -1,32 +1,32 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:3e408fed40dafd8e100c04c377645bb42a2d331375e7a3f16644910289c4578e",
+      "digest": "sha256:a54c4697b86c2bda62695613150dedd4841c9feaafb19f2811b8228a4ade09b5",
       "kind": "asset",
       "path": "backend-integrity.v4.json"
     },
     {
-      "digest": "sha256:11feb11af2e622ce8b4bd7499771f6e47d83206703c237e99cb6ef20e8a3e3b9",
+      "digest": "sha256:c7ba1efbf122ef325311dc59a90524f18852177722fcf915f9349086cb840024",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:485ff06608e706767c16c597fcd79ace48aa5d22ea000dc07eba27b548a4abe4",
+      "digest": "sha256:8586209456b2cf10cad7a90e958fb9d5c4cf3435de3fe6b759c701e0448cea2c",
       "kind": "asset",
       "path": "frontend_contract_map.v4.json"
     },
     {
-      "digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
       "kind": "executable",
       "path": "runtime/provider.py"
     },
     {
-      "digest": "sha256:6f8979544b0979978815aecc6c59f1372f036e6d128318687a0e4e71ba6f8b9e",
+      "digest": "sha256:cedae53c8689c63b51ed41d5e8438ea0249e0dd8ffaa1cb1dd1f528b5e84da5d",
       "kind": "schema",
       "path": "schemas/frontend-contract-map.v4.schema.json"
     },
     {
-      "digest": "sha256:6ce340ccfa37ae1f4bb14106d80e202d98b618b92a646eb8e1cbbedcc44f8fcd",
+      "digest": "sha256:771666139606d1ed36dc71eb1eb8de226d3c5496d75eb8fdd5e80382a3b4cacc",
       "kind": "schema",
       "path": "schemas/workflow-definition.v4.schema.json"
     },
@@ -64,6 +64,7 @@
         "run.advance",
         "run.create",
         "run.get",
+        "run.observe",
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
@@ -72,14 +73,21 @@
         "run.step.resume",
         "run.step.retry"
       ],
-      "revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888"
+      "revision_digest": "sha256:012b80fe7aa7ce1dfd8a1f138c62b4025324fecaf70c539c80467b9cbbc3a1f2"
+    },
+    {
+      "contract_id": "tobkiri.workflow.stop.v4",
+      "operations": [
+        "run.stop"
+      ],
+      "revision_digest": "sha256:96e31a74b9fc698f77351fe7fee9b34d2090165a21194b60c6f3d7a6cb95701d"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:721298d70515c3694a6b1787eb160c48809c3d5a020dded8bb59aaa583c1a888",
+      "contract_revision_digest": "sha256:012b80fe7aa7ce1dfd8a1f138c62b4025324fecaf70c539c80467b9cbbc3a1f2",
       "id": "tobkiri.workflow.provider",
-      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
       "isolation": "dedicated_process",
       "operations": [
         "definition.archive",
@@ -96,6 +104,7 @@
         "run.advance",
         "run.create",
         "run.get",
+        "run.observe",
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
@@ -105,12 +114,22 @@
         "run.step.retry"
       ],
       "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:96e31a74b9fc698f77351fe7fee9b34d2090165a21194b60c6f3d7a6cb95701d",
+      "id": "tobkiri.workflow.stop.provider",
+      "implementation_digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "run.stop"
+      ],
+      "role": "host_capability_provider"
     }
   ],
   "integrity": {
-    "source_identity": "sha256:3aad3f30c08d95128bb87d58a4ccad1015910f404171b83baaa3c0d5eba9b7fa",
-    "artifact_set_digest": "sha256:86e7f0541d2bb1eb3a588d0961df500965de5753491cdd0c0b8c052442a7396e",
-    "contract_catalog_digest": "sha256:f01a130b51894afccd4688cfc0da78ee66b20fff1eda76a32e6c3ac3245253a5"
+    "source_identity": "sha256:f74da20bc01245b7c83149eb72d81a2853cbcac0ea079c09a104f6c07c49350a",
+    "artifact_set_digest": "sha256:69fa37104f945a9231c3f31dfc8126faf0d63032a0c076aff4d041932f8c96ea",
+    "contract_catalog_digest": "sha256:97fce0baa9784901c9388fa75886e28434b6bb5d3f940acb1afae7688d958051"
   },
   "migration": {
     "compatibility": "none",
@@ -232,6 +251,14 @@
       "effect_ceiling": []
     },
     {
+      "operation_id": "run.observe",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.v4",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
       "operation_id": "run.pause",
       "owner": "tobkiri_workflow_pack",
       "contract_reference": "tobkiri.workflow.v4",
@@ -286,10 +313,18 @@
       "provider_id": "tobkiri.workflow.provider",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
+    },
+    {
+      "operation_id": "run.stop",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.stop.v4",
+      "provider_id": "tobkiri.workflow.stop.provider",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:7a603507b018bf0c962ea3513620a6d14c5310bd0d5b0a30d16087f6115bf97d",
+    "artifact_digest": "sha256:284fbf0814fae677bc58262193479713cdc577ed8aeaa89c336b3ebcd27f32e0",
     "display_name": "Tobkiri Workflow Pack",
     "id": "tobkiri_workflow_pack",
     "kind": "host_extension",
@@ -300,26 +335,26 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
-    "source_digest": "sha256:3aad3f30c08d95128bb87d58a4ccad1015910f404171b83baaa3c0d5eba9b7fa",
+    "source_digest": "sha256:f74da20bc01245b7c83149eb72d81a2853cbcac0ea079c09a104f6c07c49350a",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:d8bb9a2d718790ecdf05c9b964b8a60470d2f04adbd077b8fcf00eb07287fdc5",
+    "content_root_digest": "sha256:3077a1114b778f172042f6b97a035d723384e55392d676c92f708227ad56ba3e",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827",
-    "input_inventory_digest": "sha256:02324bb7d0d41bd677a32efe38f5c59bfca00a68fb212299a757061204fe8093",
+    "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
+    "input_inventory_digest": "sha256:642e8cea362280df9446273255fcfc104876328af64dd3f283848704de447121",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:9e09ff10c3bf9605cf94716552aedb013de99695cf08a7f59e5196efd65be827"
+        "digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a"
       },
       {
         "path": "ecosystem/tobkiri_workflow_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:3aad3f30c08d95128bb87d58a4ccad1015910f404171b83baaa3c0d5eba9b7fa"
+        "digest": "sha256:f74da20bc01245b7c83149eb72d81a2853cbcac0ea079c09a104f6c07c49350a"
       }
     ]
   },
@@ -343,6 +378,7 @@
         "run.advance",
         "run.create",
         "run.get",
+        "run.observe",
         "run.pause",
         "run.reconcile-recovery",
         "run.resume",
@@ -350,6 +386,14 @@
         "run.step.execute",
         "run.step.resume",
         "run.step.retry"
+      ]
+    },
+    {
+      "provider_id": "tobkiri.workflow.stop.provider",
+      "owner": "tobkiri_workflow_pack",
+      "contract_reference": "tobkiri.workflow.stop.v4",
+      "operations": [
+        "run.stop"
       ]
     }
   ],

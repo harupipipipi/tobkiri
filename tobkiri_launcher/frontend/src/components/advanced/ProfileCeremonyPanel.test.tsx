@@ -539,7 +539,7 @@ test('Profile closure candidates come from the authoritative catalog and execute
   const previousDocument = globalThis.document;
   const {dom, container, root} = createDom();
   const surface = surfaceState();
-  const selection = authoritativeSelection(catalogEntry(['provider-pack']));
+  const selection = authoritativeSelection(catalogEntry(['provider-pack', 'new-pack']));
   const calls: Array<{step: string; payload: Record<string, unknown>}> = [];
   let packRefreshes = 0;
   let activated = 0;
@@ -602,8 +602,8 @@ test('Profile closure candidates come from the authoritative catalog and execute
         />,
       );
     });
-    assert.match(container.textContent ?? '', /Authoritative Pack closure/);
-    await act(async () => { buttonContaining(container, 'Add Pack · New Pack').click(); });
+    assert.match(container.textContent ?? '', /Saved configuration/);
+    assert.equal(container.querySelector('input[type=checkbox]'), null);
     await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
     await act(async () => { buttonContaining(container, 'Review exact candidate').click(); });
     await act(async () => { buttonContaining(container, 'Request Kernel approval').click(); });
@@ -825,7 +825,7 @@ test('Profile ceremony does not offer an error-copy action while its catalog is 
         />,
       );
     });
-    assert.match(container.textContent ?? '', /The authoritative Profile catalog is loading/);
+    assert.match(container.textContent ?? '', /Refreshing the saved Profile definition/);
     assert.equal(
       container.querySelector('button[aria-label="Copy Profile catalog warning"]'),
       null,
@@ -966,12 +966,12 @@ test('Profile ceremony exposes an unknown mutation result with a status icon and
   }
 });
 
-test('a non-active Profile can stage and review a successor closure without activation', async () => {
+test('a non-active Profile reviews its saved closure without borrowing active Pack approval state', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   const {dom, container, root} = createDom();
   const surface = surfaceState();
-  const alternate = catalogEntry(['provider-pack'], 'alternate', false);
+  const alternate = catalogEntry(['provider-pack', 'new-pack'], 'alternate', false);
   const selection = authoritativeSelection(alternate);
   const calls: string[] = [];
   let approvalCalls = 0;
@@ -1025,7 +1025,7 @@ test('a non-active Profile can stage and review a successor closure without acti
       root.render(
         <ProfileCeremonyPanel
           surface={surface.state}
-          packs={[pack('provider-pack'), pack('new-pack')]}
+          packs={[pack('provider-pack', false), pack('new-pack', false)]}
           loadPacks={async () => {}}
           client={client}
           authoritativeSelection={selection}
@@ -1034,10 +1034,6 @@ test('a non-active Profile can stage and review a successor closure without acti
       );
     });
     assert.match(container.textContent ?? '', /Alternate Profile/);
-    const addPack = buttonContaining(container, 'Add Pack · New Pack');
-    assert.equal(addPack.getAttribute('aria-label'), 'Add Pack New Pack to Alternate Profile closure');
-    await act(async () => { addPack.click(); });
-    assert.match(container.textContent ?? '', /Successor staged/);
     await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
     await act(async () => { buttonContaining(container, 'Review exact candidate').click(); });
 

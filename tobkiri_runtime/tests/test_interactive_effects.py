@@ -1330,3 +1330,52 @@ def test_resume_fused_commit_crash_converges_both_records_ambiguous(
     assert (
         controller.status(pending.effect_id).state is PendingEffectState.AMBIGUOUS
     )
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_shared_durable_records_preserve_foreign_owners(legacy):
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    correlation = str(uuid.uuid4())
+    try:
+        status, _ = _prepare(controller, fixture.broker, correlation)
+        assert persistence.records[status.effect_id][1]["kind"] == "host-interactive-effect.v1"
+        if legacy:
+            persistence.records[status.effect_id][1].pop("kind")
+        foreign = {"kind": "other-owner.v1", "state": "approval_continuation", "effect_id": "foreign"}
+        persistence.create_host_pending_effect("foreign", foreign)
+        before = copy.deepcopy(persistence.records["foreign"])
+        assert controller.recover()[0].effect_id == status.effect_id
+        found = controller.find_for_presentation(
+            correlation_id=correlation, presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session", context=context(),
+            contract_id=frame().contract_id, operation_id=frame().operation_id,
+            target_principal=OpaqueAuthorityRef("authority:notification-send"),
+        )
+        assert found.effect_id == status.effect_id
+        with pytest.raises(PendingEffectError):
+            controller.status("foreign")
+        assert persistence.records["foreign"] == before
+    finally:
+        fixture.broker.close()
+
+
+@pytest.mark.parametrize("kind", [None, "", True, {}, []])
+def test_malformed_owner_discriminator_never_disappears_from_recovery(kind):
+    persistence = _MemoryPendingEffects()
+    persistence.create_host_pending_effect("bad", {"effect_id": "bad", "state": "approval_continuation", "kind": kind})
+    with pytest.raises(PendingEffectError):
+        _controller(persistence, _Approvals()).recover()
+
+
+@pytest.mark.parametrize("tagged", [False, True])
+def test_owned_malformed_record_still_fails_recovery(tagged):
+    persistence = _MemoryPendingEffects()
+    payload = {"effect_id": "bad", "state": "approval_continuation"}
+    if tagged:
+        payload["kind"] = "host-interactive-effect.v1"
+    persistence.create_host_pending_effect("bad", payload)
+    with pytest.raises(PendingEffectError):
+        _controller(persistence, _Approvals()).recover()

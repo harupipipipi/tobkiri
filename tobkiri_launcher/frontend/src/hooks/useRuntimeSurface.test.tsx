@@ -161,3 +161,33 @@ test('stale refresh keeps the accepted envelope read-only and the next retry rea
     Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
   }
 });
+
+
+test('runtime readiness refresh recovers a surface opened before Host dispatch was ready', async () => {
+  const previous = Object.getOwnPropertyDescriptors(globalThis);
+  const {dom, container, root} = createSurface();
+  let ready = false;
+  let reads = 0;
+  const client: RuntimeSurfaceClient = {
+    read: async <T,>() => {
+      reads += 1;
+      if (!ready) throw new Error('Runtime dispatch is unavailable');
+      return envelope('profile') as RuntimeSurfaceEnvelope<T>;
+    },
+  };
+  try {
+    await act(async () => root.render(<SurfaceProbe surface="profile" client={client} />));
+    assert.equal(container.firstElementChild?.getAttribute('data-status'), 'error');
+    ready = true;
+    await act(async () => broadcastRuntimeSurfaceRefresh());
+    assert.equal(reads, 2);
+    assert.equal(container.firstElementChild?.getAttribute('data-status'), 'ready');
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    for (const key of ['window', 'document', 'navigator', 'IS_REACT_ACT_ENVIRONMENT']) {
+      if (previous[key]) Object.defineProperty(globalThis, key, previous[key]);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});

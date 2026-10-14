@@ -22,6 +22,7 @@ if os.name != "nt":
     import fcntl
 
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.data_codec import clone_payload, digest_payload, loads_data_json
 from tobkiri_protocol.errors import CanonicalizationError
 from tobkiri_protocol.platform_paths import canonical_platform_path
 
@@ -1664,18 +1665,38 @@ class ControlReconciliationStore:
 
         if state not in {"succeeded", "failed", "indeterminate"}:
             raise ControlReconciliationConflictError("operation terminal state is invalid")
-        result_value = dict(result) if result is not None else None
-        encoded_result = _json(result_value) if result_value is not None else None
-        if (
+        canonical_digest(record_refs or [])
+        # Preserve the existing oversized-result refusal before canonical/data
+        # validation. These preflight bytes are NEVER persisted or hashed:
+        # json.dumps may coerce Python tuples and non-string object keys.
+        encoded_result = _json(dict(result)) if result is not None else None
+        result_too_large = (
             encoded_result is not None
             and len(encoded_result.encode("utf-8")) > self._max_operation_result_bytes
-        ):
+        )
+        result_value = None
+        if result is not None and not result_too_large:
+            # Validate the original provider data before serialization can
+            # coerce it. The independent clone is the only persisted/hashed
+            # value, so later provider mutation cannot desynchronize identity.
+            result_value = clone_payload(result)
+            encoded_result = _json(result_value)
+            # Provider containers may have changed during preflight. The final
+            # independent snapshot must still obey the same response limit.
+            result_too_large = (
+                len(encoded_result.encode("utf-8"))
+                > self._max_operation_result_bytes
+            )
+        if result_too_large:
             state = "indeterminate"
             result_value = None
             encoded_result = None
             record_refs = []
             safe_error_code = "RESULT_TOO_LARGE"
-        result_digest = canonical_digest(result_value) if result_value is not None else None
+        # Provider results are application data, not authority records. Keep
+        # the surrounding request/operation identity and every ceremony digest
+        # canonical; only this existing result slot admits finite JSON numbers.
+        result_digest = digest_payload(result_value) if result_value is not None else None
         stop_heartbeat = False
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -2014,15 +2035,16 @@ def _operation_record(row: sqlite3.Row | None) -> Mapping[str, Any] | None:
     if row is None:
         return None
     try:
-        result = json.loads(str(row["result_json"])) if row["result_json"] is not None else None
+        result = loads_data_json(str(row["result_json"])) if row["result_json"] is not None else None
         record_refs = json.loads(str(row["record_refs_json"]))
+        _record_digest(record_refs)
     except (CanonicalizationError, json.JSONDecodeError, TypeError, ValueError) as error:
         raise ControlReconciliationUnavailableError("operation record is invalid") from error
     if (
         row["state"] not in {"pending", "succeeded", "failed", "indeterminate"}
         or not isinstance(record_refs, list)
         or (result is None) != (row["result_digest"] is None)
-        or (result is not None and _record_digest(result) != row["result_digest"])
+        or (result is not None and _result_digest(result) != row["result_digest"])
     ):
         raise ControlReconciliationUnavailableError("operation record digest changed")
     return {
@@ -2052,6 +2074,16 @@ def _integer(value: object, label: str) -> int:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _result_digest(value: object) -> str:
+    """Verify application-result data without relaxing authority records."""
+    try:
+        return digest_payload(value)
+    except ValueError as error:
+        raise ControlReconciliationUnavailableError(
+            "durable operation result is invalid"
+        ) from error
 
 
 def _record_digest(value: object) -> str:

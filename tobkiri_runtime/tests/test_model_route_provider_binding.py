@@ -36,6 +36,7 @@ def test_model_route_payload_keeps_the_registry_revision_outside_route_metadata(
         "provider_registry_revision": 4,
     })
 
+    assert normalized["operation"] == "create"
     assert normalized["provider_registry_revision"] == 4
     assert normalized["record"] == {
         "model_profile_id": "daily",

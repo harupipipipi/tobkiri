@@ -90,7 +90,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+      "artifact_hash": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
       "contract_id": "rumi.resource.tool.definition.v1",
       "id": "tool-definition-resource",
       "loader": "python",
@@ -98,7 +98,7 @@
       "symbol": "create_resource_operation"
     },
     {
-      "artifact_hash": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+      "artifact_hash": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
       "contract_id": "rumi.action.tool.definition.manage.v1",
       "id": "tool-definition-manage",
       "loader": "python",
@@ -106,7 +106,7 @@
       "symbol": "create_manage_operation"
     },
     {
-      "artifact_hash": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+      "artifact_hash": "sha256:e1362a4310df98ea22afcc43b4cb1940e458d41ed425549f0a852e92d3c2db45",
       "contract_id": "rumi.action.tool.definition.migrate.v1",
       "id": "tool-definition-migrate",
       "loader": "python",
@@ -137,9 +137,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:7881d7cce661bbf2044718fa736a2fd556156a6980a6d69dd9fca5f554170108",
+            "artifact_digest": "sha256:4a46900f5742339f4ec08caaa69089391cf9fbdbf58c491d5712ab7ac3807335",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d"
+            "source_identity": "sha256:0b68530e8aa4886625e743e4d207d0aa207c6e87ebfd4135c437422360acee88"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -158,7 +158,7 @@
         "pack_identity": "rumi:ecosystem/rumi_tool_registry_pack",
         "provenance": {
           "build_identity": "rumi_tool_registry_pack:1.0.0",
-          "content_hash": "sha256:51aa69e3496c6c2b19b1279c6dfc1d43c46d60a6ea1c320276a968dc845fb4ee",
+          "content_hash": "sha256:a73ab940d389ba2d95afa779b9ebb3df624936c5e4ed04cf1563743070e541a4",
           "signature": null,
           "trust_class": "local"
         },
@@ -195,7 +195,7 @@
       "owner": "rumi_tool_registry_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d"
+      "source_identity": "sha256:0b68530e8aa4886625e743e4d207d0aa207c6e87ebfd4135c437422360acee88"
     }
   },
   "migration": {
@@ -240,7 +240,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_tool_registry_pack:1.0.0",
-    "content_hash": "sha256:51aa69e3496c6c2b19b1279c6dfc1d43c46d60a6ea1c320276a968dc845fb4ee",
+    "content_hash": "sha256:a73ab940d389ba2d95afa779b9ebb3df624936c5e4ed04cf1563743070e541a4",
     "signature": null,
     "trust_class": "local"
   },

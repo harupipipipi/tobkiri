@@ -131,3 +131,22 @@ def test_integrity_documents_bind_exact_source_and_files(
         "executables.v4.json",
         "scaffold-source.v1.json",
     }
+
+
+@pytest.mark.parametrize("template", VALID_TEMPLATES)
+def test_generated_readme_describes_inert_scaffold_contents(
+    scaffold: PackScaffold, tmp_path: Path, template: str,
+) -> None:
+    root = scaffold.generate("example.docs", tmp_path, template=template)
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    manifest = json.loads((root / "pack.v4.json").read_text(encoding="utf-8"))
+    assert manifest["functions"] == []
+    assert "declarative_only" in readme
+    assert "not runtime acceptance" in readme
+    assert "not a compiler" in readme
+    if template == "minimal":
+        assert "contains no Tool" in readme
+        assert not (root / "functions").exists()
+    else:
+        assert "authoring examples" in readme
+        assert (root / "functions" / "task_context" / "main.py").is_file()

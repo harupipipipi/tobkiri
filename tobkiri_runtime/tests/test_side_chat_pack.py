@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import (
     ConversationConflict,
 )

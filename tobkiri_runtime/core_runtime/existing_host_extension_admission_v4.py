@@ -191,6 +191,7 @@ class _ExistingHostExtensionProof:
     def _load_snapshot(self) -> Any:
         from .external_pack_catalog_v4 import _load_external_pack_catalog
 
+        assert self.predecessor_digest is not None
         return _load_external_pack_catalog(
             {self.pack_id: self.predecessor_digest},
             baseline_read=self,

@@ -1,3 +1,4 @@
+import { consumeSidebarCanvasRequest, isAvailableSidebarCanvas } from "../lib/sidebarPanelRequest";
 import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import { cloneElement, memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
@@ -1210,8 +1211,12 @@ export function RightSidebar({
     }
   }, [panelWidthPx]);
 
+  const consumedCanvasRequestRef = useRef<string | null>(null);
   useEffect(() => {
     const requestedId = requestedPanelIdFromActiveItemId(activeItemId);
+    // Catalogue identity can change on each parent render. Replaying the old
+    // Canvas request fights local navigation and echoes visibility indefinitely.
+    if (!consumeSidebarCanvasRequest(consumedCanvasRequestRef, activeItemId, requestedId, hasCanvasPanel)) return;
     if (requestedId === "__close_canvas_widget__") {
       setActivePanel((current) => current === "__canvas_widget__" ? null : current);
       return;
@@ -1264,12 +1269,12 @@ export function RightSidebar({
   }, [activePanel, canvasPanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, timelinePanel, workspaceTabs.length, workspaceTabsEnabled]);
 
   useEffect(() => {
-    if (!activePanel || categoryFilter === "all") return;
+    if (!activePanel || categoryFilter === "all" || isAvailableSidebarCanvas(activePanel, hasCanvasPanel)) return;
     const active = items.find((item) => item.id === activePanel);
     if (active && active.category !== categoryFilter && !pinnedItemIdSet.has(active.id)) {
       setActivePanel(null);
     }
-  }, [activePanel, categoryFilter, items, pinnedItemIdSet]);
+  }, [activePanel, categoryFilter, hasCanvasPanel, items, pinnedItemIdSet]);
 
   useEffect(() => {
     if (!openToolGroupMenu) return;
@@ -1480,7 +1485,7 @@ export function RightSidebar({
   const activePlacementManifest = activePanel?.startsWith(PLACEMENT_PANEL_PREFIX)
     ? placementManifestMap.get(activePanel.slice(PLACEMENT_PANEL_PREFIX.length)) ?? null
     : null;
-  const isCanvasWidgetActive = activePanel === "__canvas_widget__" && canvasPanel != null;
+  const isCanvasWidgetActive = isAvailableSidebarCanvas(activePanel, hasCanvasPanel);
   const isTimelineWidgetActive = activePanel === "__timeline_widget__" && timelinePanel != null;
   const canvasWasActiveRef = useRef(false);
   useEffect(() => {

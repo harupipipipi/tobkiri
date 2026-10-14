@@ -142,6 +142,7 @@
     "tobkiri_agent_control_pack": "v4-authoritative",
     "tobkiri_cloud_workspace_pack": "v4-authoritative",
     "tobkiri_conversation_lifecycle_pack": "v4-authoritative",
+    "tobkiri_conversation_orchestration_pack": "v4-authoritative",
     "tobkiri_host_pack_control": "v4-authoritative",
     "tobkiri_mcp_connection_pack": "v4-authoritative",
     "tobkiri_side_chat_pack": "v4-authoritative",

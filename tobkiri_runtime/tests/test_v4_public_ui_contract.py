@@ -77,7 +77,8 @@ def _catalog(schema: Mapping[str, Any] = SCHEMA) -> dict[str, Any]:
                 "pack_id": "qa.logic",
                 "enabled": True,
                 "approved": True,
-                "artifact_digest": "sha256:logic",
+                "artifact_digest": "sha256:admission-record",
+                "pack_artifact_digest": "sha256:logic",
                 "operations": [
                     {
                         "contract_id": "qa.logic.v1",
@@ -284,10 +285,18 @@ def test_disabled_unapproved_unready_changed_or_ambiguous_operations_are_removed
     if change == "unapproved":
         pack["approved"] = False
     if change == "digest":
-        pack["artifact_digest"] = "changed"
+        pack["pack_artifact_digest"] = "changed"
     if change == "collision":
         pack["operations"].append({**pack["operations"][0], "contract_id": "other.v1"})
     assert _snapshot(session, catalog).targets == ()
+
+
+def test_admission_digest_cannot_substitute_for_executable_artifact_identity() -> None:
+    catalog = _catalog()
+    assert len(_snapshot(_Session(), catalog).targets) == 1
+    pack = catalog["packs"][0]
+    pack["artifact_digest"] = pack.pop("pack_artifact_digest")
+    assert _snapshot(_Session(), catalog).targets == ()
 
 
 def test_schema_digest_changes_the_catalog_and_external_refs_are_not_admitted() -> None:

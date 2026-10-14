@@ -68,9 +68,9 @@
           "author": "Rumi AI Team",
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:9aa1650db54612981724e44885bf91e7886de8bc6ace1660c2a12a4f1dddff1a",
+            "artifact_digest": "sha256:c4d2abe8343951e9e1584b081d4c39bca5df9f0301e29c11f8864fdf21679863",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0"
+            "source_identity": "sha256:84f04852b8ea171b3b42db7dffc1681809704de9149db20f6a79ff8d9b8ae79b"
           },
           "description": "Concrete AI-facing default tools separated from defaultspack core.",
           "license": "MIT",
@@ -117,7 +117,7 @@
       "owner": "rumi_default_tools_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0"
+      "source_identity": "sha256:84f04852b8ea171b3b42db7dffc1681809704de9149db20f6a79ff8d9b8ae79b"
     }
   },
   "migration": {

@@ -62,7 +62,12 @@
           "expression"
         ],
         "additionalProperties": false
-      }
+      },
+      "result": {
+        "type": "string",
+        "title": "計算結果"
+      },
+      "result_format": "normalized-result.v1"
     },
     "tool_category": "utility",
     "action_type": "read",

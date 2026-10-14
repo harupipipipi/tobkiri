@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -10,6 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from ecosystem.rumi_git_publish_pack.runtime import publish
+from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
 
 
 def _git(repository: Path, *args: str) -> str:
@@ -98,25 +100,37 @@ class _WorkspaceClient:
         }
 
 
-def _request_context(**overrides: Any) -> SimpleNamespace:
+def _request_context(**overrides: Any) -> RequestContext:
     values = {
+        "request_id": "request.git-prepare",
+        "trace_id": "trace.git-prepare",
         "profile_id": "profile-a",
         "activation_id": "activation-a",
         "activation_digest": "sha256:" + "a" * 64,
         "plan_digest": "sha256:" + "b" * 64,
         "security_epoch": 7,
-        "caller_principal": SimpleNamespace(value="sha256:" + "c" * 64),
-        "caller_session_id": "session-a",
-        "caller_domain_id": "domain:caller.test",
+        "caller_principal": OpaqueAuthorityRef("sha256:" + "c" * 64),
+        "caller_session_id": "session.host-execution.prepare",
+        "caller_domain_id": "domain.panel.prepare",
+        "caller_boot_epoch": 1,
+        "target_domain_id": "domain.provider.git-prepare",
+        "target_boot_epoch": 1,
+        "target_backend_digest": "sha256:" + "d" * 64,
+        "profile_authority_digest": "sha256:" + "e" * 64,
+        "fencing_token": 3,
+        "handle_namespace": "activation.git-prepare",
+        "profile_revision": "sha256:" + "f" * 64,
     }
     values.update(overrides)
-    return SimpleNamespace(**values)
+    return RequestContext(**values)
 
 
 class _Invocation:
-    def __init__(self, client: _WorkspaceClient, context: SimpleNamespace) -> None:
+    def __init__(self, client: _WorkspaceClient, context: RequestContext) -> None:
         self.client = client
         self.envelope = SimpleNamespace(context=context)
+        self.presentation_owner_principal_id = "sha256:" + "1" * 64
+        self.presentation_owner_session_id = "session.panel.owner-a"
         self.bindings: list[tuple[frozenset[str], str]] = []
 
     def contract_client(
@@ -133,8 +147,9 @@ def _service(
     root: Path,
     *,
     credential_identity: Mapping[str, Any] | None = None,
+    context: RequestContext | None = None,
 ) -> tuple[publish.GitPushProviderV4, _Invocation]:
-    context = _request_context()
+    context = context if context is not None else _request_context()
     state_root = root / ".host-state"
     state_root.mkdir(exist_ok=True)
     capture = SimpleNamespace(
@@ -239,7 +254,20 @@ def test_v4_prepare_binds_canonical_exact_push_plan_and_executes_once(
     monkeypatch.setattr(publish, "_git", capture_push)
     monkeypatch.setattr(publish, "_revalidate_plan", capture_revalidation)
     service.close()
-    restarted_service, restarted_invocation = _service(tmp_path)
+    resumed_context = replace(
+        invocation.envelope.context,
+        request_id="request.git-push",
+        trace_id="trace.git-push",
+        caller_session_id="session.host-provider.resume",
+        caller_domain_id="domain.panel.resume",
+        target_domain_id="domain.provider.git-push",
+        handle_namespace="activation.git-push",
+    )
+    restarted_service, restarted_invocation = _service(
+        tmp_path, context=resumed_context
+    )
+    assert restarted_invocation.envelope.context != invocation.envelope.context
+    assert publish._authority_binding(restarted_invocation) == plan["authority_binding"]
     result = restarted_service.invoke(
         publish.PUSH_OPERATION,
         prepared,
@@ -263,6 +291,135 @@ def test_v4_prepare_binds_canonical_exact_push_plan_and_executes_once(
         )
     ]
     assert len(calls) == 1
+
+
+
+def test_v4_authority_binding_preserves_the_authenticated_owner(
+    tmp_path: Path,
+) -> None:
+    invocation = _Invocation(_WorkspaceClient(tmp_path), _request_context())
+    binding = publish._authority_binding(invocation)
+    assert binding == {
+        "profile_id": "profile-a",
+        "activation_id": "activation-a",
+        "activation_digest": "sha256:" + "a" * 64,
+        "host_plan_digest": "sha256:" + "b" * 64,
+        "security_epoch": 7,
+        "caller_principal_id": "sha256:" + "c" * 64,
+        "presentation_owner_principal_id": invocation.presentation_owner_principal_id,
+        "presentation_owner_session_id": invocation.presentation_owner_session_id,
+    }
+    invocation.envelope.context = replace(
+        invocation.envelope.context,
+        caller_session_id="session.host-provider.resume",
+        caller_domain_id="domain.panel.resume",
+    )
+    assert publish._authority_binding(invocation) == binding
+
+
+@pytest.mark.parametrize(
+    "field", ["presentation_owner_principal_id", "presentation_owner_session_id"]
+)
+@pytest.mark.parametrize("invalid", [None, "", 1, [], {}])
+def test_v4_authority_binding_rejects_malformed_host_owner(
+    tmp_path: Path, field: str, invalid: Any,
+) -> None:
+    invocation = _Invocation(_WorkspaceClient(tmp_path), _request_context())
+    setattr(invocation, field, invalid)
+    with pytest.raises(PermissionError, match="presentation owner binding"):
+        publish._authority_binding(invocation)
+
+
+@pytest.mark.parametrize(
+    "field", ["presentation_owner_principal_id", "presentation_owner_session_id"]
+)
+def test_v4_authority_binding_rejects_missing_host_owner(
+    tmp_path: Path, field: str,
+) -> None:
+    invocation = _Invocation(_WorkspaceClient(tmp_path), _request_context())
+    delattr(invocation, field)
+    with pytest.raises(PermissionError, match="presentation owner binding"):
+        publish._authority_binding(invocation)
+
+
+@pytest.mark.parametrize(
+    ("context_changes", "owner_changes"),
+    [
+        pytest.param({"profile_id": "profile-b"}, {}, id="profile"),
+        pytest.param({"activation_id": "activation-b"}, {}, id="activation"),
+        pytest.param(
+            {"activation_digest": "sha256:" + "2" * 64}, {}, id="activation-digest"
+        ),
+        pytest.param({"plan_digest": "sha256:" + "3" * 64}, {}, id="plan"),
+        pytest.param({"security_epoch": 8}, {}, id="security-epoch"),
+        pytest.param(
+            {"caller_principal": OpaqueAuthorityRef("sha256:" + "4" * 64)},
+            {}, id="caller-principal",
+        ),
+        pytest.param(
+            {}, {"presentation_owner_principal_id": "sha256:" + "5" * 64},
+            id="owner-principal",
+        ),
+        pytest.param(
+            {}, {"presentation_owner_session_id": "session.panel.owner-b"},
+            id="owner-session",
+        ),
+    ],
+)
+def test_v4_push_rejects_changed_authority_before_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    context_changes: dict[str, Any],
+    owner_changes: dict[str, str],
+) -> None:
+    _repository(tmp_path)
+    service, invocation = _service(tmp_path)
+    prepared = service.invoke(
+        publish.PREPARE_OPERATION,
+        {"workspace_id": "workspace-a", "remote": "origin", "branch": "main"},
+        invocation,
+    )
+    invocation.envelope.context = replace(
+        invocation.envelope.context,
+        caller_session_id="session.host-provider.resume",
+        caller_domain_id="domain.panel.resume",
+        **context_changes,
+    )
+    for field, value in owner_changes.items():
+        setattr(invocation, field, value)
+    monkeypatch.setattr(
+        publish,
+        "_execute_force_with_lease",
+        lambda **_kwargs: pytest.fail("changed authority must not reach transport"),
+    )
+    with pytest.raises(PermissionError, match="Host binding|compare-and-swap"):
+        service.invoke(publish.PUSH_OPERATION, prepared, invocation)
+
+
+def test_v4_push_rejects_legacy_dispatch_bound_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repository(tmp_path)
+    service, invocation = _service(tmp_path)
+    prepared = service.invoke(
+        publish.PREPARE_OPERATION,
+        {"workspace_id": "workspace-a", "remote": "origin", "branch": "main"},
+        invocation,
+    )
+    plan = prepared["plan"]
+    binding = plan["authority_binding"]
+    del binding["presentation_owner_principal_id"]
+    del binding["presentation_owner_session_id"]
+    binding["caller_session_id"] = invocation.envelope.context.caller_session_id
+    binding["caller_domain_id"] = invocation.envelope.context.caller_domain_id
+    prepared["plan_digest"] = publish.canonical_digest(plan)
+    monkeypatch.setattr(
+        publish,
+        "_execute_force_with_lease",
+        lambda **_kwargs: pytest.fail("legacy plan requires fresh preparation"),
+    )
+    with pytest.raises(PermissionError, match="compare-and-swap"):
+        service.invoke(publish.PUSH_OPERATION, prepared, invocation)
 
 
 def test_v4_push_revalidates_workspace_repository_ref_and_url(

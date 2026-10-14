@@ -147,3 +147,38 @@ assert not any(name in sys.modules for name in ('tobkiri_protocol.composition', 
 assert not any(name.endswith(('.tool.registry', '.tool.executor', '.tool.security', '.tool.schema_adapter', '.catalog_contract_client')) for name in sys.modules)
 """
     subprocess.run([sys.executable, "-B", "-I", "-S", "-c", script], check=True, timeout=5)
+
+
+
+def test_tool_picker_projects_only_schema_and_pinned_definition_identity() -> None:
+    source = _catalog()
+    definition = source["definitions"][0]
+    definition["definition_hash"] = "a" * 64
+    definition["input_schema"] = {"type": "object", "properties": {"path": {"type": "string"}}}
+    result = present_tool_catalog(source, session=Session())
+    tool = result["tools"][0]
+    assert tool["definition_hash"] == "a" * 64
+    assert tool["input_schema"] == definition["input_schema"]
+    tool["input_schema"]["properties"].clear()
+    assert "path" in definition["input_schema"]["properties"]
+    assert "execution" not in tool and "authority" not in tool and "private" not in tool
+
+
+@pytest.mark.parametrize("digest", [None, "", "a" * 63, "a" * 64 + "\n"])
+def test_unpinned_definitions_do_not_become_typed_picker_choices(digest) -> None:
+    source = _catalog()
+    source["definitions"][0]["definition_hash"] = digest
+    tool = present_tool_catalog(source, session=Session())["tools"][0]
+    assert "input_schema" not in tool and "definition_hash" not in tool
+
+
+def test_legacy_result_schema_is_not_advertised_as_verified_output() -> None:
+    source = _catalog()
+    definition = source['definitions'][0]
+    definition.update(definition_hash='a' * 64, result_schema={'type': 'string'})
+    tool = present_tool_catalog(source, session=Session())['tools'][0]
+    assert 'result_schema' not in tool
+    definition['result_schema_format'] = 'normalized-result.v1'
+    tool = present_tool_catalog(source, session=Session())['tools'][0]
+    assert tool['result_schema'] == {'type': 'string'}
+    assert tool['result_schema_format'] == 'normalized-result.v1'

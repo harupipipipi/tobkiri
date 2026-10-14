@@ -10,6 +10,7 @@ import pytest
 
 from core_runtime.workflow_v4 import (
     ApprovalState,
+    WorkflowDenied,
     WorkflowEngineV4,
     WorkflowProviderV4,
     WorkflowStoreV4,
@@ -32,6 +33,7 @@ class WorkflowPorts(FakePorts):
     """Public contract adapter with actual durable Workflow engine and explicit AI fake."""
 
     provider: WorkflowProviderV4
+    review_invoker: Any
 
     def invoke(self, contract: str, operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if contract == WORKFLOW:
@@ -54,7 +56,18 @@ def workflow_rig(
     authority = Authority(ApprovalState.WAITING_APPROVAL if waiting else ApprovalState.RESERVED)
 
     class Invoker:
-        def invoke(self, request: Mapping[str, Any], *, authority: Any) -> InvocationOutcome:
+        def invoke(
+            self,
+            request: Mapping[str, Any],
+            *,
+            authority: Any,
+            dispatch_fence: Any = None,
+        ) -> InvocationOutcome:
+            if dispatch_fence is not None:
+                try:
+                    dispatch_fence(str(request["request_id"]))
+                except WorkflowDenied:
+                    return InvocationOutcome(error_code="dispatch_fenced", dispatched=False)
             assert authority.dispatch_token.startswith("one-shot-")
             value = service.review(request["input"], USER)
             return InvocationOutcome(output=value)
@@ -62,12 +75,13 @@ def workflow_rig(
         def cancel(self, request_id: str) -> None:
             pass
 
+    ports.review_invoker = Invoker()
     ports.provider = WorkflowProviderV4(
         WorkflowEngineV4(
             store=WorkflowStoreV4(path / "workflow.sqlite3", clock=lambda: 100.0),
             catalog=catalog,
             authority=authority,
-            invoker=Invoker(),
+            invoker=ports.review_invoker,
             validator=Validator(),
             clock=lambda: 100.0,
         )
@@ -99,6 +113,37 @@ def test_editable_real_workflow_dispatch_is_durable_and_occurrence_idempotent(
     assert authority.commit_count == 1
     assert len(ports.provider.invoke("definition.list", {})["definitions"]) == 1
     assert len(service.store.get("plan")["inbox"]) == 1
+
+
+def test_real_workflow_dispatch_fence_blocks_review(tmp_path: Path) -> None:
+    service, ports, _ = workflow_rig(tmp_path)
+    configure(service)
+    add(service)
+    before = service.store.get("plan")
+    calls_before = deepcopy(ports.calls)
+    fenced: list[str] = []
+
+    def deny_dispatch(request_id: str) -> None:
+        fenced.append(request_id)
+        raise WorkflowDenied("review dispatch was cancelled")
+
+    outcome = ports.review_invoker.invoke(
+        {
+            "request_id": "fenced-review",
+            "input": {
+                "operation": "inspect",
+                "plan_id": "plan",
+                "generation": before["generation"],
+                "occurrence_id": "fenced-occurrence",
+            },
+        },
+        authority=SimpleNamespace(dispatch_token="one-shot-fenced"),
+        dispatch_fence=deny_dispatch,
+    )
+    assert fenced == ["fenced-review"]
+    assert outcome.error_code == "dispatch_fenced" and outcome.dispatched is False
+    assert service.store.get("plan") == before
+    assert ports.calls == calls_before
 
 
 def test_real_workflow_approval_wait_never_calls_model_or_reports_completed(tmp_path: Path) -> None:
@@ -259,7 +304,7 @@ def test_saved_context_rejects_scope_or_control_authority(
 def test_actual_saved_host_bridge_keeps_original_user_content_separate_from_context(
     tmp_path: Path,
 ) -> None:
-    from ecosystem.defaultspack.runtime import saved_conversation as guest
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as guest
     from tests.test_saved_host_exchange import _Exchange
 
     exchange = _Exchange(tmp_path)

@@ -1916,12 +1916,9 @@ def catalog_with_admitted_pack_closure(
             record = load_pack_catalog(artifact_pins).get(pack_id)
             if record is None:
                 raise PackControlInvalidRequest("Pack is absent from the canonical v4 catalog")
-            root_options = (
-                {"origin": retained_bundled_origin}
-                if retained_bundled_origin is not None else {}
-            )
             root = resolve_pack_root(
-                pack_id, artifact_digest=selected_digest, **root_options,
+                pack_id, artifact_digest=selected_digest,
+                origin=retained_bundled_origin,
             )
             manifest_path = root / "pack.v4.json"
             if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -2478,7 +2475,7 @@ def _read_control_state(
     known = _known_pack_ids
     if known is None and installed:
         known = frozenset(load_pack_catalog())
-    if any(pack_id not in known for pack_id in installed):
+    if installed and (known is None or any(pack_id not in known for pack_id in installed)):
         raise PackControlDigestMismatch("Pack control state contains an unknown Pack")
     return installed
 

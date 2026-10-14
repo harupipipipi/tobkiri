@@ -230,6 +230,9 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     added_packs = {
         "tobkiri_ui_settings_pack", "rumi_conversation_store_pack",
         "rumi_turn_runtime_pack",
+        # Its required conversation-write dependency did not exist in the
+        # predecessor either; introduce the dependent Pack in the same review.
+        "tobkiri_conversation_orchestration_pack",
     }
     # The predecessor must be a valid selection: a retained consumer cannot
     # require a contract whose only provider is one of the source additions.

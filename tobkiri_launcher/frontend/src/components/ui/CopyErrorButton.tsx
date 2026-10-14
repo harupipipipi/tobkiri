@@ -13,6 +13,8 @@ export interface CopyErrorButtonProps {
   text: string;
   /** Adds context to the accessible label when more than one error is visible. */
   label?: string;
+  /** Visible action text when the surrounding UI does not identify the error. */
+  visibleLabel?: string;
   className?: string;
 }
 
@@ -38,6 +40,7 @@ const visibleFeedback: Record<Exclude<CopyFeedback, 'idle'>, string> = {
 export function CopyErrorButton({
   text,
   label = 'Copy error details',
+  visibleLabel,
   className,
 }: CopyErrorButtonProps) {
   const [feedback, setFeedback] = useState<CopyFeedback>('idle');
@@ -76,23 +79,25 @@ export function CopyErrorButton({
         aria-describedby={statusId}
         aria-label={title}
         className={cn(
-          className,
           'h-7 w-7 rounded-md border border-border bg-bg-main p-0 text-text-muted shadow-none hover:bg-bg-hover hover:text-text-main',
+          visibleLabel && 'h-8 w-auto px-2 text-xs',
           feedback === 'copied' && 'border-emerald-300 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300',
           feedback === 'failed' && 'border-destructive/60 text-destructive',
+          className,
         )}
         onClick={() => void copy()}
-        size="icon"
+        size={visibleLabel ? 'sm' : 'icon'}
         title={title}
         type="button"
         variant="outline"
       >
         <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+        {visibleLabel && <span>{feedback === 'idle' ? visibleLabel : visibleFeedback[feedback]}</span>}
       </Button>
       <span
         className={cn(
           'whitespace-nowrap text-xs font-medium',
-          feedback === 'idle' && 'sr-only',
+          (feedback === 'idle' || visibleLabel) && 'sr-only',
           feedback === 'copied' && 'text-emerald-700 dark:text-emerald-300',
           feedback === 'failed' && 'text-destructive',
         )}

@@ -42,6 +42,7 @@ def _check_schema(schema: Mapping[str, Any], depth: int = 0) -> None:
         "minProperties", "maxProperties", "items", "minItems", "maxItems",
         "minLength", "maxLength", "minimum", "maximum",
         "title", "description", "default", "examples", "$comment",
+        "x-tobkiri-flow-role", "x-tobkiri-selector",
     }
     if depth > 32 or set(schema) - supported:
         raise ValueError("tool schema contains unsupported constraints")
@@ -53,6 +54,23 @@ def _check_schema(schema: Mapping[str, Any], depth: int = 0) -> None:
         for kind in kinds
     ):
         raise ValueError("tool schema type is invalid")
+    role = schema.get("x-tobkiri-flow-role")
+    if "x-tobkiri-flow-role" in schema and role not in (
+        "data", "configuration", "metadata"
+    ):
+        raise ValueError("tool schema display role is invalid")
+    if "x-tobkiri-selector" in schema:
+        selector = schema["x-tobkiri-selector"]
+        selectors = [selector] if isinstance(selector, str) else selector
+        if (kinds != ["string"] or not isinstance(selectors, list)
+                or not 1 <= len(selectors) <= 8
+                or any(not isinstance(item, str)
+                       or item not in {"model-profile", "tool-definition"}
+                       for item in selectors)):
+            raise ValueError("tool schema selector hint is invalid")
+    # Nominal value annotations remain unsupported here until selected tool
+    # schemas are captured authoritatively in compiled Flow node instances.
+    # Display metadata must never silently stand in for those value checks.
     if "enum" in schema and (
         not isinstance(schema["enum"], list) or not schema["enum"]
     ):

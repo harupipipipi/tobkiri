@@ -183,7 +183,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "executables.v4.json",
         "host_contract_contributions.v1.json",
         "runtime/conversation.py",
-        "runtime/saved_conversation.py",
         "runtime/application_presentation.py",
         "update_metadata.v1.json",
         "defaultspack/chat_reference_presentation.py",
@@ -191,7 +190,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/http_surface_presentation.py",
         "defaultspack/kanban_presentation.py",
         "defaultspack/managed_desktop_presentation.py",
-        "defaultspack/model_access_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
     } | tool_paths
@@ -219,7 +217,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/http_surface_presentation.py",
         "defaultspack/kanban_presentation.py",
         "defaultspack/managed_desktop_presentation.py",
-        "defaultspack/model_access_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
     }
@@ -488,3 +485,35 @@ def test_desktop_capability_delegates_non_launch_actions(action):
 
     assert result["app"][expected_key] == expected_value
     delegated.assert_called_once()
+
+
+def test_saved_conversation_is_owned_by_independent_pack() -> None:
+    """Defaults presents chat; the selected orchestration Pack executes turns."""
+    pack = DEFAULTSPACK_ROOT.parent / "tobkiri_conversation_orchestration_pack"
+    manifest = json.loads((pack / "pack.v4.json").read_text(encoding="utf-8"))
+    defaults = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    assert not (DEFAULTSPACK_ROOT / "runtime/saved_conversation.py").exists()
+    assert (pack / "runtime/saved_conversation.py").is_file()
+    assert any(item["id"] == "tobkiri_conversation_orchestration_pack.saved"
+               for item in manifest["functions"])
+    assert all(item["id"] != "defaultspack.conversation.saved"
+               for item in defaults["functions"])
+    intent = json.loads((DEFAULTSPACK_ROOT / "v4/defaults.profile.intent.v1.json").read_text())
+    assert any(item["pack_id"] == "tobkiri_conversation_orchestration_pack"
+               for item in intent["packs"])
+    incoming = [item for item in intent["requested_edges"]
+                if item["target_provider_id"] == "tobkiri_conversation_orchestration_pack.saved"]
+    # Both direct and scheduled turns enter through the turn owner. Defaults
+    # must not regain an executable saved-turn provider or a direct edge.
+    assert len(incoming) == 2
+    assert {item["caller_function_id"] for item in incoming} == {
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.chat-saved-job-adapter",
+    }
+    for edge in incoming:
+        assert edge["contract_id"] == "conversation.saved-turn.v1"
+        assert edge["operation_id"] == "saved_complete"
+        assert edge["requested_scope_template"]["dimensions"] == {
+            "contract": ["conversation.saved-turn.v1"],
+            "operation": ["saved_complete"],
+        }

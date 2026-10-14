@@ -58,47 +58,51 @@ class FileLock:
         self.reentrant = reentrant
         self._local_lock = threading.RLock()
         self._held = 0
+        self._holding_thread: threading.Thread | None = None
 
     def acquire(self) -> "FileLock":
         deadline = time.monotonic() + max(self.timeout_ms, 0) / 1000.0
-        with self._local_lock:
-            if self._held and self.reentrant:
-                self._held += 1
-                return self
-
-            if self._directory is None:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-            payload = json.dumps(
-                LockInfo(
-                    owner=self.owner,
-                    pid=os.getpid(),
-                    acquired_at=time.time(),
-                    stale_after_seconds=self.stale_after_seconds,
-                ).to_dict(),
-                ensure_ascii=True,
-                sort_keys=True,
-            )
-
-            while True:
-                try:
-                    fd = (
-                        self._directory.open_lock(self.path.name, exclusive=True)
-                        if self._directory is not None
-                        else os.open(
-                            str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
-                        )
-                    )
-                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                        handle.write(payload)
-                    self._held = 1
+        thread = threading.current_thread()
+        while True:
+            # Only hold the bookkeeping mutex for one attempt. A waiting
+            # thread must not prevent the current owner from releasing.
+            with self._local_lock:
+                if self._held and self.reentrant and self._holding_thread is thread:
+                    self._held += 1
                     return self
-                except FileExistsError:
-                    if self.is_stale():
-                        self.break_stale()
-                        continue
-                    if time.monotonic() >= deadline:
-                        raise LockTimeout(f"Timed out acquiring lock: {self.path}")
-                    time.sleep(self.poll_interval)
+                if not self._held:
+                    if self._directory is None:
+                        self.path.parent.mkdir(parents=True, exist_ok=True)
+                    payload = json.dumps(
+                        LockInfo(
+                            owner=self.owner,
+                            pid=os.getpid(),
+                            acquired_at=time.time(),
+                            stale_after_seconds=self.stale_after_seconds,
+                        ).to_dict(),
+                        ensure_ascii=True,
+                        sort_keys=True,
+                    )
+                    try:
+                        fd = (
+                            self._directory.open_lock(self.path.name, exclusive=True)
+                            if self._directory is not None
+                            else os.open(
+                                str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+                            )
+                        )
+                        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                            handle.write(payload)
+                        self._held = 1
+                        self._holding_thread = thread
+                        return self
+                    except FileExistsError:
+                        if self.is_stale():
+                            self.break_stale()
+                            continue
+            if time.monotonic() >= deadline:
+                raise LockTimeout(f"Timed out acquiring lock: {self.path}")
+            time.sleep(self.poll_interval)
 
     def release(self) -> None:
         with self._local_lock:
@@ -113,6 +117,7 @@ class FileLock:
                     self._unlink(missing_ok=True)
             finally:
                 self._held = 0
+                self._holding_thread = None
 
     def read_info(self) -> Optional[dict[str, Any]]:
         try:

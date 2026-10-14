@@ -47,6 +47,6 @@ def saved_turn_capacity_details(error: BaseException) -> dict[str, int]:
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         if is_saved_turn_capacity_refusal(current):
-            return bounded_capacity_details(current.saved_terminal_details)
+            return bounded_capacity_details(getattr(current, "saved_terminal_details"))
         current = current.__cause__ or current.__context__
     return {}

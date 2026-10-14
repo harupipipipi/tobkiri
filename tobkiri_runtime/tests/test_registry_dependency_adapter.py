@@ -91,6 +91,11 @@ def test_profile_resolver_delegates_dependency_order_to_effective_set() -> None:
         "rumi_schedule_store_pack",
         "rumi_scheduler_runtime_pack",
         "rumi_job_action_broker_pack",
+
+
+        "tobkiri_workflow_pack",
+        "rumi_ai_modality_pack",
+        "tobkiri_conversation_orchestration_pack",
         "rumi_browser_host_service_pack",
         "rumi_clipboard_host_service_pack",
         "rumi_desktop_host_service_pack",

@@ -214,7 +214,7 @@ def test_provider_adapter_instance_matches_catalog_execution_hint() -> None:
     )
     providers = adapter_manifest["contracts"]["provides"]
 
-    assert len({provider["provider_instance_id"] for provider in providers}) == 4
+    assert len({provider["provider_instance_id"] for provider in providers}) == 6
     assert all(provider["routing_keys"] == ["*"] for provider in providers)
 
 

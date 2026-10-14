@@ -29,11 +29,10 @@ def load(path, name, monkeypatch):
 def modules(monkeypatch):
     # Use the canonical packages selected by this runtime's PYTHONPATH. No
     # output-directory topology or AST-projected helper is a test dependency.
-    from tobkiri_protocol import saved_conversation
-    from ecosystem.rumi_turn_runtime_pack.runtime import scheduled_saved
+    from tobkiri_protocol import saved_conversation, scheduled_task_v1
 
     assert callable(saved_conversation.validate_saved_conversation_input)
-    assert callable(scheduled_saved.normalize_scheduled_saved_task)
+    assert callable(scheduled_task_v1.normalize_scheduled_saved_task)
     recurrence = load(
         MODULES / "recurrence.py",
         "ecosystem.rumi_schedule_store_pack.runtime.recurrence",

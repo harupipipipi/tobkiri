@@ -134,7 +134,7 @@ test('Header avatar is an actionable Profile/Settings entry with focus, Escape, 
     await act(async () => { trigger.click(); await nextTick(); });
     const dialog = dom.window.document.querySelector('[role="dialog"][aria-label="Profile menu"]');
     assert.ok(dialog);
-    assert.ok(dialog.querySelector('a[href="/profile"]'));
+    assert.ok(dialog.querySelector('a[href="/account"]'));
     assert.ok(dialog.querySelector('a[href="/settings"]'));
     assert.equal(dialog.querySelector('[role="menuitem"]'), null);
 
@@ -188,7 +188,7 @@ test('mobile navigation exposes ordinary named links, moves focus, and closes on
       'section[aria-labelledby="mobile-nav-group-devtools"]',
     );
     assert.ok(devtoolsGroup);
-    assert.equal(devtoolsGroup.querySelectorAll('a').length, 7);
+    assert.equal(devtoolsGroup.querySelectorAll('a').length, 6);
     assert.equal(
       devtoolsGroup.querySelector('a[href="/graphs"]')?.getAttribute('aria-current'),
       'page',

@@ -545,6 +545,12 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
         "widget": _json_object(value.get("widget") or {}),
         "source_adapter_id": str(value.get("source_adapter_id") or ""),
     }
+    if "result_schema_format" in value:
+        if value["result_schema_format"] != "normalized-result.v1":
+            raise ValueError("tool result schema format is unsupported")
+        if not isinstance(value.get("result_schema", {}), Mapping):
+            raise ValueError("typed tool result schema must be an object")
+        normalized["result_schema_format"] = "normalized-result.v1"
     if "connection_id" in execution:
         normalized["execution"]["connection_id"] = _identifier(execution["connection_id"])
     normalized["definition_hash"] = hashlib.sha256(

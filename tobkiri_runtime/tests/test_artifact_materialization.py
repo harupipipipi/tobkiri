@@ -16,6 +16,7 @@ from ecosystem.defaultspack.backend.sandbox.isolation.resources import (
     packvm_guest_runner,
 )
 import ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner as vz_provisioner
+from scripts.build_packvm_guest_bundle import build_guest_bundle
 import tobkiri_host.artifact_materialization as materialization_module
 from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_host.artifact_materialization import (
@@ -33,6 +34,14 @@ from tobkiri_protocol.canonical import canonical_digest
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = RUNTIME_ROOT / "tests" / "fixtures" / "conformance_minimal_echo_pack"
 PACK_ID = "conformance.minimal.echo"
+
+
+@pytest.fixture(scope="module")
+def guest_archive(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Include the guest's allowlisted imports in isolated child invocations."""
+    archive = tmp_path_factory.mktemp("materialization-archive") / "runner.pyz"
+    archive.write_bytes(build_guest_bundle(RUNTIME_ROOT))
+    return archive
 
 
 @pytest.fixture(autouse=True)
@@ -352,6 +361,7 @@ def test_guest_stage_is_read_only_replay_safe_and_reverified(
 def test_direct_vz_seed_materializes_before_the_first_real_invoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    guest_archive: Path,
 ) -> None:
     """A direct VZ launch attests the exact pre-seeded invoke path."""
 
@@ -379,7 +389,7 @@ def test_direct_vz_seed_materializes_before_the_first_real_invoke(
             sys.executable,
             "-I",
             "-S",
-            str(Path(packvm_guest_runner.__file__).resolve()),
+            str(guest_archive),
             "--execute",
             str(implementation),
         ),
@@ -634,6 +644,7 @@ def test_guest_materialization_preserves_free_space_reserve(
 def test_guest_supervisor_materializes_and_invokes_the_exact_python_abi(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    guest_archive: Path,
 ) -> None:
     source = (
         b"def tobkiri_packvm_invoke(operation_id, payload):\n"
@@ -670,7 +681,7 @@ def test_guest_supervisor_materializes_and_invokes_the_exact_python_abi(
             sys.executable,
             "-I",
             "-S",
-            str(Path(packvm_guest_runner.__file__).resolve()),
+            str(guest_archive),
             "--execute",
             str(implementation),
         ),

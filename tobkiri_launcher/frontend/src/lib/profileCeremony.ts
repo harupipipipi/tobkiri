@@ -62,6 +62,8 @@ export interface ProfileCandidateSelection {
   execution_activation_id: string | null;
 }
 
+export type ProfileReviewSelection = ProfileCandidateSelection;
+
 export interface ProfileResolveResult {
   state: 'resolved';
   candidate_id: string;
@@ -133,11 +135,9 @@ export interface ProfileCeremonyTransport {
 
 const canonicalTransport: ProfileCeremonyTransport = {
   write: <T>(target: RuntimeSurfaceTarget, payload: Record<string, unknown>, requestId?: string) => (
-    // Match the Host control Contract's bounded 30-second default. Signature
-    // and active Profile verification can outlast the generic mutation budget.
     fetchFrontendContractOperation<T>(target.method, target.logical_target, payload, {
       requestId,
-      timeoutMs: 30_000,
+      timeoutMs: target.operation_id === 'profile.change.activate' ? 60_000 : 30_000,
     })
   ),
 };
@@ -300,7 +300,7 @@ function targetFor(targets: ProfileCeremonyTargets, step: ProfileCeremonyStep): 
   return target;
 }
 
-export function validateProfileResolveResult(value: unknown): ProfileResolveResult {
+export function validateProfileResolveResult(value: unknown, expected?: ProfileResolveInput): ProfileResolveResult {
   const result = responseRecord(value);
   if (result.state !== 'resolved' || !isRecord(result.review) || result.next_action !== 'review') {
     throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned an invalid ceremony state.');
@@ -312,6 +312,41 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
     || Object.keys(result.review).some((key) => !allowedReviewKeys.includes(key))
   ) {
     throw new RuntimeSurfaceError('INVALID', 'Profile resolve did not publish the exact candidate review records.');
+  }
+  const generation = result.review.candidate_generation;
+  let selection: ProfileReviewSelection | undefined;
+  if ('candidate_generation' in result.review || 'selection' in result.review) {
+    const published = result.review.selection;
+    const predecessor = result.review.predecessor;
+    const profile = result.review.profile;
+    const selectionKeys = ['selected_profile_id', 'execution_profile_id', 'execution_profile_revision', 'execution_plan_digest', 'execution_activation_id'];
+    if (
+      typeof generation !== 'string' || !/^profile-change-generation:[0-9a-f]{32}$/.test(generation)
+      || !isRecord(published) || Object.keys(published).length !== selectionKeys.length
+      || selectionKeys.some((key) => !Object.prototype.hasOwnProperty.call(published, key))
+      || !validRequestString(published.selected_profile_id)
+      || (published.execution_profile_id !== null && !validRequestString(published.execution_profile_id))
+      || !isSha256(published.execution_profile_revision) || !isSha256(published.execution_plan_digest)
+      || (published.execution_activation_id !== null && !validRequestString(published.execution_activation_id))
+      || (published.execution_profile_id === null) !== (published.execution_activation_id === null)
+      || !isRecord(profile) || profile.profile_id !== published.selected_profile_id
+      || !isRecord(predecessor)
+      || predecessor.profile_revision !== published.execution_profile_revision
+      || predecessor.plan_digest !== published.execution_plan_digest
+      || (published.execution_profile_id === null
+        ? predecessor.state !== 'none' || published.execution_activation_id !== null
+        : predecessor.state !== 'active' || predecessor.activation_id !== published.execution_activation_id)
+    ) {
+      throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned inconsistent candidate selection records.');
+    }
+    selection = published as unknown as ProfileReviewSelection;
+    if (expected && (
+      selection.selected_profile_id !== expected.profile_id
+      || selection.execution_profile_revision !== expected.expected_profile_revision
+      || selection.execution_plan_digest !== expected.expected_plan_digest
+    )) {
+      throw new RuntimeSurfaceError('DIGEST_MISMATCH', 'Profile resolve returned a different selection or predecessor.');
+    }
   }
   let catalogBinding: ProfileCatalogBinding | undefined;
   if (Object.prototype.hasOwnProperty.call(result.review, 'catalog_binding')) {
@@ -331,45 +366,6 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
       bundle_lock_digest: candidate.bundle_lock_digest,
     };
   }
-  const hasGeneration = Object.prototype.hasOwnProperty.call(result.review, 'candidate_generation');
-  const hasSelection = Object.prototype.hasOwnProperty.call(result.review, 'selection');
-  let candidateGeneration: string | undefined;
-  let selection: ProfileCandidateSelection | undefined;
-  if (hasGeneration || hasSelection) {
-    if (
-      !hasGeneration || !hasSelection
-      || typeof result.review.candidate_generation !== 'string'
-      || !/^profile-change-generation:[0-9a-f]{32}$/.test(result.review.candidate_generation)
-      || !isRecord(result.review.selection)
-    ) {
-      throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned invalid candidate selection metadata.');
-    }
-    const selected = result.review.selection;
-    const selectionKeys = [
-      'selected_profile_id', 'execution_profile_id', 'execution_profile_revision',
-      'execution_plan_digest', 'execution_activation_id',
-    ];
-    if (
-      Object.keys(selected).length !== selectionKeys.length
-      || selectionKeys.some((key) => !Object.prototype.hasOwnProperty.call(selected, key))
-      || !validRequestString(selected.selected_profile_id)
-      || !(selected.execution_profile_id === null || validRequestString(selected.execution_profile_id))
-      || !(selected.execution_activation_id === null || validRequestString(selected.execution_activation_id))
-      || (selected.execution_profile_id === null) !== (selected.execution_activation_id === null)
-      || !isRecord(result.review.profile)
-      || result.review.profile.profile_id !== selected.selected_profile_id
-    ) {
-      throw new RuntimeSurfaceError('INVALID', 'Profile resolve returned an invalid selected Profile binding.');
-    }
-    candidateGeneration = result.review.candidate_generation;
-    selection = {
-      selected_profile_id: selected.selected_profile_id as string,
-      execution_profile_id: selected.execution_profile_id as string | null,
-      execution_profile_revision: requiredDigest(selected.execution_profile_revision, 'execution_profile_revision'),
-      execution_plan_digest: requiredDigest(selected.execution_plan_digest, 'execution_plan_digest'),
-      execution_activation_id: selected.execution_activation_id as string | null,
-    };
-  }
   return {
     state: 'resolved',
     candidate_id: requiredString(result.candidate_id, 'candidate_id'),
@@ -381,7 +377,7 @@ export function validateProfileResolveResult(value: unknown): ProfileResolveResu
       resolved_plan: result.review.resolved_plan,
       predecessor: result.review.predecessor,
       ...(catalogBinding ? {catalog_binding: catalogBinding} : {}),
-      ...(candidateGeneration ? {candidate_generation: candidateGeneration, selection} : {}),
+      ...(selection ? {candidate_generation: generation as string, selection} : {}),
     },
     next_action: 'review',
     write_set: requiredWriteSet(result.write_set),
@@ -518,7 +514,7 @@ export function createProfileCeremonyClient(
     return validate(result);
   };
   return {
-    resolve: (input, requestId) => write('resolve', exactMutationPayload('resolve', input), validateProfileResolveResult, requestId),
+    resolve: (input, requestId) => write('resolve', exactMutationPayload('resolve', input), (result) => validateProfileResolveResult(result, input), requestId),
     review: (input, requestId) => {
       const payload = exactMutationPayload('review', input);
       return transport.write<unknown>(targetFor(targets, 'review'), payload, requestId)

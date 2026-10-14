@@ -44,6 +44,13 @@ export class ApiContractError extends Error {
   }
 }
 
+export class PanelSessionUnavailableError extends ApiContractError {
+  constructor(data: unknown) {
+    super('Your panel session needs to be renewed. Reopen this panel from Tobkiri Launcher to reconnect.', data);
+    this.name = 'PanelSessionUnavailableError';
+  }
+}
+
 function getStoredPanelCsrfToken(): string {
   return readSafeStorageValue(
     getBrowserStorage('session'),
@@ -248,10 +255,10 @@ export function createApiClient(
         if (
           allowPanelRecovery &&
           routePolicy.panelSession &&
-          isRecoverablePanelAuthError(response.status, errorMessage) &&
-          await recoverExpiredPanelSession(signal)
+          isRecoverablePanelAuthError(response.status, errorMessage)
         ) {
-          return fetchRequest(false, signal);
+          if (await recoverExpiredPanelSession(signal)) return fetchRequest(false, signal);
+          throw new PanelSessionUnavailableError(errorData);
         }
         throw new ApiContractError(errorMessage, errorData);
       }
@@ -262,10 +269,10 @@ export function createApiClient(
         if (
           allowPanelRecovery &&
           routePolicy.panelSession &&
-          isRecoverablePanelAuthError(response.status, errorMessage) &&
-          await recoverExpiredPanelSession(signal)
+          isRecoverablePanelAuthError(response.status, errorMessage)
         ) {
-          return fetchRequest(false, signal);
+          if (await recoverExpiredPanelSession(signal)) return fetchRequest(false, signal);
+          throw new PanelSessionUnavailableError(envelope.data);
         }
         throw new ApiContractError(errorMessage, envelope.data);
       }

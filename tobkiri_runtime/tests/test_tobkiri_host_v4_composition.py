@@ -177,16 +177,14 @@ def _capture(tmp_path: Path):
         (
             "defaults",
             "activation:defaults-v4",
-            next(
-                principal
-                for (function_id, _operation_id), principal in principals.items()
-                if function_id == edge["caller_function_id"]
-            ).principal_id,
+            caller.principal_id,
             principals[(edge["target_provider_id"], edge["operation_id"])].principal_id,
             edge["contract_id"],
             edge["operation_id"],
         ): AuthorityCeilings(scope, scope, scope)
         for edge in resolved.profile["requested_edges"]
+        for (function_id, _operation_id), caller in principals.items()
+        if function_id == edge["caller_function_id"]
     }
     composition = HostV4Composition.capture(
         profile=resolved.profile,

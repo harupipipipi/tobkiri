@@ -320,16 +320,11 @@ public final class VZSupervisor {
         request: [String: Any],
         guestChallenge: String
     ) throws -> [String: Any] {
-        guard Set(request.keys) == [
-            "request_id", "request_digest", "contract_id", "contract_version",
-            "operation_id", "payload", "deadline_monotonic",
-        ],
-              let requestID = request["request_id"] as? String,
+        let payloadFields = try DirectInvokePayload.fields(request)
+        guard let requestID = request["request_id"] as? String,
               ProtocolAuthenticator.isIdentifier(requestID),
               let requestDigest = request["request_digest"] as? String,
-              ProtocolAuthenticator.isSHA256Digest(requestDigest),
-              let payload = request["payload"] as? [String: Any],
-              try CanonicalJSON.data(payload).count <= maxInvokePayloadBytes else {
+              ProtocolAuthenticator.isSHA256Digest(requestDigest) else {
             throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
         }
         let domain = try activeDirectDomain(domainID)
@@ -369,11 +364,11 @@ public final class VZSupervisor {
             "contract_id": request["contract_id"] as Any,
             "contract_version": request["contract_version"] as Any,
             "operation_id": request["operation_id"] as Any,
-            "payload": payload,
             "request_digest": requestDigest,
             "deadline_monotonic": request["deadline_monotonic"] as Any,
             "cancel_token": Self.freshGuestChallenge(),
         ]
+        guestPayload.merge(payloadFields) { _, encoded in encoded }
         if let requestDeadline {
             // The guest cannot compare a Host monotonic deadline with its own
             // clock; send the remaining budget it may keep the operation alive

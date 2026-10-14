@@ -41,7 +41,7 @@ export function ApiMap() {
   return (
     <AdvancedSurfaceFrame
       descriptor={descriptor}
-      state={{status: surface.status, stale: surface.stale, error: surface.error}}
+      state={{status: surface.status, stale: surface.stale, error: surface.error, profileId: surface.data?.profile_id ?? null}}
       onRetry={() => void surface.refresh(true)}
     >
       {surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Contract map provenance" /> : null}

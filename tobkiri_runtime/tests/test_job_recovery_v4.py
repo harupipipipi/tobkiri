@@ -1,7 +1,8 @@
 """Real job/schedule owner recovery with isolated public adapter fixtures.
 
-Workflow Authority/model fixtures below are explicit substitutes. These tests do
-not claim production Workflow admission, a native timer, or real 600-second IO.
+Workflow Authority/model and pre-armed finite-clock fixtures below are explicit
+substitutes. These tests do not claim production Workflow admission, a native
+timer, or real 600-second IO.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pytest
 
 from core_runtime.workflow_v4 import (
     ApprovalState,
+    WorkflowDenied,
     WorkflowEngineV4,
     WorkflowProviderV4,
     WorkflowStoreV4,
@@ -24,6 +26,10 @@ from core_runtime.workflow_v4 import (
 from core_runtime.workflow_v4.models import InvocationOutcome
 from ecosystem.rumi_job_action_broker_pack.runtime.broker import JobActionBroker
 from ecosystem.rumi_schedule_store_pack.runtime.store import ScheduleStore, _arguments
+from ecosystem.rumi_scheduler_runtime_pack.runtime.clock import (
+    CONTRACT as CLOCK,
+    OPERATION as CLOCK_OP,
+)
 from ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler import SchedulerRuntime
 from ecosystem.tobkiri_agent_control_pack.runtime.host import WorkPlanHostFactory
 from ecosystem.tobkiri_agent_control_pack.runtime.ports import SAVED, SAVED_OP
@@ -220,6 +226,9 @@ class PublicOwners(FakePorts):
         super().__init__()
         self.now = clock[0]
         self.clock = clock
+        self.clock_available = True
+        self.clock_expires_at_ms = clock[0] + 86400000
+        self.clock_calls: list[str] = []
         self.store = ScheduleStore(PROFILE, root=root, clock=lambda: clock[0])
         self.broker = JobActionBroker(self, PROFILE, root=root, canonical=True)
         self.service = WorkPlanService(PlanStore(root, PROFILE), self, clock=lambda: clock[0])
@@ -234,7 +243,18 @@ class PublicOwners(FakePorts):
         owner = self
 
         class Invoker:
-            def invoke(self, request: Mapping[str, Any], *, authority: Any) -> InvocationOutcome:
+            def invoke(
+                self,
+                request: Mapping[str, Any],
+                *,
+                authority: Any,
+                dispatch_fence: Any = None,
+            ) -> InvocationOutcome:
+                if dispatch_fence is not None:
+                    try:
+                        dispatch_fence(str(request["request_id"]))
+                    except WorkflowDenied:
+                        return InvocationOutcome(error_code="dispatch_fenced", dispatched=False)
                 assert authority.dispatch_token.startswith("one-shot-")
                 return InvocationOutcome(output=owner.service.review(request["input"], USER))
 
@@ -280,8 +300,33 @@ class PublicOwners(FakePorts):
         assert contract == ADAPTER
         return (self.metadata,)
 
+    def _clock_control(self, operation: str, values: Mapping[str, Any]) -> dict[str, Any]:
+        """Model only the exact status/renew requests used by an injected tick."""
+        assert operation == CLOCK_OP and values.get("profile_id") == PROFILE
+        name = values.get("operation")
+        assert name in {"status", "renew"}
+        assert set(values) == {"operation", "profile_id"} | (
+            {"duration_ms"} if name == "renew" else set()
+        )
+        if name == "renew":
+            duration = values["duration_ms"]
+            assert type(duration) is int and 60000 <= duration <= 86400000
+            if not self.clock_available or self.clock_expires_at_ms <= self.clock[0]:
+                raise PermissionError("only a live fixture clock can renew")
+            self.clock_expires_at_ms = max(
+                self.clock_expires_at_ms, self.clock[0] + duration
+            )
+        self.clock_calls.append(name)
+        return {
+            "available": self.clock_available,
+            "armed": self.clock_available and self.clock_expires_at_ms > self.clock[0],
+            "expires_at_ms": self.clock_expires_at_ms,
+        }
+
     def invoke(self, contract: str, operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         values = dict(payload)
+        if contract == CLOCK:
+            return self._clock_control(operation, values)
         if contract == "tobkiri.resource.schedule.v1":
             if values["operation"] == "list":
                 return self.store.snapshot()
@@ -320,6 +365,57 @@ def test_injected_600_second_chain_runs_one_review_and_recurs(tmp_path: Path) ->
     schedule = ports.store.get(plan["schedule"]["id"])
     assert schedule["next_run_at_ms"] == clock[0] + 600000
     assert schedule["status"] == "scheduled"
+    assert ports.clock_calls == ["status", "status"]
+    assert ports.authority.commit_count == 1
+    assert sum(call[0] == "tobkiri.service.ai.generate.v1" for call in ports.calls) == 1
+    review_run = next(iter(plan["review_runs"].values()))
+    attempts = ports.workflow.invoke(
+        "run.get", {"run_id": review_run["workflow_run_id"]}
+    )["attempts"]
+    assert [attempt["dispatch_admission"] for attempt in attempts] == ["admitted"]
+
+
+def test_live_clock_renewal_does_not_dispatch_review_before_600_seconds(tmp_path: Path) -> None:
+    clock = [1000000]
+    ports = PublicOwners(tmp_path, clock)
+    configure(ports.service)
+    add(ports.service)
+    ports.clock_expires_at_ms = clock[0] + 60000
+    scheduler = SchedulerRuntime(ports, PROFILE, clock=lambda: clock[0], canonical=True)
+    assert scheduler.control("tick", {})["count"] == 0
+    assert ports.clock_calls == ["status", "renew"]
+    assert ports.clock_expires_at_ms == clock[0] + 86400000
+    assert ports.authority.commit_count == 0
+    assert not any(call[0] == "tobkiri.service.ai.generate.v1" for call in ports.calls)
+    clock[0] += 600000
+    assert scheduler.control("tick", {})["count"] == 1
+    assert ports.authority.commit_count == 1
+    assert ports.service.store.get("plan")["review"]["verdict"] == "drift"
+
+
+@pytest.mark.parametrize("clock_state", ["expired", "unavailable"])
+def test_nonlive_clock_blocks_due_review_without_side_effects(
+    tmp_path: Path, clock_state: str
+) -> None:
+    clock = [1000000]
+    ports = PublicOwners(tmp_path, clock)
+    configure(ports.service)
+    add(ports.service)
+    clock[0] += 600000
+    if clock_state == "expired":
+        ports.clock_expires_at_ms = clock[0]
+    else:
+        ports.clock_available = False
+    before = ports.service.store.get("plan")
+    calls_before = deepcopy(ports.calls)
+    scheduler = SchedulerRuntime(ports, PROFILE, clock=lambda: clock[0], canonical=True)
+    with pytest.raises(PermissionError, match="finite wake registration is unavailable"):
+        scheduler.control("tick", {})
+    assert ports.clock_calls == ["status"]
+    assert ports.authority.commit_count == 0
+    assert ports.service.store.get("plan") == before
+    assert ports.calls == calls_before
+    assert ports.store.get(before["schedule"]["id"])["status"] == "scheduled"
 
 
 def test_waiting_review_survives_restart_and_durable_scheduler_stop(tmp_path: Path) -> None:

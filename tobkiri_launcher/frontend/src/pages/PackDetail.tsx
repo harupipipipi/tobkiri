@@ -15,6 +15,8 @@ import { PackDiagnostics } from '@/src/components/packs/PackDiagnostics';
 import { PackVMLifecyclePanel } from '@/src/components/packs/PackVMLifecyclePanel';
 import { PackVMAcceptanceOperation } from '@/src/components/packs/PackVMAcceptanceOperation';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
+import { InspectedProfileNotice } from '@/src/components/advanced/InspectedProfileNotice';
+import { isProfileMutationBlocked, useProfileSelection } from '@/src/lib/profileSelection';
 import { userSafePackVMError } from '@/src/lib/packvmLifecycle';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
 
@@ -134,6 +136,18 @@ export function PackDetail() {
   const packScopeAuthoritative = isPackInCatalogScope(pack, packCatalogBinding);
   const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
   const scopedProfileId = packCatalogBinding?.profile_id ?? 'unavailable';
+  const {selectedProfileId} = useProfileSelection();
+  const profileWriteBlocked = isProfileMutationBlocked(selectedProfileId, scopedProfileId === 'unavailable' ? null : scopedProfileId);
+  const guardedOperationInvoke = (operationId: string, payload: Record<string, unknown>) => {
+    if (profileWriteBlocked) {
+      return Promise.reject(new Error(
+        `Profile-scoped write locked: the inspected Profile "${selectedProfileId}" is not ` +
+        `the active execution Profile "${scopedProfileId}". Activate it on the Profile page ` +
+        'before invoking.',
+      ));
+    }
+    return invokePackOperation(pack.id, operationId, payload);
+  };
 
   const handleToggle = async () => {
     if (!packScopeAuthoritative) return;
@@ -240,7 +254,7 @@ export function PackDetail() {
                 size="sm"
                 onClick={() => void handleInstall()}
                 loading={installing || Boolean(packInstallPending[pack.id])}
-                disabled={!packScopeAuthoritative || mutationResultUnknown}
+                disabled={!packScopeAuthoritative || profileWriteBlocked || mutationResultUnknown}
               >
                 Install
               </Button>
@@ -251,7 +265,7 @@ export function PackDetail() {
                     Tobkiri approval revoked. Approve again before enabling this Pack.
                   </span>
                 ) : null}
-                <Button size="sm" onClick={() => void handleApprove()} loading={approving} disabled={!packScopeAuthoritative || mutationResultUnknown}>
+                <Button size="sm" onClick={() => void handleApprove()} loading={approving} disabled={!packScopeAuthoritative || profileWriteBlocked || mutationResultUnknown}>
                   Approve
                 </Button>
               </div>
@@ -274,7 +288,7 @@ export function PackDetail() {
                   onClick={handleRevoke}
                   loading={Boolean(packApprovalPending[pack.id])}
                   aria-busy={Boolean(packApprovalPending[pack.id])}
-                  disabled={!packScopeAuthoritative || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || mutationResultUnknown}
+                  disabled={!packScopeAuthoritative || profileWriteBlocked || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || mutationResultUnknown}
                   aria-label={`Revoke approval for ${pack.name}`}
                   title={pack.type === 'core' ? 'Core Packs cannot have approval revoked.' : undefined}
                 >
@@ -285,8 +299,8 @@ export function PackDetail() {
                   checked={pack.enabled}
                   disabled={
                     !packScopeAuthoritative
-                    ||
-                    pack.type === 'core'
+                    || profileWriteBlocked
+                    || pack.type === 'core'
                     || Boolean(packTogglePending[pack.id])
                     || Boolean(packApprovalPending[pack.id])
                     || mutationResultUnknown
@@ -301,6 +315,7 @@ export function PackDetail() {
           </div>
         </div>
         <PackScopeSummary binding={packCatalogBinding} pack={pack} stale={Boolean(packsError)} transitioning={profileTransitionPending} />
+        <InspectedProfileNotice surfaceProfileId={packCatalogBinding?.profile_id ?? null} />
         {mutationResultUnknown ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
             <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
@@ -517,7 +532,7 @@ export function PackDetail() {
                 record.metadata.pack_id === pack.id
                 && record.metadata.operation_id === operation.operationId
               ))}
-            onInvoke={(payload) => invokePackOperation(pack.id, operation.operationId, payload)}
+            onInvoke={(payload) => guardedOperationInvoke(operation.operationId, payload)}
           />
         ) : null)}
         {operations.map((operation) => operation.operationId === 'tobkiri_packvm_sandbox_qa_pack.probe_isolation' ? (
@@ -534,7 +549,7 @@ export function PackDetail() {
                 record.metadata.pack_id === pack.id
                 && record.metadata.operation_id === operation.operationId
               ))}
-            onInvoke={(payload) => invokePackOperation(pack.id, operation.operationId, payload)}
+            onInvoke={(payload) => guardedOperationInvoke(operation.operationId, payload)}
           />
         ) : null)}
       </div>

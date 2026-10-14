@@ -109,6 +109,14 @@ export interface LauncherAdvancedViewDescriptor {
   summary: string;
   capability: LauncherAdvancedCapability;
   actions: LauncherAdvancedAction;
+  /**
+   * Whether the route is hidden behind the Devtools presentation preference.
+   * `false` marks a primary user-task surface that remains reachable through
+   * ordinary navigation; the runtime health/authority gate still applies.
+   * Omitted means the surface is a technical inspector hidden by the
+   * preference. UI visibility never changes authority or grants.
+   */
+  devtoolsGated?: boolean;
 }
 
 export interface AdvancedSurfaceActionState {
@@ -252,6 +260,9 @@ export const LAUNCHER_ADVANCED_VIEWS: Record<LauncherAdvancedViewId, LauncherAdv
     summary: 'Contract-declared composition can invoke only an authoritative operation; provider side effects and Host approval are explicit.',
     capability: 'contract_operation',
     actions: 'contract_invoke',
+    // Flow composition is a primary user task: it stays reachable through
+    // ordinary navigation and is not hidden by the Devtools preference.
+    devtoolsGated: false,
   },
   graph: {
     id: 'graph',

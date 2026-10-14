@@ -3,6 +3,7 @@ import {
   Suspense,
   lazy,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -204,6 +205,24 @@ function ContributionView({
   return <BuiltinModuleView item={item} />;
 }
 
+/** An inert local draft field; declaring it grants no action or submission port. */
+export function declarativeInput(value: unknown): {
+  label: string;
+  placeholder?: string;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some((key) => key !== "label" && key !== "placeholder")
+      || typeof input.label !== "string" || !input.label.trim() || input.label.length > 256
+      || ("placeholder" in input && (typeof input.placeholder !== "string" || input.placeholder.length > 256))) {
+    return null;
+  }
+  return {
+    label: input.label,
+    ...(typeof input.placeholder === "string" ? { placeholder: input.placeholder } : {}),
+  };
+}
+
 function DeclarativeView({
   item,
   catalogHash,
@@ -216,6 +235,9 @@ function DeclarativeView({
   const view = item.view ?? {};
   const title = String(view.title ?? item.label);
   const body = String(view.body ?? item.description ?? "");
+  const inputId = useId();
+  const [draft, setDraft] = useState("");
+  const inputView = declarativeInput(view.input);
   const [result, setResult] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -249,6 +271,18 @@ function DeclarativeView({
     >
       <h2>{title}</h2>
       {body && <p>{body}</p>}
+      {inputView && (
+        <div data-declarative-input>
+          <label htmlFor={inputId}>{inputView.label}</label>
+          <input
+            id={inputId}
+            type="text"
+            value={draft}
+            placeholder={inputView.placeholder}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </div>
+      )}
       {item.action_contract && (
         <button type="button" disabled={busy} onClick={() => void invoke()}>
           {busy ? "Working…" : String(view.action_label ?? "Continue")}

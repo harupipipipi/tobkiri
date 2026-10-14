@@ -28,10 +28,10 @@
               "required": ["contribution_id", "contract_id", "operation_id", "provider_id", "function_id", "allowed_payload_keys"],
               "properties": {
                 "contribution_id": {"type": "string", "minLength": 1},
-                "contract_id": {"const": "tobkiri.workflow.v4"},
+                "contract_id": {"enum": ["tobkiri.workflow.v4", "tobkiri.workflow.stop.v4"]},
                 "operation_id": {"type": "string", "minLength": 1},
-                "provider_id": {"const": "tobkiri.workflow.provider"},
-                "function_id": {"const": "tobkiri.workflow.provider"},
+                "provider_id": {"enum": ["tobkiri.workflow.provider", "tobkiri.workflow.stop.provider"]},
+                "function_id": {"enum": ["tobkiri.workflow.provider", "tobkiri.workflow.stop.provider"]},
                 "allowed_payload_keys": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
               }
             }

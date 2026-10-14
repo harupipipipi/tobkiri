@@ -1,4 +1,4 @@
-import providerModelCatalog from "./providerModelCatalog.generated.json";
+import providerModelCatalog from "./providerModelCatalog.generated.json" with { type: "json" };
 import type { RegisteredProviderConnection } from "./api";
 
 export type ProviderCatalogModel = Readonly<{

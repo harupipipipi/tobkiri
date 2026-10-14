@@ -84,16 +84,18 @@ def runtime_user_data_scope(root: Path) -> Iterator[None]:
 
 
 @contextmanager
-def profile_capture_scope() -> Iterator[None]:
+def profile_capture_scope(*, fresh: bool = False) -> Iterator[None]:
     """Bound repeated capture reads to one explicit operation scope.
 
     The scope is intentionally opt-in and context-local.  It never becomes a
     process-wide cache: callers open a new scope for each operation, and
-    mutation code invalidates it before recapturing state.
+    mutation code invalidates it before recapturing state. A freshly resumed
+    prepared effect must use ``fresh=True`` so it cannot inherit a snapshot
+    captured before approval or from its caller operation.
     """
 
     existing = _PROFILE_CAPTURE_SCOPE.get()
-    if existing is not None:
+    if existing is not None and not fresh:
         yield
         return
     token = _PROFILE_CAPTURE_SCOPE.set({})
@@ -282,6 +284,19 @@ def host_profile_catalog(
         for item in definitions.list_profiles()
         if _is_resolvable_profile_definition(item.profile)
     }
+    # Admission supplies inventory, not selection or invocation authority.
+    # Named Profiles must resolve the same verified external artifacts as the
+    # bootstrap ceremony; never infer artifacts from arbitrary draft references.
+    from ..external_pack_catalog_v4 import load_admitted_pack_catalog
+    from ..pack_control_v4 import catalog_with_admitted_pack_closure
+
+    with runtime_user_data_scope(user_data):
+        admitted_ids = sorted(
+            pack_id for pack_id, record in load_admitted_pack_catalog().items()
+            if record.get("authority") == "host-signed-external-normal-v4"
+        )
+        if admitted_ids:
+            bundled, _ = catalog_with_admitted_pack_closure(bundled, admitted_ids)
     return runtime.catalog_with_profiles(bundled, profiles)
 
 
@@ -611,7 +626,7 @@ def _bootstrap_pack_pin_predecessor_binding(
                 catalog=catalog,
             ).load_active_snapshot()
         active_definition_digest = active.resolved.plan["profile_definition_digest"]
-        active_identity = (
+        active_identity: Any = (
             active.resolved.plan["profile_revision"],
             active.activation["activation_id"],
             active.resolved.plan["plan_digest"],

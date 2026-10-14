@@ -128,6 +128,8 @@ def test_child_allows_v2_intent_only_for_reserved_saved_abi(
     "tobkiri.packvm.continuation.request.v2",
     "tobkiri.packvm.continuation.result.v2",
     "tobkiri.packvm.invoke.result.v1",
+    "tobkiri.packvm.invoke.result.v2",
+    "tobkiri.packvm.private.result.v1",
     "tobkiri.packvm.bridge.request.v99",
 ])
 def test_guest_never_wraps_unhandled_control_frames_as_completion(kind: str) -> None:

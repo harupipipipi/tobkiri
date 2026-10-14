@@ -11,6 +11,7 @@ import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {extractExactPackDescriptors, type RuntimePackDescriptor} from '@/src/lib/runtimeSurface';
+import {useProfileMutationBlocked} from '@/src/lib/profileSelection';
 import {panelRoutes} from '@/src/lib/routes';
 import {useAppStore, type Pack} from '@/src/store';
 
@@ -73,7 +74,8 @@ export function NodeManager() {
   const controlCatalogStable = packs.length > 0 && controlCatalogRevisions.size === 1;
   const profilePlanBound = exactPackControlCatalogBinding(packs, surface.data);
   const runtimeReady = surface.status === 'ready' && !surface.stale;
-  const canUseLifecycle = runtimeReady && controlCatalogStable && profilePlanBound;
+  const profileWriteBlocked = useProfileMutationBlocked(surface.data?.profile_id ?? null);
+  const canUseLifecycle = runtimeReady && controlCatalogStable && profilePlanBound && !profileWriteBlocked;
 
   const refresh = async () => {
     await Promise.all([surface.refresh(true), loadPacks()]);
@@ -82,7 +84,7 @@ export function NodeManager() {
   return (
     <AdvancedSurfaceFrame
       descriptor={descriptor}
-      state={{status: surface.status, stale: surface.stale, error: surface.error}}
+      state={{status: surface.status, stale: surface.stale, error: surface.error, profileId: surface.data?.profile_id ?? null}}
       onRetry={() => void refresh()}
     >
       {surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Pack lifecycle provenance" /> : null}
@@ -91,7 +93,13 @@ export function NodeManager() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Network className="h-4 w-4" aria-hidden="true" />Pack control catalog</CardTitle>
             <p className="text-sm leading-6 text-text-muted">The canonical Pack control catalog is the complete list. Active v4 rows are joined as evidence; missing or stale joins lock actions that would change active runtime state.</p>
-            {!canUseLifecycle ? <p className="mt-2 text-sm text-amber-700 dark:text-amber-300" role="alert">Pack lifecycle actions are locked until the control catalog is stable and bound to the accepted Profile revision and Plan digest.</p> : null}
+            {!canUseLifecycle ? (
+              <p className="mt-2 text-sm text-amber-700 dark:text-amber-300" role="alert">
+                {profileWriteBlocked
+                  ? 'Pack lifecycle actions are locked: they would mutate the active execution Profile, not the inspected selection.'
+                  : 'Pack lifecycle actions are locked until the control catalog is stable and bound to the accepted Profile revision and Plan digest.'}
+              </p>
+            ) : null}
           </CardHeader>
           <CardContent className="grid gap-3">
             {packs.map((pack) => {

@@ -33,7 +33,7 @@ from core_runtime.global_contract_dispatch import (
 from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
     normalize_model_profile_save,
 )
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_ai_gateway_pack.runtime import gateway
 from ecosystem.rumi_ai_gateway_pack.runtime.route_quote import (
     create_route_quote_operation,
@@ -53,6 +53,20 @@ from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
 )
 from tobkiri_host.saved_turn_plan import TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
+
+
+@pytest.fixture(autouse=True)
+def _offline_catalog_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Connection routing tests never consult the public provider inventory.
+
+    Positive capability cases install their own exact synthetic catalog below;
+    negative cases must remain deterministic even if the live catalog changes.
+    """
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog
+
+    monkeypatch.setattr(
+        catalog, "_openrouter_inventory", lambda: ([], "unavailable", True)
+    )
 
 
 class _SavedRouteSession:

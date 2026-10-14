@@ -50,6 +50,7 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
     resolve = {"operation": "resolve", "tool_id": "calculator"}
     calculator = invoke("definition", resolve, pack_data=captured_data)["definition"]
     assert calculator["input_schema"]["required"] == ["expression"]
+    assert calculator["result_schema"]["type"] == "string"
     assert calculator["widget"]["group_icon"] == "calculator"
     assert calculator["execution"]["contract_id"] == "tobkiri.service.tool.local.operation.v1"
     assert calculator["execution"]["provider_instance_id"] == "rumi_default_tools_pack.calculator"

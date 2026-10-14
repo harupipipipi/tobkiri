@@ -31,6 +31,22 @@ tooling-test:
 compact-runner-test:
     python -m pytest scripts/quality/test_compact_test_runner.py -q
 
+# Verify ordinary PackVM numeric wire boundaries; this is not a real VM proof.
+packvm-numeric-test:
+    cd tobkiri_runtime && python -B -m pytest \
+        tests/test_flow_data_codec.py \
+        tests/test_packvm_data_wire.py \
+        tests/test_packvm_numeric_archive.py \
+        tests/test_packvm_guest_bundle.py \
+        tests/test_artifact_materialization.py \
+        tests/test_mcp_host_broker.py \
+        tests/test_workflow_authored_pack_composition.py \
+        tests/test_packvm_lima_provisioning.py::test_guest_runner_executes_only_the_explicit_staged_python_abi \
+        tests/test_packvm_core_boundaries.py \
+        tests/test_bounded_child_io.py \
+        tests/test_macos_vz_supervisor.py \
+        tests/test_qemu_supervisor_transport.py -q
+
 # Run Python static checks over the backend surfaces guarded in CI.
 lint:
     cd tobkiri_runtime && python -m ruff check core_runtime backend_core ecosystem/defaultspack/domain/coding ecosystem/defaultspack/domain/tool ecosystem/defaultspack/blocks/coding app.py
@@ -82,6 +98,7 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/generate_definitions_component.py --check
     node tobkiri_launcher/frontend/scripts/generate-frontend-contract-map.mjs --check
     node tobkiri_launcher/frontend/scripts/generate-defaults-setup-contract.mjs --check
+    {{python}} -B tobkiri_runtime/scripts/generate_model_catalog_runtime.py --check
     {{python}} -B tobkiri_runtime/scripts/migrate_pack_artifacts_v4.py --check
     {{python}} -B tobkiri_runtime/scripts/migrate_manifest_authority.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check

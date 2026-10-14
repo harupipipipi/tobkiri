@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b
+// Raw source digest: sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
+  "artifact_digest": "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
   "routes": [
     {
       "method": "GET",
@@ -1158,6 +1158,7 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "function_id": "tobkiri.ui.model-search.read",
           "allowed_payload_keys": [
             "query",
+            "connection_id",
             "type",
             "model_type",
             "requires",
@@ -2823,6 +2824,7 @@ const EXPECTED_ROUTES = {
         "function_id": "tobkiri.ui.model-search.read",
         "allowed_payload_keys": [
           "query",
+          "connection_id",
           "type",
           "model_type",
           "requires",

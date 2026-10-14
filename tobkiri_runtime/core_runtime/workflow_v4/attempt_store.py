@@ -12,10 +12,17 @@ from typing import Any, Iterator, Mapping
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from core_runtime.hmac_key_manager import SigningKeyError
+from core_runtime.private_file import prepare_private_file, verify_private_file
+from core_runtime.workflow_v4.attempt_capacity import completion_headroom
 from core_runtime.workflow_v4.models import WorkflowDenied, digest
 from tobkiri_protocol.secure_persistence import SecureDirectory
 
 _MAX_BYTES = 32 * 1024 * 1024
+
+
+class WorkflowAttemptReservationMissing(WorkflowDenied):
+    """The authenticated journal has no record for this reservation yet."""
 
 
 class WorkflowAttemptStoreV4:
@@ -33,16 +40,22 @@ class WorkflowAttemptStoreV4:
         self._key_name = f"{path.name}.key"
         self._thread_lock = threading.RLock()
         with self._locked():
-            if not self._directory.exists(self._key_name):
-                self._directory.write_bytes_atomic(self._key_name, Fernet.generate_key())
-            key = self._directory.read_bytes_bounded(self._key_name, max_bytes=44)
-            descriptor = self._directory.open_lock(self._key_name)
             try:
-                if os.fstat(descriptor).st_mode & 0o077:
-                    raise WorkflowDenied("Workflow attempt key is not private")
-            finally:
-                os.close(descriptor)
-            self._cipher = Fernet(key)
+                if not self._directory.exists(self._key_name):
+                    if self._directory.exists(self._name):
+                        raise WorkflowDenied("Workflow attempt key is missing for existing state")
+                    self._directory.write_bytes_atomic(
+                        self._key_name,
+                        Fernet.generate_key(),
+                        prepare_new_file=prepare_private_file,
+                        create_only=True,
+                    )
+                key = self._directory.read_bytes_bounded(
+                    self._key_name, max_bytes=44, verify_open_file=verify_private_file
+                )
+                self._cipher = Fernet(key)
+            except (OSError, SigningKeyError, ValueError) as error:
+                raise WorkflowDenied("Workflow attempt key is not private or valid") from error
             if not self._directory.exists(self._name):
                 self._write({"attempts": {}, "pending": {}})
             self._read()
@@ -97,11 +110,18 @@ class WorkflowAttemptStoreV4:
         except (InvalidToken, ValueError, OSError) as error:
             raise WorkflowDenied("Workflow attempt state is unavailable") from error
 
-    def _write(self, document: Mapping[str, Any]) -> None:
+    def _write(
+        self, document: Mapping[str, Any], *, reserve_completion: bool = False
+    ) -> None:
         raw = json.dumps(
             document, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
-        if len(raw) > _MAX_BYTES:
+        # Only new admissions must fund all active records through completion.
+        # The one-shot service/controller lifecycles consume this allowance.
+        # Keep the raw cap for CAS too, without retroactively requiring legacy
+        # journals to have reserved space they were never promised.
+        headroom = completion_headroom(document) if reserve_completion else 0
+        if len(raw) + headroom > _MAX_BYTES:
             raise WorkflowDenied("Workflow attempt journal capacity is exhausted")
         self._directory.write_bytes_atomic(self._name, self._cipher.encrypt(raw))
 
@@ -110,7 +130,9 @@ class WorkflowAttemptStoreV4:
         with self._locked():
             row = self._read()["attempts"].get(reservation_id)
             if row is None:
-                raise WorkflowDenied("Workflow attempt reservation is unavailable")
+                raise WorkflowAttemptReservationMissing(
+                    "Workflow attempt reservation is unavailable"
+                )
             return row["revision"], row["payload"]
 
     def insert(self, reservation_id: str, payload: Mapping[str, Any]) -> bool:
@@ -127,7 +149,7 @@ class WorkflowAttemptStoreV4:
                 ] not in {"cancelled", "stale"}:
                     raise WorkflowDenied("Workflow step requires reconciliation")
             rows[reservation_id] = {"revision": 1, "payload": dict(payload)}
-            self._write(document)
+            self._write(document, reserve_completion=True)
             return True
 
     def cas(self, reservation_id: str, expected_revision: int, payload: Mapping[str, Any]) -> int:
@@ -153,7 +175,7 @@ class WorkflowAttemptStoreV4:
             if effect_id in document["pending"]:
                 raise WorkflowDenied("Workflow pending effect already exists")
             document["pending"][effect_id] = {"revision": 1, "payload": dict(payload)}
-            self._write(document)
+            self._write(document, reserve_completion=True)
             return 1
 
     def get_host_pending_effect(self, effect_id: str) -> tuple[int, Mapping[str, Any]] | None:

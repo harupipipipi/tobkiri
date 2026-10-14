@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:9aa1650db54612981724e44885bf91e7886de8bc6ace1660c2a12a4f1dddff1a",
+  "artifact_set_digest": "sha256:c4d2abe8343951e9e1584b081d4c39bca5df9f0301e29c11f8864fdf21679863",
   "artifacts": [
     {
-      "digest": "sha256:e76eb5f70353512494b8dd0b1b9a36ad347e97da9bf661c4d2c56331eb43a034",
+      "digest": "sha256:424dd9e59f9c98b52930055e1ca1ed0597cf1463a7e03b8289e2374416166277",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:bf01dfe758e0005888c693db0ac1329a55f895255d51f48e3d325b36b4406829",
+      "digest": "sha256:51c7b6dd328f845657c4443a3862316f7bc9cc99639f04e56c45ebc54fcb75ae",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:a69a90e4eca673ce668abb83f1b0641c3e2e8afc819213f420b23311c2649356",
+      "digest": "sha256:72789c7aee7d6a6e7ea31839c74d19e328cf9b4c220f5a5f7e5236b4520cfa2d",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -72,7 +72,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+      "digest": "sha256:38e2f7c41236532d93612bf2570f49b79a0053c51aa3133f6966e8ca0860a08c",
       "path": "tools/calculator/manifest.json",
       "role": "runtime"
     },
@@ -230,8 +230,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:0bbfab86eb2c36059abee82e82a2d00c8c8f579bd76e545f951e889d33d654cd"
+    "signed_digest": "sha256:ec552d428c35d97dc78aef81d48d5e7f8498d20cba37b53e69c8f37e2daffb91"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:bb53f318ca73909c55ba42344a82267a8416909d539c7187b13792e0cfea6bd0"
+  "source_identity": "sha256:84f04852b8ea171b3b42db7dffc1681809704de9149db20f6a79ff8d9b8ae79b"
 }

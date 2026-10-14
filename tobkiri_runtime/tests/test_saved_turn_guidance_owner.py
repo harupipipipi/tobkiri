@@ -19,7 +19,7 @@ from typing import Any, Callable, Mapping
 import pytest
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
-from ecosystem.defaultspack.runtime import saved_conversation as application
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as application
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.host import TurnHostFactoryV4
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (

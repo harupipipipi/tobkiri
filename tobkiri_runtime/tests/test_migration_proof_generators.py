@@ -117,7 +117,7 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
     } == expected_operations
     for function_id, pack_id, operation_id, implementation_path in (
         ("rumi_default_tools_pack.calculator", "rumi_default_tools_pack", "rumi_default_tools_pack.calculator-evaluate", "runtime/calculator.py"),
-        ("defaultspack.conversation.saved", "defaultspack", "saved_complete", "runtime/saved_conversation.py"),
+        ("tobkiri_conversation_orchestration_pack.saved", "tobkiri_conversation_orchestration_pack", "saved_complete", "runtime/saved_conversation.py"),
         ("rumi_ai_gateway_pack.ai-gateway.route-quote", "rumi_ai_gateway_pack", "rumi_ai_gateway_pack.ai-gateway.route-quote", "runtime/route_quote.py"),
         ("tobkiri.ui.preferences.write", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.preferences-write", "runtime/settings.py"),
         ("rumi_turn_runtime_pack.turn-runtime.saved", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-saved", "runtime/host.py"),

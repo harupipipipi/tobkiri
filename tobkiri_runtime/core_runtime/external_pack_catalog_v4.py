@@ -439,6 +439,7 @@ def _load_external_pack_catalog(
     from .pack_version_selection import catalog_key_identity
 
     if baseline_read is not None:
+        assert baseline_read is not None
         baseline_read.validate()
     user_data = _user_data_root()
     unsigned = _read_authenticated_catalog(_catalog_path(user_data), allow_missing=True)
@@ -928,6 +929,7 @@ def _project_catalog_record(
     explicit = _existing_slot_read(baseline_read)
     if explicit:
         from .host_extension_update_v4 import _verified_pack
+        assert baseline_read is not None
         baseline_read.validate()
         captured = _verified_pack(root, signed_manifest=signed_manifest)
         manifest = captured.documents["pack.v4.json"]
@@ -1386,6 +1388,7 @@ def _verify_entry_root(
     try:
         if explicit:
             from tobkiri_protocol.secure_persistence import SecureDirectory
+            assert baseline_read is not None
             baseline_read.validate()
             reader = SecureDirectory(root, create=False)
             executable = validate_document(reader.read_bytes_bounded(

@@ -10,8 +10,21 @@ from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
 
 
 @pytest.mark.parametrize("mode", ["generate", "stream"])
-def test_bundled_models_resolve_exact_v4_provider(mode: str) -> None:
+def test_bundled_models_resolve_exact_v4_provider(
+    mode: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Defaults routes real catalog data without injected routing wildcards."""
+    # This checks captured execution identities, not public inventory discovery.
+    # Make discovery explicitly unavailable and reject any accidental network
+    # fallback; neither live catalog changes nor a local cache may drive it.
+    monkeypatch.setattr(
+        catalog_module, "_openrouter_inventory",
+        lambda: ([], "unavailable", False),
+    )
+    monkeypatch.setattr(
+        catalog_module.urllib.request, "urlopen",
+        lambda *args, **kwargs: pytest.fail("routing test must not use network"),
+    )
     catalog = create_model_catalog_operation(None)
     models = catalog(
         f"rumi_model_catalog_pack.bundled-model-catalog.{mode}", {}

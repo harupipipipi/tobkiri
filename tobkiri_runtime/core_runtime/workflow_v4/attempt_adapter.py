@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from core_runtime.host_provider_backend_v4 import HostProviderInvocationContextV4
 from core_runtime.workflow_v4.attempt_binding import stored_attempt_for_query
@@ -12,6 +12,7 @@ from core_runtime.workflow_v4.models import (
     DispatchAuthority,
     InvocationOutcome,
     WorkflowDenied,
+    WorkflowCancellationUnconfirmed,
 )
 from core_runtime.workflow_v4.store import WorkflowStoreV4
 
@@ -68,11 +69,17 @@ class CapturedWorkflowAttemptAdapterV4:
         self._current().revoke(self._invocation, reservation_id, reason=reason)
 
     def invoke(
-        self, request: Mapping[str, Any], *, authority: DispatchAuthority
+        self, request: Mapping[str, Any], *, authority: DispatchAuthority,
+        dispatch_fence: Callable[[str], None] | None = None,
     ) -> InvocationOutcome:
         """Invoke the immutable prepared request through the real Broker."""
-        return self._current().invoke(self._invocation, request, authority=authority)
+        return self._current().invoke(
+            self._invocation, request, authority=authority, dispatch_fence=dispatch_fence
+        )
 
     def cancel(self, request_id: str) -> None:
         """Propagate authenticated cancellation to the exact owned request."""
-        self._current().cancel(self._invocation, request_id)
+        self._invocation.assert_current()
+        if self._port is None:
+            raise WorkflowCancellationUnconfirmed("Workflow cancellation proof is unavailable")
+        self._port.cancel(self._invocation, request_id)

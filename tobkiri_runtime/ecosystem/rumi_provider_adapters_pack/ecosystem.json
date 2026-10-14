@@ -1,6 +1,8 @@
 {
   "connectivity": {
     "provides": [
+      "rumi.service.ai.provider.audio.speech.v1",
+      "rumi.service.ai.provider.audio.transcribe.v1",
       "rumi.service.ai.provider.embedding.v1",
       "rumi.service.ai.provider.generate.v1",
       "rumi.service.ai.provider.image.v1",
@@ -18,9 +20,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:c568b8dab5376164d12e08887a0b8e1a4271a61bbba8aa5be9ea6b86dc7038b4",
+      "artifact_digest": "sha256:1c3ff610f973df03717b6cfe14fa98747d3b3e7eb49c5324ab2c6c0899d0620c",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:730dc57ffce34671cb92fc834bc01960f0e695db4d2cabd3b184fa7d734fbc37"
+      "source_identity": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -28,7 +30,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:730dc57ffce34671cb92fc834bc01960f0e695db4d2cabd3b184fa7d734fbc37"
+      "source_content_hash": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
@@ -50,11 +52,13 @@
   "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
   "provenance": {
     "build_identity": "rumi_provider_adapters_pack:1.0.2",
-    "content_hash": "sha256:4b65490fc1ff7a53c0ee86f15f6112ebc4bd25eaec9feccb915288cc3d464b77",
+    "content_hash": "sha256:7db5b50fb2b5f48411d5650b37e2990e70d850b840a8d837a62486ed2e511a45",
     "signature": null,
     "trust_class": "local"
   },
   "required_capabilities": [
+    "ai.provider.audio.speech",
+    "ai.provider.audio.transcribe",
     "ai.provider.embedding",
     "ai.provider.generate",
     "ai.provider.image",

@@ -28,6 +28,8 @@ from .qemu_request_ledger import QemuRequestLedger
 
 PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
 GUEST_REQUEST_PROTOCOL = "io.tobkiri.packvm-supervisor.v1"
+_FLOW_DATA_ENCODING = "tobkiri.flow-data.ieee754.v1"
+_MAX_INVOKE_PAYLOAD_BYTES = 1280 * 1024
 
 
 @dataclass(frozen=True)
@@ -244,11 +246,41 @@ class QemuSupervisorTransport:
                 "contract_id",
                 "contract_version",
                 "operation_id",
-                "payload",
                 "deadline_monotonic",
             }
-            if not isinstance(raw, dict) or set(raw) != fields:
+            if not isinstance(raw, dict) or any(
+                not isinstance(raw.get(field), str)
+                for field in ("contract_id", "contract_version", "operation_id")
+            ):
                 raise BackendUnavailableError("QEMU PackVM invoke shape is invalid")
+            if set(raw) == fields | {"payload"} and isinstance(raw["payload"], dict):
+                payload_value = raw["payload"]
+            elif (
+                set(raw) == fields | {"payload_encoding", "payload_tokens"}
+                and raw["payload_encoding"] == _FLOW_DATA_ENCODING
+                and isinstance(raw["payload_tokens"], list)
+                and raw["contract_id"] not in {
+                    "conversation.saved-turn.v1",
+                    "tobkiri.service.mcp.tool.call.v1",
+                }
+            ):
+                # Route by public contract; operation IDs remain opaque. The
+                # guest owns legacy ABI alias validation before artifact access.
+                # Preserve the encoded fields exactly. Decoding belongs in the
+                # guest adapter, after protected-channel and launch-binding
+                # validation.
+                payload_value = {
+                    "payload_encoding": raw["payload_encoding"],
+                    "payload_tokens": raw["payload_tokens"],
+                }
+            else:
+                raise BackendUnavailableError("QEMU PackVM invoke shape is invalid")
+            try:
+                payload_bytes = canonical_json(payload_value)
+            except ValueError as exc:
+                raise BackendUnavailableError("QEMU PackVM invoke payload is invalid") from exc
+            if len(payload_bytes) > _MAX_INVOKE_PAYLOAD_BYTES:
+                raise BackendUnavailableError("QEMU PackVM invoke payload exceeds limit")
             request_id = raw["request_id"]
             now = time.monotonic()
             value = raw["deadline_monotonic"]

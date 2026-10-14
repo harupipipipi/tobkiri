@@ -299,6 +299,7 @@ def _projection(
             _deny(entry["kind"] != "pack", "retained projection role differs")
             selected = entry
     _deny(selected is None, "retained bundle does not contain the selected Pack")
+    assert selected is not None
     raw = read_projection(target)
     _deny(_digest(raw) != selected["digest"], "retained projection digest differs")
     return raw
@@ -548,6 +549,7 @@ def _rename_noreplace(parent_fd: int, source: str, destination: str) -> None:
     name = "renameatx_np" if sys.platform == "darwin" else "renameat2"
     function = getattr(library, name, None)
     _deny(function is None, "atomic no-replace directory publication is unavailable")
+    assert function is not None
     function.argtypes = [
         ctypes.c_int,
         ctypes.c_char_p,

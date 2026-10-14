@@ -176,3 +176,13 @@ def test_registry_projects_validated_local_connection_as_not_requiring_credentia
     )
     projected = reader.invoke(reader.operation_id, {}, None)
     assert projected["providers"][0]["credential_status"] == "not_required"
+
+
+@pytest.mark.parametrize('enabled', ['false', 'true', 0, 1, None, [], {}])
+def test_provider_owner_rejects_non_boolean_enabled_before_writing(tmp_path, enabled):
+    contribution = _capture(tmp_path)[0]
+    payload = _save_payload()
+    payload['record']['enabled'] = enabled
+    with pytest.raises(ValueError, match='enabled must be a boolean'):
+        contribution.invoke(contribution.operation_id, payload, None)
+    assert not (tmp_path / 'packs').exists()

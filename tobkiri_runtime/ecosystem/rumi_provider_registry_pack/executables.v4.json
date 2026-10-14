@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:092099de0fa57a351e380d1242477a96b6a18f41e12489ef6080051c3c3d2c7c",
+  "catalog_digest": "sha256:f9b65a2c1a25e57eb85605759e8cc5b1b957ad4e4f39966e549bfe0bb785d0eb",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:027abd7ee88ed0d4ba21e646ec646496d1efa963b605ef3c3146c5ba826adeb8",
+  "source_identity": "sha256:43dd2705f99ee1befe383d2c8f65b6458f3968713b218b2720c93f5cce52a82d",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.model-access.catalog",
-      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
       "implementation_path": "runtime/model_access_resource.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -112,7 +112,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.model-access.read",
-      "implementation_digest": "sha256:3525edaa4f6f33223e2d4482b56ed0604128f5560e10cce092beecd5b4d79805",
+      "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
       "implementation_path": "runtime/model_access_resource.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -131,7 +131,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -339,7 +339,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -358,7 +358,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -377,7 +377,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b84735c9c03cd92a4916496f84f0a4047c257add981f23432f696cbf638a08c8",
+          "revision_digest": "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

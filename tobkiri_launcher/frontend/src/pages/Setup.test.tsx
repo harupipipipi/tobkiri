@@ -25,8 +25,8 @@ test('the panel setup route renders the Defaults v4 review component', () => {
     </MemoryRouter>,
   );
 
-  assert.match(html, /Defaults v4 bootstrap/);
-  assert.match(html, /Activate Defaults Profile/);
+  assert.match(html, /Tobkiri Harness setup/);
+  assert.match(html, /Activate Tobkiri Harness/);
   assert.match(html, /Loading verified catalog/);
 });
 

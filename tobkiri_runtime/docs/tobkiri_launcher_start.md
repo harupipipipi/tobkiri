@@ -64,7 +64,7 @@ to include and verify those files.
    Wait for provisioning to finish and for the doctor to show
    **Healthy and attested**. If it remains **Not ready**, read the displayed
    reason before trying again.
-5. Return to **Home** and choose **Launch Tobkiri Defaults** to open the
+5. Return to **Home** and choose **Launch Tobkiri Harness** to open the
    Defaultspack interface.
 
 The installer workflow checks the packaged helper and Launcher startup, but a
@@ -103,7 +103,7 @@ and retains its development Profile and PackVM data without another build.
 Complete **Open Setup**, then open **Packs → Tobkiri Host Pack Control →
 PackVM lifecycle → Prepare plan**, review and approve the plan, and provision
 PackVM. After it reports **Healthy and attested**, use
-**Home → Launch Tobkiri Defaults**. A visible
+**Home → Launch Tobkiri Harness**. A visible
 Launcher window alone does not mean the Defaults runtime is ready.
 
 The raw `npm run tauri -- dev` command remains available for Launcher UI

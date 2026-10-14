@@ -47,6 +47,8 @@ def test_panel_bootstrap_recovery_is_single_flight() -> None:
     worker.start()
     try:
         assert entered.wait(5)
+        # The client must receive recovery before the expensive capture ends.
+        assert getattr(first, "response_status", None) == 401
         second._handle_panel_bootstrap()
         assert second.response_status == 503
         assert refreshes == [None]

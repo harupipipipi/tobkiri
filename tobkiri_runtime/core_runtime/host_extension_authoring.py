@@ -113,10 +113,10 @@ def build_host_extension_successor(
             raise PackAuthoringError("Host Extension predecessor metadata changed")
     for document in ("pack.v4.json", "artifact-index.v4.json"):
         for item in previous.documents[document]["artifacts"]:
-            content = files.get(item["path"])
+            artifact_content = files.get(item["path"])
             if (
-                content is None
-                or "sha256:" + hashlib.sha256(content).hexdigest() != item["digest"]
+                artifact_content is None
+                or "sha256:" + hashlib.sha256(artifact_content).hexdigest() != item["digest"]
             ):
                 raise PackAuthoringError("Host Extension predecessor artifact changed")
     if any(name not in files for name in captured):
@@ -137,9 +137,9 @@ def build_host_extension_successor(
         replacement_digests=digests,
     )
     source_identity = canonical_digest(source)
-    manifest = deepcopy(previous.documents["pack.v4.json"])
-    contracts = deepcopy(previous.documents["contracts.v4.json"])
-    executable = deepcopy(previous.documents["executables.v4.json"])
+    manifest = deepcopy(dict(previous.documents["pack.v4.json"]))
+    contracts = deepcopy(dict(previous.documents["contracts.v4.json"]))
+    executable = deepcopy(dict(previous.documents["executables.v4.json"]))
     index = deepcopy(previous.documents["artifact-index.v4.json"])
     manifest["pack"]["version"] = version
     manifest["integrity"]["source_identity"] = source_identity
@@ -259,11 +259,12 @@ def _publish_successor(
                     finally:
                         os.close(descriptor)
             successor = _verified_pack(staging, require_signed=False)
-            immutable_pack = lambda value: {
-                key: item
-                for key, item in value.items()
-                if key not in {"version", "artifact_digest"}
-            }
+            def immutable_pack(value: Mapping[str, Any]) -> dict[str, Any]:
+                return {
+                    key: item
+                    for key, item in value.items()
+                    if key not in {"version", "artifact_digest"}
+                }
             if successor.compiled.artifact.version != version or immutable_pack(
                 successor.documents["pack.v4.json"]["pack"]
             ) != immutable_pack(previous.documents["pack.v4.json"]["pack"]):

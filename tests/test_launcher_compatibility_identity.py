@@ -120,3 +120,15 @@ def test_launcher_compatibility_identity_boundary() -> None:
                    for marker in forbidden_migration)
     assert not (ROOT / "tobkiri_launcher/src-tauri/src/app_data_migration.rs").exists()
     assert not (ROOT / "docs/tobkiri-app-identity-migration.md").exists()
+
+
+def test_development_helper_exception_does_not_allow_main_app_identity_change() -> None:
+    helper = "dev.tobkiri.launcher.packvm-vz-helper"
+    path = "tobkiri_launcher/scripts/start_development_launcher.py"
+    assert path in ALLOWED_DERIVED_IDENTIFIERS[helper]
+    # Remove only the exact helper identity, never a path-wide exemption or prefix.
+    source = helper + " " + "dev.tobkiri.launcher"
+    remaining = _collapsed(source).replace(_collapsed(helper), "")
+    assert _collapsed("dev.tobkiri.launcher") in remaining
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert '"--identifier",\n            "' + helper + '"' in source

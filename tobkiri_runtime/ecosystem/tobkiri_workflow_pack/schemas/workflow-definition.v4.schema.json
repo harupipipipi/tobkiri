@@ -18,6 +18,7 @@
         "required": ["id", "request"],
         "properties": {
           "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "label": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Optional display-only step label. Never part of step identity, dispatch, or the compiled artifact."},
           "depends_on": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "when": {"type": "string", "maxLength": 512},
           "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 86400000},
@@ -38,7 +39,10 @@
               "contract_revision_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
               "operation_id": {"type": "string"},
               "function_principal_id": {"type": "string"},
-              "input": {"type": "object"}
+              "input": {
+                "type": "object",
+                "description": "Exact Contract operation input. Whole-string templates materialize values: ${inputs.<path>} reads a run input, ${steps.<step_id>.output.<path>} reads the referenced step's latest succeeded non-skipped committed output in the same run and requires an explicit depends_on entry. No interpolation, indexing, or code evaluation."
+              }
             }
           }
         }

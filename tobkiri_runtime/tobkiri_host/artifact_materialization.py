@@ -19,6 +19,7 @@ from tobkiri_protocol.secure_persistence import (
 )
 from tobkiri_protocol.validation import validate_document
 
+from ._metadata_validation_cache import _METADATA_VALIDATION_CACHE
 from .contracts import ResolvedOperationBinding
 from .errors import InvalidArtifactError
 from .models import require_digest, require_identifier
@@ -328,18 +329,23 @@ def _capture_files(
     """Validate metadata and capture indexed bytes through one secure reader."""
 
     metadata_files = {name: read_regular(name) for name in _METADATA_FILES}
-    manifest = validate_document(metadata_files["pack.v4.json"][0], "pack")
-    contracts = validate_document(
+    manifest = _METADATA_VALIDATION_CACHE.validate(
+        metadata_files["pack.v4.json"][0], "pack", validator=validate_document
+    )
+    contracts = _METADATA_VALIDATION_CACHE.validate(
         metadata_files["contracts.v4.json"][0],
         "pack_contract_catalog",
+        validator=validate_document,
     )
-    index = validate_document(
+    index = _METADATA_VALIDATION_CACHE.validate(
         metadata_files["artifact-index.v4.json"][0],
         "pack_artifact_index",
+        validator=validate_document,
     )
-    executable = validate_document(
+    executable = _METADATA_VALIDATION_CACHE.validate(
         metadata_files["executables.v4.json"][0],
         "executable_catalog",
+        validator=validate_document,
     )
     if (
         manifest["pack"]["id"] != binding.artifact.pack_id

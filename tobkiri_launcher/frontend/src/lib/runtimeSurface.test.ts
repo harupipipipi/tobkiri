@@ -17,6 +17,7 @@ import {
   extractExactOperationDescriptors,
   extractExactPackDescriptors,
   extractExactPlanBindings,
+  runtimePlanBindingKey,
   extractExactProfileCatalog,
   extractExactProfileCatalogSelectablePackIds,
   extractExactProfileSelectablePackIds,
@@ -305,6 +306,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     function_id: 'tobkiri.ui.model-search.read',
     allowed_payload_keys: [
       'query',
+      'connection_id',
       'type',
       'model_type',
       'requires',
@@ -984,4 +986,11 @@ test('operation invocation fails before Broker dispatch on stale catalog, denial
     }),
     (error: unknown) => error instanceof RuntimeSurfaceError && error.code === 'APPROVAL_DENIED',
   );
+});
+
+test('function-scoped binding rows retain separate operation principal keys', () => {
+  const first = {binding_id: 'shared-binding', source_principal_id: 'caller.operation-a', target_principal_id: 'target.operation'};
+  const second = {...first, source_principal_id: 'caller.operation-b'};
+  assert.notEqual(runtimePlanBindingKey(first), runtimePlanBindingKey(second));
+  assert.deepEqual(JSON.parse(runtimePlanBindingKey(first)), ['shared-binding', 'caller.operation-a', 'target.operation']);
 });
