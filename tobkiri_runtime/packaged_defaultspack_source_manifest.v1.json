@@ -3421,6 +3421,13 @@
       "executable": false
     },
     {
+      "path": "scripts/dev_pack_signing_key.py",
+      "type": "regular-file",
+      "size": 16745,
+      "sha256": "cda465b47b1e1e21b8c182b166f055417447cd306d0e1d89309add30c1cb5082",
+      "executable": false
+    },
+    {
       "path": "scripts/eval_rumi_human_tasks.py",
       "type": "regular-file",
       "size": 22396,
@@ -3710,8 +3717,8 @@
     {
       "path": "scripts/tobkiri_pack.py",
       "type": "regular-file",
-      "size": 12238,
-      "sha256": "b6901f969845f89d05a5204ce5b4c440cb0541a6404cc5569106613a08cbca3c",
+      "size": 14696,
+      "sha256": "7163588383b95faadf32f7ef99c6ec353fa2b4b45477529b5307761f2e65bebf",
       "executable": false
     },
     {
