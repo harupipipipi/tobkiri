@@ -16,6 +16,7 @@ from .external_pack_catalog_v4 import (
     load_external_pack_catalog,
 )
 from .pack_boundary import PackBoundaryError, load_pack_catalog, resolve_pack_root
+from .bundled_host_baseline_v4 import current_bundled_host_baseline_read
 
 if TYPE_CHECKING:
     from .bundled_artifact_retention_v4 import BundledArtifactOrigin
@@ -42,6 +43,7 @@ class VerifiedPackRootRead:
         self._snapshot = snapshot
         self._used: dict[str, tuple[Path, tuple[int, int]]] = {}
         self._origin = origin
+        self._baseline_read = current_bundled_host_baseline_read()
         self._retained: set[str] = set()
         self._active = True
 
@@ -89,6 +91,8 @@ class VerifiedPackRootRead:
         """Reverify catalog authentication, all CAS bytes and used bundled roots."""
         if self._origin is not None:
             _assert_retention_origin_current_owner(self._origin)
+        if current_bundled_host_baseline_read() is not self._baseline_read:
+            raise ExternalPackCatalogDenied("bundled baseline read scope changed")
         current = load_external_pack_catalog(self._pins)
         if (
             current.revision != self._snapshot.revision

@@ -14,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Protocol
 
@@ -1569,8 +1569,10 @@ def _physical_catalog_read(
 ) -> Iterator[tuple[_CatalogRead, Any]]:
     """Share metadata only inside a fresh, fully revalidated physical read."""
     from .bootstrap.profile_capture import (
+        _bundle_root, baseline_origin_for_verified_active_profile,
         capture_active_profile, invalidate_profile_capture_scope,
     )
+    from .bundled_host_baseline_v4 import bundled_host_baseline_read
     from .retained_bundled_context_v4 import retained_origin_for_verified_active_profile
 
     root = _user_data_root()
@@ -1582,7 +1584,15 @@ def _physical_catalog_read(
             for row in captured.resolved.plan["effective_set"]
         }
         origin = retained_origin_for_verified_active_profile(captured, user_data_root=root)
-        with _catalog_metadata_read(
+        if origin is None:
+            origin = baseline_origin_for_verified_active_profile(
+                captured, user_data_root=root,
+            )
+        baseline_scope = (
+            bundled_host_baseline_read(origin, bundle_root=_bundle_root())
+            if origin is not None else nullcontext()
+        )
+        with baseline_scope, _catalog_metadata_read(
             root, pins, origin=origin, active_identity=identity,
         ) as read:
             yield read, captured

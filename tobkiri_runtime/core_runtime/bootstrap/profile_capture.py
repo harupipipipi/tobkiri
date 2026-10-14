@@ -41,7 +41,6 @@ from .profile_publication import (
 from .profile_predecessor import inactive_bootstrap_predecessor
 from .profile_pack_pin_recovery import (
     pack_pin_predecessor_binding,
-    require_exact_pack_pin_predecessor_binding,
     verified_pack_pin_successor_predecessor,
 )
 from .profile_registry import (
@@ -284,6 +283,60 @@ def host_profile_catalog(
         if _is_resolvable_profile_definition(item.profile)
     }
     return runtime.catalog_with_profiles(bundled, profiles)
+
+
+def baseline_origin_for_verified_active_profile(active: Any, *, user_data_root: Path) -> Any | None:
+    """Capture an origin for existing public baselines at the Host boundary.
+
+    Presence never authenticates bytes or publishes a cache. The ordinary
+    active capture still verifies Authority and must exactly match the supplied
+    snapshot. Generic catalog and baseline resolvers never mint origins.
+    """
+    from ..bundled_artifact_retention_v4 import (
+        BundledArtifactRetentionDenied,
+        assert_retention_origin_current,
+        capture_retention_origin,
+    )
+
+    root = Path(user_data_root).absolute()
+    store = root / "retained-bundled-baselines-v4"
+    try:
+        store.lstat()
+    except FileNotFoundError:
+        return None
+    SecureDirectory(store, create=False)
+    with runtime_user_data_scope(root):
+        origin = capture_retention_origin(root)
+    profile, lock, plan = (
+        active.resolved.profile,
+        active.resolved.lock,
+        active.resolved.plan,
+    )
+    if (
+        (
+            str(profile["profile_id"]),
+            str(plan["profile_revision"]),
+            str(active.activation["activation_id"]),
+            str(plan["plan_digest"]),
+            str(lock["lock_digest"]),
+        )
+        != origin.profile_binding
+        or canonical_digest(profile) != plan["profile_revision"]
+        or canonical_digest({k: v for k, v in plan.items() if k != "plan_digest"})
+        != origin.plan_digest
+        or canonical_digest({k: v for k, v in lock.items() if k != "lock_digest"})
+        != lock["lock_digest"]
+        or lock["plan_digest"] != origin.plan_digest
+        or plan["bundle_digest"] != origin.bundle_digest
+        or lock["bundle_digest"] != origin.bundle_digest
+        or active.activation["security_epoch"] != origin.security_epoch
+        or active.activation["fencing_token"] != origin.fencing_token
+    ):
+        raise BundledArtifactRetentionDenied(
+            "baseline origin differs from the captured active Profile"
+        )
+    assert_retention_origin_current(origin)
+    return origin
 
 
 def _is_resolvable_profile_definition(profile: Mapping[str, Any]) -> bool:

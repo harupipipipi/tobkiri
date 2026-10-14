@@ -32,9 +32,11 @@ from .pack_artifact_integrity import (
 from .pack_boundary import PackBoundaryError, load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 from .publisher_key_versions import is_legacy_publisher_key, resolve_publisher_key
+from .bundled_host_baseline_v4 import canonical_admission_baseline
 
 if TYPE_CHECKING:
     from .bundled_artifact_retention_v4 import BundledArtifactOrigin
+    from .bundled_host_baseline_v4 import BundledHostBaselineRead
 
 
 _CATALOG_VERSION = "io.tobkiri.external-normal-pack-catalog.v4"
@@ -73,6 +75,7 @@ class _TrustPolicySnapshot:
     publisher: Mapping[str, Any]
 
 
+@canonical_admission_baseline()
 def admit_signed_external_pack(
     source_root: Path,
     *,
@@ -104,6 +107,7 @@ def admit_signed_external_pack(
         )
 
 
+@canonical_admission_baseline()
 def admit_signed_pack_version(
     source_root: Path,
     *,
@@ -157,6 +161,7 @@ def _admission_policy_locks(
         stack.close()
 
 
+@canonical_admission_baseline()
 def _admit_signed_external_pack_locked(
     source_root: Path,
     *,
@@ -355,6 +360,9 @@ def load_external_pack_catalog(
 ) -> ExternalPackCatalogSnapshot:
     """Verify every retained revision; project only explicit pins or baselines."""
     from .pack_version_selection import catalog_key_identity
+    from .bundled_host_baseline_v4 import current_bundled_host_baseline_read
+
+    baseline_read = current_bundled_host_baseline_read()
 
     user_data = _user_data_root()
     unsigned = _read_authenticated_catalog(_catalog_path(user_data), allow_missing=True)
@@ -375,7 +383,7 @@ def load_external_pack_catalog(
             raise ExternalPackCatalogDenied("Pack revision catalog key is invalid") from error
         _validate_entry(pack_id, entry)
         root = _entry_root(entry, user_data)
-        _verify_entry_root(pack_id, entry, root)
+        _verify_entry_root(pack_id, entry, root, baseline_read=baseline_read)
         record = entry["catalog_record"]
         if not isinstance(record, Mapping) or record.get("pack_id") != pack_id:
             raise ExternalPackCatalogDenied("external Pack catalog record identity is invalid")
@@ -476,6 +484,9 @@ def load_admitted_external_executable_catalog(
     different admitted revision from being silently combined with it.
     """
 
+    from .bundled_host_baseline_v4 import current_bundled_host_baseline_read
+
+    baseline_read = current_bundled_host_baseline_read()
     normalized = str(pack_id or "").strip()
     if not normalized or not isinstance(expected_manifest, Mapping):
         raise ExternalPackCatalogDenied("external Pack executable request is invalid")
@@ -496,7 +507,7 @@ def load_admitted_external_executable_catalog(
         compiled = compile_pack_root(root)
         projected = _project_catalog_record(root, _read_json_nofollow(
             root / SIGNED_MANIFEST_RELATIVE, _MAX_CATALOG_BYTES
-        ))
+        ), baseline_read=baseline_read)
         if canonical_digest(projected) != canonical_digest(entry["catalog_record"]):
             raise ExternalPackCatalogDenied("external Pack compatibility record changed")
     except Exception as error:
@@ -506,7 +517,7 @@ def load_admitted_external_executable_catalog(
     # Reverify the signed CAS root after all individual reads.  A mutation or
     # root replacement is an admission failure, never a fallback to an
     # unverified catalog document.
-    _verify_entry_root(normalized, entry, root)
+    _verify_entry_root(normalized, entry, root, baseline_read=baseline_read)
     if (
         canonical_digest(manifest) != canonical_digest(expected_manifest)
         or manifest["pack"]["id"] != normalized
@@ -828,6 +839,8 @@ def _require_current_trust_policy(
 def _project_catalog_record(
     root: Path,
     signed_manifest: Mapping[str, Any],
+    *,
+    baseline_read: BundledHostBaselineRead | None = None,
 ) -> dict[str, Any]:
     manifest = validate_file(root / "pack.v4.json", "pack")
     contract_catalog = validate_file(root / "contracts.v4.json", "pack_contract_catalog")
@@ -851,7 +864,12 @@ def _project_catalog_record(
                 "external admission accepts only Normal Sandbox Packs or "
                 "compatible updates to an existing bundled Host Extension"
             )
-        baseline_root = resolve_pack_root(pack_id)
+        # Admission always uses canonical Source. Active reads may use only
+        # the independently authenticated frozen bundled compatibility baseline.
+        baseline_root = (
+            resolve_pack_root(pack_id)
+            if baseline_read is None else baseline_read.resolve(pack_id)
+        )
         try:
             compatibility = verify_host_extension_successor(
                 baseline_root,
@@ -1246,6 +1264,8 @@ def _verify_entry_root(
     pack_id: str,
     entry: Mapping[str, Any],
     root: Path,
+    *,
+    baseline_read: BundledHostBaselineRead | None = None,
 ) -> None:
     metadata = root.lstat()
     if root.is_symlink() or not stat.S_ISDIR(metadata.st_mode):
@@ -1291,7 +1311,9 @@ def _verify_entry_root(
     if content_digest != entry.get("content_digest"):
         raise ExternalPackCatalogDenied("external Normal Pack content digest changed")
     if host_extension:
-        projected = _project_catalog_record(root, signed_manifest)
+        projected = _project_catalog_record(
+            root, signed_manifest, baseline_read=baseline_read,
+        )
         if canonical_digest(projected) != canonical_digest(entry["catalog_record"]):
             raise ExternalPackCatalogDenied("Host Extension compatibility record changed")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +27,7 @@ def catalog_for_verified_active_profile(
     existing loaders; this function adds no approval, grant, or Profile route.
     """
     from ..pack_control_v4 import catalog_with_admitted_pack_closure
+    from ..bundled_host_baseline_v4 import bundled_host_baseline_read
     from .profile_capture import runtime_user_data_scope
 
     profile = active.resolved.profile
@@ -40,7 +42,12 @@ def catalog_for_verified_active_profile(
     }
     if selected_ids.issubset(catalog.packs) and not changed_ids:
         return catalog
-    with runtime_user_data_scope(user_data):
+    baseline_scope = (
+        bundled_host_baseline_read(
+            retained_bundled_origin, bundle_root=Path(catalog.root),
+        ) if retained_bundled_origin is not None else nullcontext()
+    )
+    with runtime_user_data_scope(user_data), baseline_scope:
         merged, _closure = catalog_with_admitted_pack_closure(
             catalog, sorted(selected_ids), artifact_pins=artifact_pins,
             retained_bundled_origin=retained_bundled_origin,

@@ -16,7 +16,7 @@ import stat
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1648,6 +1648,12 @@ def capture_production_dispatch(
         active, user_data_root=authority_user_data
     )
     if retained_origin is None:
+        from .profile_capture import baseline_origin_for_verified_active_profile
+
+        retained_origin = baseline_origin_for_verified_active_profile(
+            active, user_data_root=authority_user_data,
+        )
+    if retained_origin is None:
         catalog = catalog_for_verified_active_profile(
             catalog, active, user_data=authority_user_data,
         )
@@ -1776,7 +1782,13 @@ def capture_production_dispatch(
     retained_root_options = (
         {"origin": retained_origin} if retained_origin is not None else {}
     )
-    with runtime_user_data_scope(authority_user_data):
+    from ..bundled_host_baseline_v4 import bundled_host_baseline_read
+
+    baseline_scope = (
+        bundled_host_baseline_read(retained_origin, bundle_root=bundle_root)
+        if retained_origin is not None else nullcontext()
+    )
+    with runtime_user_data_scope(authority_user_data), baseline_scope:
         pack_roots = resolve_admitted_pack_roots(
             tuple(sorted(binding_pack_ids)),
             ecosystem_root,
