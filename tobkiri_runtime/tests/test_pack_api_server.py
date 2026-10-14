@@ -433,6 +433,13 @@ def test_profile_registry_store_keeps_control_preparation_and_rejects_stale_capt
     assert catalog_calls == ["host_profile_catalog"]
 
 
+class _RefreshAuthority:
+    """A constructor-only class double; it does not grant Native owner authority."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+
 class _RefreshDispatch(_Dispatch):
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -1896,7 +1903,7 @@ def test_server_closes_server_captured_refresh_session_on_stop(
     generation = _prepare_refresh_race(server, monkeypatch)
     monkeypatch.setattr(profile_capture, "capture_active_profile", lambda: object())
     monkeypatch.setattr(profile_capture, "runtime_user_data_root", lambda: tmp_path)
-    monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
+    monkeypatch.setattr(authority_v4, "AuthorityStore", _RefreshAuthority)
     monkeypatch.setattr(
         production_v4,
         "capture_production_dispatch",
@@ -2042,7 +2049,7 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
     server._runtime_capture_factory = app_capture_inputs
     monkeypatch.setattr(profile_capture, "capture_active_profile", lambda: object())
     monkeypatch.setattr(profile_capture, "runtime_user_data_root", lambda: tmp_path)
-    monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
+    monkeypatch.setattr(authority_v4, "AuthorityStore", _RefreshAuthority)
     seen: dict[str, object] = {}
 
     def capture(*_args: object, **kwargs: object) -> _RefreshDispatch:

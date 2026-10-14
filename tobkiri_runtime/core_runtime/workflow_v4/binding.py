@@ -22,7 +22,7 @@ from typing import Any
 from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.flow_values import FLOW_ROLE_KEY, VALUE_TYPE_KEY, value_type
 
-from .models import WorkflowConflict, WorkflowValidationError
+from .models import WorkflowConflict, WorkflowDenied, WorkflowValidationError
 
 _INPUT_TEMPLATE = re.compile(r"^\$\{inputs\.([a-z][a-z0-9_.-]*)\}$")
 _OUTPUT_PATH = re.compile(r"^[a-z][a-z0-9_.-]*$")
@@ -228,6 +228,10 @@ def resolve_templates(
             step_id, path = parse_step_reference(value, step_ids)
             record = committed.get(step_id)
             if record is None:
+                if not path:
+                    raise WorkflowDenied(
+                        "workflow dependency has no unique successful output"
+                    )
                 raise WorkflowConflict(
                     "prior step output is unavailable: the same-run step has "
                     "no succeeded, non-skipped, committed attempt"
@@ -250,6 +254,8 @@ def resolve_templates(
                     }
                 )
             return current
+        if "${" in value:
+            raise WorkflowValidationError("workflow template expression is invalid")
         return value
     if isinstance(value, Mapping):
         return {
@@ -283,6 +289,8 @@ def step_references(value: Any) -> list[str]:
     if isinstance(value, str):
         if is_step_reference(value):
             found.append(value)
+        elif "${" in value and not is_input_template(value):
+            raise WorkflowValidationError("workflow template expression is invalid")
         return found
     if isinstance(value, Mapping):
         for item in value.values():

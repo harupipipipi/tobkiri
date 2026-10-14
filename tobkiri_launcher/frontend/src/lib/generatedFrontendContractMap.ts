@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471
+// Raw source digest: sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
+  "artifact_digest": "sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad",
   "routes": [
     {
       "method": "GET",
@@ -42,12 +42,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "workspace_list",
       "targets": [
         {
-          "contribution_id": "defaults.workspaces.list",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.workspace.v1",
-          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
-          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "contribution_id": "defaults.workspaces.list",
           "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource"
         }
       ]
     },
@@ -57,14 +57,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "workspace_record",
       "targets": [
         {
-          "contribution_id": "defaults.workspaces.get",
-          "contract_id": "tobkiri.resource.workspace.v1",
-          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
-          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
           "allowed_payload_keys": [
             "workspace_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "contribution_id": "defaults.workspaces.get",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource"
         }
       ]
     },
@@ -74,12 +74,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "tool_catalog",
       "targets": [
         {
-          "contribution_id": "defaults.tools.catalog",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.tool.definition.v1",
-          "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
-          "provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "contribution_id": "defaults.tools.catalog",
           "function_id": "rumi_tool_registry_pack.tool-registry.definition",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+          "provider_id": "rumi_tool_registry_pack.tool-registry.definition"
         }
       ]
     },
@@ -89,14 +89,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.stop",
-          "contract_id": "tobkiri.action.turn.stop.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-stop",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
           "allowed_payload_keys": [
             "turn_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "contribution_id": "defaults.conversations.turn.stop",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "operation_id": "rumi_turn_runtime_pack.turn-stop",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop"
         }
       ]
     },
@@ -106,18 +106,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.providers.configure",
-          "contract_id": "tobkiri.service.interactive-effect.v1",
-          "operation_id": "interactive_effect.manage",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "allowed_payload_keys": [
             "phase",
             "effect_kind",
             "request",
             "effect_id",
             "correlation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contribution_id": "defaults.providers.configure",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
         }
       ]
     },
@@ -127,14 +127,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.reconcile",
-          "contract_id": "tobkiri.action.turn.reconcile.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
           "allowed_payload_keys": [
             "turn_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "contribution_id": "defaults.conversations.turn.reconcile",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile"
         }
       ]
     },
@@ -144,14 +144,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.read",
-          "contract_id": "tobkiri.resource.turn.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-resource",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
           "allowed_payload_keys": [
             "turn_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.turn.v1",
+          "contribution_id": "defaults.conversations.turn.read",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource"
         }
       ]
     },
@@ -161,14 +161,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.list",
-          "contract_id": "tobkiri.resource.turn.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-resource",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
           "allowed_payload_keys": [
             "conversation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.turn.v1",
+          "contribution_id": "defaults.conversations.turn.list",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource"
         }
       ]
     },
@@ -178,17 +178,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.steer",
-          "contract_id": "tobkiri.action.turn.guidance.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-guidance",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
           "allowed_payload_keys": [
             "turn_id",
             "expected_revision",
             "guidance_id",
             "guidance"
-          ]
+          ],
+          "contract_id": "tobkiri.action.turn.guidance.v1",
+          "contribution_id": "defaults.conversations.turn.steer",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+          "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.guidance"
         }
       ]
     },
@@ -198,14 +198,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.send",
-          "contract_id": "tobkiri.action.turn.saved.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-saved",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
           "allowed_payload_keys": [
             "request"
-          ]
+          ],
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "contribution_id": "defaults.conversations.send",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+          "operation_id": "rumi_turn_runtime_pack.turn-saved",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.saved"
         }
       ]
     },
@@ -215,17 +215,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "chat_continuation",
       "targets": [
         {
-          "contribution_id": "defaults.chat.approval.approve",
-          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-          "operation_id": "chat_approval.approve",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
           "allowed_payload_keys": [
             "request_id",
             "conversation_id",
             "ui_operator",
             "turn_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contribution_id": "defaults.chat.approval.approve",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "operation_id": "chat_approval.approve",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation"
         }
       ]
     },
@@ -235,17 +235,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "chat_continuation",
       "targets": [
         {
-          "contribution_id": "defaults.chat.approval.resume",
-          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-          "operation_id": "chat_approval.resume",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
           "allowed_payload_keys": [
             "request_id",
             "conversation_id",
             "resume_id",
             "turn_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contribution_id": "defaults.chat.approval.resume",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "operation_id": "chat_approval.resume",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation"
         }
       ]
     },
@@ -255,12 +255,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.commands.catalog.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.command.catalog.v1",
-          "operation_id": "command.catalog.read",
-          "provider_id": "rumi_command_protocol_pack.catalog.read",
+          "contribution_id": "defaults.commands.catalog.read",
           "function_id": "rumi_command_protocol_pack.catalog.read",
-          "allowed_payload_keys": []
+          "operation_id": "command.catalog.read",
+          "provider_id": "rumi_command_protocol_pack.catalog.read"
         }
       ]
     },
@@ -270,11 +270,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.commands.invoke",
-          "contract_id": "tobkiri.action.command.invoke.v1",
-          "operation_id": "command.invoke",
-          "provider_id": "rumi_command_protocol_pack.command.invoke",
-          "function_id": "rumi_command_protocol_pack.command.invoke",
           "allowed_payload_keys": [
             "command_ref",
             "args",
@@ -284,7 +279,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "catalog_revision",
             "idempotency_key",
             "client_sequence"
-          ]
+          ],
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "contribution_id": "defaults.commands.invoke",
+          "function_id": "rumi_command_protocol_pack.command.invoke",
+          "operation_id": "command.invoke",
+          "provider_id": "rumi_command_protocol_pack.command.invoke"
         }
       ]
     },
@@ -294,14 +294,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.commands.state.query",
-          "contract_id": "tobkiri.resource.command.state.v1",
-          "operation_id": "command.state.query",
-          "provider_id": "rumi_command_protocol_pack.command.state",
-          "function_id": "rumi_command_protocol_pack.command.state",
           "allowed_payload_keys": [
             "state_refs"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "contribution_id": "defaults.commands.state.query",
+          "function_id": "rumi_command_protocol_pack.command.state",
+          "operation_id": "command.state.query",
+          "provider_id": "rumi_command_protocol_pack.command.state"
         }
       ]
     },
@@ -311,11 +311,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.commands.datasource.query",
-          "contract_id": "tobkiri.resource.command.datasource.v1",
-          "operation_id": "command.datasource.query",
-          "provider_id": "rumi_command_protocol_pack.command.datasource",
-          "function_id": "rumi_command_protocol_pack.command.datasource",
           "allowed_payload_keys": [
             "datasource_ref",
             "query",
@@ -323,7 +318,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "limit",
             "selected_values",
             "request_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "contribution_id": "defaults.commands.datasource.query",
+          "function_id": "rumi_command_protocol_pack.command.datasource",
+          "operation_id": "command.datasource.query",
+          "provider_id": "rumi_command_protocol_pack.command.datasource"
         }
       ]
     },
@@ -333,15 +333,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "turn_events",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.events",
-          "contract_id": "tobkiri.event.turn.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-events",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
           "allowed_payload_keys": [
             "turn_id",
             "conversation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.event.turn.v1",
+          "contribution_id": "defaults.conversations.turn.events",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+          "operation_id": "rumi_turn_runtime_pack.turn-events",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.events"
         }
       ]
     },
@@ -351,17 +351,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.turn.progress",
-          "contract_id": "tobkiri.resource.turn.progress.v1",
-          "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
-          "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
-          "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
           "allowed_payload_keys": [
             "turn_id",
             "conversation_id",
             "cursor",
             "progress_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "contribution_id": "defaults.conversations.turn.progress",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+          "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource"
         }
       ]
     },
@@ -371,12 +371,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.catalog.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ui.settings.v1",
-          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
-          "provider_id": "tobkiri.ui.catalog.read",
+          "contribution_id": "defaults.ui.catalog.read",
           "function_id": "tobkiri.ui.catalog.read",
-          "allowed_payload_keys": []
+          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+          "provider_id": "tobkiri.ui.catalog.read"
         }
       ]
     },
@@ -386,12 +386,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.projects.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.project.state.v1",
-          "operation_id": "tobkiri_ui_settings_pack.projects-read",
-          "provider_id": "tobkiri.project.state.read",
+          "contribution_id": "defaults.projects.read",
           "function_id": "tobkiri.project.state.read",
-          "allowed_payload_keys": []
+          "operation_id": "tobkiri_ui_settings_pack.projects-read",
+          "provider_id": "tobkiri.project.state.read"
         }
       ]
     },
@@ -401,12 +401,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.model-state.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ui.model-state.v1",
-          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
-          "provider_id": "tobkiri.ui.model-state.read",
+          "contribution_id": "defaults.ui.model-state.read",
           "function_id": "tobkiri.ui.model-state.read",
-          "allowed_payload_keys": []
+          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+          "provider_id": "tobkiri.ui.model-state.read"
         }
       ]
     },
@@ -416,17 +416,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.model-state.write",
-          "contract_id": "tobkiri.action.ui.model-state.v1",
-          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
-          "provider_id": "tobkiri.ui.model-state.write",
-          "function_id": "tobkiri.ui.model-state.write",
           "allowed_payload_keys": [
             "kind",
             "value",
             "expected_revision",
             "mutation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "contribution_id": "defaults.ui.model-state.write",
+          "function_id": "tobkiri.ui.model-state.write",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+          "provider_id": "tobkiri.ui.model-state.write"
         }
       ]
     },
@@ -436,12 +436,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.recovery-diagnostic.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
-          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
-          "provider_id": "tobkiri.ui.recovery-diagnostic.read",
+          "contribution_id": "defaults.ui.recovery-diagnostic.read",
           "function_id": "tobkiri.ui.recovery-diagnostic.read",
-          "allowed_payload_keys": []
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "provider_id": "tobkiri.ui.recovery-diagnostic.read"
         }
       ]
     },
@@ -451,16 +451,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.recovery-diagnostic.write",
-          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
-          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
-          "provider_id": "tobkiri.ui.recovery-diagnostic.write",
-          "function_id": "tobkiri.ui.recovery-diagnostic.write",
           "allowed_payload_keys": [
             "diagnostic",
             "expected_revision",
             "mutation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "contribution_id": "defaults.ui.recovery-diagnostic.write",
+          "function_id": "tobkiri.ui.recovery-diagnostic.write",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "provider_id": "tobkiri.ui.recovery-diagnostic.write"
         }
       ]
     },
@@ -470,17 +470,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.projects.replace",
-          "contract_id": "tobkiri.action.project.state.v1",
-          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
-          "provider_id": "tobkiri.project.state.replace",
-          "function_id": "tobkiri.project.state.replace",
           "allowed_payload_keys": [
             "projects",
             "expected_revision",
             "mutation_id",
             "migration_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.action.project.state.v1",
+          "contribution_id": "defaults.projects.replace",
+          "function_id": "tobkiri.project.state.replace",
+          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+          "provider_id": "tobkiri.project.state.replace"
         }
       ]
     },
@@ -490,14 +490,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.settings.read",
-          "contract_id": "tobkiri.resource.ui.settings.v1",
-          "operation_id": "tobkiri_ui_settings_pack.settings-read",
-          "provider_id": "tobkiri.ui.settings.read",
-          "function_id": "tobkiri.ui.settings.read",
           "allowed_payload_keys": [
             "full"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contribution_id": "defaults.ui.settings.read",
+          "function_id": "tobkiri.ui.settings.read",
+          "operation_id": "tobkiri_ui_settings_pack.settings-read",
+          "provider_id": "tobkiri.ui.settings.read"
         }
       ]
     },
@@ -507,12 +507,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.connections.status.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
-          "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "contribution_id": "defaults.connections.status.read",
           "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+          "provider_id": "rumi_provider_registry_pack.provider-registry.resource"
         }
       ]
     },
@@ -522,15 +522,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.preferences.write",
-          "contract_id": "tobkiri.action.ui.preferences.v1",
-          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
-          "provider_id": "tobkiri.ui.preferences.write",
-          "function_id": "tobkiri.ui.preferences.write",
           "allowed_payload_keys": [
             "changes",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contribution_id": "defaults.ui.preferences.write",
+          "function_id": "tobkiri.ui.preferences.write",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "provider_id": "tobkiri.ui.preferences.write"
         }
       ]
     },
@@ -540,12 +540,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "conversation_list",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.list",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.conversation.v1",
-          "operation_id": "rumi_conversation_store_pack.conversation-resource",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "contribution_id": "defaults.conversations.list",
           "function_id": "rumi_conversation_store_pack.conversation-store.resource",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_conversation_store_pack.conversation-resource",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.resource"
         }
       ]
     },
@@ -555,11 +555,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "conversation_created",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.create",
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "operation_id": "rumi_conversation_store_pack.conversation-manage",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
-          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
           "allowed_payload_keys": [
             "id",
             "expected_revision",
@@ -571,7 +566,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "conversation_kind",
             "group_id",
             "metadata"
-          ]
+          ],
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "contribution_id": "defaults.conversations.create",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage"
         }
       ]
     },
@@ -581,14 +581,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "conversation_record",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.get",
-          "contract_id": "tobkiri.resource.conversation.v1",
-          "operation_id": "rumi_conversation_store_pack.conversation-resource",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
-          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
           "allowed_payload_keys": [
             "conversation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "contribution_id": "defaults.conversations.get",
+          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "operation_id": "rumi_conversation_store_pack.conversation-resource",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.resource"
         }
       ]
     },
@@ -598,16 +598,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "conversation_record",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.update",
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "operation_id": "rumi_conversation_store_pack.conversation-manage",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
-          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
           "allowed_payload_keys": [
             "conversation_id",
             "updates",
             "expected_conversation_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "contribution_id": "defaults.conversations.update",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage"
         }
       ]
     },
@@ -617,15 +617,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "conversation_deleted",
       "targets": [
         {
-          "contribution_id": "defaults.conversations.delete",
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "operation_id": "rumi_conversation_store_pack.conversation-manage",
-          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
-          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
           "allowed_payload_keys": [
             "conversation_id",
             "expected_conversation_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "contribution_id": "defaults.conversations.delete",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage"
         }
       ]
     },
@@ -635,12 +635,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.home.dashboard",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "dashboard.read",
-          "provider_id": "tobkiri.host.pack-control",
+          "contribution_id": "defaults.home.dashboard",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "operation_id": "dashboard.read",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -650,12 +650,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.catalog",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "catalog.read",
-          "provider_id": "tobkiri.host.pack-control",
+          "contribution_id": "defaults.pack.catalog",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -665,14 +665,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.install",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "pack.install",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.install",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "pack.install",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -682,14 +682,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.approval-candidate",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "approval.candidate",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.approval-candidate",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -699,15 +699,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.approval-approve",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "approval.approve",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "candidate_id",
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.approval-approve",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -717,14 +717,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.approval-revoke",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "approval.revoke",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.approval-revoke",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "approval.revoke",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -734,14 +734,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.enable",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "pack.enable",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.enable",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "pack.enable",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -751,14 +751,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.pack.disable",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "pack.disable",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.disable",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "pack.disable",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -768,12 +768,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime.restart",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "runtime.restart",
-          "provider_id": "tobkiri.host.pack-control",
+          "contribution_id": "defaults.runtime.restart",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -783,15 +783,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "expected_profile_revision",
             "expected_plan_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.profile",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "profile.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -801,12 +801,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile-catalog",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.catalog.read",
-          "provider_id": "tobkiri.host.control-presentation",
+          "contribution_id": "defaults.runtime-surface.profile-catalog",
           "function_id": "tobkiri.host.control-presentation",
-          "allowed_payload_keys": []
+          "operation_id": "profile.catalog.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -816,14 +816,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.operation-status",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "operation.status.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "request_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.operation-status",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "operation.status.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -833,12 +833,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.settings",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "settings.read",
-          "provider_id": "tobkiri.host.control-presentation",
+          "contribution_id": "defaults.runtime-surface.settings",
           "function_id": "tobkiri.host.control-presentation",
-          "allowed_payload_keys": []
+          "operation_id": "settings.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -848,15 +848,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.packs",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "topology.packs.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "expected_profile_revision",
             "expected_plan_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.packs",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "topology.packs.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -866,15 +866,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.contracts",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "topology.contracts.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "expected_profile_revision",
             "expected_plan_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.contracts",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "topology.contracts.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -884,15 +884,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.operations",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "topology.operations.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "expected_profile_revision",
             "expected_plan_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.operations",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "topology.operations.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -902,15 +902,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.principals",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "topology.principals.read",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "expected_profile_revision",
             "expected_plan_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.principals",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "topology.principals.read",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -920,11 +920,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile-change.resolve",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.change.resolve",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "profile_id",
             "expected_profile_revision",
@@ -933,7 +928,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "profile_definition_digest",
             "profile_catalog_digest",
             "bundle_lock_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.profile-change.resolve",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "profile.change.resolve",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -943,15 +943,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile-change.review",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.change.review",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "candidate_id",
             "candidate_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.profile-change.review",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "profile.change.review",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -961,15 +961,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile-change.approve",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.change.approve",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "candidate_id",
             "candidate_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.profile-change.approve",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "profile.change.approve",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -979,15 +979,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.runtime-surface.profile-change.activate",
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "operation_id": "profile.change.activate",
-          "provider_id": "tobkiri.host.control-presentation",
-          "function_id": "tobkiri.host.control-presentation",
           "allowed_payload_keys": [
             "approval_id",
             "approval_digest"
-          ]
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contribution_id": "defaults.runtime-surface.profile-change.activate",
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_id": "profile.change.activate",
+          "provider_id": "tobkiri.host.control-presentation"
         }
       ]
     },
@@ -997,12 +997,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "dynamic_pack_catalog",
       "targets": [
         {
-          "contribution_id": "defaults.pack.catalog",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "catalog.read",
-          "provider_id": "tobkiri.host.pack-control",
+          "contribution_id": "defaults.pack.catalog",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control"
         }
       ]
     },
@@ -1012,12 +1012,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "ai_strategy_catalog",
       "targets": [
         {
-          "contribution_id": "defaults.ai.strategy.catalog.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
-          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
-          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "contribution_id": "defaults.ai.strategy.catalog.read",
           "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
         }
       ]
     },
@@ -1027,12 +1027,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "model_profile_list",
       "targets": [
         {
-          "contribution_id": "defaults.models.profiles.list",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ai.model.profile.v1",
-          "operation_id": "rumi_model_registry_pack.model-profile-resource",
-          "provider_id": "rumi_model_registry_pack.model-registry.profile",
+          "contribution_id": "defaults.models.profiles.list",
           "function_id": "rumi_model_registry_pack.model-registry.profile",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_model_registry_pack.model-profile-resource",
+          "provider_id": "rumi_model_registry_pack.model-registry.profile"
         }
       ]
     },
@@ -1042,11 +1042,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "model_profile_saved",
       "targets": [
         {
-          "contribution_id": "defaults.models.profiles.save",
-          "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
-          "operation_id": "rumi_model_registry_pack.model-profile-manage",
-          "provider_id": "rumi_model_registry_pack.model-registry.manage",
-          "function_id": "rumi_model_registry_pack.model-registry.manage",
           "allowed_payload_keys": [
             "model_profile_id",
             "model_id",
@@ -1055,7 +1050,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "expected_revision",
             "provider_registry_revision",
             "max_output_tokens"
-          ]
+          ],
+          "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+          "contribution_id": "defaults.models.profiles.save",
+          "function_id": "rumi_model_registry_pack.model-registry.manage",
+          "operation_id": "rumi_model_registry_pack.model-profile-manage",
+          "provider_id": "rumi_model_registry_pack.model-registry.manage"
         }
       ]
     },
@@ -1065,12 +1065,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.interactive-approval.list",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.service.interactive-approval.v1",
-          "operation_id": "interactive_approval.list",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "contribution_id": "defaults.interactive-approval.list",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "allowed_payload_keys": []
+          "operation_id": "interactive_approval.list",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval"
         }
       ]
     },
@@ -1080,14 +1080,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.interactive-approval.get",
-          "contract_id": "tobkiri.service.interactive-approval.v1",
-          "operation_id": "interactive_approval.get",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
           "allowed_payload_keys": [
             "request_id"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contribution_id": "defaults.interactive-approval.get",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "operation_id": "interactive_approval.get",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval"
         }
       ]
     },
@@ -1097,16 +1097,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.interactive-approval.approve",
-          "contract_id": "tobkiri.service.interactive-approval.v1",
-          "operation_id": "interactive_approval.approve",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
           "allowed_payload_keys": [
             "request_id",
             "confirmation_text",
             "ui_operator"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contribution_id": "defaults.interactive-approval.approve",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "operation_id": "interactive_approval.approve",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval"
         }
       ]
     },
@@ -1116,15 +1116,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.interactive-approval.deny",
-          "contract_id": "tobkiri.service.interactive-approval.v1",
-          "operation_id": "interactive_approval.deny",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
           "allowed_payload_keys": [
             "request_id",
             "ui_operator"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contribution_id": "defaults.interactive-approval.deny",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "operation_id": "interactive_approval.deny",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval"
         }
       ]
     },
@@ -1134,14 +1134,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.authority.approval-window",
-          "contract_id": "tobkiri.action.authority.approval-window.v1",
-          "operation_id": "authority_approval.open",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
           "allowed_payload_keys": [
             "request_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "contribution_id": "defaults.authority.approval-window",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "operation_id": "authority_approval.open",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window"
         }
       ]
     },
@@ -1151,11 +1151,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.ui.model-search.read",
-          "contract_id": "tobkiri.resource.ui.model-search.v1",
-          "operation_id": "tobkiri_ui_settings_pack.model-search",
-          "provider_id": "tobkiri.ui.model-search.read",
-          "function_id": "tobkiri.ui.model-search.read",
           "allowed_payload_keys": [
             "query",
             "connection_id",
@@ -1165,13 +1160,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "speed_tier",
             "provider_id",
             "provider",
-            "connection_id",
             "configured_only",
             "local_only",
             "min_knowledge_level",
             "max_results",
             "offset"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "contribution_id": "defaults.ui.model-search.read",
+          "function_id": "tobkiri.ui.model-search.read",
+          "operation_id": "tobkiri_ui_settings_pack.model-search",
+          "provider_id": "tobkiri.ui.model-search.read"
         }
       ]
     },
@@ -1181,18 +1180,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.command-protocol.high-risk",
-          "contract_id": "tobkiri.service.command.high-risk.v1",
-          "operation_id": "high_risk_command.manage",
-          "provider_id": "rumi_command_protocol_pack.high-risk-command.service",
-          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
           "allowed_payload_keys": [
             "phase",
             "invocation_id",
             "command_ref",
             "arguments",
             "presentation"
-          ]
+          ],
+          "contract_id": "tobkiri.service.command.high-risk.v1",
+          "contribution_id": "defaults.command-protocol.high-risk",
+          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
+          "operation_id": "high_risk_command.manage",
+          "provider_id": "rumi_command_protocol_pack.high-risk-command.service"
         }
       ]
     },
@@ -1202,109 +1201,109 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "capability_result",
       "targets": [
         {
-          "contribution_id": "defaults.conversation.complete",
-          "contract_id": "conversation.turn.v1",
-          "operation_id": "complete",
-          "provider_id": "defaultspack.conversation",
-          "function_id": "defaultspack.conversation",
           "allowed_payload_keys": [
             "messages"
-          ]
+          ],
+          "contract_id": "conversation.turn.v1",
+          "contribution_id": "defaults.conversation.complete",
+          "function_id": "defaultspack.conversation",
+          "operation_id": "complete",
+          "provider_id": "defaultspack.conversation"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.install",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "pack.install",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.approval-candidate",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "approval.candidate",
-          "provider_id": "tobkiri.host.pack-control",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
-          "contribution_id": "defaults.pack.approval-approve",
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "approval.approve",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
           "allowed_payload_keys": [
             "candidate_id",
             "pack_id"
-          ]
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contribution_id": "defaults.pack.approval-approve",
+          "function_id": "tobkiri.host.pack-control",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.approval-revoke",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "approval.revoke",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.enable",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "pack.enable",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.status",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "pack.status",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [
+            "pack_id"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.pack.disable",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "pack.disable",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": [
-            "pack_id"
-          ]
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
+          "allowed_payload_keys": [],
+          "contract_id": "tobkiri.host.pack-control.v4",
           "contribution_id": "defaults.profile.reload",
-          "contract_id": "tobkiri.host.pack-control.v4",
+          "function_id": "tobkiri.host.pack-control",
           "operation_id": "profile.reload",
-          "provider_id": "tobkiri.host.pack-control",
-          "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
-          "contribution_id": "defaults.runtime.restart",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.host.pack-control.v4",
-          "operation_id": "runtime.restart",
-          "provider_id": "tobkiri.host.pack-control",
+          "contribution_id": "defaults.runtime.restart",
           "function_id": "tobkiri.host.pack-control",
-          "allowed_payload_keys": []
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control"
         },
         {
-          "contribution_id": "defaults.providers.connections.read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
-          "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "contribution_id": "defaults.providers.connections.read",
           "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+          "provider_id": "rumi_provider_registry_pack.provider-registry.resource"
         }
       ]
     },
@@ -1314,15 +1313,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "kanban_list",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.list",
-          "contract_id": "tobkiri.resource.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
           "allowed_payload_keys": [
             "scope_type",
             "scope_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.kanban.v1",
+          "contribution_id": "defaults.kanban.list",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource"
         }
       ]
     },
@@ -1332,14 +1331,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "kanban_board",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.get",
-          "contract_id": "tobkiri.resource.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
           "allowed_payload_keys": [
             "board_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.kanban.v1",
+          "contribution_id": "defaults.kanban.get",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-resource",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource"
         }
       ]
     },
@@ -1349,17 +1348,17 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "kanban_board",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.create",
-          "contract_id": "tobkiri.action.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
           "allowed_payload_keys": [
             "scope_type",
             "scope_id",
             "title",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.kanban.v1",
+          "contribution_id": "defaults.kanban.create",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action"
         }
       ]
     },
@@ -1369,11 +1368,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.card-upsert",
-          "contract_id": "tobkiri.action.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
           "allowed_payload_keys": [
             "board_id",
             "column_id",
@@ -1384,7 +1378,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "workspace_id",
             "company_id",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.kanban.v1",
+          "contribution_id": "defaults.kanban.card-upsert",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action"
         }
       ]
     },
@@ -1394,18 +1393,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.card-move",
-          "contract_id": "tobkiri.action.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
           "allowed_payload_keys": [
             "board_id",
             "card_id",
             "column_id",
             "position",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.kanban.v1",
+          "contribution_id": "defaults.kanban.card-move",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action"
         }
       ]
     },
@@ -1415,16 +1414,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.card-delete",
-          "contract_id": "tobkiri.action.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
           "allowed_payload_keys": [
             "board_id",
             "card_id",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.kanban.v1",
+          "contribution_id": "defaults.kanban.card-delete",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action"
         }
       ]
     },
@@ -1434,12 +1433,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "managed_desktop_read",
       "targets": [
         {
-          "contribution_id": "defaults.managed-desktops.desktops-list",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.managed-desktops.v1",
-          "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
-          "provider_id": "tobkiri.managed-desktops.read",
+          "contribution_id": "defaults.managed-desktops.desktops-list",
           "function_id": "tobkiri.managed-desktops.read",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+          "provider_id": "tobkiri.managed-desktops.read"
         }
       ]
     },
@@ -1449,12 +1448,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "managed_desktop_read",
       "targets": [
         {
-          "contribution_id": "defaults.managed-desktops.runtime-providers-read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.managed-desktops.v1",
-          "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
-          "provider_id": "tobkiri.managed-desktops.read",
+          "contribution_id": "defaults.managed-desktops.runtime-providers-read",
           "function_id": "tobkiri.managed-desktops.read",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+          "provider_id": "tobkiri.managed-desktops.read"
         }
       ]
     },
@@ -1464,14 +1463,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "managed_desktop_read",
       "targets": [
         {
-          "contribution_id": "defaults.managed-desktops.runtime-doctor-read",
-          "contract_id": "tobkiri.resource.managed-desktops.v1",
-          "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
-          "provider_id": "tobkiri.managed-desktops.read",
-          "function_id": "tobkiri.managed-desktops.read",
           "allowed_payload_keys": [
             "request_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "contribution_id": "defaults.managed-desktops.runtime-doctor-read",
+          "function_id": "tobkiri.managed-desktops.read",
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+          "provider_id": "tobkiri.managed-desktops.read"
         }
       ]
     },
@@ -1481,12 +1480,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "managed_desktop_read",
       "targets": [
         {
-          "contribution_id": "defaults.managed-desktops.sandbox-templates-read",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.resource.managed-desktops.v1",
-          "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
-          "provider_id": "tobkiri.managed-desktops.read",
+          "contribution_id": "defaults.managed-desktops.sandbox-templates-read",
           "function_id": "tobkiri.managed-desktops.read",
-          "allowed_payload_keys": []
+          "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+          "provider_id": "tobkiri.managed-desktops.read"
         }
       ]
     },
@@ -1496,11 +1495,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.kanban.import-conversation",
-          "contract_id": "tobkiri.action.kanban.v1",
-          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
-          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
           "allowed_payload_keys": [
             "board_id",
             "conversation_id",
@@ -1511,7 +1505,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "company_id",
             "use_ai",
             "expected_revision"
-          ]
+          ],
+          "contract_id": "tobkiri.action.kanban.v1",
+          "contribution_id": "defaults.kanban.import-conversation",
+          "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
+          "operation_id": "rumi_kanban_state_store_pack.kanban-state-action",
+          "provider_id": "rumi_kanban_state_store_pack.kanban-state.action"
         }
       ]
     },
@@ -1521,12 +1520,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.projects.directory",
+          "allowed_payload_keys": [],
           "contract_id": "tobkiri.service.workspace.project.v1",
-          "operation_id": "workspace.directory.acquire",
-          "provider_id": "rumi_workspace_mount_pack.project-directory.service",
+          "contribution_id": "defaults.projects.directory",
           "function_id": "rumi_workspace_mount_pack.project-directory.service",
-          "allowed_payload_keys": []
+          "operation_id": "workspace.directory.acquire",
+          "provider_id": "rumi_workspace_mount_pack.project-directory.service"
         }
       ]
     },
@@ -1536,18 +1535,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.projects.workspace",
-          "contract_id": "tobkiri.service.interactive-effect.v1",
-          "operation_id": "interactive_effect.manage",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "allowed_payload_keys": [
             "phase",
             "effect_kind",
             "request",
             "effect_id",
             "correlation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contribution_id": "defaults.projects.workspace",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
         }
       ]
     },
@@ -1557,15 +1556,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.provider-model-access.read",
-          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "operation_id": "rumi_provider_registry_pack.model-access-read",
-          "provider_id": "rumi_provider_registry_pack.model-access.read",
-          "function_id": "rumi_provider_registry_pack.model-access.read",
           "allowed_payload_keys": [
             "profile_id",
             "provider_instance_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contribution_id": "defaults.provider-model-access.read",
+          "function_id": "rumi_provider_registry_pack.model-access.read",
+          "operation_id": "rumi_provider_registry_pack.model-access-read",
+          "provider_id": "rumi_provider_registry_pack.model-access.read"
         }
       ]
     },
@@ -1575,16 +1574,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.provider-model-access.catalog",
-          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
-          "operation_id": "rumi_provider_registry_pack.model-access-catalog",
-          "provider_id": "rumi_provider_registry_pack.model-access.catalog",
-          "function_id": "rumi_provider_registry_pack.model-access.catalog",
           "allowed_payload_keys": [
             "profile_id",
             "provider_instance_id",
             "discovery_filters"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "contribution_id": "defaults.provider-model-access.catalog",
+          "function_id": "rumi_provider_registry_pack.model-access.catalog",
+          "operation_id": "rumi_provider_registry_pack.model-access-catalog",
+          "provider_id": "rumi_provider_registry_pack.model-access.catalog"
         }
       ]
     },
@@ -1594,18 +1593,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.provider-model-access.save",
-          "contract_id": "tobkiri.service.interactive-effect.v1",
-          "operation_id": "interactive_effect.manage",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "allowed_payload_keys": [
             "phase",
             "effect_kind",
             "request",
             "effect_id",
             "correlation_id"
-          ]
+          ],
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contribution_id": "defaults.provider-model-access.save",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
         }
       ]
     },
@@ -1615,15 +1614,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.chat.references.list",
-          "contract_id": "tobkiri.resource.chat.reference.v1",
-          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
-          "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
-          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
           "allowed_payload_keys": [
             "limit",
             "cursor"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.chat.reference.v1",
+          "contribution_id": "defaults.chat.references.list",
+          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+          "provider_id": "rumi_conversation_store_pack.chat-reference.resource"
         }
       ]
     },
@@ -1633,14 +1632,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.chat.references.resolve",
-          "contract_id": "tobkiri.resource.chat.reference.v1",
-          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
-          "provider_id": "rumi_conversation_store_pack.chat-reference.resource",
-          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
           "allowed_payload_keys": [
             "references"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.chat.reference.v1",
+          "contribution_id": "defaults.chat.references.resolve",
+          "function_id": "rumi_conversation_store_pack.chat-reference.resource",
+          "operation_id": "rumi_conversation_store_pack.chat-reference-read",
+          "provider_id": "rumi_conversation_store_pack.chat-reference.resource"
         }
       ]
     },
@@ -1650,14 +1649,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.list",
-          "contract_id": "tobkiri.resource.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-read",
-          "provider_id": "rumi_schedule_store_pack.calendar.resource",
-          "function_id": "rumi_schedule_store_pack.calendar.resource",
           "allowed_payload_keys": [
             "status"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.list",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource"
         }
       ]
     },
@@ -1667,18 +1666,18 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.create",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "name",
             "description",
             "schedule_type",
             "schedule_config",
             "task"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.create",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1688,14 +1687,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.get",
-          "contract_id": "tobkiri.resource.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-read",
-          "provider_id": "rumi_schedule_store_pack.calendar.resource",
-          "function_id": "rumi_schedule_store_pack.calendar.resource",
           "allowed_payload_keys": [
             "schedule_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.get",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource"
         }
       ]
     },
@@ -1705,11 +1704,6 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.update",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "schedule_id",
             "name",
@@ -1717,7 +1711,12 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "schedule_type",
             "schedule_config",
             "task"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.update",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1727,14 +1726,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.delete",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "schedule_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.delete",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1744,16 +1743,16 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.history",
-          "contract_id": "tobkiri.resource.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-read",
-          "provider_id": "rumi_schedule_store_pack.calendar.resource",
-          "function_id": "rumi_schedule_store_pack.calendar.resource",
           "allowed_payload_keys": [
             "schedule_id",
             "limit",
             "offset"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.history",
+          "function_id": "rumi_schedule_store_pack.calendar.resource",
+          "operation_id": "rumi_schedule_store_pack.calendar-read",
+          "provider_id": "rumi_schedule_store_pack.calendar.resource"
         }
       ]
     },
@@ -1763,14 +1762,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.pause",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "schedule_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.pause",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1780,14 +1779,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.resume",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "schedule_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.resume",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1797,14 +1796,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.calendar.schedules.trigger",
-          "contract_id": "tobkiri.action.calendar.schedule.v1",
-          "operation_id": "rumi_schedule_store_pack.calendar-manage",
-          "provider_id": "rumi_schedule_store_pack.calendar.manage",
-          "function_id": "rumi_schedule_store_pack.calendar.manage",
           "allowed_payload_keys": [
             "schedule_id"
-          ]
+          ],
+          "contract_id": "tobkiri.action.calendar.schedule.v1",
+          "contribution_id": "defaults.calendar.schedules.trigger",
+          "function_id": "rumi_schedule_store_pack.calendar.manage",
+          "operation_id": "rumi_schedule_store_pack.calendar-manage",
+          "provider_id": "rumi_schedule_store_pack.calendar.manage"
         }
       ]
     },
@@ -1814,15 +1813,15 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       "presentation": "broker_result",
       "targets": [
         {
-          "contribution_id": "defaults.host.action-approval-policy.capabilities",
-          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
-          "operation_id": "host.action_approval_policy.capabilities",
-          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
-          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
           "allowed_payload_keys": [
             "conversation_id",
             "workspace_id"
-          ]
+          ],
+          "contract_id": "tobkiri.resource.host.approval-policy-capabilities.v1",
+          "contribution_id": "defaults.host.action-approval-policy.capabilities",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities",
+          "operation_id": "host.action_approval_policy.capabilities",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-policy-capabilities"
         }
       ]
     }
@@ -2831,7 +2830,6 @@ const EXPECTED_ROUTES = {
           "speed_tier",
           "provider_id",
           "provider",
-          "connection_id",
           "configured_only",
           "local_only",
           "min_knowledge_level",

@@ -14,6 +14,11 @@
       "path": "runtime/adapter.py",
       "role": "runtime",
       "sha256": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+    },
+    {
+      "path": "runtime/local_endpoint.py",
+      "role": "support",
+      "sha256": "sha256:2b29e398a0e8bbaf15d4966dac5bca4c936d8e8ea52a74fd141620be0eba2815"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

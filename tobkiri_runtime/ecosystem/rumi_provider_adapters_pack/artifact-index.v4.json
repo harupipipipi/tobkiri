@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:1c3ff610f973df03717b6cfe14fa98747d3b3e7eb49c5324ab2c6c0899d0620c",
+  "artifact_set_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598",
   "artifacts": [
     {
-      "digest": "sha256:ad82478a0c8d18a0726124a7d0a2844a69534a16b9307fdb20fc97e30d64b316",
+      "digest": "sha256:698f39938a01df94814e55ede4187192d494912c97c93d839a40bb33dd4ad03c",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,12 +12,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:d1857163935ed93f7a16729e9fb044e9daaac8e8f70faa5bf561689c92d1a8fc",
+      "digest": "sha256:01d801e48ec3aa0b1c8cc41c14064accb8caa3e3abd32fb3f8caf421b2f904bb",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:820e7e2eb5174168047f1c73ebfe43760f26cb36f12fe2e44183956850575840",
+      "digest": "sha256:6d75d55f293833e0b93317adcb6024ae5c65767b8b1a0a70da497e1214d67fdd",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -32,6 +32,11 @@
       "role": "runtime"
     },
     {
+      "digest": "sha256:2b29e398a0e8bbaf15d4966dac5bca4c936d8e8ea52a74fd141620be0eba2815",
+      "path": "runtime/local_endpoint.py",
+      "role": "runtime"
+    },
+    {
       "digest": "sha256:a711e4a6f54f4840788407468080ced8945ca73d251499d8ea344ad7591d14bc",
       "path": "runtime/streaming.py",
       "role": "runtime"
@@ -40,8 +45,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:521ee59655eb7a854f532d0b4213374e8c7ebdff623e13892ce562f6d4682326"
+    "signed_digest": "sha256:106dcdd7d14e7d91801f498cabe98524f942933c09288e6bee80a915da2ca65d"
   },
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:1bfdce5b09de9b2df8ce1b52a970c5ceec734a1f4ef845278b39c09455a9d019"
+  "source_identity": "sha256:5c6debbf2cdf64552720488b3395bec647c459630ccfce5e45ceb05dec00afe6"
 }

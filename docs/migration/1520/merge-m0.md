@@ -103,3 +103,20 @@ No Tauri build, VM build/provisioning, native application launch, model download
 `legacy-ledger.json` contains 69 feature/evidence rows, including all eight known PR1519 browser failures. Every acceptance mapping is explicitly planned and unimplemented; no row is migration-complete or retired. Native handover and Host slot mechanisms remain present until parity and any required human retirement approval. The existing PRs remain open drafts.
 
 Rust/WIT/wasm/gate/storage/Profile/Flow/CLI work, Pack conversion, isolated UI transport, byte parity, real local model execution, mobile/P2P, published presets and the removal of Python/PackVM/old engines remain separate Issue #1520 milestones. M0 establishes the legacy source union only.
+
+## Clean M0 integration repairs
+
+The genuine clean verification of merge `7260658b22dae1412fd2ac187ddd7cc0c0cafd84` ran all selected bodies: the 288-case source cluster recorded 268 passed, 19 failed and one existing Windows skip; the 362-case boundary cluster recorded 346 passed and 16 failed. Required tooling checks passed 46 tests. These failures exposed integration seams rather than clean-checkout setup errors.
+
+Repairs preserve both public model registration modes: selector-only create/confirm never overwrites rich configuration or enables a reserved disabled ID; an explicit saved output-policy configuration uses exact same-route preserve-existing save and its activation identity fence. Full owner-side save remains an explicit replacement operation. Create does not receive save-only arguments. Browser activation flags remain rejected.
+
+Malformed Workflow interpolation is rejected during validation and resolution. The signed branch's whole-output missing-dependency denial remains compatible, while PR1519 field references retain their conflict/provenance semantics. The model-search contract map keeps one copy of connection_id. The captured Provider imports its local endpoint helper only after that helper is explicitly declared with its measured immutable digest. Two constructor-only test doubles now remain class objects, preserving actual production Native owner type validation. No security guard or acceptance test was removed or disabled.
+
+The source-only clean checkout and retained logs are bound to the exact tested commit. Follow-up results are recorded after their genuine committed-source verification.
+
+### Additional reconciliation details
+
+- `tobkiri_runtime/ecosystem/defaultspack/defaultspack/model_profile_presentation.py`: Clean-checkout tests exposed an automatic merge that combined create with preserve-update flags. Selector-only requests now use narrow create/confirm semantics; an explicit output-cap configuration uses same-route preserve-existing save, retaining the exact disabled-route activation identity guard. Browser-supplied activation flags remain rejected.
+- `tobkiri_runtime/ecosystem/rumi_model_registry_pack/runtime/service.py`: Dispatch create without the save-only preserve_existing keyword; full save remains explicit and can intentionally replace configuration.
+- `tobkiri_runtime/tests/test_pack_api_server.py`: Replace constructor lambdas in two lifecycle isolation fixtures with a nominal constructor-only class, so Native owner isinstance validation remains real and unmodified.
+- `tobkiri_runtime/ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json`: Remove duplicated connection_id in the automatically merged model-search allowed key list; retain the union of all allowed fields and exact map digest validation.

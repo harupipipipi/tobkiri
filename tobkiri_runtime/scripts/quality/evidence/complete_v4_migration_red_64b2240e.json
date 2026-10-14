@@ -5,7 +5,7 @@
     "gates": {
       "artifact_contracts": 0,
       "authority_resolved_plan_scope": 0,
-      "command_protocol_activation": 1,
+      "command_protocol_activation": 0,
       "declaration_disk_runtime": 0,
       "double_authority": 0,
       "executable_source_registry": 0,
@@ -31,15 +31,7 @@
   "findings": {
     "artifact_contracts": [],
     "authority_resolved_plan_scope": [],
-    "command_protocol_activation": [
-      {
-        "error": "Frontend target payload is duplicated",
-        "line": 1,
-        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
-        "rule": "signed_application_route_map_unavailable",
-        "symbol": "signed_application_route_map_unavailable"
-      }
-    ],
+    "command_protocol_activation": [],
     "declaration_disk_runtime": [],
     "double_authority": [],
     "executable_source_registry": [],
@@ -1350,16 +1342,8 @@
       "status": "GREEN"
     },
     "command_protocol_activation": {
-      "findings": [
-        {
-          "error": "Frontend target payload is duplicated",
-          "line": 1,
-          "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
-          "rule": "signed_application_route_map_unavailable",
-          "symbol": "signed_application_route_map_unavailable"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "declaration_disk_runtime": {
       "findings": [],
@@ -4807,8 +4791,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
-    "semantic_digest": "sha256:2db30186e0cf70756a9402b2c308133c1a507a7eddd9a03aa4509b6b3d19a08e",
+    "observed_head_sha": "7260658b22dae1412fd2ac187ddd7cc0c0cafd84",
+    "semantic_digest": "sha256:36e453626e643b0e39192fd73db63ffa032288d928c842fe6ea564c6380969fa",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

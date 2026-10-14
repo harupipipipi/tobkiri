@@ -270,7 +270,12 @@ class WorkflowEngineV4:
             ):
                 continue
             declared = dependencies.get(str(raw_step.get("id") or ""), [])
-            for text in step_references(input_value):
+            try:
+                references = step_references(input_value)
+            except WorkflowValidationError as exc:
+                errors.append(f"steps[{index}].request.input: {exc}")
+                continue
+            for text in references:
                 try:
                     ref_step, _path = parse_step_reference(text, ids)
                 except WorkflowValidationError as exc:

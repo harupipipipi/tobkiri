@@ -11,7 +11,7 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471");
+  assert.equal(result.rawDigest, "sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad");
   assert.equal(result.runtimeMap.routes.length, 94);
   for (const [path, operation] of [
     ["/api/ui/select-directory", "workspace.directory.acquire"],

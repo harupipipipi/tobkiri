@@ -55,10 +55,13 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
         raise ValueError("model configuration name is invalid")
     return {
-        "operation": "create",
+        # A selector-only request creates/confirms a route without replacing
+        # its configuration. A submitted output policy explicitly updates the
+        # same route, preserving the owner's other fields and identity fence.
+        "operation": "save" if cap is not None else "create",
         "expected_revision": revision,
         "provider_registry_revision": provider_registry_revision,
-        "preserve_existing": True,
+        **({"preserve_existing": True} if cap is not None else {}),
         "record": {
             "model_profile_id": payload["model_profile_id"],
             "model_id": payload["model_id"],

@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:bd3693f15c5801741d8f280e7a1df79dc9cd5a12e4cc5ad17ab625dc7230e20f",
+  "artifact_set_digest": "sha256:6892d036a8569ce7fcac28ffaae1188b7498510a1abf7bd06b1294ae3ff4fc53",
   "artifacts": [
     {
-      "digest": "sha256:1519eda3b9be5e7084b9efe2732bf2f4072aa92de18d421bced0c4727fb426f6",
+      "digest": "sha256:075e92d1d3f0067e1c695abfa4c0968fcfe94e4b65983dc5cc260cc43c87f4fa",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
+      "digest": "sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad",
       "path": "defaultspack/frontend_contract_map.v4.json",
       "role": "asset"
     },
@@ -42,7 +42,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:baf8f5546c24e0c9925b73d14fa69e4670854ea0e629a13b63abf038a4e362a6",
+      "digest": "sha256:9276b6b34c2bbf3dfa974dbd80277108ee1f672d68f3413545e9136b1215a91b",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -62,7 +62,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:ddee547163bab97578311b876b784e6e2bd49273f81860cb285763ee3ca4e627",
+      "digest": "sha256:55118a8195a014afdcbd2b401b664fb737e27ba06fb0e50f74c40e1dea3e591f",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -775,8 +775,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:8dc70a79e30f2ce49ec4f6cbef81ab2981678f509a31c7734f68a962ff9bc0a5"
+    "signed_digest": "sha256:98642c8a05f922fbf5d1365927e25de995fa2715d89aefbdd2920b84bd3a689b"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:03a0bd6b9ccb1cc649872e59ec2fcccd2b2872c51586a19c3aa55485a91cc319"
+  "source_identity": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f"
 }

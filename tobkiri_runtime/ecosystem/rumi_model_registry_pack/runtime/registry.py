@@ -93,9 +93,11 @@ class ModelRegistry:
         IDs are reserved, including records omitted from the selector list.
         """
         if set(record) - {
-            "model_profile_id", "model_id", "display_name", "metadata"
+            "model_profile_id", "model_id", "display_name", "metadata", "enabled"
         }:
             raise ValueError("model route creation fields are invalid")
+        if "enabled" in record and record["enabled"] is not True:
+            raise ValueError("model route creation enabled state is invalid")
         metadata = record.get("metadata")
         if not isinstance(metadata, Mapping) or set(metadata) != {
             "provider_connection_id"

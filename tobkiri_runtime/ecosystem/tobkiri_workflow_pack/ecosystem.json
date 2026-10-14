@@ -6,9 +6,9 @@
   "metadata": {
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:284fbf0814fae677bc58262193479713cdc577ed8aeaa89c336b3ebcd27f32e0",
+      "artifact_digest": "sha256:068c713083a2907701d2521d7652aa1539ee8d806349e9574e72e567e3011285",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:28811e49e6f986902d2afb4653bfa77edd52c6792383f17b3154e8afaf50b6b0"
+      "source_identity": "sha256:8b949ef4dc50ab6ec86de225f3a21f7995ad48cb16ebc78907e927ef589cd4ff"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -16,7 +16,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:28811e49e6f986902d2afb4653bfa77edd52c6792383f17b3154e8afaf50b6b0"
+      "source_content_hash": "sha256:8b949ef4dc50ab6ec86de225f3a21f7995ad48cb16ebc78907e927ef589cd4ff"
     },
     "manifest_authority": "v4-authoritative",
     "projection_owner": "scripts/migrate_manifest_authority.py",
@@ -26,7 +26,7 @@
   "pack_identity": "tobkiri:ecosystem/tobkiri_workflow_pack",
   "provenance": {
     "build_identity": "tobkiri_workflow_pack:4.0.0",
-    "content_hash": "sha256:284fbf0814fae677bc58262193479713cdc577ed8aeaa89c336b3ebcd27f32e0",
+    "content_hash": "sha256:068c713083a2907701d2521d7652aa1539ee8d806349e9574e72e567e3011285",
     "signature": null,
     "trust_class": "local"
   },

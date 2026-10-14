@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:e09c8e58f92448ff0bb3b63c4b2051ebbefd4a1063ea0b8cd0a29889fad2559a"
+      "digest": "sha256:e1679b0d9d92068ebd349cdb0268b9bbdc10f065e9b0e47a491e1727d5a3bb79"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:bff0eabe19bb2a7943b32633ab48a4f02021437b03531f1ea356d17254b7c222"
+      "digest": "sha256:ab9c9b53b66d843d1acdffea092026a89a62d06b8c876975573da18737ee6633"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -909,12 +909,12 @@
     {
       "path": "packs/rumi_model_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:214c4696f5fc7f7f21fc2b5aaeec44bfa22c9dee6517e78760ec96111c495768"
+      "digest": "sha256:1a00aed95189cab6af2e2876b025b591714ce3dd9369bfcb50996378dc99208d"
     },
     {
       "path": "packs/rumi_model_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:b26a2ed7dbbdce0f2d7acfc2cdb3d6e6a4fe09846ebe4015e0628f91dcf276e1"
+      "digest": "sha256:a69f8586d8d3a956874687c902e180768c9fd7b62201b2997429d3a0c5849817"
     },
     {
       "path": "packs/rumi_multimodal_media_pack.executables.v4.json",
@@ -989,12 +989,12 @@
     {
       "path": "packs/rumi_provider_adapters_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:6d8bfae8675fa09d1832657814b1a57dfa78152921e0bbb816d6f831377c9559"
+      "digest": "sha256:11cf3265081118a09ecd0d621588651d0c0633afec767ad2d45a008f53066856"
     },
     {
       "path": "packs/rumi_provider_adapters_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:5ec08584dd1b59bff70ef2abc15b75c2eef836092dae6051d831f22a7fc9c78b"
+      "digest": "sha256:e6c14703ca16c3663782309ae6954d7cbd7e1e312104fd774a1d97f191051b9d"
     },
     {
       "path": "packs/rumi_provider_registry_pack.executables.v4.json",
@@ -1394,7 +1394,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:f875bf77546c39ea7eb4392c7c24f051f00d9991023398d59a62ced92234b25e"
+      "digest": "sha256:ea7cc375011a1610829cc797f922c96b9e2492781a1e134c56001a61f5c48968"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1499,12 +1499,12 @@
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:c7ba1efbf122ef325311dc59a90524f18852177722fcf915f9349086cb840024"
+      "digest": "sha256:f9e1c5eeafebbc7f3b59e7e98443fa49c71c686c1e7e3deeaaa45186e06fc1c4"
     },
     {
       "path": "packs/tobkiri_workflow_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:8f333f29ae659538d200a9e187920cd83c787af9cbd99ffcaaa031fc25612c9e"
+      "digest": "sha256:289880df3c5a47b9781eaa3c7a14866c2232510631e1a226f89a5c21f2eab5c3"
     },
     {
       "path": "defaults-basepack.base.v1.json",

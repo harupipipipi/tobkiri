@@ -80,8 +80,11 @@ class ModelRegistryService:
             record = data.get("record")
             if not isinstance(record, Mapping):
                 record = data
-            mutate = registry.create if operation == "create" else registry.save
-            return mutate(
+            if operation == "create":
+                return registry.create(
+                    record, expected_revision=int(data.get("expected_revision") or 0),
+                )
+            return registry.save(
                 record,
                 expected_revision=int(data.get("expected_revision") or 0),
                 preserve_existing=data.get("preserve_existing") is True,

@@ -628,7 +628,7 @@
           "path": "defaultspack/chat_reference_presentation.py"
         },
         {
-          "digest": "sha256:e780864c8574e309624619d51192a0d32184f04d51330c023a7dbd9299111471",
+          "digest": "sha256:8c774a657bd0dfba3cb5c760b96632307ce2a58ba95753ef30c62170fc9df7ad",
           "index_role": "asset",
           "kind": "asset",
           "path": "defaultspack/frontend_contract_map.v4.json"
@@ -17611,12 +17611,12 @@
           "path": "runtime/process.py"
         },
         {
-          "digest": "sha256:e80b6c16c13fdc69318477b6db8392d951094d5cbaf23db454a1d101a625fa9c",
+          "digest": "sha256:dd6800f892a72658448eb75c4266c6458f80742fcd10f0b09dea44c4d828483c",
           "kind": "executable",
           "path": "runtime/registry.py"
         },
         {
-          "digest": "sha256:8866e9b2566b7c034a4bc3ef3fe3e4a000c7cf33a533e6a372df1771584ddc56",
+          "digest": "sha256:3dce098c50a5268c87231e9ac55590e03d1ebe493d4729470fbf1d86ed3aacc5",
           "kind": "executable",
           "path": "runtime/service.py"
         }
@@ -18632,6 +18632,11 @@
           "digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
           "kind": "executable",
           "path": "runtime/adapter.py"
+        },
+        {
+          "digest": "sha256:2b29e398a0e8bbaf15d4966dac5bca4c936d8e8ea52a74fd141620be0eba2815",
+          "kind": "sidecar",
+          "path": "runtime/local_endpoint.py"
         },
         {
           "digest": "sha256:a711e4a6f54f4840788407468080ced8945ca73d251499d8ea344ad7591d14bc",
@@ -33994,7 +33999,7 @@
           "path": "frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:a54c4697b86c2bda62695613150dedd4841c9feaafb19f2811b8228a4ade09b5",
+          "digest": "sha256:1166642bdca4cb3dc8122c18d73c4a9aac8f819e9ed787e27f7dc44a5cc76b33",
           "index_role": "asset",
           "kind": "asset",
           "path": "backend-integrity.v4.json"
@@ -34043,7 +34048,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:4fc60231ab638bd75cadc6fc578279d491b8314cb6de8591321c96fb92bbbff9",
+          "digest": "sha256:93bfe594b401448de9c4289c680ece2fa9b7879492a5dc4871b7a21593f50631",
           "path": "core_runtime/workflow_v4/binding.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -34053,7 +34058,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:10f9df6f2f091077901d580e3d404809c9f0721a791832542f86a7042f5f6c9b",
+          "digest": "sha256:f3787f8e5982a91be5f93afccb92d3a540439b73eb7949e9473110c567989e29",
           "path": "core_runtime/workflow_v4/engine.py",
           "rule_id": "workflow-v4-canonical-source"
         },
@@ -34158,7 +34163,7 @@
           "rule_id": "workflow-v4-canonical-source"
         },
         {
-          "digest": "sha256:a54c4697b86c2bda62695613150dedd4841c9feaafb19f2811b8228a4ade09b5",
+          "digest": "sha256:1166642bdca4cb3dc8122c18d73c4a9aac8f819e9ed787e27f7dc44a5cc76b33",
           "path": "ecosystem/tobkiri_workflow_pack/backend-integrity.v4.json",
           "rule_id": "workflow-v4-canonical-source"
         }
