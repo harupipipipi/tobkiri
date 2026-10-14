@@ -346,6 +346,7 @@ class _ExistingHostExtensionProof:
             self.check_selected_trust(self._trust_path)
 
     def admit(self, source: Path, **arguments: Any) -> Mapping[str, Any]:
+        _require_issued_existing_slot_proof(self)
         from .external_pack_catalog_v4 import (
             _admission_policy_locks,
             _admit_signed_external_pack_locked,
@@ -435,6 +436,61 @@ def _capture_native_existing_slot(
         pack_id=_verified_pack(source).compiled.artifact.pack_id,
     ) as proof:
         yield proof
+
+
+def _native_active_admitted_slot(pack_id: str) -> bool:
+    """Select the separate port only for an authenticated active admitted slot."""
+    from .bootstrap.profile_capture import _bundle_root, runtime_user_data_root
+    from .bundled_artifact_retention_v4 import capture_retention_origin
+    from .external_pack_catalog_v4 import (
+        _catalog_path,
+        _read_authenticated_catalog,
+        _validate_entry,
+        _visible_entry,
+    )
+    from .pack_version_selection import catalog_key_identity
+
+    origin = capture_retention_origin(runtime_user_data_root())
+    baseline._require_owner(origin)
+    selected = dict(origin.pack_pins).get(pack_id)
+    catalog = _read_authenticated_catalog(
+        _catalog_path(origin.user_data_root),
+        allow_missing=True,
+    )
+    for key, raw in catalog["entries"].items():
+        if not isinstance(raw, Mapping):
+            raise ValueError("external Host Extension catalog entry is malformed")
+        entry = _visible_entry(raw)
+        if entry is None:
+            continue
+        if catalog_key_identity(key, entry) != pack_id:
+            continue
+        if entry.get("artifact_digest") != selected:
+            continue
+        _validate_entry(pack_id, entry)
+        record = entry["catalog_record"]
+        if (
+            record.get("kind") != "host_extension"
+            or record.get("authority") != "host-signed-external-host-extension-v4"
+        ):
+            raise ValueError("active Host Extension admission identity differs")
+        baseline._require_owner(origin)
+        return True  # The issued port next verifies exact CAS, signature and trust.
+    reader = SecureDirectory(_bundle_root(), create=False)
+    lock = _read(reader, "bundle.lock.json", metadata=True)
+    if _digest(lock) != origin.bundle_digest:
+        raise ValueError("Native Host Extension bundle differs")
+    raw = _projection(
+        lock,
+        lambda path: _read(reader, path, metadata=True),
+        pack_id,
+        origin,
+    )
+    manifest = baseline._baseline_projection(origin, lock, raw, pack_id)
+    if selected is not None and selected != manifest["pack"]["artifact_digest"]:
+        raise ValueError("active Host Extension predecessor is not admitted")
+    baseline._require_owner(origin)
+    return False  # Initial known bundled slots keep canonical admission semantics.
 
 
 def _require_issued_existing_slot_proof(value: Any) -> _ExistingHostExtensionProof:

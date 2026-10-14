@@ -476,10 +476,18 @@ def _native_existing_slot(source: Path) -> bool:
         manifest = _read_json_nofollow(source / "pack.v4.json", 4 * 1024 * 1024)
     except FileNotFoundError:
         return False  # The unchanged generic verifier handles absent artifacts.
-    return (
-        isinstance(manifest, dict)
-        and manifest.get("pack", {}).get("kind") == "host_extension"
-    )
+    pack = manifest.get("pack") if isinstance(manifest, dict) else None
+    if not isinstance(pack, dict) or pack.get("kind") != "host_extension":
+        return False
+    pack_id = pack.get("id")
+    if not isinstance(pack_id, str):
+        raise ValueError("Native Host Extension slot is unknown")
+    record = load_pack_catalog().get(pack_id)
+    if record is None or record.get("kind") != "host_extension":
+        raise ValueError("Native Host Extension slot is unknown")
+    from .existing_host_extension_admission_v4 import _native_active_admitted_slot
+
+    return _native_active_admitted_slot(pack_id)
 
 
 def preview_native_signed_pack(

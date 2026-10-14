@@ -742,3 +742,109 @@ def test_committed_reconciliation_is_visible_to_frozen_native_v1(
     assert handler.status == 409
     assert native_error == "Pack admission committed; catalog reconciliation is required"
     assert envelope.data["artifact_digest"] == entry["artifact_digest"]
+
+
+def test_native_first_known_bundled_update_retains_canonical_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A first bundled Host update still uses the existing canonical producer port."""
+    fixture = make_retention_fixture(tmp_path, monkeypatch)
+    key = Ed25519PrivateKey.generate()
+    candidate = _release(fixture.source, tmp_path / "first-successor", "99.0.0", key)
+    public = tmp_path / "publisher.pem"
+    public.write_bytes(
+        key.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+    trust = tmp_path / "policy/publisher-trust.json"
+    trust.parent.mkdir(mode=0o700)
+    assert onboarding._native_existing_slot(candidate) is False
+    preview = onboarding.preview_native_signed_pack(
+        candidate,
+        public,
+        trust_store_path=trust,
+    )
+    assert preview["predecessor_artifact_digest"] == fixture.pin
+    entry = onboarding.commit_native_signed_pack(
+        candidate,
+        public,
+        trust_store_path=trust,
+        expected_preview_digest=preview["preview_digest"],
+    )
+    assert entry["artifact_digest"] == preview["artifact_digest"]
+    assert capture_retention_origin(fixture.owner).pack_pins == fixture.origin.pack_pins
+    assert current_bundled_host_baseline_read() is None
+
+
+def test_native_unknown_host_slot_denies_before_generic_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown Host slot cannot enter either canonical or frozen Native path."""
+    source = tmp_path / "unknown-host"
+    source.mkdir()
+    (source / "pack.v4.json").write_bytes(
+        canonical_json(
+            {
+                "pack": {"id": "new.unissued.host", "kind": "host_extension"},
+            }
+        )
+    )
+
+    def forbidden_generic(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("unknown Host slot reached generic admission")
+
+    monkeypatch.setattr(onboarding, "preview_signed_pack", forbidden_generic)
+    with pytest.raises(ValueError, match="slot is unknown"):
+        onboarding.preview_native_signed_pack(source, tmp_path / "key.pem")
+
+
+def test_native_existing_slot_never_falls_back_after_trust_denial(
+    owner: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active admitted slot cannot downgrade routing when exact trust denies."""
+    from core_runtime import pack_artifact_integrity as integrity
+
+    signed = json.loads((owner.selected / SIGNED_MANIFEST_RELATIVE).read_bytes())
+    policy = read_host_policy_snapshot(owner.trust)
+    policy["publishers"]["tobkiri.repository"]["revoked_key_ids"] = [signed["signature"]["key_id"]]
+    policy["policy_generation"] += 1
+    policy["policy_digest"] = integrity._policy_digest(policy)
+    owner.trust.write_bytes(canonical_json(policy))
+
+    def forbidden_generic(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("selected admitted Host slot must never fall back to generic")
+
+    monkeypatch.setattr(onboarding, "preview_signed_pack", forbidden_generic)
+    with pytest.raises((ValueError, RuntimeError)):
+        onboarding.preview_native_signed_pack(
+            owner.candidate,
+            owner.public,
+            trust_store_path=owner.trust,
+        )
+
+
+def test_closed_or_foreign_proof_cannot_touch_admission_locks(
+    owner: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The issued-current owner guard precedes even policy/catalog lock lookup."""
+
+    def forbidden_lock(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("invalid proof touched admission lock paths")
+
+    monkeypatch.setattr(external, "_admission_policy_locks", forbidden_lock)
+    with existing._existing_slot_proof(
+        owner.origin,
+        bundle_root=owner.fixture.bundle,
+        pack_id=PACK_ID,
+    ) as proof:
+        with runtime_user_data_scope(owner.root / "foreign-owner"):
+            with pytest.raises((ValueError, RuntimeError)):
+                proof.admit(owner.candidate)
+    with pytest.raises(ValueError, match="issued proof"):
+        proof.admit(owner.candidate)
