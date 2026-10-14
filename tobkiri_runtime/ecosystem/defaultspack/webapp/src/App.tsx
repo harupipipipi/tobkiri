@@ -1582,6 +1582,30 @@ export function settingsReadMayApply(
   return dirtyKeyCount === 0 && generationAtRead === currentGeneration;
 }
 
+/** Project only messages already loaded for the current saved conversation. */
+export function conversationPreviewProjection({
+  conversationId, ticket, isCurrent, conversation, maxItems, autoOpen,
+}: {
+  conversationId: string | null;
+  ticket: ConversationLoadTicket;
+  isCurrent: (ticket: ConversationLoadTicket) => boolean;
+  conversation: Pick<Conversation, "id" | "messages"> | null | undefined;
+  maxItems?: unknown;
+  autoOpen?: unknown;
+}): { previews: ToolPreviewItem[]; selectedPreviewId: string | null; autoOpen: boolean } | null {
+  if (!isCurrent(ticket) || ticket.conversationId !== conversationId) return null;
+  if (conversationId && (!conversation || conversation.id !== conversationId)) return null;
+  const messages = conversationId
+    ? (conversation?.messages ?? []).filter((message) => message.conversation_id === conversationId)
+    : [];
+  const previews = toolPreviewsFromMessages(messages).slice(0, Number(maxItems ?? 12));
+  return {
+    previews,
+    selectedPreviewId: previews[0]?.id ?? null,
+    autoOpen: Boolean(autoOpen && previews.length > 0),
+  };
+}
+
 function writeJsonLocalStorage<T>(key: string, value: T) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -4514,7 +4538,7 @@ export function ChatApp() {
             .then((conversation) => {
               if (!conversationViewLoaderRef.current.matches(ticket)) return;
               setActiveConversation(conversation);
-              void refreshPreview(conversationId, ticket);
+              refreshPreview(conversationId, ticket, conversation);
             })
             .catch(console.error);
         }
@@ -4816,30 +4840,25 @@ export function ChatApp() {
     }
   }
 
-  async function refreshPreview(
+  function refreshPreview(
     conversationId: string | null,
     ticket = conversationViewLoaderRef.current.capture(),
+    conversation: Conversation | null = activeConversation,
   ) {
-    const ownsPreview = () => conversationViewLoaderRef.current.matches(ticket)
-      && ticket.conversationId === conversationId;
-    if (!ownsPreview()) return;
-    if (!conversationId) {
-      setPreviews([]);
-      requestPreview(null);
-      return;
-    }
     try {
-      const result = await api.conversationPreview(conversationId);
-      if (!ownsPreview()) return;
-      const limit = Number(settingsValues.preview?.max_items ?? 12);
-      const nextPreviews = result.previews.slice(0, limit);
-      setPreviews(nextPreviews);
-      requestPreview(nextPreviews[0]?.id ?? null);
-      if (settingsValues.preview?.auto_open && nextPreviews.length > 0) {
-        setShowPreview(true);
-      }
+      const projection = conversationPreviewProjection({
+        conversationId, ticket, conversation,
+        isCurrent: (current) => conversationViewLoaderRef.current.matches(current),
+        maxItems: settingsValues.preview?.max_items,
+        autoOpen: settingsValues.preview?.auto_open,
+      });
+      if (!projection) return;
+      setPreviews(projection.previews);
+      requestPreview(projection.selectedPreviewId);
+      if (projection.autoOpen) setShowPreview(true);
     } catch (previewError) {
-      if (!ownsPreview()) return;
+      if (!conversationViewLoaderRef.current.matches(ticket)
+        || ticket.conversationId !== conversationId) return;
       console.error(previewError);
       setPreviews([]);
       requestPreview(null);
@@ -4864,6 +4883,7 @@ export function ChatApp() {
     }));
     setPreviews([]);
     requestPreview(null);
+    if (loaded) refreshPreview(conversationId, ticket, loaded);
   }
 
   async function loadConversation(
@@ -4880,9 +4900,11 @@ export function ChatApp() {
         publishConversationSelection(ticket);
         onViewLoad?.(ticket);
       },
-      publishConversation: setActiveConversation,
+      publishConversation: (conversation, ticket) => {
+        setActiveConversation(conversation);
+        refreshPreview(conversation.id, ticket, conversation);
+      },
       publishRoute: updateUrl ? (id) => replaceChatIdInUrl(id, false) : undefined,
-      refreshPreview: (id, ticket) => { void refreshPreview(id, ticket); },
     });
   }
 
@@ -5056,7 +5078,7 @@ export function ChatApp() {
 
   useEffect(() => {
     if (!activeConversationId) return;
-    void refreshPreview(activeConversationId);
+    refreshPreview(activeConversationId, conversationViewLoaderRef.current.capture(), activeConversation);
   }, [settingsValues.preview?.max_items, settingsValues.preview?.auto_open, activeConversationId]);
 
   useSpotlightShortcut({

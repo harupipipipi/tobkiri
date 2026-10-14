@@ -6,7 +6,6 @@ import { loadApprovalPolicyCapabilities, type ApprovalPolicyApplicability } from
 import { mountProjectDirectories, type ProjectDirectorySelection, type ProjectDirectorySelectionSet, type ProjectMountStatus } from "./projectWorkspaceMount";
 import { toolSidebarReadiness } from "./toolCatalogReadiness";
 import { parseThreadProgressPage, type ThreadProgressPage } from "../host/threadProgressContract";
-import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
 import { chatContinuationPacketMatchesTurn } from "./pendingChat";
@@ -5623,12 +5622,6 @@ export const api = {
     return request<Record<string, unknown>>(defaultspackContractRoute(`api/webhooks/public-urls/${encodeURIComponent(urlId)}`), {
       method: "DELETE",
     });
-  },
-
-  conversationPreview(conversationId: string) {
-    return request<{ conversation_id: string; previews: ToolPreviewItem[]; summary: Record<string, number> }>(
-      defaultspackContractRoute(`api/ui/conversations/${conversationId}/preview`),
-    );
   },
 
   exportConversation(conversationId: string, format = "markdown") {

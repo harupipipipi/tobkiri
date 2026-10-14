@@ -11,6 +11,8 @@ import { loadConversationForRefresh, resolveSupersededConversationRedirect } fro
 import { ConversationViewLoader, conversationOwnsSelectedView, type ConversationLoadTicket } from "./conversationView";
 import { SavedTurnViewFence } from "./optimisticSavedTurn";
 import { isGenerationActiveForView } from "./pendingChat";
+import { conversationPreviewProjection } from "../App";
+import { api, type ChatMessage } from "./api";
 
 type ViewConversation = { id: string; title: string; messages: string[]; metadata?: unknown };
 
@@ -20,6 +22,124 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+function previewMessage(conversationId: string, id: string, createdAt = 1000): ChatMessage {
+  return {
+    id, conversation_id: conversationId, role: "assistant", content: [], created_at: createdAt,
+    tool_logs: [{ tool_name: "browser_use", arguments: {}, result: { url: `http://localhost:5173/${id}` } }],
+  };
+}
+
+type PreviewConversation = { id: string; messages: ChatMessage[] };
+
+test("loaded conversation previews use the returned messages before React state publication, without HTTP", async (context) => {
+  const fetch = context.mock.method(globalThis, "fetch", () => { throw new Error("Preview must not request HTTP"); });
+  assert.equal("conversationPreview" in api, false);
+  const loader = new ConversationViewLoader(new SavedTurnViewFence("tab-a", "a"));
+  const staleConversation = { id: "a", messages: [previewMessage("a", "stale")] };
+  const loadedConversation = { id: "a", messages: [previewMessage("a", "loaded")] };
+  let reactState = staleConversation;
+  const state = { projection: null as ReturnType<typeof conversationPreviewProjection> };
+  await loader.load({
+    workspaceTabId: "tab-a", conversationId: "a",
+    readConversation: async () => loadedConversation,
+    publishSelection: () => {},
+    publishConversation: (conversation, ticket) => {
+      // A React setter may defer publication; preview must use this read's value.
+      assert.equal(reactState, staleConversation);
+      state.projection = conversationPreviewProjection({
+        conversationId: conversation.id, ticket, conversation,
+        isCurrent: (current) => loader.matches(current), autoOpen: true,
+      });
+      reactState = conversation;
+    },
+  });
+  const projection = state.projection;
+  assert.equal(projection?.previews.length, 1);
+  assert.equal(projection?.previews[0].data.type, "web");
+  if (projection?.previews[0].data.type === "web") {
+    assert.equal(projection.previews[0].data.url, "http://localhost:5173/loaded");
+  }
+  assert.equal(projection?.selectedPreviewId, projection?.previews[0].id);
+  assert.equal(projection?.autoOpen, true);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test("local preview publication discards late B and failed reads after A -> B -> A", async () => {
+  const lateB = deferred<PreviewConversation>();
+  const failure = deferred<PreviewConversation>();
+  const a = { id: "a", messages: [previewMessage("a", "current")] };
+  const loader = new ConversationViewLoader(new SavedTurnViewFence("tab-a", "a"));
+  const publications: string[] = [];
+  let projection: ReturnType<typeof conversationPreviewProjection> = null;
+  const load = (id: string) => loader.load({
+    workspaceTabId: `tab-${id}`, conversationId: id,
+    readConversation: (target) => target === "b" ? lateB.promise : target === "c" ? failure.promise : Promise.resolve(a),
+    publishSelection: () => { projection = null; },
+    publishConversation: (conversation, ticket) => {
+      const next = conversationPreviewProjection({
+        conversationId: conversation.id, ticket, conversation,
+        isCurrent: (current) => loader.matches(current),
+      });
+      if (next) { projection = next; publications.push(conversation.id); }
+    },
+  });
+  await load("a");
+  const loadingB = load("b");
+  const loadingC = load("c");
+  await load("a");
+  const current = projection;
+  lateB.resolve({ id: "b", messages: [previewMessage("b", "late")] });
+  failure.reject(new Error("Obsolete read failed"));
+  await Promise.all([loadingB, loadingC]);
+  assert.equal(projection, current);
+  assert.deepEqual(publications, ["a", "a"]);
+});
+
+test("preview projection enforces selected ID, message ownership, load sequence and saved-store epoch", () => {
+  const fence = new SavedTurnViewFence("tab-a", "a");
+  const loader = new ConversationViewLoader(fence);
+  const ticket = loader.capture();
+  const conversation = { id: "a", messages: [previewMessage("a", "own"), previewMessage("b", "foreign", 2000)] };
+  const project = (current = ticket, id: string | null = "a", body: PreviewConversation | null = conversation) => conversationPreviewProjection({
+    conversationId: id, ticket: current, conversation: body,
+    isCurrent: (candidate) => loader.matches(candidate),
+  });
+  assert.equal(project()?.previews.length, 1);
+  assert.equal(project(ticket, "b"), null);
+  assert.equal(project(ticket, "a", { id: "b", messages: conversation.messages }), null);
+  assert.equal(project(ticket, "a", null), null);
+  loader.select("tab-a", "a", () => {});
+  assert.equal(project(), null, "even a newer same-ID load invalidates the old callback");
+  const nextTicket = loader.capture();
+  assert.equal(project(nextTicket)?.previews.length, 1);
+  fence.invalidate();
+  assert.equal(project(nextTicket), null, "a saved-store epoch change invalidates preview ownership");
+});
+
+test("local previews preserve max_items, newest selection and auto_open for real saved tool results", () => {
+  const loader = new ConversationViewLoader(new SavedTurnViewFence("tab-a", "a"));
+  const conversation = { id: "a", messages: Array.from({ length: 15 }, (_, index) => previewMessage("a", `preview-${index}`, index + 1000)) };
+  const project = (maxItems?: number, autoOpen = true) => conversationPreviewProjection({
+    conversationId: "a", ticket: loader.capture(), conversation,
+    isCurrent: (current) => loader.matches(current), maxItems, autoOpen,
+  });
+  const defaultProjection = project();
+  assert.equal(defaultProjection?.previews.length, 12);
+  assert.equal(defaultProjection?.selectedPreviewId, defaultProjection?.previews[0].id);
+  if (defaultProjection?.previews[0].data.type === "web") {
+    assert.equal(defaultProjection.previews[0].data.url, "http://localhost:5173/preview-14");
+  } else assert.fail("Expected a real web tool preview");
+  assert.equal(defaultProjection.autoOpen, true);
+  assert.equal(project(1)?.previews.length, 1);
+  assert.equal(project(1, false)?.autoOpen, false);
+  assert.deepEqual(project(0), { previews: [], selectedPreviewId: null, autoOpen: false });
+  const nullTicket = loader.select("tab-a", null, () => {});
+  assert.deepEqual(conversationPreviewProjection({
+    conversationId: null, ticket: nullTicket, conversation,
+    isCurrent: (current) => loader.matches(current), autoOpen: true,
+  }), { previews: [], selectedPreviewId: null, autoOpen: false });
+});
 
 // Exercise the loader callbacks used by ChatApp, including selection, loaded
 // body, route, preview and tab metadata publication, rather than a parallel
