@@ -888,6 +888,7 @@ class CapturedPackControlSession:
         if not approved:
             _raise_approval_failure(reason)
 
+    @profile_operation_phase("handler")
     def _catalog_payload(
         self,
         *,
@@ -1626,7 +1627,8 @@ def _physical_catalog_read(
     try:
         if active is None:
             try:
-                captured = capture_active_profile()
+                with profile_operation_phase("active_snapshot"):
+                    captured = capture_active_profile()
             except Exception as error:
                 raise PackControlDigestMismatch(
                     "active v4 Profile session is missing or invalid"
@@ -1654,7 +1656,9 @@ def _physical_catalog_read(
             if _user_data_root() != root or _active_read_identity(captured) != identity:
                 raise PackControlStaleRevision("active Profile read owner or snapshot changed")
             invalidate_profile_capture_scope()
-            if _active_read_identity(capture_active_profile()) != identity:
+            with profile_operation_phase("active_snapshot"):
+                fresh_identity = _active_read_identity(capture_active_profile())
+            if fresh_identity != identity:
                 raise PackControlStaleRevision("active Profile changed during read")
             checks = read.final_checks()
         # No derived result is published until the catalog, CAS, compiler and
@@ -1672,6 +1676,7 @@ def _physical_catalog_read(
         ) from error
 
 
+@profile_operation_phase("artifact_catalog")
 def _capture_binding(
     active: Any | None = None, *, _read: _CatalogRead | None = None,
 ) -> _Binding:

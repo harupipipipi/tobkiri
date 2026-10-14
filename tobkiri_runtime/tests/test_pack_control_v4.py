@@ -97,7 +97,9 @@ def _catalog_operation(pack: dict, contract_id: str, operation_id: str) -> dict:
     )
 
 
-def test_catalog_separates_admission_and_active_pack_digests(captured_session) -> None:
+def test_catalog_separates_admission_and_active_pack_digests(
+    captured_session, caplog: pytest.LogCaptureFixture
+) -> None:
     """Execution joins use verified plan artifacts; approvals retain record identity."""
     session, _state_path, _user_data = captured_session
     catalog = _invoke(session, "catalog.read")
@@ -115,6 +117,15 @@ def test_catalog_separates_admission_and_active_pack_digests(captured_session) -
     assert required["pack_artifact_digest"] is not None
     assert required["pack_artifact_digest"] != required["artifact_digest"]
     assert _catalog_pack(catalog, TARGET_PACK)["pack_artifact_digest"] is None
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "core_runtime.profile_operation_timing"
+    ]
+    for phase in ("active_snapshot", "artifact_catalog", "handler"):
+        assert any(f"phase={phase}.finish" in message for message in messages)
+    assert str(_user_data) not in "\n".join(messages)
+    assert len(messages) <= 32
 
 
 def test_dashboard_counts_only_active_approved_packs_without_catalog_projection(

@@ -12,6 +12,24 @@ from tobkiri_protocol.canonical import canonical_digest
 from .api.api_response import APIResponse
 
 logger = logging.getLogger(__name__)
+_FAILURE_STAGES = frozenset({
+    "trust", "preview", "review_parameters", "review_context", "prepare",
+    "authorize", "commit",
+})
+
+
+def _log_failure_stage(stage: Any, *, publication_unknown: bool = False) -> None:
+    """Emit only a fixed Host stage; diagnostics never change the response."""
+    label = stage if type(stage) is str and stage in _FAILURE_STAGES else "trust"
+    message = (
+        "Host Extension admission outcome requires reconciliation stage=%s"
+        if publication_unknown is True
+        else "Native signed Pack verification denied stage=%s"
+    )
+    try:
+        logger.warning(message, label)
+    except Exception:
+        pass
 
 
 def _current_review_context() -> dict[str, Any]:
@@ -109,6 +127,16 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
     from . import native_pack_onboarding as onboarding
     from .external_pack_catalog_v4 import ExternalPackAdmissionOutcomeUnknown
 
+    stage = "trust"
+
+    def review_context() -> dict[str, Any]:
+        nonlocal stage
+        parent_stage = stage
+        stage = "review_context"
+        result = _current_review_context()
+        stage = parent_stage
+        return result
+
     try:
         trust_store = handler._native_pack_trust_store()
         if commit:
@@ -116,8 +144,10 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
                 raise ValueError("Host publisher trust store is not configured")
             arguments: dict[str, Any] = {}
             if echoed.issubset(fields):
+                stage = "authorize"
                 if ceremony is None:
                     raise ValueError("Native publisher key review is unavailable")
+                stage = "preview"
                 fresh = onboarding.preview_native_signed_pack(
                     source,
                     key,
@@ -125,13 +155,15 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
                 )
                 if fresh["preview_digest"] != body["preview_digest"]:
                     raise ValueError("Native signed Pack preview changed")
+                stage = "authorize"
                 arguments["key_version_policy_identity"] = ceremony.authorize(
                     fresh,
                     challenge=body["key_version_authorization_challenge"],
                     authorization_digest=body["key_version_authorization_digest"],
                     trust_store_path=trust_store,
-                    context_loader=_current_review_context,
+                    context_loader=review_context,
                 )
+            stage = "commit"
             entry = onboarding.commit_native_signed_pack(
                 source,
                 key,
@@ -158,26 +190,27 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
                 "catalog_refreshed": refreshed,
             }
         else:
+            stage = "preview"
             result = onboarding.preview_native_signed_pack(
                 source,
                 key,
                 trust_store_path=trust_store,
             )
             if ceremony is not None and trust_store is not None:
+                stage = "review_parameters"
+                parameters = onboarding.native_key_version_review_parameters(
+                    source, key, result, trust_store_path=trust_store,
+                )
+                stage = "prepare"
                 result = ceremony.prepare(
                     result,
                     trust_store_path=trust_store,
-                    context_loader=_current_review_context,
-                    **onboarding.native_key_version_review_parameters(
-                        source,
-                        key,
-                        result,
-                        trust_store_path=trust_store,
-                    ),
+                    context_loader=review_context,
+                    **parameters,
                 )
     except ExternalPackAdmissionOutcomeUnknown:
         discard_echo()
-        logger.warning("Host Extension admission outcome requires reconciliation")
+        _log_failure_stage(stage, publication_unknown=True)
         handler._send_response(
             APIResponse(False, error="Pack admission outcome requires reconciliation"),
             409,
@@ -186,7 +219,7 @@ def handle_native_pack_onboarding(handler: Any, *, commit: bool) -> None:
     except Exception:
         discard_echo()
         # Do not put caller paths, public review challenges, or secrets in logs.
-        logger.warning("Native signed Pack verification denied")
+        _log_failure_stage(stage)
         handler._send_response(
             APIResponse(False, error="Signed Pack verification was denied"),
             409,

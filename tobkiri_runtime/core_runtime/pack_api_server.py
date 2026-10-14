@@ -858,6 +858,8 @@ class PackAPIHandler(
     _runtime_refresh: Callable[[DispatchSession | None], None] | None = None
     _packvm_lifecycle: PackVMLifecyclePort | None = None
     _native_pack_key_ceremony: Any | None = None
+    _native_pack_owner_binding: Any | None = None
+    _native_pack_owner_composed = False
     _workspace_binding_resolver: WorkspaceBindingResolver | None = None
     _host_contract_snapshot: Mapping[str, Any] | None = None
     _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
@@ -893,6 +895,7 @@ class PackAPIHandler(
         ) = None,
         request_snapshot_owner: object | None = None,
         request_snapshot_generation: int | None = None,
+        native_pack_owner_binding: Any | None = None,
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
@@ -901,6 +904,21 @@ class PackAPIHandler(
         bound_key_ceremony = NativePackKeyVersionCeremony()
         bound_panel_auth = panel_auth_manager
         bound_dispatch = dispatch_session
+        from .native_pack_owner_binding import capture_native_pack_owner_binding
+
+        if native_pack_owner_binding is None:
+            configured_policy = PackAPIHandler._native_pack_trust_store()
+            bound_native_owner = capture_native_pack_owner_binding(
+                bound_dispatch, trust_store_path=configured_policy,
+            )
+        else:
+            # A refreshed generation must retain the server's original owner.
+            capture_native_pack_owner_binding(
+                bound_dispatch,
+                owner_root=native_pack_owner_binding.owner_root,
+                trust_store_path=native_pack_owner_binding.trust_store_path,
+            )
+            bound_native_owner = native_pack_owner_binding
         bound_lifecycle = app_lifecycle_manager
         bound_contract_routes = dict(contract_routes or {})
         bound_capability_snapshot_factory = capability_snapshot_factory
@@ -953,6 +971,8 @@ class PackAPIHandler(
             _operation_journal = bound_operation_journal
             _packvm_lifecycle = bound_packvm_lifecycle
             _native_pack_key_ceremony = bound_key_ceremony
+            _native_pack_owner_binding = bound_native_owner
+            _native_pack_owner_composed = True
             _host_contract_snapshot = bound_host_contract
             _instance_web_mounts = bound_web_mounts
             _runtime_refresh = (
@@ -998,6 +1018,13 @@ class PackAPIHandler(
                 if bound_web_mounts is not None:
                     return bound_web_mounts
                 return WebMountMixin._fixed_web_mounts()
+
+            @staticmethod
+            def _native_pack_trust_store() -> Path | None:
+                return (
+                    bound_native_owner.trust_store_path
+                    if bound_native_owner is not None else None
+                )
 
         BoundPackAPIHandler.__name__ = "PackAPIHandlerV4Instance"
         return BoundPackAPIHandler
@@ -2481,7 +2508,27 @@ class PackAPIHandler(
         """Delegate private, fresh Native signed-Pack reviews."""
         from .native_pack_onboarding_http import handle_native_pack_onboarding
 
-        handle_native_pack_onboarding(self, commit=commit)
+        if (self.headers.get("Origin") is not None
+                or not self._native_pack_launcher_authenticated()):
+            handle_native_pack_onboarding(self, commit=commit)
+            return
+        binding = self._native_pack_owner_binding
+        if binding is None:
+            if self._native_pack_owner_composed:
+                self._discard_request_body()
+                self._send_response(
+                    APIResponse(False, error="Native Pack owner is unavailable"), 503,
+                )
+                return
+            handle_native_pack_onboarding(self, commit=commit)
+            return
+        try:
+            with binding.scope():
+                handle_native_pack_onboarding(self, commit=commit)
+        except (OSError, ValueError):
+            self._send_response(
+                APIResponse(False, error="Native Pack owner is unavailable"), 503,
+            )
 
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager
@@ -3327,12 +3374,25 @@ class PackAPIServer:
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
         host_contract: Mapping[str, Any] | None = None,
+        native_pack_owner_root: Path | None = None,
+        native_pack_trust_store_path: Path | None = None,
     ) -> None:
         self.config = RuntimeHTTPConfig.verify(host, port)
         self.host = self.config.host
         self.port = self.config.port
         self._panel_auth_manager = panel_auth_manager or get_panel_auth_manager()
         self._dispatch_session = dispatch_session
+        from .native_pack_owner_binding import capture_native_pack_owner_binding
+
+        self._native_pack_owner_binding = capture_native_pack_owner_binding(
+            dispatch_session,
+            owner_root=native_pack_owner_root,
+            trust_store_path=(
+                native_pack_trust_store_path
+                if native_pack_trust_store_path is not None
+                else PackAPIHandler._native_pack_trust_store()
+            ),
+        )
         # A caller-provided session remains caller-owned.  Refreshes that the
         # server captures itself become server-owned so their Broker,
         # authority store, and provider close callbacks have a bounded owner.
@@ -3408,6 +3468,7 @@ class PackAPIServer:
                     ),
                     request_snapshot_owner=self,
                     request_snapshot_generation=lifecycle_generation,
+                    native_pack_owner_binding=self._native_pack_owner_binding,
                 )
                 server = _PackThreadingHTTPServer((self.host, self.port), handler)
             except Exception:
@@ -3825,6 +3886,7 @@ class PackAPIServer:
                     ),
                     request_snapshot_owner=self,
                     request_snapshot_generation=published_generation,
+                    native_pack_owner_binding=self._native_pack_owner_binding,
                 )
                 handler._runtime_port = self.port
                 self._dispatch_session = session
