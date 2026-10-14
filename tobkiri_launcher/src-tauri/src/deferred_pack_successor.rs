@@ -1,10 +1,12 @@
 //! Identity-only deferral of an active provider successor to the Python Host.
 //!
-//! This covers sandboxed providers and one non-launch Gateway provider slot.
+//! This covers sandboxed providers and the non-launch Gateway and provider
+//! adapters slots. No other Host Extension can use this deferral.
 //! It neither admits external bytes nor loads code or produces descriptors.
-//! The caller verifies
-//! the signed bundled predecessor first; Host capture must authenticate the
-//! successor's signature, CAS, compatibility and complete authority closure
+//! The caller verifies the current signed bundled baseline first. This check
+//! grants no approval or execution permission. Host capture must authenticate
+//! the complete active authority closure and either signed CAS/compatibility
+//! or exact bytes retained from that active plan's authenticated bundle origin
 //! before routes or Shell execution become available.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,10 +14,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 const GATEWAY_PACK_ID: &str = "rumi_ai_gateway_pack";
+const PROVIDER_ADAPTERS_PACK_ID: &str = "rumi_provider_adapters_pack";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuccessorKind {
-    Gateway,
+    HostProvider,
     Sandbox,
 }
 
@@ -55,8 +58,10 @@ pub(super) fn deferred_identity(
         string(predecessor, "/pack/kind"),
         string(predecessor, "/requirements/execution_boundary"),
     ) {
-        (Some("host_extension"), Some("host_brokered")) if pack_id == GATEWAY_PACK_ID => {
-            SuccessorKind::Gateway
+        (Some("host_extension"), Some("host_brokered"))
+            if matches!(pack_id, GATEWAY_PACK_ID | PROVIDER_ADAPTERS_PACK_ID) =>
+        {
+            SuccessorKind::HostProvider
         }
         (Some("normal_sandbox"), Some("sandbox")) => SuccessorKind::Sandbox,
         _ => return None,
@@ -136,7 +141,7 @@ pub(super) fn deferred_identity(
         {
             return None;
         }
-        if successor_kind == SuccessorKind::Gateway {
+        if successor_kind == SuccessorKind::HostProvider {
             let functions = predecessor.get("functions")?.as_array()?;
             let function = unique(functions, "/id", function_id)?;
             if string(function, "/role") != Some("host_capability_provider")
@@ -186,7 +191,7 @@ fn host_extension_pin(pin: &Value, expected: &str) -> bool {
 }
 
 fn successor_pin(pin: &Value, expected: &str, kind: SuccessorKind) -> bool {
-    if kind == SuccessorKind::Gateway {
+    if kind == SuccessorKind::HostProvider {
         return host_extension_pin(pin, expected);
     }
     string(pin, "/artifact_digest") == Some(expected)
@@ -325,6 +330,53 @@ mod tests {
             fixture
         }
 
+        fn with_pack_id(pack_id: &str) -> Self {
+            let mut fixture = Self::new();
+            fixture.predecessor["pack"]["id"] = json!(pack_id);
+            fixture.profile["packs"][0]["pack_id"] = json!(pack_id);
+            for graph in [&mut fixture.lock, &mut fixture.plan] {
+                graph["effective_set"][0]["identity"] = json!(pack_id);
+            }
+            fixture.lock["variant_pins"][0]["pack_id"] = json!(pack_id);
+            fixture.plan["bindings"][0]["pack_id"] = json!(pack_id);
+            fixture
+        }
+
+        fn provider_adapters() -> Self {
+            let mut fixture = Self::with_pack_id(PROVIDER_ADAPTERS_PACK_ID);
+            fixture.predecessor = serde_json::from_str(include_str!(
+                "../../../tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/pack.v4.json"
+            ))
+            .unwrap();
+            fixture.artifact =
+                "sha256:5eddc80fdd8993d82834528c016548e2b4eee97ba24bd3f484bb69f88d945358".into();
+            fixture.profile["packs"][0]["artifact_digest"] = json!(fixture.artifact);
+            for graph in [&mut fixture.lock, &mut fixture.plan] {
+                graph["effective_set"][0]["artifact_digest"] = json!(fixture.artifact);
+            }
+            let mut variants = Vec::new();
+            let mut bindings = Vec::new();
+            for function in fixture.predecessor["functions"].as_array().unwrap() {
+                let function_id = function["id"].as_str().unwrap();
+                let operation = &function["operations"][0];
+                let mut pin = fixture.lock["variant_pins"][0].clone();
+                pin["artifact_digest"] = json!(fixture.artifact);
+                pin["variant_id"] = json!(format!("{function_id}.python"));
+                variants.push(pin.clone());
+                pin["operation_id"] = operation.clone();
+                pin["function_principal"] = json!({
+                    "parent_artifact_digest": fixture.artifact,
+                    "function_implementation_digest": digest('1'),
+                    "function_id": function_id, "operation_id": operation,
+                    "contract_revision_digest": function["contract_revision_digest"]
+                });
+                bindings.push(pin);
+            }
+            fixture.lock["variant_pins"] = json!(variants);
+            fixture.plan["bindings"] = json!(bindings);
+            fixture
+        }
+
         fn selection(&self) -> ActiveSelection<'_> {
             ActiveSelection {
                 profile: &self.profile,
@@ -356,6 +408,122 @@ mod tests {
         let mut unchanged = Fixture::new();
         unchanged.predecessor["pack"]["artifact_digest"] = json!(unchanged.artifact);
         assert_eq!(unchanged.deferred(), None);
+    }
+
+    #[test]
+    fn exact_old_adapters_pin_defers_against_current_bundled_baseline() {
+        let fixture = Fixture::provider_adapters();
+        assert_ne!(
+            fixture.predecessor["pack"]["artifact_digest"],
+            fixture.artifact
+        );
+        assert_eq!(fixture.plan["bindings"].as_array().unwrap().len(), 4);
+        assert_eq!(fixture.deferred(), Some(fixture.artifact.clone()));
+        let mut unchanged = Fixture::provider_adapters();
+        unchanged.predecessor["pack"]["artifact_digest"] = json!(unchanged.artifact);
+        assert_eq!(unchanged.deferred(), None);
+    }
+
+    #[test]
+    fn adapters_keep_exact_active_graph_and_host_execution_evidence() {
+        for (pointer, replacement) in [
+            ("/artifact_digest", json!(digest('9'))),
+            ("/execution_kind", json!("pack_vm")),
+            ("/domain_kind", json!("pack_vm")),
+            ("/backend", json!("tobkiri.remote-pack-v4")),
+            ("/executable_catalog_digest", json!(digest('9'))),
+            ("/variant_id", json!("unbound")),
+            ("/platform", json!("different")),
+            ("/architecture", json!("different")),
+            ("/runtime_abi", json!("different")),
+            ("/operation_id", json!("different")),
+            (
+                "/function_principal/parent_artifact_digest",
+                json!(digest('9')),
+            ),
+            ("/function_principal/function_id", json!("authority.bridge")),
+            (
+                "/function_principal/function_implementation_digest",
+                json!("invalid"),
+            ),
+            (
+                "/function_principal/contract_revision_digest",
+                json!(digest('9')),
+            ),
+            ("/function_principal/operation_id", json!("different")),
+        ] {
+            let mut fixture = Fixture::provider_adapters();
+            *fixture.plan["bindings"][0].pointer_mut(pointer).unwrap() = replacement;
+            assert_eq!(fixture.deferred(), None, "{pointer}");
+        }
+        for mutation in 0..14 {
+            let mut fixture = Fixture::provider_adapters();
+            match mutation {
+                0 => fixture.profile["packs"][0]["role"] = json!("application"),
+                1 => fixture.profile["packs"][0]["artifact_digest"] = json!(digest('9')),
+                2 => fixture.lock["effective_set"][0]["artifact_digest"] = json!(digest('9')),
+                3 => fixture.plan["effective_set"][0]["artifact_digest"] = json!(digest('9')),
+                4 => fixture.lock["variant_pins"][0]["artifact_digest"] = json!(digest('9')),
+                5 => fixture.predecessor["functions"][0]["role"] = json!("brokered"),
+                6 => fixture.predecessor["functions"][0]["operations"] = json!([]),
+                7 => fixture.plan["bindings"] = json!([]),
+                8 => {
+                    let pin = fixture.lock["variant_pins"][0].clone();
+                    fixture.lock["variant_pins"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(pin);
+                }
+                9 => {
+                    let entry = fixture.profile["packs"][0].clone();
+                    fixture.profile["packs"].as_array_mut().unwrap().push(entry);
+                }
+                10 => fixture.plan["effective_set"] = json!([]),
+                11 => fixture.lock["effective_set"][0]["role"] = json!("application"),
+                12 => fixture.lock["plan_digest"] = json!(digest('9')),
+                _ => fixture.predecessor["requirements"]["execution_boundary"] = json!("sandbox"),
+            }
+            assert_eq!(fixture.deferred(), None, "{mutation}");
+        }
+    }
+
+    #[test]
+    fn adapters_require_complete_activation_and_unprotected_slot() {
+        let fixture = Fixture::provider_adapters();
+        for missing in 0..6 {
+            let mut selected = fixture.selection();
+            match missing {
+                0 => selected.profile_revision = None,
+                1 => selected.activation_id = None,
+                2 => selected.plan_digest = None,
+                3 => selected.lock_digest = None,
+                4 => selected.lock = None,
+                _ => selected.plan = None,
+            }
+            assert_eq!(
+                deferred_identity(
+                    &selected,
+                    PROVIDER_ADAPTERS_PACK_ID,
+                    &fixture.artifact,
+                    &fixture.predecessor,
+                    Some(&fixture.source_digest),
+                    false
+                ),
+                None,
+                "{missing}"
+            );
+        }
+        assert_eq!(
+            deferred_identity(
+                &fixture.selection(),
+                PROVIDER_ADAPTERS_PACK_ID,
+                &fixture.artifact,
+                &fixture.predecessor,
+                Some(&fixture.source_digest),
+                true
+            ),
+            None
+        );
     }
 
     #[test]
@@ -517,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn only_catalogued_non_launch_gateway_slot_can_be_deferred() {
+    fn only_allowlisted_non_launch_host_provider_slots_can_be_deferred() {
         let fixture = Fixture::new();
         let selected = fixture.selection();
         assert_eq!(
@@ -538,19 +706,11 @@ mod tests {
             "runtime.tauri.application.default",
             "shell.tauri.default",
             "other.extension",
+            "rumi_provider_adapters_pack.extra",
+            "RUMI_provider_adapters_pack",
         ] {
-            assert_eq!(
-                deferred_identity(
-                    &selected,
-                    other,
-                    &fixture.artifact,
-                    &fixture.predecessor,
-                    Some(&fixture.source_digest),
-                    false
-                ),
-                None,
-                "{other}"
-            );
+            let other_fixture = Fixture::with_pack_id(other);
+            assert_eq!(other_fixture.deferred(), None, "{other}");
         }
         for source in [None, Some("not-a-digest")] {
             assert_eq!(

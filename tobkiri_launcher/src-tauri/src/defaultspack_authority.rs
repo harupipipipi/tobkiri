@@ -98,8 +98,9 @@ pub(crate) struct ApplicationAuthority {
     pub shell_provider_id: String,
     pub application_id: String,
     pub launch_contribution: Option<RuntimeLaunchContribution>,
-    /// Exact active external Pack pins whose trust is checked by the Host.
-    /// These are NOT signed-bundle-verified artifacts or system Pack authority.
+    /// Exact active Pack pins deferred to full Host authority verification.
+    /// The Host requires signed CAS or exact authenticated active-bundle
+    /// retention; these pins grant no approval, execution, or system authority.
     pub deferred_external_packs: BTreeMap<String, String>,
 }
 
@@ -6026,6 +6027,19 @@ mod external_pack_restart_tests {
         .unwrap();
         assert_catalogued_successor_defers_after_predecessor_checks(
             predecessor,
+            "host_extension",
+            "tobkiri.python-host-v4",
+        );
+    }
+
+    #[test]
+    fn catalogued_adapters_pin_defers_only_after_bundled_baseline_checks() {
+        let baseline: Value = serde_json::from_str(include_str!(
+            "../../../tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/pack.v4.json"
+        ))
+        .unwrap();
+        assert_catalogued_successor_defers_after_predecessor_checks(
+            baseline,
             "host_extension",
             "tobkiri.python-host-v4",
         );
