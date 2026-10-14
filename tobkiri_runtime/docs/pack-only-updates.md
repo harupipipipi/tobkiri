@@ -167,6 +167,36 @@ current canonical Source checks. Consequently, a Source-only development
 baseline repair does not by itself establish that the next signed candidate
 can be admitted against a changed canonical Source boundary.
 
+### Updating a currently active admitted Host Extension
+
+`existing_host_extension_admission_v4.admit_signed_existing_host_extension_version`
+provides a separate Host-owned port for a currently active, already admitted
+Host Extension slot. Its normally issued Origin binds the owner, active pointer,
+bundle, epoch and fence. The request owns an explicitly issued proof; an ambient
+baseline read scope is insufficient. Unknown IDs, bundled-only slots and initial
+renderer enrollment cannot use this port.
+
+The candidate must preserve the complete authority closure of both the
+authenticated frozen bundled baseline and the selected admitted predecessor.
+Its version must exceed every compatible authenticated external revision, and
+an existing version cannot acquire different bytes. Signature verification,
+exact publisher key/version authorization and the Native review remain required.
+The existing Native preview and confirmation fields are unchanged. Native
+recaptures the proof at commit and binds the frozen baseline, active predecessor
+and external revision through the opaque review digest.
+
+Generic admission still clears the ambient read context and uses current
+canonical Source. Neither admission port activates a revision. After publication,
+an error can require reconciliation: a committed catalog cannot be described as
+rolled back merely because later verification failed. The Native response states
+that admission committed and reports the verification failure; it does not invite
+an automatic resubmission.
+
+Runtime `catalog.read`, `dashboard.read` and `pack.status` keep their exact root
+and baseline read scopes open through projection. Physical-root, active Profile,
+mutable control-state and approval checks complete before results are returned.
+Mutation and restart operations do not borrow these read scopes.
+
 ## Development and verification
 
 This capability requires Host runtime support. An explicit development
