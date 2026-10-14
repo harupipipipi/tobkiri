@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .pack_signature import PackSignatureError, verify_signed_pack
+from .publisher_key_versions import is_legacy_publisher_key, resolve_publisher_key
 
 
 _SIGNED_MANIFEST_DIGEST_FIELD = "signed_manifest_digest"
@@ -222,21 +223,19 @@ def _verify_declared_publisher_signature(
         publishers = publishers if isinstance(publishers, Mapping) else {}
         publisher = publishers.get(publisher_id)
         publisher = publisher if isinstance(publisher, Mapping) else {}
-        namespaces = [
-            str(item)
-            for item in publisher.get("allowed_pack_namespaces") or []
-            if str(item)
-        ]
-        if namespaces and not any(
-            pack_id == namespace or pack_id.startswith(f"{namespace}.")
-            for namespace in namespaces
+        key_id = str(install_record.get("key_id") or "")
+        compiled_digest = ""
+        if not is_legacy_publisher_key(
+            trust_store, publisher_id=publisher_id, key_id=key_id,
         ):
-            return ("publisher is not allowed to sign this Pack namespace",)
-        public_key = serialization.load_pem_public_key(
-            str(publisher.get("public_key_pem") or "").encode("utf-8")
+            from tobkiri_host.artifact_compiler import compile_pack_root
+
+            compiled_digest = compile_pack_root(root).artifact.digest
+        public_key = resolve_publisher_key(
+            trust_store, publisher_id=publisher_id, key_id=key_id,
+            pack_id=pack_id, artifact_digest=compiled_digest,
+            signed_manifest_digest=_canonical_digest(signed_manifest),
         )
-        if not isinstance(public_key, Ed25519PublicKey):
-            return ("publisher trust key is not Ed25519",)
         revoked = {
             str(item)
             for item in publisher.get("revoked_key_ids") or []
