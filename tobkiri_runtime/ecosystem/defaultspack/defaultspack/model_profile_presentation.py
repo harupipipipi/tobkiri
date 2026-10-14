@@ -68,7 +68,7 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
             "display_name": name,
             "metadata": {"provider_connection_id": payload["provider_instance_id"]},
             # An explicit route registration makes that exact saved route usable.
-            "enabled": True,
+            **({"enabled": True} if cap is not None else {}),
             **({"parameters": {"max_tokens": cap}} if cap is not None else {}),
         },
     }

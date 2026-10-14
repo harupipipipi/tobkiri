@@ -254,8 +254,6 @@ def resolve_templates(
                     }
                 )
             return current
-        if "${" in value:
-            raise WorkflowValidationError("workflow template expression is invalid")
         return value
     if isinstance(value, Mapping):
         return {

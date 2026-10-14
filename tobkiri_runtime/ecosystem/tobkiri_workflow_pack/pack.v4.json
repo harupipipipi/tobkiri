@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1166642bdca4cb3dc8122c18d73c4a9aac8f819e9ed787e27f7dc44a5cc76b33",
+      "digest": "sha256:75ca562a676edc5ad15880fc1a531492b2dc11bfff5c258aff7c0754265d43a9",
       "kind": "asset",
       "path": "backend-integrity.v4.json"
     },
     {
-      "digest": "sha256:0bdfb9106da00843a630fb0c6073c0be221674095a421e1bfd3fdc11f0cee45e",
+      "digest": "sha256:f9c3f1e0809257fb24f99007ecfafdc9b422c573ae380a1a65310091026fac05",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -127,9 +127,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:068c713083a2907701d2521d7652aa1539ee8d806349e9574e72e567e3011285",
-    "contract_catalog_digest": "sha256:61e58d57df3de9aa71354ce4de22fcb66a519f2e9f8d468d28404c3c538cbba9",
-    "source_identity": "sha256:8b949ef4dc50ab6ec86de225f3a21f7995ad48cb16ebc78907e927ef589cd4ff"
+    "artifact_set_digest": "sha256:554ac10f71b594db331f270d4a08804e96a06ebf1838fe42f81595703acefa5b",
+    "contract_catalog_digest": "sha256:555815013e2da7b72cf5916dbd8d799dab9be01eb24b03058f2cb701085839ed",
+    "source_identity": "sha256:e8ed480ddb042d65a21f046485423dce187239429bef05190a90ee7cf1922c4c"
   },
   "migration": {
     "compatibility": "none",
@@ -439,7 +439,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:068c713083a2907701d2521d7652aa1539ee8d806349e9574e72e567e3011285",
+    "artifact_digest": "sha256:554ac10f71b594db331f270d4a08804e96a06ebf1838fe42f81595703acefa5b",
     "display_name": "Tobkiri Workflow Pack",
     "id": "tobkiri_workflow_pack",
     "kind": "host_extension",
@@ -449,7 +449,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:8b949ef4dc50ab6ec86de225f3a21f7995ad48cb16ebc78907e927ef589cd4ff",
+        "digest": "sha256:e8ed480ddb042d65a21f046485423dce187239429bef05190a90ee7cf1922c4c",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -460,7 +460,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:8b949ef4dc50ab6ec86de225f3a21f7995ad48cb16ebc78907e927ef589cd4ff",
+    "source_digest": "sha256:e8ed480ddb042d65a21f046485423dce187239429bef05190a90ee7cf1922c4c",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_workflow_pack"
   },

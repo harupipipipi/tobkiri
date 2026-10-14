@@ -7,7 +7,7 @@
     "core_runtime/workflow_v4/attempt_port.py": "sha256:62277f393506d993bdc801a2681c6b3941f61c0e4cd9a7952972007e0580d857",
     "core_runtime/workflow_v4/attempt_service.py": "sha256:acaab2417b47f38f4b48153f5d0270bc07b14a4f30e1e8b0a846e6bd44fc9db2",
     "core_runtime/workflow_v4/attempt_store.py": "sha256:45847234b3805184ec8b59d8031b2d3cfb0816a33f7d75671c9002d4f554eb66",
-    "core_runtime/workflow_v4/binding.py": "sha256:93bfe594b401448de9c4289c680ece2fa9b7879492a5dc4871b7a21593f50631",
+    "core_runtime/workflow_v4/binding.py": "sha256:500753ab72d387a0fb9f42f0ecf562068663de481b469491cfbd622139b86585",
     "core_runtime/workflow_v4/data_codec.py": "sha256:7e613d8f9b62eff5760a603920d4849778266ad1174916ba078e844deebc3ac2",
     "core_runtime/workflow_v4/engine.py": "sha256:f3787f8e5982a91be5f93afccb92d3a540439b73eb7949e9473110c567989e29",
     "core_runtime/workflow_v4/evidence.py": "sha256:47286c43299cd9aa2adc6dbd5a4f51b2ddfd10365691330f9adef6083eab4755",

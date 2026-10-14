@@ -43,7 +43,6 @@ def test_model_route_payload_keeps_the_registry_revision_outside_route_metadata(
         "model_id": "gpt-4.1",
         "display_name": "Daily",
         "metadata": {"provider_connection_id": "connection/openai:main"},
-        "enabled": True,
     }
 
 
