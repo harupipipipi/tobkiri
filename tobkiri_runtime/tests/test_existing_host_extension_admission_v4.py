@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import os
+import shutil
 from pathlib import Path
 from threading import Thread
 from types import SimpleNamespace
@@ -24,7 +25,10 @@ from core_runtime.bundled_artifact_retention_v4 import (
     BundledArtifactRetentionDenied,
     capture_retention_origin,
 )
-from core_runtime.bundled_host_baseline_v4 import current_bundled_host_baseline_read
+from core_runtime.bundled_host_baseline_v4 import (
+    RetainedBundledHostBaseline,
+    current_bundled_host_baseline_read,
+)
 from core_runtime.host_extension_authoring import build_host_extension_successor
 from core_runtime.native_pack_key_authorization import NativePackKeyVersionCeremony
 from core_runtime.pack_artifact_integrity import (
@@ -57,6 +61,46 @@ pytestmark = [
     pytest.mark.usefixtures("_deny_production_test_internet"),
     pytest.mark.skipif(os.name == "nt", reason="POSIX immutable baseline publication"),
 ]
+
+
+def _stage_baseline(
+    published: RetainedBundledHostBaseline,
+    target: Path,
+) -> Path:
+    """Stage every verified public byte with normal caller-owned authoring modes."""
+    before = {
+        path.relative_to(published.root).as_posix(): path.read_bytes()
+        for path in published.root.rglob("*")
+        if path.is_file()
+    }
+    source_modes = {
+        path.relative_to(published.root).as_posix(): path.stat().st_mode
+        for path in published.root.rglob("*")
+        if path.is_file()
+    }
+    shutil.copytree(published.root, target, copy_function=shutil.copyfile)
+    for path in target.rglob("*"):
+        if path.is_file():
+            path.chmod(0o644)  # Normalize only the new caller-owned public input.
+    after = {
+        path.relative_to(target).as_posix(): path.read_bytes()
+        for path in target.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+    assert source_modes == {
+        path.relative_to(published.root).as_posix(): path.stat().st_mode
+        for path in published.root.rglob("*")
+        if path.is_file()
+    }
+    assert all(
+        path.stat().st_mode & 0o777 == 0o644
+        for path in target.rglob("*")
+        if path.is_file()
+    )
+    assert compile_pack_root(target).artifact.digest == published.artifact_digest
+    assert compile_pack_root(published.root).artifact.digest == published.artifact_digest
+    return target
 
 
 def _release(previous: Path, target: Path, version: str, key: Any) -> Path:
@@ -127,7 +171,12 @@ def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     fixture = make_retention_fixture(tmp_path, monkeypatch)
     cache = _publish(fixture)
     key = Ed25519PrivateKey.generate()
-    selected = _release(cache, tmp_path / "selected", "99.0.0", key)
+    selected = _release(
+        _stage_baseline(cache, tmp_path / "sdk-baseline-input"),
+        tmp_path / "selected",
+        "99.0.0",
+        key,
+    )
     trust = tmp_path / "host-policy/publisher-trust.json"
     trust.parent.mkdir(mode=0o700)
     _install_policy(selected, trust, key)
@@ -752,7 +801,12 @@ def test_native_first_known_bundled_update_retains_canonical_path(
     fixture = make_retention_fixture(tmp_path, monkeypatch)
     cache = _publish(fixture)
     key = Ed25519PrivateKey.generate()
-    candidate = _release(cache, tmp_path / "first-successor", "99.0.0", key)
+    candidate = _release(
+        _stage_baseline(cache, tmp_path / "sdk-baseline-input"),
+        tmp_path / "first-successor",
+        "99.0.0",
+        key,
+    )
     public = tmp_path / "publisher.pem"
     public.write_bytes(
         key.public_key().public_bytes(
