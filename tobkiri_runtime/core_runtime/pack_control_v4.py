@@ -1485,7 +1485,9 @@ def _approval_read_identity(profile_id: str, pack_ids: tuple[str, ...]) -> str:
     return canonical_digest({
         "approvals": records,
         "revoked": sorted(revoked),
-        "key_identity": list(key_identity) if key_identity is not None else None,
+        "key_identity": (
+            [str(value) for value in key_identity] if key_identity is not None else None
+        ),
     })
 
 
