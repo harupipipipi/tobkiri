@@ -35,11 +35,14 @@ def _inputs(monkeypatch, tmp_path):
         profiles=catalog.profiles,
     )
 
-    def authenticated_merge(original, roots, *, artifact_pins):
+    def authenticated_merge(
+        original, roots, *, artifact_pins, retained_bundled_origin=None,
+    ):
         assert artifact_pins == {row["pack_id"]: row["artifact_digest"] for row in active.resolved.profile["packs"]}
         assert original is catalog
         assert set(roots) == {"base", "shell", "external"}
         assert runtime_user_data_root() == tmp_path
+        assert retained_bundled_origin is None
         return merged, set(roots)
 
     monkeypatch.setattr(pack_control_v4, "catalog_with_admitted_pack_closure", authenticated_merge)

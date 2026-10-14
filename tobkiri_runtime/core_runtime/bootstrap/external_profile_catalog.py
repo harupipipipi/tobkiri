@@ -1,10 +1,15 @@
 """Compose admitted external Packs for one already verified active Profile."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..authority.v4 import AuthorityDenied
+
+if TYPE_CHECKING:
+    from ..bundled_artifact_retention_v4 import BundledArtifactOrigin
 
 
 def catalog_for_verified_active_profile(
@@ -12,12 +17,13 @@ def catalog_for_verified_active_profile(
     active: Any,
     *,
     user_data: Path,
+    retained_bundled_origin: BundledArtifactOrigin | None = None,
 ) -> Any:
-    """Retain exact active external pins without replacing bundled authority.
+    """Retain exact active pins without replacing bundled authority.
 
     The caller must first revalidate the persisted activation against Authority.
-    Admission/CAS verification remains owned by the existing catalog loader;
-    this function adds no approval, grant, Profile definition, or route.
+    Admission/CAS and explicitly retained-origin verification stay in their
+    existing loaders; this function adds no approval, grant, or Profile route.
     """
     from ..pack_control_v4 import catalog_with_admitted_pack_closure
     from .profile_capture import runtime_user_data_scope
@@ -37,6 +43,7 @@ def catalog_for_verified_active_profile(
     with runtime_user_data_scope(user_data):
         merged, _closure = catalog_with_admitted_pack_closure(
             catalog, sorted(selected_ids), artifact_pins=artifact_pins,
+            retained_bundled_origin=retained_bundled_origin,
         )
 
     # Include transitively admitted dependencies, even when a Pack has no

@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
 from tobkiri_host.errors import HostCoreError
 from tobkiri_protocol.canonical import canonical_digest
@@ -32,6 +32,9 @@ from .external_pack_catalog_v4 import (
 )
 from .profile_runtime_port import require_profile_runtime
 from .active_profile_store_v4 import ActiveProfilePointer
+
+if TYPE_CHECKING:
+    from .bundled_artifact_retention_v4 import BundledArtifactOrigin
 
 logger = logging.getLogger(__name__)
 
@@ -1444,6 +1447,15 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _capture_binding(active: Any | None = None) -> _Binding:
+    if active is None:
+        from .bootstrap.profile_capture import capture_active_profile
+
+        try:
+            active = capture_active_profile()
+        except Exception as error:
+            raise PackControlDigestMismatch(
+                "active v4 Profile session is missing or invalid"
+            ) from error
     state, profile = _active_profile(active)
     resolved_profile = state["resolved_profile"]
     profile_revision = "sha256:" + _digest(resolved_profile)
@@ -1451,13 +1463,19 @@ def _capture_binding(active: Any | None = None) -> _Binding:
     if not selected or len(selected) != len(set(selected)):
         raise PackControlDigestMismatch("active v4 Profile effective set is empty or duplicated")
     from .admitted_pack_read_v4 import verified_pack_root_read
+    from .retained_bundled_context_v4 import (
+        retained_origin_for_verified_active_profile,
+    )
 
     pins = {
         str(item["identity"]): str(item["artifact_digest"])
         for item in state["resolved_plan"]["effective_set"]
     }
     try:
-        with verified_pack_root_read(pins) as roots:
+        origin = retained_origin_for_verified_active_profile(
+            active, user_data_root=_user_data_root(),
+        )
+        with verified_pack_root_read(pins, origin=origin) as roots:
             catalog_revision = control_catalog_revision()
             catalog = load_pack_catalog()
             if any(pack_id not in catalog for pack_id in selected):
@@ -1643,9 +1661,13 @@ def _active_profile(
 
 
 def catalog_with_admitted_pack_closure(
-    catalog: Any, pack_ids: list[str], *, artifact_pins: Mapping[str, str] | None = None,
+    catalog: Any,
+    pack_ids: list[str],
+    *,
+    artifact_pins: Mapping[str, str] | None = None,
+    retained_bundled_origin: BundledArtifactOrigin | None = None,
 ) -> tuple[Any, set[str]]:
-    """Extend a verified catalog only with admitted Pack manifests and dependencies."""
+    """Extend a catalog with admitted or explicitly retained active Pack bytes."""
     external_packs = dict(catalog.packs)
     pending = list(dict.fromkeys(pack_ids))
     requested_closure: set[str] = set()
@@ -1662,7 +1684,13 @@ def catalog_with_admitted_pack_closure(
             record = load_pack_catalog(artifact_pins).get(pack_id)
             if record is None:
                 raise PackControlInvalidRequest("Pack is absent from the canonical v4 catalog")
-            root = resolve_pack_root(pack_id, artifact_digest=selected_digest)
+            root_options = (
+                {"origin": retained_bundled_origin}
+                if retained_bundled_origin is not None else {}
+            )
+            root = resolve_pack_root(
+                pack_id, artifact_digest=selected_digest, **root_options,
+            )
             manifest_path = root / "pack.v4.json"
             if manifest_path.is_symlink() or not manifest_path.is_file():
                 raise PackControlDigestMismatch("Pack v4 manifest is unavailable")
@@ -1673,6 +1701,14 @@ def catalog_with_admitted_pack_closure(
             external_normal = record.get("authority") == "host-signed-external-normal-v4"
             external_host = (
                 record.get("authority") == "host-signed-external-host-extension-v4"
+            )
+            retained_bundled_host = (
+                retained_bundled_origin is not None
+                and record.get("authority") == "v4-authoritative"
+                and record.get("kind") == "host_extension"
+                and selected_digest is not None
+                and dict(retained_bundled_origin.pack_pins).get(pack_id)
+                == selected_digest
             )
             predecessor = catalog.packs.get(pack_id)
             if manifest["pack"]["id"] != pack_id or (
@@ -1685,7 +1721,7 @@ def catalog_with_admitted_pack_closure(
             ) or (
                 manifest["pack"]["kind"] == "host_extension"
                 and (
-                    not external_host
+                    not (external_host or retained_bundled_host)
                     or selected_digest is None
                     or predecessor is None
                     or predecessor["pack"]["kind"] != "host_extension"
@@ -1695,7 +1731,10 @@ def catalog_with_admitted_pack_closure(
                     != "host_brokered"
                     or record.get("kind") != "host_extension"
                     or manifest["pack"]["artifact_digest"] != selected_digest
-                    or selected_digest != record.get("artifact_digest")
+                    or (
+                        external_host
+                        and selected_digest != record.get("artifact_digest")
+                    )
                 )
             ) or (
                 external_host and manifest["pack"]["kind"] != "host_extension"
@@ -1707,7 +1746,14 @@ def catalog_with_admitted_pack_closure(
             dependency for dependency in sorted(dependencies) if dependency not in requested_closure
         )
     runtime = require_profile_runtime()
-    return runtime.catalog_with_packs(catalog, external_packs), requested_closure
+    catalog_options = (
+        {"retained_bundled_origin": retained_bundled_origin}
+        if retained_bundled_origin is not None else {}
+    )
+    return (
+        runtime.catalog_with_packs(catalog, external_packs, **catalog_options),
+        requested_closure,
+    )
 
 
 def resolve_profile_pack_set(

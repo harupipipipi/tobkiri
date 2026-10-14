@@ -11,7 +11,10 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Mapping, Protocol
+
+if TYPE_CHECKING:
+    from .bundled_artifact_retention_v4 import BundledArtifactOrigin
 
 
 class ProfileRuntimeUnavailable(RuntimeError):
@@ -117,7 +120,13 @@ class ProfileRuntimePort(Protocol):
     def load_catalog(self, root: Path) -> Any:
         """Load the sealed application Profile catalog."""
 
-    def catalog_with_packs(self, catalog: Any, packs: Mapping[str, Any]) -> Any:
+    def catalog_with_packs(
+        self,
+        catalog: Any,
+        packs: Mapping[str, Any],
+        *,
+        retained_bundled_origin: BundledArtifactOrigin | None = None,
+    ) -> Any:
         """Return a catalog retaining its concrete immutable record type."""
 
     def catalog_with_profiles(
