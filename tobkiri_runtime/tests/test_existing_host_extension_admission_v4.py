@@ -353,7 +353,7 @@ def test_proof_denies_forged_foreign_closed_thread_and_new_slots(
                 pytest.raises(BundledArtifactRetentionDenied, match="another Host owner"),
             ):
                 proof.validate()
-    with pytest.raises(ValueError, match="closed"):
+    with pytest.raises(ValueError, match="not issued"):
         proof.validate()
     with pytest.raises(ValueError, match="unknown"):
         with existing._existing_slot_proof(
@@ -903,7 +903,9 @@ def test_closed_or_foreign_proof_cannot_touch_admission_locks(
         bundle_root=owner.fixture.bundle,
         pack_id=PACK_ID,
     ) as proof:
-        with runtime_user_data_scope(owner.root / "foreign-owner"):
+        foreign = owner.root / "foreign-owner"
+        foreign.mkdir()
+        with runtime_user_data_scope(foreign):
             with pytest.raises((ValueError, RuntimeError)):
                 proof.admit(owner.candidate)
     with pytest.raises(ValueError, match="issued proof"):
