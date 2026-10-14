@@ -293,3 +293,112 @@ def test_authority_changed_during_connection_cannot_send_credentials(
     assert not any(
         thread.name == "tobkiri-http-deadline" for thread in threading.enumerate()
     )
+
+
+@pytest.mark.parametrize("phase", ["headers", "body"])
+@pytest.mark.parametrize("ending", ["cancel", "deadline", "revocation"])
+def test_stream_diagnostics_observe_real_tls_interruption_without_secret_or_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tls_server: tuple[ssl.SSLContext, Path], caplog: pytest.LogCaptureFixture,
+    phase: str, ending: str,
+) -> None:
+    """Watchdog observations survive socket EOF and remain separate from policy."""
+    import json
+    import logging
+
+    tls, certificate = tls_server
+    entered, release = threading.Event(), threading.Event()
+    received = []
+    canary = "diagnostic-tls-secret-canary"
+
+    def stall(handler: BaseHTTPRequestHandler) -> None:
+        received.append(handler.headers.get("Authorization"))
+        if phase == "body":
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/event-stream")
+            handler.end_headers()
+            handler.wfile.write(b'data: {"choices":[]}\n\n')
+            handler.wfile.flush()
+        entered.set()
+        release.wait(5)
+
+    context = ssl.create_default_context(cafile=str(certificate))
+    monkeypatch.setattr(ssl, "create_default_context", lambda **_kwargs: context)
+    _pin_test_network(monkeypatch)
+    caplog.set_level(logging.WARNING, logger="core_runtime.request_failure_diagnostics")
+    with _server(stall, tls) as origin:
+        owner, arguments = _https_transport(tmp_path, secret=canary, endpoint_origin=origin)
+        owner._envelope = replace(
+            owner._envelope,
+            deadline_monotonic=time.monotonic() + (0.5 if ending == "deadline" else 4),
+        )
+        worker, done, errors = _call(lambda: owner.stream_json(**arguments, on_event=lambda _: None))
+        try:
+            assert entered.wait(2)
+            if ending == "cancel":
+                owner._envelope.cancellation_requested.set()
+            elif ending == "revocation":
+                owner._authority_store.revoke(
+                    target_kind="function_principal",
+                    target_id=owner._binding.provider_principal_id, reason="fixture",
+                )
+            assert done.wait(2) and len(errors) == 1
+            assert isinstance(errors[0], transport.CredentialTransportDenied)
+            records = [json.loads(record.message) for record in caplog.records if record.name == "core_runtime.request_failure_diagnostics"]
+            assert len(records) == 1
+            assert records[0]["stage"] == phase
+            assert records[0]["reason"] == {
+                "cancel": "cancelled", "deadline": "timeout", "revocation": "policy",
+            }[ending]
+            assert canary not in caplog.text and origin not in caplog.text
+            assert received == ["Bearer " + canary]
+        finally:
+            release.set()
+            worker.join(3)
+    assert not worker.is_alive()
+    assert not any(thread.name == "tobkiri-http-deadline" for thread in threading.enumerate())
+
+
+@pytest.mark.parametrize("failure", ["redirect", "rate_limit", "malformed", "eof", "drop"])
+def test_real_tls_stream_failure_has_finite_stage_and_no_post_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tls_server: tuple[ssl.SSLContext, Path], caplog: pytest.LogCaptureFixture,
+    failure: str,
+) -> None:
+    """Observe HTTP, decoder and lost-header failures through the production path."""
+    import json
+
+    tls, certificate = tls_server
+    received = []
+
+    def reply(handler: BaseHTTPRequestHandler) -> None:
+        received.append(handler.path)
+        if failure == "drop":
+            handler.close_connection = True
+            handler.connection.shutdown(socket.SHUT_RDWR)
+            return
+        status = {"redirect": 302, "rate_limit": 429}.get(failure, 200)
+        handler.send_response(status)
+        handler.send_header("Content-Type", "text/event-stream")
+        body = b'data: {"secret":"response-canary"}\n\n' if failure == "eof" else b'data: secret-response-canary\n\n'
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    context = ssl.create_default_context(cafile=str(certificate))
+    monkeypatch.setattr(ssl, "create_default_context", lambda **_kwargs: context)
+    _pin_test_network(monkeypatch)
+    with _server(reply, tls) as origin:
+        owner, arguments = _https_transport(tmp_path, secret="diagnostic-key-canary", endpoint_origin=origin)
+        with pytest.raises(transport.CredentialTransportDenied):
+            owner.stream_json(**arguments, on_event=lambda _: None)
+    records = [json.loads(record.message) for record in caplog.records if record.name == "core_runtime.request_failure_diagnostics"]
+    assert len(records) == 1
+    assert records[0]["reason"] == {
+        "redirect": "http_status", "rate_limit": "http_status",
+        "malformed": "parser", "eof": "parser", "drop": "network",
+    }[failure]
+    assert records[0]["stage"] == {"malformed": "decode", "eof": "finalize"}.get(failure, "headers")
+    assert records[0]["http_bucket"] == {"redirect": "redirect", "rate_limit": "rate_limit"}.get(failure, "none")
+    assert len(received) == 1
+    assert "canary" not in caplog.text and origin not in caplog.text

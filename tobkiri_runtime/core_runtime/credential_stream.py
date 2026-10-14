@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any, Callable, Iterator, Mapping
 
 from tobkiri_protocol.provider_sse_v1 import SSEDecoder
+from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
 
 
 class StreamSecretFilter:
@@ -76,6 +77,7 @@ def received_sse(
     secret: str = "",
     sanitize: Callable[[Any, str], Any] | None = None,
     guard: Callable[[], None],
+    diagnostics: RequestFailureDiagnostics | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield sanitized actual frames while the owned response is still open."""
 
@@ -83,12 +85,18 @@ def received_sse(
     reader = getattr(response, "read1", None) or response.read
     terminal = False
     while True:
+        if diagnostics is not None:
+            diagnostics.stage("body")
         guard()
         chunk = reader(4096)
         guard()
         if not chunk:
             break
+        if diagnostics is not None:
+            diagnostics.stage("decode")
         for record in decoder.feed(chunk):
+            if diagnostics is not None:
+                diagnostics.stage("decode")
             guard()
             if terminal:
                 raise ValueError("provider stream has data after its terminal event")
@@ -105,6 +113,8 @@ def received_sse(
             yield clean
         if terminal:
             break
+    if diagnostics is not None:
+        diagnostics.stage("finalize")
     decoder.finish()
     if not terminal:
         raise ValueError("provider stream ended without a terminal event")

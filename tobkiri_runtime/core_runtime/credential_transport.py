@@ -42,6 +42,7 @@ from core_runtime.executable_trust import (
     trusted_executable_path,
 )
 from core_runtime.http_request_lifetime import HttpRequestLifetime
+from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
 from tobkiri_host.broker import RequestEnvelope
 
 
@@ -378,18 +379,20 @@ class HostBoundCredentialTransport:
     ) -> dict[str, Any]:
         """Deliver sanitized received frames before closing the one owned request."""
         code = "provider_failure"
+        diagnostics = RequestFailureDiagnostics(self._binding.request_id)
         try:
             return self._post_json(
                 endpoint=endpoint, headers=headers, body=body,
                 credential_handle=credential_handle,
                 provider_instance_id=provider_instance_id,
                 credential_scope=credential_scope, credential_scheme=credential_scheme,
-                deadline=deadline, on_event=on_event,
+                deadline=deadline, on_event=on_event, diagnostics=diagnostics,
             )
         except CredentialTransportDenied as error:
+            diagnostics.failure(error)
             code = error.code
-        except Exception:
-            pass
+        except Exception as error:
+            diagnostics.failure(error)
         raise CredentialTransportDenied(code)
 
     def _post_json(
@@ -404,6 +407,7 @@ class HostBoundCredentialTransport:
         credential_scheme: str,
         deadline: float,
         on_event: Callable[[Mapping[str, Any]], None] | None = None,
+        diagnostics: RequestFailureDiagnostics | None = None,
     ) -> dict[str, Any]:
         """Consume the sealed lease and perform one credentialed HTTP request."""
         now = self._clock()
@@ -512,24 +516,36 @@ class HostBoundCredentialTransport:
                 if not self._authority_still_active():
                     raise CredentialTransportDenied("binding_invalid")
             timeout = min(60.0, remaining)
+            diagnostic_arguments = (
+                {"diagnostics": diagnostics} if diagnostics is not None else {}
+            )
             with self._opener(
                 request, timeout=timeout,
                 deadline=deadline_started + initial_remaining,
                 cancellation=self._envelope.cancellation_requested,
                 clock=self._monotonic_clock,
                 authority_check=self._authority_still_active,
+                **diagnostic_arguments,
             ) as response:
                 if on_event is not None:
                     from core_runtime.credential_stream import received_sse
 
                     def guard() -> None:
                         if not self._authority_still_active():
+                            if diagnostics is not None:
+                                diagnostics.interrupted(
+                                    "cancelled" if self._envelope.cancellation_requested.is_set()
+                                    else "policy"
+                                )
                             raise CredentialTransportDenied("binding_invalid")
 
                     for event in received_sse(
                         response, secret=secret_text,
                         sanitize=_sanitize_json_response, guard=guard,
+                        diagnostics=diagnostics,
                     ):
+                        if diagnostics is not None:
+                            diagnostics.stage("normalize")
                         on_event(event)
                     guard()
                     audit_status = "completed"
@@ -550,17 +566,25 @@ class HostBoundCredentialTransport:
                 raise CredentialTransportDenied("binding_invalid")
             audit_status = "completed"
             return sanitized
-        except CredentialTransportDenied:
+        except CredentialTransportDenied as exc:
+            if diagnostics is not None:
+                diagnostics.failure(exc)
             audit_status = "denied"
             raise
         except urllib.error.HTTPError as exc:
+            if diagnostics is not None:
+                diagnostics.failure(exc)
             if 300 <= exc.code < 400:
                 raise CredentialTransportDenied("credential transport denied") from None
             code = "quota" if exc.code == 429 else "provider_unavailable"
             raise RuntimeError(f"{code}: provider HTTP {exc.code}") from None
-        except (KeyError, PermissionError, UnicodeError, ValueError):
+        except (KeyError, PermissionError, UnicodeError, ValueError) as exc:
+            if diagnostics is not None:
+                diagnostics.failure(exc)
             raise CredentialTransportDenied("response_invalid") from None
-        except Exception:
+        except Exception as exc:
+            if diagnostics is not None:
+                diagnostics.failure(exc)
             raise CredentialTransportDenied("provider_failure") from None
         finally:
             _clear_material(material)
@@ -1160,6 +1184,8 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
 
     def connect(self) -> None:
         """Connect to the vetted IP while authenticating the original hostname."""
+        if self._lifetime.diagnostics is not None:
+            self._lifetime.diagnostics.stage("connect")
         raw_socket = socket.create_connection(
             (self._resolved_ip, self.port),
             self._lifetime.remaining(),
@@ -1167,6 +1193,8 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         )
         try:
             self._lifetime.attach(raw_socket)
+            if self._lifetime.diagnostics is not None:
+                self._lifetime.diagnostics.stage("tls")
             self.sock = self._pinned_context.wrap_socket(
                 raw_socket, server_hostname=self.host, do_handshake_on_connect=False,
             )
@@ -1226,11 +1254,12 @@ def _open_pinned_request(
     cancellation: Event | None = None,
     clock: Callable[[], float] = time.monotonic,
     authority_check: Callable[[], bool] | None = None,
+    diagnostics: RequestFailureDiagnostics | None = None,
 ) -> JsonResponse:
     """Open one non-redirecting request to an egress-vetted, DNS-pinned peer."""
     lifetime = HttpRequestLifetime(
         timeout=timeout, deadline=deadline, cancellation=cancellation, clock=clock,
-        authority_check=authority_check,
+        authority_check=authority_check, diagnostics=diagnostics,
     )
     try:
         return _open_pinned_response(
@@ -1253,9 +1282,13 @@ def _open_pinned_response(
     if host is None:
         raise CredentialTransportDenied("credential transport denied")
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if lifetime.diagnostics is not None:
+        lifetime.diagnostics.stage("dns")
     try:
         resolved = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError:
+    except OSError as exc:
+        if lifetime.diagnostics is not None:
+            lifetime.diagnostics.failure(exc)
         raise CredentialTransportDenied("credential transport denied") from None
     lifetime.check()
     addresses = tuple(dict.fromkeys(str(item[4][0]) for item in resolved))
@@ -1288,6 +1321,8 @@ def _open_pinned_response(
             )
         try:
             # Address failover is safe only before any HTTP request bytes.
+            if lifetime.diagnostics is not None:
+                lifetime.diagnostics.stage("connect")
             connection.connect()
         except OSError as exc:
             connection.close()
@@ -1304,7 +1339,11 @@ def _open_pinned_response(
             if authority_check is not None and not authority_check():
                 raise CredentialTransportDenied("binding_invalid")
             lifetime.check()
+            if lifetime.diagnostics is not None:
+                lifetime.diagnostics.stage("send")
             connection.request(request.get_method(), path, body=body, headers=headers)
+            if lifetime.diagnostics is not None:
+                lifetime.diagnostics.stage("headers")
             response = connection.getresponse()
             lifetime.check()
         except BaseException:
@@ -1319,6 +1358,10 @@ def _open_pinned_response(
         if 300 <= response.status < 400:
             response.close()
             connection.close()
+            if lifetime.diagnostics is not None:
+                lifetime.diagnostics.failure(urllib.error.HTTPError(
+                    "", 300, "", Message(), None,
+                ))
             raise CredentialTransportDenied("credential transport denied")
         if response.status >= 400:
             status = response.status

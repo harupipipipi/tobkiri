@@ -9,6 +9,8 @@ import threading
 import time
 from typing import Callable
 
+from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
+
 
 class HttpRequestLifetime:
     """Keep DNS, connect, headers and body within one request's original budget.
@@ -23,6 +25,7 @@ class HttpRequestLifetime:
         cancellation: threading.Event | None = None,
         clock: Callable[[], float] = time.monotonic,
         authority_check: Callable[[], bool] | None = None,
+        diagnostics: RequestFailureDiagnostics | None = None,
     ) -> None:
         now = clock()
         if not math.isfinite(timeout) or timeout <= 0:
@@ -32,6 +35,7 @@ class HttpRequestLifetime:
         )
         if not math.isfinite(self._deadline):
             raise ValueError("HTTP request deadline is invalid")
+        self._diagnostics = diagnostics
         self._clock = clock
         self._authority_check = authority_check
         self._cancellation = cancellation or threading.Event()
@@ -49,18 +53,30 @@ class HttpRequestLifetime:
         self.check()
         self._watcher.start()
 
+    @property
+    def diagnostics(self) -> RequestFailureDiagnostics | None:
+        """Return only the request-owned finite observation callback."""
+        return self._diagnostics
+
     def check(self) -> None:
         """Reject expired or cancelled work before its next external effect."""
         if self._clock() >= self._deadline:
+            self._observe("timeout")
             raise TimeoutError("HTTP request deadline elapsed")
         if (
             self._done.is_set()
             or self._interrupted.is_set()
             or self._cancellation.is_set()
         ):
+            self._observe("cancelled")
             raise InterruptedError("HTTP request cancelled")
         if not self._authorized():
+            self._observe("policy")
             raise PermissionError("HTTP request authority is no longer active")
+
+    def _observe(self, reason: str) -> None:
+        if self._diagnostics is not None:
+            self._diagnostics.interrupted(reason)
 
     def _authorized(self) -> bool:
         try:
@@ -88,11 +104,13 @@ class HttpRequestLifetime:
 
     def _watch(self) -> None:
         while not self._done.wait(0.025):
-            if (
-                self._cancellation.is_set()
-                or self._clock() >= self._deadline
-                or not self._authorized()
-            ):
+            reason = (
+                "cancelled" if self._cancellation.is_set() else
+                "timeout" if self._clock() >= self._deadline else
+                "policy" if not self._authorized() else None
+            )
+            if reason is not None:
+                self._observe(reason)
                 with self._lock:
                     self._interrupted.set()
                     if self._socket is not None:

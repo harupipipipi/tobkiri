@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Mapping
 
+from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
+
 from core_runtime.global_contract_dispatch import (
     GlobalContractInvocationError, HostGenerationBudgetError,
 )
@@ -256,6 +258,7 @@ def stream_request(
     scheme: str = "bearer",
     protocol: str = "openai",
     local: bool = False,
+    diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     """Own one transport and publish only its sanitized received display frames."""
     cursor = 0
@@ -264,6 +267,8 @@ def stream_request(
         nonlocal cursor
         if request.get("progress_id") is not None:
             cursor += 1
+            if diagnostics is not None:
+                diagnostics.stage("progress_publish")
             client.invoke(
                 ACTION,
                 ACTION_OPERATION,
@@ -274,10 +279,26 @@ def stream_request(
                     "event": dict(event),
                 },
             )
+            if diagnostics is not None:
+                diagnostics.stage("normalize")
 
     stream = ProviderStream(protocol, publish)
+    def receive(frame: Mapping[str, Any]) -> None:
+        if diagnostics is not None:
+            diagnostics.stage("normalize")
+        try:
+            stream.receive(frame)
+        except Exception as error:
+            if diagnostics is not None:
+                diagnostics.failure(error)
+            raise
+        if diagnostics is not None:
+            diagnostics.stage("body")
+
     try:
         if request.get("progress_id") is not None:
+            if diagnostics is not None:
+                diagnostics.stage("progress_claim")
             client.invoke(
                 ACTION,
                 ACTION_OPERATION,
@@ -286,12 +307,14 @@ def stream_request(
                     "progress_id": request["progress_id"],
                 },
             )
+        if diagnostics is not None:
+            diagnostics.stage("body")
         if local:
             client.stream_local_model_chat(
                 provider_instance_id=connection["provider_instance_id"],
                 body=body,
                 deadline=float(request.get("deadline") or 0),
-                on_event=stream.receive,
+                on_event=receive,
             )
         else:
             client.stream_json_with_credential(
@@ -303,12 +326,18 @@ def stream_request(
                 credential_scope=credential_scope,
                 credential_scheme=scheme,
                 deadline=float(request.get("deadline") or 0),
-                on_event=stream.receive,
+                on_event=receive,
             )
+        if diagnostics is not None:
+            diagnostics.stage("finalize")
         return stream.result()
-    except HostGenerationBudgetError:
+    except HostGenerationBudgetError as error:
+        if diagnostics is not None:
+            diagnostics.failure(error, reason="policy")
         raise GlobalContractInvocationError(
             "generation_budget_denied", "Host generation budget denied",
         ) from None
-    except (OSError, PermissionError, RuntimeError, ValueError, TypeError):
+    except (OSError, PermissionError, RuntimeError, ValueError, TypeError) as error:
+        if diagnostics is not None:
+            diagnostics.failure(error)
         raise GlobalContractInvocationError("stream_failed", "provider stream failed") from None

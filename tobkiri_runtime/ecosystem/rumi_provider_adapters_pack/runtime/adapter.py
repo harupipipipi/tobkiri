@@ -24,6 +24,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from core_runtime.http_request_lifetime import HttpRequestLifetime
+from core_runtime.request_failure_diagnostics import RequestFailureDiagnostics
 from ecosystem.rumi_provider_registry_pack.runtime.model_access import (
     compile_connection_parameters,
 )
@@ -81,8 +82,9 @@ def _operation(
     streaming: bool,
     cancellation: threading.Event | None = None,
     deadline: float | None = None,
+    diagnostics: RequestFailureDiagnostics | None = None,
 ) -> Callable[[str, Mapping[str, Any]], dict[str, Any]]:
-    def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def execute(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         allowed = {"invoke", "stream" if streaming else "generate"}
         if name not in allowed:
             raise ValueError(f"unknown provider adapter operation: {name}")
@@ -112,8 +114,17 @@ def _operation(
             credential_handle,
             "ai.stream" if streaming else "ai.generate",
             streaming,
+            diagnostics=diagnostics,
             **local_lifetime,
         )
+
+    def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            return execute(name, payload)
+        except Exception as error:
+            if diagnostics is not None:
+                diagnostics.failure(error)
+            raise
 
     return operation
 
@@ -289,6 +300,7 @@ def _openai_compatible(
     credential_handle: str,
     credential_scope: str,
     streaming: bool,
+    *, diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     endpoint = _endpoint(connection, "/chat/completions")
     parameters = compile_chat_parameters(
@@ -308,6 +320,7 @@ def _openai_compatible(
         return stream_request(
             client, request, connection, body=body, endpoint=endpoint, headers=headers,
             credential_handle=credential_handle, credential_scope=credential_scope,
+            diagnostics=diagnostics,
         )
     value = _post(
         client,
@@ -345,6 +358,7 @@ def _local_openai_compatible(
     *,
     cancellation: threading.Event | None = None,
     deadline: float | None = None,
+    diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     """Call one registry-bound loopback OpenAI chat endpoint without a secret."""
     del client, credential_scope
@@ -501,6 +515,7 @@ def _anthropic(
     credential_handle: str,
     credential_scope: str,
     streaming: bool,
+    *, diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     endpoint = _endpoint(connection, "/messages")
     parameters = dict(request.get("parameters") or {})
@@ -519,7 +534,7 @@ def _anthropic(
         return stream_request(
             client, request, connection, body=body, endpoint=endpoint, headers=headers,
             credential_handle=credential_handle, credential_scope=credential_scope,
-            scheme="anthropic", protocol="anthropic",
+            scheme="anthropic", protocol="anthropic", diagnostics=diagnostics,
         )
     value = _post(
         client,
@@ -768,6 +783,13 @@ class ProviderAdapterHostFactoryV4:
                     streaming=operation_factory is create_stream_operation,
                     cancellation=invocation.envelope.cancellation_requested,
                     deadline=invocation.envelope.deadline_monotonic,
+                    diagnostics=(RequestFailureDiagnostics(
+                        invocation.envelope.context.request_id,
+                        parent_request_id=(
+                            invocation.parent_invocation.envelope.context.request_id
+                            if invocation.parent_invocation is not None else None
+                        ),
+                    ) if operation_factory is create_stream_operation else None),
                 )
             else:
                 operation = operation_factory(client)
