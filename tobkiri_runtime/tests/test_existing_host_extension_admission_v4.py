@@ -848,3 +848,37 @@ def test_closed_or_foreign_proof_cannot_touch_admission_locks(
                 proof.admit(owner.candidate)
     with pytest.raises(ValueError, match="issued proof"):
         proof.admit(owner.candidate)
+
+
+def test_source_known_but_frozen_absent_host_slot_cannot_use_generic_native(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable Source knowledge cannot create a new frozen Native Host slot."""
+    make_retention_fixture(tmp_path, monkeypatch)
+    pack_id = "new.source.only.host"
+    source = tmp_path / "source-only-host"
+    source.mkdir()
+    (source / "pack.v4.json").write_bytes(
+        canonical_json(
+            {
+                "pack": {"id": pack_id, "kind": "host_extension"},
+            }
+        )
+    )
+    catalog = onboarding.load_pack_catalog()
+    monkeypatch.setattr(
+        onboarding,
+        "load_pack_catalog",
+        lambda: {
+            **catalog,
+            pack_id: {"pack_id": pack_id, "kind": "host_extension"},
+        },
+    )
+
+    def forbidden_generic(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("new Source-only Host slot reached canonical Native admission")
+
+    monkeypatch.setattr(onboarding, "preview_signed_pack", forbidden_generic)
+    with pytest.raises((ValueError, RuntimeError)):
+        onboarding.preview_native_signed_pack(source, tmp_path / "key.pem")
