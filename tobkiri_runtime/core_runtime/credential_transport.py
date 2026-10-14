@@ -534,7 +534,8 @@ class HostBoundCredentialTransport:
                         if not self._authority_still_active(diagnostics):
                             if diagnostics is not None:
                                 diagnostics.interrupted(
-                                    "cancelled" if self._envelope.cancellation_requested.is_set()
+                                    "cancelled"
+                                    if self._envelope.cancellation_requested.is_set()
                                     else "policy"
                                 )
                             raise CredentialTransportDenied("binding_invalid")
