@@ -92,6 +92,7 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
 ) -> None:
     """A real blocking HTTP server proves progress before EOF; fences close IO."""
     release, sent, published, finished = Event(), Event(), Event(), Event()
+    buffered = Event()
     requests: list[dict[str, Any]] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -102,7 +103,7 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            self.wfile.write(_frame("first"))
+            self.wfile.write(_frame("first") + _frame(" buffered"))
             self.wfile.flush()
             sent.set()
             release.wait(5)
@@ -153,6 +154,11 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
     stream = ProviderStream("openai", publish)
     failures: list[Exception] = []
 
+    def receive(frame: Any) -> None:
+        stream.receive(frame)
+        if stream.text == ["first", " buffered"]:
+            buffered.set()
+
     def run() -> None:
         try:
             transport.stream_chat(
@@ -163,7 +169,7 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
                     "messages": [{"role": "user", "content": "hello"}],
                     "stream": True,
                 },
-                on_event=stream.receive,
+                on_event=receive,
             )
         except Exception as error:
             failures.append(error)
@@ -173,7 +179,7 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
     worker = Thread(target=run, daemon=True)
     worker.start()
     try:
-        assert sent.wait(2) and published.wait(2)
+        assert sent.wait(2) and published.wait(2) and buffered.wait(2)
         page = journal.read(identity, owner="owner", capture="capture", cursor=0)
         assert page["events"] == [
             {"cursor": 1, "event": {"type": "text_delta", "delta": "first"}}
@@ -193,13 +199,19 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
         if interrupt:
             # The server still blocks: the lease watchdog must interrupt actual IO.
             assert finished.wait(2) and failures and not release.is_set()
-            assert not journal.read(
+            interrupted_page = journal.read(
                 identity, owner="owner", capture="capture", cursor=0
-            )["provider_complete"]
+            )
+            assert not interrupted_page["provider_complete"]
+            # Cancellation/revocation must discard the pending display batch,
+            # even though its actual provider frame was already received.
+            assert interrupted_page["events"] == page["events"]
+            with pytest.raises(ValueError, match="did not complete"):
+                stream.result()
         else:
             release.set()
             assert finished.wait(2) and not failures
-            assert stream.result()["output"] == "first second"
+            assert stream.result()["output"] == "first buffered second"
         assert len(requests) == 1 and requests[0]["stream"] is True
         with pytest.raises(PermissionError, match="consumed"):
             transport.stream_chat(
