@@ -14,8 +14,9 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Protocol
 
 from tobkiri_host.errors import HostCoreError
 from tobkiri_protocol.canonical import canonical_digest
@@ -37,6 +38,7 @@ from .profile_operation_timing import (
     timed_profile_control_operation,
     timed_profile_reader,
 )
+from ._pack_catalog_read import _CatalogRead, _catalog_metadata_read
 
 if TYPE_CHECKING:
     from .bundled_artifact_retention_v4 import BundledArtifactOrigin
@@ -1159,9 +1161,10 @@ class CapturedPackCatalogReader:
     def read(self) -> dict[str, Any]:
         """Read the catalog only while the committed snapshot remains current."""
 
-        if _capture_binding() != self._binding:
-            raise PackControlStaleRevision("captured Profile session is stale")
-        return _catalog_payload(self._binding)
+        with _physical_catalog_read() as (read, active):
+            if _capture_binding(active, _read=read) != self._binding:
+                raise PackControlStaleRevision("captured Profile session is stale")
+            return _catalog_payload(self._binding, active_snapshot=active, _read=read)
 
 
 def capture_pack_catalog_reader() -> CapturedPackCatalogReader:
@@ -1194,15 +1197,23 @@ def _catalog_payload(
     binding: _Binding,
     *,
     active_snapshot: Any | None = None,
+    _read: _CatalogRead | None = None,
 ) -> dict[str, Any]:
-    installed = _read_control_state(binding.profile_id)
-    state, active_profile = _active_profile(active_snapshot)
+    installed = (
+        _read_control_state(binding.profile_id, read_only=True)
+        if _read is not None else _read_control_state(binding.profile_id)
+    )
+    state, active_profile = _active_profile(active_snapshot, _read=_read)
     active = set(active_profile.get("packs") or [])
     active_artifacts = {
         str(item["identity"]): str(item["artifact_digest"])
         for item in state["resolved_plan"]["effective_set"]
     }
-    active_grant_bindings = _active_grant_bindings(state)
+    grant_inspection: dict[str, Any] = {}
+    active_grant_bindings = (
+        _active_grant_bindings(state, _inspection=grant_inspection)
+        if _read is not None else _active_grant_bindings(state)
+    )
     required_pack_ids = _required_profile_pack_ids(
         binding.profile_id,
         active_snapshot=active_snapshot,
@@ -1213,7 +1224,12 @@ def _catalog_payload(
         if isinstance(item, Mapping)
     }
     packs = []
-    for pack_id, record in sorted(load_pack_catalog().items()):
+    records = _read.catalog() if _read is not None else load_pack_catalog()
+    approval_identity = (
+        _approval_read_identity(binding.profile_id, tuple(records))
+        if _read is not None else None
+    )
+    for pack_id, record in sorted(records.items()):
         is_installed = pack_id in installed or pack_id in active
         if pack_id in installed:
             _require_install_binding(pack_id, record, installed[pack_id], binding)
@@ -1230,6 +1246,7 @@ def _catalog_payload(
                 pack_id,
                 record,
                 binding,
+                read_only=_read is not None,
             )
         status = "approved" if approved else "installed"
         declared_operations = _declared_operations(record)
@@ -1282,6 +1299,19 @@ def _catalog_payload(
                 **_binding_payload(binding),
             }
         )
+    if _read is not None:
+        final_grants: dict[str, Any] = {}
+        current_grant_bindings = _active_grant_bindings(state, _inspection=final_grants)
+        if (
+            _read_control_state(binding.profile_id, read_only=True) != installed
+            or current_grant_bindings != active_grant_bindings
+            or final_grants != grant_inspection
+            or _approval_read_identity(binding.profile_id, tuple(records))
+            != approval_identity
+        ):
+            raise PackControlStaleRevision(
+                "Pack control state, approvals or grants changed during read"
+            )
     return {"packs": packs, "count": len(packs), **_binding_payload(binding)}
 
 
@@ -1332,7 +1362,9 @@ def _required_profile_pack_ids(
     return frozenset(selected)
 
 
-def _active_grant_bindings(state: Mapping[str, Any]) -> set[tuple[str, str]]:
+def _active_grant_bindings(
+    state: Mapping[str, Any], *, _inspection: dict[str, Any] | None = None,
+) -> set[tuple[str, str]]:
     """Return current plan operations with a live, non-revoked Grant.
 
     A valid Pack approval file is necessary but not sufficient for an
@@ -1375,6 +1407,12 @@ def _active_grant_bindings(state: Mapping[str, Any]) -> set[tuple[str, str]]:
             revoked_grant_ids = authority.revoked_ids_for_kind(
                 "grant", (grant.grant_id for grant in grants)
             )
+            if _inspection is not None:
+                _inspection.update({
+                    "epoch": authority.security_epoch,
+                    "grants": canonical_digest([grant.to_dict() for grant in grants]),
+                    "revoked": sorted(revoked_grant_ids),
+                })
             for grant in grants:
                 if (
                     grant.revoked
@@ -1394,7 +1432,35 @@ def _active_grant_bindings(state: Mapping[str, Any]) -> set[tuple[str, str]]:
                     result.add((contracts[0], operations[0]))
             return result
     except Exception:
+        if _inspection is not None:
+            _inspection.clear()
+            _inspection["available"] = False
         return set()
+
+
+def _approval_read_identity(profile_id: str, pack_ids: tuple[str, ...]) -> str:
+    """Observe raw approval changes without caching their verification results."""
+    records: dict[str, str | None] = {}
+    for pack_id in pack_ids:
+        try:
+            raw = _approval_store(profile_id, create=False).read_bytes(
+                _approval_relative(profile_id, pack_id)
+            )
+            records[pack_id] = hashlib.sha256(raw).hexdigest()
+        except FileNotFoundError:
+            records[pack_id] = None
+        except (OSError, SecurePersistenceError, PackControlUnavailable):
+            records[pack_id] = "unreadable"
+    key_path = _user_data_root() / "pack_control" / ".authority_key"
+    try:
+        metadata = key_path.lstat()
+        key_identity: tuple[int, ...] | None = (
+            metadata.st_dev, metadata.st_ino, metadata.st_mode,
+            metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns,
+        )
+    except FileNotFoundError:
+        key_identity = None
+    return canonical_digest({"approvals": records, "key_identity": key_identity})
 
 
 def _capability_projection(record: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -1456,7 +1522,62 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def _capture_binding(active: Any | None = None) -> _Binding:
+def _require_catalog_read(read: _CatalogRead) -> None:
+    if type(read) is not _CatalogRead:
+        raise PackControlDigestMismatch("catalog read must be internally issued")
+    read.validate()
+
+
+def _active_read_identity(active: Any) -> str:
+    return canonical_digest({
+        "profile": active.resolved.profile, "plan": active.resolved.plan,
+        "lock": getattr(active.resolved, "lock", {}), "activation": active.activation,
+    })
+
+
+@contextmanager
+def _physical_catalog_read(
+    active: Any | None = None,
+) -> Iterator[tuple[_CatalogRead, Any]]:
+    """Share metadata only inside a fresh, fully revalidated physical read."""
+    from .bootstrap.profile_capture import (
+        capture_active_profile, invalidate_profile_capture_scope,
+    )
+    from .retained_bundled_context_v4 import retained_origin_for_verified_active_profile
+
+    root = _user_data_root()
+    try:
+        captured = capture_active_profile() if active is None else active
+        identity = _active_read_identity(captured)
+        pins = {
+            str(row["identity"]): str(row["artifact_digest"])
+            for row in captured.resolved.plan["effective_set"]
+        }
+        origin = retained_origin_for_verified_active_profile(captured, user_data_root=root)
+        with _catalog_metadata_read(
+            root, pins, origin=origin, active_identity=identity,
+        ) as read:
+            yield read, captured
+            if _user_data_root() != root or _active_read_identity(captured) != identity:
+                raise PackControlStaleRevision("active Profile read owner or snapshot changed")
+            invalidate_profile_capture_scope()
+            if _active_read_identity(capture_active_profile()) != identity:
+                raise PackControlStaleRevision("active Profile changed during read")
+    except PackControlDenied:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise PackControlDigestMismatch(
+            "active Profile Pack roots changed or are unavailable"
+        ) from error
+
+
+def _capture_binding(
+    active: Any | None = None, *, _read: _CatalogRead | None = None,
+) -> _Binding:
+    if _read is None:
+        with _physical_catalog_read(active) as (read, captured):
+            return _capture_binding(captured, _read=read)
+    _require_catalog_read(_read)
     if active is None:
         from .bootstrap.profile_capture import capture_active_profile
 
@@ -1466,41 +1587,28 @@ def _capture_binding(active: Any | None = None) -> _Binding:
             raise PackControlDigestMismatch(
                 "active v4 Profile session is missing or invalid"
             ) from error
-    state, profile = _active_profile(active)
+    state, profile = _active_profile(active, _read=_read)
     resolved_profile = state["resolved_profile"]
     profile_revision = "sha256:" + _digest(resolved_profile)
     selected = tuple(str(item or "").strip() for item in profile.get("packs") or [])
     if not selected or len(selected) != len(set(selected)):
         raise PackControlDigestMismatch("active v4 Profile effective set is empty or duplicated")
-    from .admitted_pack_read_v4 import verified_pack_root_read
-    from .retained_bundled_context_v4 import (
-        retained_origin_for_verified_active_profile,
-    )
-
-    pins = {
-        str(item["identity"]): str(item["artifact_digest"])
-        for item in state["resolved_plan"]["effective_set"]
-    }
     try:
-        origin = retained_origin_for_verified_active_profile(
-            active, user_data_root=_user_data_root(),
-        )
-        with verified_pack_root_read(pins, origin=origin) as roots:
-            catalog_revision = control_catalog_revision()
-            catalog = load_pack_catalog()
-            if any(pack_id not in catalog for pack_id in selected):
-                raise PackControlDigestMismatch(
-                    "active v4 Profile contains an unknown Pack"
-                )
-            for pack_id in selected:
-                roots.resolve(pack_id)
-            return _Binding(
-                profile_id=str(profile["profile_id"]),
-                workspace_id=str(profile.get("workspace_id") or profile["profile_id"]),
-                profile_revision=profile_revision,
-                plan_digest=str(state["resolved_plan"]["plan_digest"]),
-                catalog_revision=catalog_revision,
+        catalog_revision = _read.revision
+        catalog = _read.catalog()
+        if any(pack_id not in catalog for pack_id in selected):
+            raise PackControlDigestMismatch(
+                "active v4 Profile contains an unknown Pack"
             )
+        for pack_id in selected:
+            _read.resolve(pack_id)
+        return _Binding(
+            profile_id=str(profile["profile_id"]),
+            workspace_id=str(profile.get("workspace_id") or profile["profile_id"]),
+            profile_revision=profile_revision,
+            plan_digest=str(state["resolved_plan"]["plan_digest"]),
+            catalog_revision=catalog_revision,
+        )
     except PackControlDenied:
         raise
     except (OSError, RuntimeError, ValueError) as error:
@@ -1637,7 +1745,10 @@ def _verify_optional_pack_approvals(
 
 def _active_profile(
     active: Any | None = None,
+    *, _read: _CatalogRead | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    if _read is not None:
+        _require_catalog_read(_read)
     try:
         if active is None:
             from .bootstrap.profile_capture import capture_active_profile
@@ -1647,8 +1758,12 @@ def _active_profile(
         raise PackControlDigestMismatch(
             "active v4 Profile session is missing or invalid"
         ) from error
+    if _read is not None:
+        _read.require_active_identity(_active_read_identity(active))
     resolved = active.resolved.profile
-    installable_pack_ids = frozenset(load_pack_catalog())
+    installable_pack_ids = frozenset(
+        _read.catalog() if _read is not None else load_pack_catalog()
+    )
     profile = {
         "profile_id": resolved["profile_id"],
         "workspace_id": resolved["profile_id"],
@@ -2253,6 +2368,12 @@ def _read_control_state(profile_id: str, *, read_only: bool = False) -> dict[str
 def _read_control_envelope(profile_id: str, *, create: bool = True) -> dict[str, Any]:
     """Read the complete Profile-scoped control envelope without projecting it."""
 
+    if not create:
+        try:
+            (_user_data_root() / "pack_control").lstat()
+        except FileNotFoundError:
+            return {}
+
     try:
         store = _persistence_store(create=create)
         relative = _control_state_relative(profile_id)
@@ -2497,6 +2618,11 @@ def _approval_status(
     *,
     read_only: bool = False,
 ) -> tuple[bool, str | None]:
+    if read_only:
+        try:
+            (_user_data_root() / "pack_control/approvals" / binding.profile_id).lstat()
+        except FileNotFoundError:
+            return False, "approval_required"
     try:
         payload = json.loads(
             _approval_store(binding.profile_id, create=not read_only).read_bytes(
@@ -2505,6 +2631,10 @@ def _approval_status(
         )
     except FileNotFoundError:
         return False, "approval_required"
+    except PackControlUnavailable:
+        if not read_only:
+            raise
+        return False, "approval_unreadable"
     except (OSError, SecurePersistenceError, json.JSONDecodeError):
         return False, "approval_unreadable"
     if not isinstance(payload, dict):
