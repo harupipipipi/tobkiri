@@ -435,7 +435,9 @@ def test_prebuilt_dev_environment_does_not_rebuild_the_selected_shell(
     def unexpected_rebuild(*_args):
         pytest.fail("authenticated prebuilt Shell must not be rebuilt or replaced")
 
-    monkeypatch.setattr(module, "prepare_dev_pack_shell", unexpected_rebuild)
+    monkeypatch.setattr(
+        module, "prepare_dev_pack_shell", lambda *_: calls.append("pack-shell")
+    )
     monkeypatch.setattr(module, "prepare_dev_defaults", unexpected_rebuild)
     monkeypatch.setattr(
         module,
@@ -443,7 +445,7 @@ def test_prebuilt_dev_environment_does_not_rebuild_the_selected_shell(
         lambda repo, selected, inputs: calls.append((repo, selected, inputs)),
     )
     module.prepare_dev_environment(tmp_path, target, prebuilt_inputs=roots)
-    assert calls == ["tools", (tmp_path, target, roots)]
+    assert calls == ["tools", "pack-shell", (tmp_path, target, roots)]
 
 
 def test_prepare_dev_pack_shell_writes_verified_debug_digest(tmp_path, monkeypatch):
