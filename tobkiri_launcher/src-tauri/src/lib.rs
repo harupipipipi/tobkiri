@@ -18,6 +18,7 @@ mod development_owner_os;
 #[cfg(all(target_os = "macos", debug_assertions))]
 mod development_owner_process;
 mod development_owner_startup;
+mod native_pack_review;
 mod native_plan_review;
 mod frontend_entry;
 mod health_check;
@@ -651,15 +652,19 @@ async fn onboard_signed_pack_from_folder(
         let update_review = preview.predecessor_artifact_digest.as_ref().map(|digest| {
             format!("\nRetained predecessor: {digest}\nThis adds a new revision. Existing Profiles keep their selected artifact until you review and activate an update.\n")
         }).unwrap_or_default();
-        let confirmed = window.dialog().message(format!(
+        let review_message = format!(
             "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}{}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
             preview.pack_id, preview.version, preview.publisher_id,
             preview.key_fingerprint, capabilities, contracts, preview.artifact_digest, update_review,
-        ))
-        .title("Review signed Pack")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Trust and add".into(), "Cancel".into()))
-        .blocking_show();
+        );
+        let review_window = window.clone();
+        let dialog = run_ui_work_on_main_thread(
+            window.app_handle(),
+            "signed Pack review preparation",
+            move || native_pack_review::prepare(&review_window, review_message),
+        )?;
+        // Wait on this worker, never on the UI thread that presents the sheet.
+        let confirmed = dialog.blocking_show();
         if !confirmed { return Ok(None) }
         let response = client.post(format!("{base}/commit"))
             .header("X-Rumi-Desktop-Bootstrap", &secret)
