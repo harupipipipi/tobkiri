@@ -37,6 +37,58 @@ def test_bounded_read_rejects_oversized_entry_before_returning_bytes(
     assert store.read_bytes_bounded("artifact.bin", max_bytes=9) == b"oversized"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO replacement contract")
+@pytest.mark.parametrize("bound", [None, 64])
+def test_regular_leaf_replaced_by_fifo_before_open_fails_without_blocking(
+    tmp_path: Path, bound: int | None,
+) -> None:
+    # Run the actual FIFO open in a child so a regression fails within the
+    # timeout instead of blocking the complete persistence test session.
+    script = """
+import os
+from pathlib import Path
+import stat
+import sys
+import tobkiri_protocol.secure_persistence as persistence
+
+store = persistence.SecureDirectory(Path(sys.argv[1]) / "root")
+store.write_bytes_atomic("artifact.bin", b"trusted")
+target = store.root / "artifact.bin"
+real_open = persistence.os.open
+replaced = False
+
+def swap_then_open(path, flags, *args, **kwargs):
+    global replaced
+    if path == "artifact.bin" and kwargs.get("dir_fd") is not None:
+        assert not replaced
+        replaced = True
+        target.unlink()
+        os.mkfifo(target, 0o600)
+    return real_open(path, flags, *args, **kwargs)
+
+persistence.os.open = swap_then_open
+bound = None if sys.argv[2] == "None" else int(sys.argv[2])
+try:
+    store.read_bytes_bounded("artifact.bin", max_bytes=bound)
+except persistence.SecurePersistenceError as error:
+    assert "changed before read" in str(error)
+else:
+    raise AssertionError("a replaced FIFO must never return artifact bytes")
+finally:
+    persistence.os.open = real_open
+assert replaced and stat.S_ISFIFO(target.lstat().st_mode)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(tmp_path), str(bound)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_missing_nested_parent_is_not_treated_as_a_missing_leaf(
     tmp_path: Path,
 ) -> None:

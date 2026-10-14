@@ -574,7 +574,9 @@ class SecureDirectory:
                 raise SecurePersistenceError("persistence entry exceeds read limit")
             descriptor = os.open(
                 name,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0),
                 dir_fd=parent,
             )
             try:
