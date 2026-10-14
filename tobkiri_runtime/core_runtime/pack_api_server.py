@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import uuid
+from contextlib import ExitStack
 from dataclasses import dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -866,6 +867,10 @@ class PackAPIHandler(
     _panel_session: Mapping[str, object] | None = None
     _panel_session_cookie: str | None = None
     _raw_body_bytes = b""
+    _request_snapshot_source: Callable[[], type["PackAPIHandler"] | None] | None = None
+    _request_snapshot_owner: object | None = None
+    _request_snapshot_generation: int | None = None
+    _request_contract_context: ExitStack | None = None
 
     @staticmethod
     def canonical_v4_server_handler(
@@ -883,6 +888,11 @@ class PackAPIHandler(
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
         host_contract: Mapping[str, Any] | None = None,
+        request_snapshot_source: (
+            Callable[[], type["PackAPIHandler"] | None] | None
+        ) = None,
+        request_snapshot_owner: object | None = None,
+        request_snapshot_generation: int | None = None,
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
@@ -917,6 +927,13 @@ class PackAPIHandler(
         )
 
         class BoundPackAPIHandler(PackAPIHandler):
+            _request_snapshot_source = (
+                staticmethod(request_snapshot_source)
+                if request_snapshot_source is not None
+                else None
+            )
+            _request_snapshot_owner = request_snapshot_owner
+            _request_snapshot_generation = request_snapshot_generation
             _panel_auth_manager = bound_panel_auth
             _dispatch_session = bound_dispatch
             app_lifecycle_manager = bound_lifecycle
@@ -986,17 +1003,55 @@ class PackAPIHandler(
         # socket operation while leaving handler deadlines intact.
         self.connection.settimeout(_REQUEST_SOCKET_TIMEOUT_SECONDS)
 
-    def handle(self) -> None:
-        """Serve this connection from one immutable Host contract snapshot."""
+    def handle_one_request(self) -> None:
+        """Keep one parsed request in one coherent Host contract generation."""
 
+        with ExitStack() as context:
+            self._request_contract_context = context
+            try:
+                super().handle_one_request()
+            finally:
+                self._request_contract_context = None
+
+    def parse_request(self) -> bool:
+        """Acquire current server bindings after parsing, before authorization."""
+
+        if not super().parse_request():
+            return False
+        source = self._request_snapshot_source
+        if source is not None:
+            try:
+                current = source()
+            except Exception:
+                current = None
+            if (
+                current is None
+                or not isinstance(current, type)
+                or not issubclass(current, PackAPIHandler)
+                or self._request_snapshot_owner is None
+                or current._request_snapshot_owner is not self._request_snapshot_owner
+                or current._request_snapshot_generation
+                != self._request_snapshot_generation
+            ):
+                self._reset_request_state()
+                self.close_connection = True
+                self._send_response(
+                    APIResponse(False, error="Captured runtime is unavailable"), 503
+                )
+                return False
+            # Class methods and web-mount closures must move with the capture.
+            # Both classes have the same factory-defined layout. This occurs
+            # exactly once, before any auth or dispatch for this request.
+            self.__class__ = current
         snapshot = self._host_contract_snapshot
-        if snapshot is None:
-            super().handle()
-            return
-        from .host_contract import bind_host_contract
+        if snapshot is not None:
+            from .host_contract import bind_host_contract
 
-        with bind_host_contract(snapshot):
-            super().handle()
+            context = self._request_contract_context
+            if context is None:
+                raise RuntimeError("request Host contract scope is unavailable")
+            context.enter_context(bind_host_contract(snapshot))
+        return True
 
     def log_message(self, format: str, *args: object) -> None:
         """Write request logs after removing bootstrap query material."""
@@ -3343,6 +3398,11 @@ class PackAPIServer:
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
                     host_contract=self._host_contract_snapshot,
+                    request_snapshot_source=self._request_snapshot_callback(
+                        lifecycle_generation
+                    ),
+                    request_snapshot_owner=self,
+                    request_snapshot_generation=lifecycle_generation,
                 )
                 server = _PackThreadingHTTPServer((self.host, self.port), handler)
             except Exception:
@@ -3371,6 +3431,27 @@ class PackAPIServer:
             if binding is None:
                 raise RuntimeError("current panel authentication capture is unavailable")
             return self._panel_auth_manager.issue_login_code(binding)
+
+    def _request_snapshot_callback(
+        self, lifecycle_generation: int
+    ) -> Callable[[], type[PackAPIHandler] | None]:
+        """Supply one published handler only to this running server generation."""
+
+        def current() -> type[PackAPIHandler] | None:
+            with self._lifecycle_lock:
+                handler = self.handler_class
+                if (
+                    self._lifecycle_state != "running"
+                    or self._lifecycle_generation != lifecycle_generation
+                    or self.server is None
+                    or handler is None
+                    or self.server.RequestHandlerClass is not handler
+                    or handler._dispatch_session is not self._dispatch_session
+                ):
+                    return None
+                return handler
+
+        return current
 
     def _runtime_refresh_callback(
         self,
@@ -3734,6 +3815,11 @@ class PackAPIServer:
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
                     host_contract=host_contract,
+                    request_snapshot_source=self._request_snapshot_callback(
+                        published_generation
+                    ),
+                    request_snapshot_owner=self,
+                    request_snapshot_generation=published_generation,
                 )
                 handler._runtime_port = self.port
                 self._dispatch_session = session
