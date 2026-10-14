@@ -10,6 +10,7 @@ else:
     _HTTPHandlerBase = object
 
 from .api_response import APIResponse
+from ..http_failure_diagnostic import defer_ui_read_failure
 
 
 class ResponseWriterMixin(_HTTPHandlerBase):
@@ -60,6 +61,13 @@ class ResponseWriterMixin(_HTTPHandlerBase):
                 completed = []
                 self._completed_access_logs = completed
             completed.append((status, len(data)))
+            defer_ui_read_failure(
+                self,
+                method=getattr(self, "command", None),
+                request_path=getattr(self, "path", None),
+                status=status,
+                response_data=response.data,
+            )
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
 
