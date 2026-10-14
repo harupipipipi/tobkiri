@@ -907,7 +907,12 @@ class PackAPIHandler(
         bound_application_presentation = application_presentation
         bound_replay_guard = replay_guard
         bound_operation_journal = operation_journal
-        bound_web_mounts = web_mounts
+        from .captured_pack_ui_assets_v4 import bind_captured_pack_web_mounts
+
+        bound_web_mounts = bind_captured_pack_web_mounts(
+            web_mounts,
+            getattr(bound_dispatch, "pack_ui_assets_for", None),
+        )
         bound_runtime_refresh = runtime_refresh
         bound_panel_refresh_lock = threading.Lock()
         bound_workspace_binding_resolver = workspace_binding_resolver

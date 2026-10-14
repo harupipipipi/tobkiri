@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Callable, TypedDict
 
 from typing_extensions import NotRequired
 
@@ -24,6 +24,7 @@ class WebMountEntry(TypedDict):
     index_file: str
     auth_required: bool
     auth_bootstrap: NotRequired[bool]
+    byte_reader: NotRequired[Callable[[str, bool], tuple[bytes, str]]]
 
 
 class WebMountMixin(_HTTPHandlerBase):
@@ -57,6 +58,10 @@ class WebMountMixin(_HTTPHandlerBase):
         ".woff2": "font/woff2",
         ".ttf": "font/ttf",
         ".map": "application/json",
+        ".wasm": "application/wasm",
+        ".webp": "image/webp",
+        ".txt": "text/plain; charset=utf-8",
+        ".md": "text/plain; charset=utf-8",
     }
 
     @staticmethod
@@ -98,10 +103,24 @@ class WebMountMixin(_HTTPHandlerBase):
             self._send_response(APIResponse(False, error="Not found"), 404)
             return
         prefix = selected["path_prefix"]
-        root = selected["web_root"].resolve()
         relative = request_path[len(prefix) :]
         if not relative or relative == "/":
             relative = f"/{selected['index_file']}"
+        reader = selected.get("byte_reader")
+        if reader is not None:
+            try:
+                data, filename = reader(relative, selected["spa_fallback"])
+            except FileNotFoundError:
+                self._send_response(APIResponse(False, error="Not found"), 404)
+                return
+            except (OSError, RuntimeError, ValueError):
+                self._send_response(
+                    APIResponse(False, error="UI asset unavailable"), 403
+                )
+                return
+            self._send_static_bytes(data, Path(filename).suffix.lower(), selected)
+            return
+        root = selected["web_root"].resolve()
         try:
             target = (root / relative.lstrip("/")).resolve()
             target.relative_to(root)
@@ -110,7 +129,11 @@ class WebMountMixin(_HTTPHandlerBase):
             return
         if not target.is_file():
             fallback = root / selected["index_file"]
-            if selected["spa_fallback"] and "." not in target.name and fallback.is_file():
+            if (
+                selected["spa_fallback"]
+                and "." not in target.name
+                and fallback.is_file()
+            ):
                 target = fallback
             else:
                 self._send_response(APIResponse(False, error="Not found"), 404)
@@ -120,11 +143,20 @@ class WebMountMixin(_HTTPHandlerBase):
         except OSError:
             self._send_response(APIResponse(False, error="Read error"), 500)
             return
+        self._send_static_bytes(data, target.suffix.lower(), selected)
+
+    def _send_static_bytes(
+        self,
+        data: bytes,
+        suffix: str,
+        selected: WebMountEntry,
+    ) -> None:
+        """Write static bytes after their mount-specific verification succeeds."""
         try:
             self.send_response(200)
             self.send_header(
                 "Content-Type",
-                self._MIME_TYPES.get(target.suffix.lower(), "application/octet-stream"),
+                self._MIME_TYPES.get(suffix, "application/octet-stream"),
             )
             self.send_header("Content-Length", str(len(data)))
             if selected["auth_required"]:

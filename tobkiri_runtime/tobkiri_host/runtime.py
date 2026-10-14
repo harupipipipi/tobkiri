@@ -8,7 +8,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol, Sequence
 
 from core_runtime.authority.v4 import AuthorityStore
 
@@ -24,6 +24,9 @@ from .materialization import MaterializationCoordinator
 from .models import InvocationFrame, PackArtifact, RequestContext
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from core_runtime.captured_pack_ui_assets_v4 import CapturedPackUIAssets
 
 
 def _scoped_profile_capture(
@@ -175,6 +178,9 @@ class V4DispatchSession:
     security_epoch: int = 0
     authority_control: AuthorityV4Adapter | None = None
     current_capture_check: Callable[[], None] | None = None
+    pack_ui_assets_for: (
+        Callable[[str, str], CapturedPackUIAssets | None] | None
+    ) = None
     owned_authority_store: AuthorityStore | None = None
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()

@@ -42,6 +42,7 @@ from tobkiri_host.admission import (
     dead_owner_reservation_ids,
 )
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
+from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_host.authority_approval_window import (
     AuthorityApprovalWindowController,
 )
@@ -4137,6 +4138,47 @@ def capture_production_dispatch(
         before_close_callbacks=(close_wake_drivers,),
     )
     dispatch_holder.append(dispatch)
+    from ..captured_pack_ui_assets_v4 import CapturedPackUIAssets
+    from ..pack_boundary import load_pack_catalog, resolve_pack_root
+
+    ui_baseline_records = load_pack_catalog()
+    ui_artifact_pins = {
+        str(row["identity"]): str(row["artifact_digest"])
+        for row in lock["effective_set"]
+    }
+
+    def capture_selected_pack_ui_assets(
+        owner_pack_id: str, index_file: str,
+    ) -> CapturedPackUIAssets | None:
+        """Bind a trusted mount to its exact selected Pack, never its latest revision."""
+        root = pack_roots.get(owner_pack_id)
+        if root is None:
+            return None
+        dispatch.assert_current()
+        assert_retained_root_current(owner_pack_id)
+        pin = ui_artifact_pins[owner_pack_id]
+        baseline = ui_baseline_records.get(owner_pack_id)
+        legacy_builtin = (
+            baseline is not None
+            and root == resolve_pack_root(owner_pack_id, ecosystem_root)
+            and compile_pack_root(root).artifact.digest == pin
+        )
+
+        def assert_ui_current() -> None:
+            dispatch.assert_current()
+            assert_retained_root_current(owner_pack_id)
+
+        return CapturedPackUIAssets.capture(
+            pack_id=owner_pack_id,
+            artifact_digest=pin,
+            pack_root=root,
+            owner_root=authority_user_data,
+            index_file=index_file,
+            assert_current=assert_ui_current,
+            legacy_builtin=legacy_builtin,
+        )
+
+    dispatch.pack_ui_assets_for = capture_selected_pack_ui_assets
     for wake_port, declaration, owner_binding in captured_wake_ports:
         owner_id = owner_binding.principal_ref.value
         candidates = tuple(edge for edge in captured_edges
