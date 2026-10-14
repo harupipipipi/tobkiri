@@ -18,6 +18,7 @@ mod development_owner_os;
 #[cfg(all(target_os = "macos", debug_assertions))]
 mod development_owner_process;
 mod development_owner_startup;
+mod native_pack_onboarding_review;
 mod native_pack_review;
 mod native_plan_review;
 mod frontend_entry;
@@ -254,20 +255,6 @@ struct NativePackAdmission {
 struct NativePackAdmissionStatus {
     ready: bool,
     onboarding_supported: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct NativePackOnboardingPreview {
-    pack_id: String,
-    version: String,
-    publisher_id: String,
-    key_fingerprint: String,
-    requested_capabilities: Vec<String>,
-    contract_versions: std::collections::BTreeMap<String, String>,
-    artifact_digest: String,
-    preview_digest: String,
-    #[serde(default)]
-    predecessor_artifact_digest: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -632,31 +619,16 @@ async fn onboard_signed_pack_from_folder(
             .send()
             .map_err(|_| "Local Host signed Pack preview is unavailable".to_string())?;
         let preview_status = preview_response.status();
-        let preview_envelope: ApiEnvelope<NativePackOnboardingPreview> = preview_response.json()
+        let preview_envelope: ApiEnvelope<native_pack_onboarding_review::NativePackOnboardingPreview> = preview_response.json()
             .map_err(|_| "Local Host signed Pack preview is invalid".to_string())?;
         if !preview_status.is_success() || !preview_envelope.success {
             return Err(preview_envelope.error.unwrap_or_else(|| "Signed Pack preview was denied".into()));
         }
         let preview = preview_envelope.data
             .ok_or_else(|| "Signed Pack preview returned no result".to_string())?;
-        let capabilities = if preview.requested_capabilities.is_empty() {
-            "none".to_string()
-        } else { preview.requested_capabilities.join(", ") };
-        let contracts = if preview.contract_versions.is_empty() {
-            "none".to_string()
-        } else {
-            preview.contract_versions.iter()
-                .map(|(name, version)| format!("{name}: {version}"))
-                .collect::<Vec<_>>().join(", ")
-        };
-        let update_review = preview.predecessor_artifact_digest.as_ref().map(|digest| {
-            format!("\nRetained predecessor: {digest}\nThis adds a new revision. Existing Profiles keep their selected artifact until you review and activate an update.\n")
-        }).unwrap_or_default();
-        let review_message = format!(
-            "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}{}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
-            preview.pack_id, preview.version, preview.publisher_id,
-            preview.key_fingerprint, capabilities, contracts, preview.artifact_digest, update_review,
-        );
+        let review_message = native_pack_onboarding_review::review_message(
+            &preview, native_pack_onboarding_review::unix_time_ms()?,
+        )?;
         let review_window = window.clone();
         let dialog = run_ui_work_on_main_thread(
             window.app_handle(),
@@ -666,13 +638,13 @@ async fn onboard_signed_pack_from_folder(
         // Wait on this worker, never on the UI thread that presents the sheet.
         let confirmed = dialog.blocking_show();
         if !confirmed { return Ok(None) }
+        let commit_payload = native_pack_onboarding_review::commit_payload(
+            &preview, &source_root, &public_key_path,
+            native_pack_onboarding_review::unix_time_ms()?,
+        )?;
         let response = client.post(format!("{base}/commit"))
             .header("X-Rumi-Desktop-Bootstrap", &secret)
-            .json(&serde_json::json!({
-                "source_root": source_root,
-                "public_key_path": public_key_path,
-                "preview_digest": preview.preview_digest,
-            }))
+            .json(&commit_payload)
             .send()
             .map_err(|_| "Local Host signed Pack commit is unavailable".to_string())?;
         let status = response.status();
