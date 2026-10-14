@@ -211,10 +211,19 @@ def test_capture_binding_batches_external_scans_with_real_bundled_pins(
     admitted: dict, monkeypatch: pytest.MonkeyPatch, pack_count: int
 ) -> None:
     from core_runtime.pack_boundary import load_pack_catalog
-    from core_runtime.pack_control_v4 import _capture_binding
+    from core_runtime.pack_control_v4 import _capture_binding, _physical_catalog_read
+    from core_runtime.bootstrap.profile_capture import (
+        capture_default_profile, prepare_default_profile_confirmation,
+    )
 
-    pack_ids = sorted(load_pack_catalog())[:pack_count]
-    active = _raw_active(pack_ids)
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation(),
+    )
+    pack_ids = sorted(
+        row["identity"] for row in active.resolved.plan["effective_set"]
+        if row["identity"] in load_pack_catalog()
+    )[:pack_count]
+    assert len(pack_ids) == pack_count
     calls = []
     verify = external._verify_entry_root
 
@@ -223,7 +232,10 @@ def test_capture_binding_batches_external_scans_with_real_bundled_pins(
         return verify(pack_id, entry, root)
 
     monkeypatch.setattr(external, "_verify_entry_root", counted_verify)
-    binding = _capture_binding(active)
+    with _physical_catalog_read(active) as (read, captured):
+        for pack_id in pack_ids:
+            read.resolve(pack_id)
+        binding = _capture_binding(captured, _read=read)
     assert binding.profile_id == "defaults"
     assert binding.plan_digest == active.resolved.plan["plan_digest"]
     assert calls == [PACK_ID] * 5

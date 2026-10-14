@@ -167,15 +167,18 @@ def _capture_files(
         or index["source_identity"] != manifest["integrity"]["source_identity"],
         "baseline artifact index inventory or roles differ",
     )
-    files = {path: _read(reader, path) for path in expected}
-    files["artifact-index.v4.json"] = raw_index
-    _deny(
-        any(_digest(files[path]) != item["digest"] for path, item in expected.items())
-        or files.get("pack.v4.json") != raw_manifest
-        or sum(map(len, files.values())) + len(raw_lock) + len(raw_projection) + len(raw_record)
-        > _MAX_TOTAL_BYTES,
-        "bundled baseline bytes changed or exceed limits",
-    )
+    files = {"artifact-index.v4.json": raw_index}
+    total = len(raw_index) + len(raw_lock) + len(raw_projection) + len(raw_record)
+    _deny(total > _MAX_TOTAL_BYTES, "baseline metadata exceeds limits")
+    for path, item in expected.items():
+        content = _read(reader, path)
+        total += len(content)
+        _deny(
+            total > _MAX_TOTAL_BYTES or _digest(content) != item["digest"],
+            "bundled baseline bytes changed or exceed limits",
+        )
+        files[path] = content
+    _deny(files.get("pack.v4.json") != raw_manifest, "baseline manifest changed")
     _verified_pack(root)
     _deny(
         _read(reader, "pack.v4.json", metadata=True) != raw_manifest

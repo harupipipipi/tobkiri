@@ -378,3 +378,28 @@ def test_missing_old_full_bytes_fail_closed_without_publishing(
         ) as read:
             read.resolve(PACK_ID)
     assert not (fixture.owner / "retained-bundled-baselines-v4").exists()
+
+
+def test_supplier_growth_rejects_first_changed_leaf_before_reading_the_next(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late supplier swap cannot allocate the complete hostile inventory."""
+    fixture = make_retention_fixture(tmp_path, monkeypatch)
+    first = fixture.record["runtime_artifacts"][0]["path"]
+    runtime_paths = {item["path"] for item in fixture.record["runtime_artifacts"]}
+    original = baselines._read
+    observed: list[str] = []
+
+    def growing_read(reader: Any, relative: str, *, metadata: bool = False) -> bytes:
+        if relative in runtime_paths:
+            observed.append(relative)
+            if relative == first:
+                path = fixture.source / relative
+                path.write_bytes(path.read_bytes() + b"\n# late supplier growth\n")
+        return original(reader, relative, metadata=metadata)
+
+    monkeypatch.setattr(baselines, "_read", growing_read)
+    with pytest.raises(BundledArtifactRetentionDenied, match="bytes changed"):
+        _publish(fixture)
+    assert observed == [first]
+    assert not (fixture.owner / "retained-bundled-baselines-v4").exists()
