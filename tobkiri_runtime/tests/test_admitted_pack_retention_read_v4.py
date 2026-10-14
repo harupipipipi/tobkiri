@@ -155,6 +155,7 @@ def test_retained_scope_rejects_freshness_or_full_bytes_drift_and_closes(
     retained: RetainedReadFixture, change: str
 ) -> None:
     origin, artifact, _current = retained
+    mutation_completed = False
     with pytest.raises((external.ExternalPackCatalogDenied, OSError, ValueError)):
         with reads.verified_pack_root_read(
             {BUNDLED_ID: artifact.artifact_digest}, origin=origin
@@ -171,9 +172,15 @@ def test_retained_scope_rejects_freshness_or_full_bytes_drift_and_closes(
                 runtime.write_bytes(runtime.read_bytes() + b"\n# drift\n")
             else:
                 artifact.root.parent.chmod(0o700)
+                artifact.root.chmod(0o700)
                 moved = artifact.root.with_name("previous")
                 artifact.root.rename(moved)
+                moved.chmod(0o500)
                 shutil.copytree(moved, artifact.root)
+                artifact.root.parent.chmod(0o500)
+                mutation_completed = True
+    if change == "root":
+        assert mutation_completed
     with pytest.raises(external.ExternalPackCatalogDenied, match="closed"):
         reader.resolve(BUNDLED_ID)
 
