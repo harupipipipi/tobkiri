@@ -689,8 +689,8 @@ def prepare_dev_environment(
 ) -> None:
     """Prepare development tools and the matching Defaults application."""
     prepare_dev(repo_root, target)
-    prepare_dev_pack_shell(repo_root, target)
     if prebuilt_inputs is None:
+        prepare_dev_pack_shell(repo_root, target)
         prepare_dev_defaults(repo_root, target)
     else:
         prepare_debug_prebuilt_defaults(repo_root, target, prebuilt_inputs)

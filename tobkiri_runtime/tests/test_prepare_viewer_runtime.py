@@ -421,6 +421,29 @@ def test_macos_dev_shell_spec_uses_debug_unsigned_app(tmp_path):
     )
 
 
+def test_prebuilt_dev_environment_does_not_rebuild_the_selected_shell(
+    tmp_path, monkeypatch,
+):
+    module = _load_module()
+    calls = []
+    roots = [tmp_path / name for name in ("owner", "bundle", "artifacts", "host")]
+    target = "aarch64-apple-darwin"
+    monkeypatch.setattr(module, "prepare_dev", lambda *_: calls.append("tools"))
+
+    def unexpected_rebuild(*_args):
+        pytest.fail("authenticated prebuilt Shell must not be rebuilt or replaced")
+
+    monkeypatch.setattr(module, "prepare_dev_pack_shell", unexpected_rebuild)
+    monkeypatch.setattr(module, "prepare_dev_defaults", unexpected_rebuild)
+    monkeypatch.setattr(
+        module,
+        "prepare_debug_prebuilt_defaults",
+        lambda repo, selected, inputs: calls.append((repo, selected, inputs)),
+    )
+    module.prepare_dev_environment(tmp_path, target, prebuilt_inputs=roots)
+    assert calls == ["tools", (tmp_path, target, roots)]
+
+
 def test_prepare_dev_pack_shell_writes_verified_debug_digest(tmp_path, monkeypatch):
     module = _load_module()
     target = "aarch64-apple-darwin"
