@@ -33,6 +33,12 @@ from .api.auth_gate import (
     AuthGateMixin,
 )
 from .api.http_response import ResponseWriterMixin
+from .api.packvm_capacity_errors import (
+    PACKVM_HOST_CAPACITY_INSUFFICIENT,
+    bounded_capacity_details,
+    is_saved_turn_capacity_refusal,
+    saved_turn_capacity_details,
+)
 from .api.request_body import RequestBodyMixin
 from .api.setup_handlers import SetupHandlersMixin
 from .api.web_mounts import WebMountMixin
@@ -132,6 +138,7 @@ class HTTPRuntimeErrorCode(str, Enum):
     UNSUPPORTED_PLATFORM = "UNSUPPORTED_PLATFORM"
     INVALID_REQUEST = "INVALID_REQUEST"
     SAVED_TURN_NOT_STARTED = "SAVED_TURN_NOT_STARTED"
+    PACKVM_HOST_CAPACITY_INSUFFICIENT = PACKVM_HOST_CAPACITY_INSUFFICIENT
     API_FAILURE = "API_FAILURE"
 
 
@@ -152,6 +159,9 @@ _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
         "PackVM provisioning is available only on macOS on Apple Silicon in this build."
     ),
     HTTPRuntimeErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
+    HTTPRuntimeErrorCode.PACKVM_HOST_CAPACITY_INSUFFICIENT.value: (
+        "PackVM requires more free storage on this computer"
+    ),
 }
 
 _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
@@ -165,6 +175,7 @@ _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
     HTTPRuntimeErrorCode.TIMEOUT.value: 504,
     HTTPRuntimeErrorCode.UNSUPPORTED_PLATFORM.value: 422,
     HTTPRuntimeErrorCode.API_FAILURE.value: 503,
+    HTTPRuntimeErrorCode.PACKVM_HOST_CAPACITY_INSUFFICIENT.value: 503,
 }
 
 _HOST_CONTRACT_UNSET = object()
@@ -201,11 +212,13 @@ def _public_error_code(value: object) -> str:
     return _ERROR_CODE_ALIASES.get(candidate.lower(), HTTPRuntimeErrorCode.API_FAILURE.value)
 
 
-def _public_error_result(code: object) -> dict[str, object]:
+def _public_error_result(
+    code: object, *, error: BaseException | None = None
+) -> dict[str, object]:
     """Build the only error representation persisted or returned by PackAPI."""
 
     public_code = _public_error_code(code)
-    return {
+    result: dict[str, object] = {
         "host_operation_api_version": "io.tobkiri.host.operation.v1",
         "state": "error",
         "code": public_code,
@@ -214,9 +227,13 @@ def _public_error_result(code: object) -> dict[str, object]:
         in {
             HTTPRuntimeErrorCode.TIMEOUT.value,
             HTTPRuntimeErrorCode.API_FAILURE.value,
+            HTTPRuntimeErrorCode.PACKVM_HOST_CAPACITY_INSUFFICIENT.value,
         },
         "write_set": [],
     }
+    if public_code == PACKVM_HOST_CAPACITY_INSUFFICIENT and error is not None:
+        result.update(saved_turn_capacity_details(error))
+    return result
 
 
 def _exception_error_code(error: BaseException) -> str:
@@ -229,12 +246,15 @@ def _exception_error_code(error: BaseException) -> str:
         seen.add(id(current))
         if isinstance(current, SavedTurnNotStartedError):
             return HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value
+        if is_saved_turn_capacity_refusal(current):
+            return HTTPRuntimeErrorCode.PACKVM_HOST_CAPACITY_INSUFFICIENT.value
         captured_code = getattr(current, "code", None)
         if captured_code is not None:
             normalized = _public_error_code(captured_code)
             if normalized not in {
                 HTTPRuntimeErrorCode.API_FAILURE.value,
                 HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value,
+                HTTPRuntimeErrorCode.PACKVM_HOST_CAPACITY_INSUFFICIENT.value,
             }:
                 return normalized
         if isinstance(current, ControlReconciliationNotFoundError):
@@ -1414,7 +1434,9 @@ class PackAPIHandler(
                 state = str(operation_record["state"])
                 prior_result = operation_record.get("result")
                 if state in {"succeeded", "failed"} and isinstance(prior_result, Mapping):
-                    self._send_contract_outcome(route_binding, prior_result)
+                    self._send_contract_outcome(
+                        route_binding, prior_result, owner_error=True
+                    )
                     return True
             try:
                 # Only an exact durable terminal result may bypass freshness.
@@ -1428,8 +1450,12 @@ class PackAPIHandler(
                 RuntimeError,
                 ValueError,
             ) as error:
-                public_result = _public_error_result(_exception_error_code(error))
-                self._send_contract_outcome(route_binding, public_result)
+                public_result = _public_error_result(
+                    _exception_error_code(error), error=error
+                )
+                self._send_contract_outcome(
+                    route_binding, public_result, owner_error=True
+                )
                 if public_result["code"] == HTTPRuntimeErrorCode.UNAPPROVED.value:
                     self._defer_response_log(
                         logger,
@@ -1526,7 +1552,9 @@ class PackAPIHandler(
                 state = str(operation_record["state"])
                 prior_result = operation_record.get("result")
                 if state in {"succeeded", "failed"} and isinstance(prior_result, Mapping):
-                    self._send_contract_outcome(route_binding, prior_result)
+                    self._send_contract_outcome(
+                        route_binding, prior_result, owner_error=True
+                    )
                 else:
                     self._send_response(
                         APIResponse(state == "pending", data=dict(operation_record)),
@@ -1565,7 +1593,9 @@ class PackAPIHandler(
             RuntimeError,
             ValueError,
         ) as error:
-            public_result = _public_error_result(_exception_error_code(error))
+            public_result = _public_error_result(
+                _exception_error_code(error), error=error
+            )
             if public_result["code"] == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value:
                 # This ID is the immutable authenticated HTTP request, not the
                 # caller's turn ID. Its journal can prove a lost refusal reply.
@@ -1611,7 +1641,9 @@ class PackAPIHandler(
                     409,
                 )
             else:
-                self._send_contract_outcome(route_binding, public_result)
+                self._send_contract_outcome(
+                    route_binding, public_result, owner_error=True
+                )
             # Write the bounded, sanitized response before diagnostic logging.
             # Logging a provider traceback can contend with suite-wide capture or
             # a slow sink and must never extend the frontend response deadline.
@@ -1708,11 +1740,31 @@ class PackAPIHandler(
         return 200
 
     @staticmethod
-    def _safe_contract_result(result: Mapping[str, object]) -> dict[str, object]:
-        """Remove all provider-controlled detail from typed failure results."""
+    def _safe_contract_result(
+        result: Mapping[str, object], *, owner_error: bool = False
+    ) -> dict[str, object]:
+        """Sanitize failures, retaining owner counters only at trusted call sites.
+
+        ``owner_error`` is used only for Host exception output and exact
+        terminal results already read from the authenticated operation journal.
+        Ordinary Provider outcomes are sanitized before they enter that journal.
+        """
 
         if result.get("state") == "error":
-            safe = _public_error_result(result.get("code"))
+            code = _public_error_code(result.get("code"))
+            if code == PACKVM_HOST_CAPACITY_INSUFFICIENT and not owner_error:
+                code = HTTPRuntimeErrorCode.API_FAILURE
+            safe = _public_error_result(code)
+            if safe["code"] == PACKVM_HOST_CAPACITY_INSUFFICIENT and owner_error:
+                safe.update(
+                    bounded_capacity_details(
+                        {
+                            key: result[key]
+                            for key in ("required_bytes", "available_bytes")
+                            if key in result
+                        }
+                    )
+                )
             request_id = result.get("request_id")
             if (
                 safe["code"] == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value
@@ -1727,10 +1779,12 @@ class PackAPIHandler(
         self,
         binding: HTTPContractBinding,
         result: Mapping[str, object],
+        *,
+        owner_error: bool = False,
     ) -> None:
         """Send initial and replayed terminal outcomes through one mapping."""
 
-        safe_result = self._safe_contract_result(result)
+        safe_result = self._safe_contract_result(result, owner_error=owner_error)
         status = self._contract_result_status(safe_result)
         if status != 200:
             # Typed error results already carry the bounded public shape.
@@ -1766,7 +1820,7 @@ class PackAPIHandler(
             public_code = _exception_error_code(error)
             if public_code == HTTPRuntimeErrorCode.INVALID_REQUEST.value:
                 public_code = HTTPRuntimeErrorCode.API_FAILURE.value
-            public_result = _public_error_result(public_code)
+            public_result = _public_error_result(public_code, error=error)
             self._send_response(
                 APIResponse(
                     False,
@@ -1895,7 +1949,9 @@ class PackAPIHandler(
             ):
                 refresh_after_response = True
         except (OSError, RuntimeError, ValueError) as error:
-            public_result = _public_error_result(_exception_error_code(error))
+            public_result = _public_error_result(
+                _exception_error_code(error), error=error
+            )
             logger.warning(
                 "PackVM lifecycle operation failed: %s",
                 operation,

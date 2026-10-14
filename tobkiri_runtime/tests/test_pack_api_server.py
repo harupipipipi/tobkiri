@@ -942,6 +942,192 @@ def test_provider_wrapper_preserves_inner_pack_control_conflict() -> None:
     assert _exception_error_code(wrapper) == "STALE_REVISION"
 
 
+def _wrapped_packvm_capacity_error() -> ProviderExecutionError:
+    """Reproduce the real allocator refusal and supervisor/Broker wrappers."""
+
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+        PackVMHostCapacityError,
+    )
+    from tobkiri_host.errors import SavedTurnRejectedError
+
+    capacity = PackVMHostCapacityError(
+        required_bytes=4 * 1024**3,
+        available_bytes=3 * 1024**3,
+    )
+    refusal = SavedTurnRejectedError(
+        "allocator /private/path detail stays private",
+        error_code=capacity.code,
+        terminal_details={
+            "required_bytes": capacity.required_bytes,
+            "available_bytes": capacity.available_bytes,
+        },
+    )
+    refusal.__cause__ = capacity
+    wrapper = ProviderExecutionError("provider-controlled private detail")
+    wrapper.__cause__ = refusal
+    return wrapper
+
+
+def test_packvm_capacity_refusal_keeps_typed_http_status_and_bounded_counters() -> None:
+    """An internal capacity ValueError must not become client HTTP400."""
+
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    error = _wrapped_packvm_capacity_error()
+    result = _public_error_result(_exception_error_code(error), error=error)
+    safe = PackAPIHandler._safe_contract_result(result, owner_error=True)
+
+    assert safe["code"] == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+    assert PackAPIHandler._contract_result_status(safe) == 503
+    assert safe["required_bytes"] == 4 * 1024**3
+    assert safe["available_bytes"] == 3 * 1024**3
+    assert safe["retryable"] is True
+    assert safe["write_set"] == []
+    assert "request_id" not in safe
+    serialized = json.dumps(safe)
+    for private in ("/private", "allocator", "provider-controlled"):
+        assert private not in serialized
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        {},
+        {"required_bytes": True, "available_bytes": 0},
+        {"required_bytes": 2, "available_bytes": False},
+        {"required_bytes": 2, "available_bytes": -1},
+        {"required_bytes": 2, "available_bytes": 2},
+        {"required_bytes": 1 << 53, "available_bytes": 0},
+        {"required_bytes": 2, "available_bytes": 0, "path": "/private"},
+    ],
+)
+def test_packvm_capacity_public_details_reject_malformed_or_unbounded_counters(
+    details: Mapping[str, object],
+) -> None:
+    """Only an exact JS-safe owner counter pair may cross the HTTP boundary."""
+
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    error = _wrapped_packvm_capacity_error()
+    error.__cause__.saved_terminal_details = details
+    result = _public_error_result(_exception_error_code(error), error=error)
+    safe = PackAPIHandler._safe_contract_result(result, owner_error=True)
+
+    assert safe["code"] == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+    assert PackAPIHandler._contract_result_status(safe) == 503
+    assert "required_bytes" not in safe
+    assert "available_bytes" not in safe
+    assert "/private" not in json.dumps(safe)
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["PACKVM_HOST_CAPACITY_INSUFFICIENT", " PACKVM_HOST_CAPACITY_INSUFFICIENT "],
+)
+def test_packvm_capacity_code_or_provider_payload_cannot_mint_owner_refusal(
+    code: str,
+) -> None:
+    """A copied code and counters do not establish a Host allocation refusal."""
+
+    from core_runtime.pack_api_server import _exception_error_code
+
+    error = ValueError("provider-controlled private detail")
+    error.code = code
+    assert _exception_error_code(error) == "INVALID_REQUEST"
+    safe = PackAPIHandler._safe_contract_result(
+        {
+            "state": "error",
+            "code": error.code,
+            "required_bytes": 4 * 1024**3,
+            "available_bytes": 3 * 1024**3,
+        }
+    )
+    assert safe["code"] == "API_FAILURE"
+    assert "required_bytes" not in safe
+    assert "available_bytes" not in safe
+
+
+def test_packvm_capacity_owner_counters_survive_authenticated_terminal_replay(
+    tmp_path: Path,
+) -> None:
+    """Only the sanitized owner failure is retained in the session-bound journal."""
+
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    error = _wrapped_packvm_capacity_error()
+    result = _public_error_result(_exception_error_code(error), error=error)
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/test/capacity",
+        presentation="identity",
+        targets=(),
+    )
+    handler = object.__new__(PackAPIHandler)
+    responses: list[tuple[int, str]] = []
+    handler._send_response = (
+        lambda response, status=200: responses.append((status, response.to_json()))
+    )
+    store = ControlReconciliationStore(tmp_path / "reconciliation.sqlite3")
+    request_id = str(uuid.uuid4())
+    session_id = "session-capacity"
+    try:
+        store.begin_operation(
+            request_id=request_id,
+            session_id=session_id,
+            operation_id="allocate",
+            contract_id="test.packvm.v1",
+            request_digest=canonical_digest({"request": "exact"}),
+        )
+        store.finish_operation(
+            request_id,
+            session_id=session_id,
+            state="failed",
+            result=result,
+            safe_error_code=str(result["code"]),
+        )
+        handler._send_contract_outcome(binding, result, owner_error=True)
+        record = store.operation_status(request_id, session_id=session_id)
+        assert record["state"] == "failed"
+        handler._send_contract_outcome(binding, record["result"], owner_error=True)
+        assert responses[0] == responses[1]
+        assert responses[0][0] == 503
+        assert record["result"]["required_bytes"] == 4 * 1024**3
+        assert record["result"]["available_bytes"] == 3 * 1024**3
+        with pytest.raises(ControlReconciliationConflictError, match="another session"):
+            store.operation_status(request_id, session_id="other-session")
+
+        provider_result = {**result, "message": "provider-controlled detail"}
+        safe_provider_result = handler._safe_contract_result(provider_result)
+        assert safe_provider_result["code"] == "API_FAILURE"
+        assert "required_bytes" not in safe_provider_result
+        assert "available_bytes" not in safe_provider_result
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("outer", "expected_code"),
+    [
+        (PackControlUnapproved("approval required"), "UNAPPROVED"),
+        (PackControlConflict("activation changed"), "STALE_REVISION"),
+        (PackControlDigestMismatch("capture changed"), "DIGEST_MISMATCH"),
+    ],
+)
+def test_packvm_capacity_does_not_override_outer_authority_or_binding_denial(
+    outer: Exception,
+    expected_code: str,
+) -> None:
+    """Capacity handling preserves the existing typed guard precedence."""
+
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    outer.__cause__ = _wrapped_packvm_capacity_error()
+    result = _public_error_result(_exception_error_code(outer), error=outer)
+    assert result["code"] == expected_code
+    assert "required_bytes" not in result
+    assert "available_bytes" not in result
+
+
 @pytest.fixture
 def live_server() -> Iterator[tuple[PackAPIServer, _Dispatch]]:
     dispatch = _Dispatch()

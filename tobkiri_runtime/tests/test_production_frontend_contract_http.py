@@ -2758,6 +2758,79 @@ def test_manual_runtime_mode_selection_schema_rejects_nonboolean_without_write(
         assert not storage.exists(), value
 
 
+def test_presentation_allocation_capacity_refusal_has_http503_through_real_broker(
+    settings_vertical_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All presentation consumers keep the real typed allocation refusal."""
+
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+        PackVMHostCapacityError,
+    )
+    from tobkiri_host.errors import SavedTurnRejectedError
+
+    server, _session, _authority = settings_vertical_server
+    original_materialize = _PresentationPackVmBackend.materialize
+    refusals: list[tuple[str, str]] = []
+
+    def refuse_allocation(backend, binding, reservation_id):
+        # Keep the captured artifact/domain verification and real Broker;
+        # replace only the platform allocator's deterministic refusal.
+        original_materialize(backend, binding, reservation_id)
+        refusals.append((binding.operation.contract_id, binding.operation.operation_id))
+        capacity = PackVMHostCapacityError(
+            required_bytes=4 * 1024**3,
+            available_bytes=3 * 1024**3,
+        )
+        raise SavedTurnRejectedError(
+            "allocation /private/path detail stays private",
+            error_code=capacity.code,
+            terminal_details={
+                "required_bytes": capacity.required_bytes,
+                "available_bytes": capacity.available_bytes,
+            },
+        ) from capacity
+
+    monkeypatch.setattr(_PresentationPackVmBackend, "materialize", refuse_allocation)
+    cookie, _csrf, _origin = _authenticate(server)
+    status, model_payload, _ = _request(
+        server,
+        "GET",
+        _contract("GET", "/api/ai/profiles"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, model_payload
+    assert refusals == []
+    for path in (
+        "/api/ui/full-catalog",
+        "/api/ui/settings",
+        "/api/command-protocol/v1/catalog",
+    ):
+        status, payload, _ = _request(
+            server,
+            "GET",
+            _contract("GET", path),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 503, (path, payload)
+        assert payload["success"] is False
+        data = payload["data"]
+        assert data["code"] == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
+        assert data["required_bytes"] == 4 * 1024**3
+        assert data["available_bytes"] == 3 * 1024**3
+        assert data["retryable"] is True
+        assert data["write_set"] == []
+        assert "request_id" not in data
+        assert "/private" not in json.dumps(payload)
+        assert "The request is invalid" not in json.dumps(payload)
+    assert refusals == [
+        (
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        )
+    ] * 3
+
+
 def test_settings_reads_saved_values_and_models_through_real_broker(
     settings_vertical_server,
     tmp_path: Path,
