@@ -237,8 +237,9 @@ def verify_signed_pack(
     core_version: str | None = None,
 ) -> dict[str, Any]:
     """Verify signature, publisher, revocation, and the complete source file set."""
+    envelope = dict(manifest)
     verified = verify_signed_manifest(
-        manifest,
+        envelope,
         public_key,
         expected_publisher_id=expected_publisher_id,
         expected_pack_id=expected_pack_id,
@@ -250,7 +251,7 @@ def verify_signed_pack(
         core_version=core_version,
     )
     current_files = _file_records(pack_root.resolve())
-    if current_files != _unsigned_manifest(manifest).get("files"):
+    if current_files != _unsigned_manifest(envelope).get("files"):
         raise PackSignatureError("Pack file manifest mismatch")
     return verified
 

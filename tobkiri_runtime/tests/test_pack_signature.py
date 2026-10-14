@@ -82,6 +82,26 @@ def test_manifest_verification_preserves_strict_source_file_modes(tmp_path: Path
         )
 
 
+def test_source_inventory_comparison_uses_the_verified_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing caller metadata during traversal cannot change verified inventory."""
+    root, private_key, manifest = _signed_pack(tmp_path)
+    from core_runtime import pack_signature as module
+
+    original = module._file_records
+
+    def changed_records(path: Path) -> list[dict]:
+        (path / "handler.py").write_text("VALUE = 2\n")
+        records = original(path)
+        manifest["files"] = records
+        return records
+
+    monkeypatch.setattr(module, "_file_records", changed_records)
+    with pytest.raises(PackSignatureError, match="file manifest mismatch"):
+        verify_signed_pack(root, manifest, private_key.public_key())
+
+
 def test_file_modification_and_unlisted_file_fail_verification(
     tmp_path: Path,
 ) -> None:
