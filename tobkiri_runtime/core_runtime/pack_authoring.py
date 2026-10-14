@@ -57,6 +57,26 @@ def build_python_pack(
     assets: Mapping[str, bytes] | None = None,
     application: bool = False,
 ) -> Path:
+    """Create an unsigned pure Python Pack without importing its code."""
+    return _build_pack(
+        target, pack_id=pack_id, version=version, display_name=display_name,
+        contracts=contracts, functions=functions, assets=assets,
+        application=application,
+    )
+
+
+def _build_pack(
+    target: Path,
+    *,
+    pack_id: str,
+    version: str,
+    display_name: str,
+    contracts: Sequence[Mapping[str, Any]],
+    functions: Sequence[PythonPackFunction],
+    assets: Mapping[str, bytes] | None = None,
+    application: bool = False,
+    asset_only: bool = False,
+) -> Path:
     """Create a new unsigned Normal Pack and run the real artifact compiler.
 
     Contracts are canonical ``io.tobkiri.contract.v4`` documents. Every declared
@@ -76,6 +96,8 @@ def build_python_pack(
         if ancestor.is_symlink():
             raise PackAuthoringError("target ancestors must not be symlinks")
     functions = tuple(sorted(functions, key=lambda item: item.function_id))
+    if asset_only and (application or functions or contracts or not assets):
+        raise PackAuthoringError("UI asset Packs cannot declare executable authority")
     if type(application) is not bool or (application and len(functions) != 1):
         raise PackAuthoringError("Application authoring requires one pure Function")
     captured_contracts = json.loads(_json_bytes(list(contracts)))
@@ -202,11 +224,15 @@ def build_python_pack(
         for identity, contract in contract_by_id.items()
         for op in contract["operations"]
     }
-    if not expected or bound != expected:
+    if (not expected and not asset_only) or bound != expected:
         raise PackAuthoringError("Functions must cover all Contract Operations exactly once")
     for relative, content in sorted((assets or {}).items()):
-        _add_file(files, relative, content)
-    if len(files) > 256 or sum(map(len, files.values())) > _MAX_TOTAL_BYTES:
+        _add_file(
+            files, relative, content,
+            limit=32 * 1024 * 1024 if asset_only else None,
+        )
+    total_limit = 128 * 1024 * 1024 if asset_only else _MAX_TOTAL_BYTES
+    if len(files) > 256 or sum(map(len, files.values())) > total_limit:
         raise PackAuthoringError("Pack authoring input exceeds size limits")
     captured_contracts.sort(key=lambda item: item["contract_id"])
     source = {
@@ -221,6 +247,8 @@ def build_python_pack(
     }
     if application:
         source["kind"] = "application"
+    if asset_only:
+        source["source_api_version"] = "io.tobkiri.ui-asset-pack-source.v1"
     source_identity = canonical_digest(source)
     files["authoring-source.v1.json"] = _json_bytes(source)
     contracts_document = {
@@ -245,7 +273,11 @@ def build_python_pack(
         {
             "path": name,
             "digest": _file_digest(value),
-            "kind": "executable" if name in runtime_paths else "sidecar",
+            "kind": (
+                "executable" if name in runtime_paths
+                else "asset" if asset_only and name in (assets or {})
+                else "sidecar"
+            ),
         }
         for name, value in sorted(files.items())
     ]
@@ -263,7 +295,10 @@ def build_python_pack(
         "evidence": [
             {
                 "path": "authoring-source.v1.json",
-                "rule_id": "canonical-python-pack-authoring-source",
+                "rule_id": (
+                    "canonical-ui-asset-pack-authoring-source" if asset_only
+                    else "canonical-python-pack-authoring-source"
+                ),
                 "digest": source_identity,
             }
         ],
@@ -333,6 +368,7 @@ def build_python_pack(
                 "role": (
                     "runtime"
                     if name in runtime_paths
+                    else "asset" if asset_only and name in (assets or {})
                     else {
                         "pack.v4.json": "canonical_manifest",
                         "contracts.v4.json": "contract_catalog",
@@ -374,7 +410,9 @@ def build_python_pack(
     return target
 
 
-def _add_file(files: dict[str, bytes], name: str, content: bytes) -> None:
+def _add_file(
+    files: dict[str, bytes], name: str, content: bytes, *, limit: int | None = None,
+) -> None:
     path = PurePosixPath(name)
     if (
         not name
@@ -386,7 +424,7 @@ def _add_file(files: dict[str, bytes], name: str, content: bytes) -> None:
         or name in _GENERATED
         or name in files
         or not isinstance(content, bytes)
-        or len(content) > _MAX_FILE_BYTES
+        or len(content) > (_MAX_FILE_BYTES if limit is None else limit)
     ):
         raise PackAuthoringError("artifact path or captured bytes are invalid")
     files[name] = content
