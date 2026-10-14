@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "dd9e780fdd11f84da1f9143168eabad5c777ab88622413809031be8c3f4e0246",
+    "digest": "8ea72f474a94fa475566e771aebd3adc17a23d8bb77a820b5fdf4dc789c094de",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 9854,
-        "sha256": "07ea9c9e9ea8a57904741c59574df773b7c67da25875a3d6a3b5126bc63dcad9"
+        "size": 9897,
+        "sha256": "0c117bb1a4d75cb7b3ea5de0ba93120e300e86d8205f19ddf99175ec82e34f42"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 446575,
-        "sha256": "094ce469c6585756060ba1f783a6fbed9f1706c4fbdd1a00b886caa3c2513189"
+        "size": 447474,
+        "sha256": "94b60b24bf69f633a64d5506983ca63c073847ac61ef84c387a1f9473f847cdc"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -2334,6 +2334,16 @@
         "sha256": "62889fb38acd80cafb404651dae65b8904c291081aa05fe1c2faee1bd18a3d7a"
       },
       {
+        "path": "src/lib/pendingTerminalObservation.test.ts",
+        "size": 10996,
+        "sha256": "a63c5af12798bb27d659051d76c73bdee03ce2f01921926cff9762590718ce68"
+      },
+      {
+        "path": "src/lib/pendingTerminalObservation.ts",
+        "size": 5678,
+        "sha256": "bb4341b9c307972e5b5f0aad89a46a4eb4b921068fefeb8868640a17614d3efa"
+      },
+      {
         "path": "src/lib/placement.test.ts",
         "size": 5149,
         "sha256": "8fa7d0e251469401c86c76cf28201b1cdfb68a6c0a21563e43ebbfd1a20fc978"
@@ -3071,7 +3081,7 @@
     ]
   },
   "bundle": {
-    "digest": "53a4a8dcc10839169a5e5f77950813960143eb41fe0cc520535984127271f587",
+    "digest": "18ae485346a4d555f456a2ae88d6cdbb147e4bac5764aeebee2f2cff5de09f13",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3085,8 +3095,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2682626,
-        "sha256": "ca29efb792b792d666cf20ca52dc0b564cf4600b4fba3bb0b4af849152e98fad"
+        "size": 2685071,
+        "sha256": "8268809d3d38288c5c643c7cfbfe66229dafd74f7a21d5f8149b82981583d234"
       },
       {
         "path": "shell-icons.js",
