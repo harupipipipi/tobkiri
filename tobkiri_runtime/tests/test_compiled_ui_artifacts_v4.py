@@ -6,9 +6,11 @@ import copy
 import hashlib
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from scripts import compiled_ui_artifacts_v4 as module
 from scripts.compiled_ui_artifacts_v4 import (
     catalog_with_compiled_ui,
     compiled_ui_artifacts,
@@ -131,3 +133,92 @@ def test_runtime_asset_collision_and_missing_shell_are_rejected(tmp_path: Path) 
     (root / "shell.html").unlink()
     with pytest.raises(ValueError, match="shell.html"):
         compiled_ui_artifacts(root)
+
+
+@pytest.mark.parametrize(
+    "bound,value",
+    [
+        ("_MAX_TOTAL_BYTES", 1),
+        ("_MAX_ASSET_COUNT", 1),
+        ("_MAX_ENTRY_COUNT", 1),
+        ("_MAX_DEPTH", 1),
+        ("_MAX_PATH_BYTES", 10),
+    ],
+)
+def test_aggregate_and_tree_bounds_are_enforced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bound: str,
+    value: int,
+) -> None:
+    root = _ui(tmp_path)
+    (root / "one" / "two").mkdir(parents=True)
+    (root / "one" / "two" / "deep.js").write_text("public")
+    monkeypatch.setattr(module, bound, value)
+    with pytest.raises(ValueError):
+        compiled_ui_artifacts(root)
+
+
+@pytest.mark.parametrize("version", ["1", "01.0.0", "1.0.0-beta", "9" * 33 + ".0.0"])
+def test_invalid_or_unbounded_release_versions_are_rejected(
+    tmp_path: Path,
+    version: str,
+) -> None:
+    with pytest.raises(ValueError, match="stable version"):
+        catalog_with_compiled_ui({}, ui_root=tmp_path, version=version)
+
+
+def test_regular_leaf_replaced_by_fifo_is_rejected_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _ui(tmp_path)
+    original_open = os.open
+    swapped = False
+
+    def racing_open(
+        path: str | Path,
+        flags: int,
+        *args: Any,
+        **kwargs: Any,
+    ) -> int:
+        nonlocal swapped
+        if path == "shell-app.js" and not swapped:
+            assert flags & os.O_NONBLOCK
+            swapped = True
+            os.unlink(path, dir_fd=kwargs["dir_fd"])
+            os.mkfifo(path, dir_fd=kwargs["dir_fd"])
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(module.os, "open", racing_open)
+    with pytest.raises(ValueError, match="single-link"):
+        compiled_ui_artifacts(root)
+    assert swapped
+
+
+@pytest.mark.parametrize("mutation", ["file", "inventory"])
+def test_read_time_file_or_inventory_mutation_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    root = _ui(tmp_path)
+    original_read = os.read
+    mutated = False
+
+    def racing_read(descriptor: int, count: int) -> bytes:
+        nonlocal mutated
+        block = original_read(descriptor, count)
+        if block and not mutated:
+            mutated = True
+            if mutation == "file":
+                with (root / "shell-app.js").open("ab") as stream:
+                    stream.write(b"changed while reading")
+            else:
+                (root / "late.js").write_text("late inventory")
+        return block
+
+    monkeypatch.setattr(module.os, "read", racing_read)
+    with pytest.raises(ValueError, match="changed while"):
+        compiled_ui_artifacts(root)
+    assert mutated

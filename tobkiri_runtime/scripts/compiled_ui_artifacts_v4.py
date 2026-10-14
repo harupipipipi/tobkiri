@@ -35,6 +35,12 @@ _PUBLIC_SUFFIXES = frozenset(
 )
 _EXCLUDED = frozenset({".shell-bundle-manifest.json", "actions.py"})
 _MAX_ASSET_BYTES = 32 * 1024 * 1024
+_MAX_TOTAL_BYTES = 128 * 1024 * 1024
+_MAX_ASSET_COUNT = 512
+_MAX_ENTRY_COUNT = 2048
+_MAX_DEPTH = 12
+_MAX_PATH_BYTES = 1024
+_MAX_VERSION_LENGTH = 32
 
 
 def _identity(value: os.stat_result) -> tuple[int, ...]:
@@ -69,26 +75,26 @@ def _open_root(path: Path) -> int:
         raise
 
 
-def _digest_file(parent_fd: int, name: str) -> str:
-    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+def _digest_file(parent_fd: int, name: str, limit: int) -> tuple[str, int]:
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+        dir_fd=parent_fd,
+    )
     try:
         before = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or before.st_size > _MAX_ASSET_BYTES
-        ):
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > limit:
             raise ValueError("compiled UI asset is not a bounded single-link file")
         digest = hashlib.sha256()
         total = 0
         while block := os.read(descriptor, 1024 * 1024):
             total += len(block)
-            if total > _MAX_ASSET_BYTES:
+            if total > limit:
                 raise ValueError("compiled UI asset grew beyond its size limit")
             digest.update(block)
         if total != before.st_size or _identity(before) != _identity(os.fstat(descriptor)):
             raise ValueError("compiled UI asset changed while it was read")
-        return "sha256:" + digest.hexdigest()
+        return "sha256:" + digest.hexdigest(), total
     finally:
         os.close(descriptor)
 
@@ -96,12 +102,22 @@ def _digest_file(parent_fd: int, name: str) -> str:
 def compiled_ui_artifacts(ui_root: Path) -> list[dict[str, str]]:
     """Hash only public compiled UI assets, without following any symlinks."""
     result: list[dict[str, str]] = []
+    total_bytes = 0
+    entry_count = 0
 
     def walk(descriptor: int, prefix: tuple[str, ...]) -> None:
+        nonlocal total_bytes, entry_count
+        if len(prefix) > _MAX_DEPTH:
+            raise ValueError("compiled UI exceeds its directory depth limit")
         before = os.fstat(descriptor)
+        names: list[str] = []
         with os.scandir(descriptor) as entries:
-            names = sorted(entry.name for entry in entries)
-        for name in names:
+            for entry in entries:
+                entry_count += 1
+                if entry_count > _MAX_ENTRY_COUNT:
+                    raise ValueError("compiled UI exceeds its inventory count limit")
+                names.append(entry.name)
+        for name in sorted(names):
             if "\\" in name or name in {".", ".."}:
                 raise ValueError("compiled UI path is invalid")
             metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
@@ -114,6 +130,8 @@ def compiled_ui_artifacts(ui_root: Path) -> list[dict[str, str]]:
             if name.startswith("."):
                 raise ValueError("compiled UI contains an undeclared hidden path")
             parts = (*prefix, name)
+            if len("/".join(("ui", *parts)).encode("utf-8")) > _MAX_PATH_BYTES:
+                raise ValueError("compiled UI path exceeds its length limit")
             if stat.S_ISDIR(metadata.st_mode):
                 child = os.open(
                     name,
@@ -127,10 +145,18 @@ def compiled_ui_artifacts(ui_root: Path) -> list[dict[str, str]]:
             elif stat.S_ISREG(metadata.st_mode):
                 if Path(name).suffix.lower() not in _PUBLIC_SUFFIXES:
                     raise ValueError("compiled UI contains a non-public file type")
+                if len(result) >= _MAX_ASSET_COUNT:
+                    raise ValueError("compiled UI exceeds its asset count limit")
+                digest, size = _digest_file(
+                    descriptor,
+                    name,
+                    min(_MAX_ASSET_BYTES, _MAX_TOTAL_BYTES - total_bytes),
+                )
+                total_bytes += size
                 result.append(
                     {
                         "path": "/".join(("ui", *parts)),
-                        "digest": _digest_file(descriptor, name),
+                        "digest": digest,
                         "kind": "asset",
                         "index_role": "asset",
                     }
@@ -157,7 +183,11 @@ def catalog_with_compiled_ui(
     version: str,
 ) -> dict[str, Any]:
     """Return a copy with only the Defaultspack version and UI assets updated."""
-    if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
+    if (
+        not isinstance(version, str)
+        or len(version) > _MAX_VERSION_LENGTH
+        or not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version)
+    ):
         raise ValueError("compiled UI release requires an explicit stable version")
     updated = copy.deepcopy(dict(catalog))
     records = [r for r in updated["packs"] if r["pack_id"] == "defaultspack"]
