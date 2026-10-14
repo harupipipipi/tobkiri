@@ -19,10 +19,11 @@ from .captured_pack_ui_assets_v4 import (
 )
 from .external_pack_catalog_v4 import (
     _read_regular_from_root_descriptor,
+    _verify_signed_file_inventory,
     load_external_pack_catalog,
 )
 from .pack_artifact_integrity import host_policy_identity, read_host_policy_snapshot
-from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
+from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_manifest
 from .publisher_key_versions import is_legacy_publisher_key, resolve_publisher_key
 
 
@@ -197,8 +198,7 @@ class CapturedAssetOnlyUIPacks:
             artifact_digest=pin,
             signed_manifest_digest=delegation.signed_manifest_digest,
         )
-        verify_signed_pack(
-            root,
+        verify_signed_manifest(
             signed,
             public_key,
             expected_pack_id=pack_id,
@@ -208,6 +208,7 @@ class CapturedAssetOnlyUIPacks:
             expected_contract_versions={},
             expected_capabilities=[],
         )
+        _verify_signed_file_inventory(root, signed)
 
         def current() -> None:
             assert_current()

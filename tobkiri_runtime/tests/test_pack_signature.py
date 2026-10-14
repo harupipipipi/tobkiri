@@ -19,6 +19,7 @@ from core_runtime.pack_signature import (
     PackSignatureError,
     build_signed_manifest,
     sign_manifest,
+    verify_signed_manifest,
     verify_signed_pack,
 )
 
@@ -59,6 +60,26 @@ def test_signed_pack_verifies_without_granting_authority(tmp_path: Path) -> None
     assert result["authority_granted"] is False
     assert manifest["requested_capabilities"] == ["network.read"]
     assert manifest["authority_granted"] is False
+
+
+def test_manifest_verification_preserves_strict_source_file_modes(tmp_path: Path) -> None:
+    """CAS envelope verification must not relax source signing or inventory rules."""
+    root, private_key, manifest = _signed_pack(tmp_path)
+    (root / "handler.py").chmod(0o400)
+    assert verify_signed_manifest(manifest, private_key.public_key()) == {
+        "verified": True,
+        "pack_id": "example_pack",
+        "version": "1.2.3",
+        "publisher_id": "publisher.example",
+        "key_id": manifest["signature"]["key_id"],
+        "authority_granted": False,
+    }
+    with pytest.raises(PackSignatureError, match="mode must be"):
+        verify_signed_pack(root, manifest, private_key.public_key())
+    with pytest.raises(PackSignatureError, match="signature mismatch"):
+        verify_signed_manifest(
+            {**manifest, "version": "9.9.9"}, private_key.public_key(),
+        )
 
 
 def test_file_modification_and_unlisted_file_fail_verification(

@@ -131,8 +131,7 @@ def sign_manifest(
     }
 
 
-def verify_signed_pack(
-    pack_root: Path,
+def verify_signed_manifest(
     manifest: dict[str, Any],
     public_key: Ed25519PublicKey,
     *,
@@ -145,7 +144,12 @@ def verify_signed_pack(
     revoked_key_ids: set[str] | None = None,
     core_version: str | None = None,
 ) -> dict[str, Any]:
-    """Verify signature, publisher, revocation, and the complete file set."""
+    """Verify only the signed envelope, identity and signature policy.
+
+    This does not verify file contents or grant authority. Source Pack callers
+    use ``verify_signed_pack`` for the complete source inventory; authenticated
+    CAS callers must separately apply their sealed inventory verifier.
+    """
 
     unsigned = _unsigned_manifest(manifest)
     raw_signature = manifest.get("signature")
@@ -208,9 +212,6 @@ def verify_signed_pack(
     except (InvalidSignature, ValueError) as exc:
         raise PackSignatureError("Pack signature mismatch") from exc
 
-    current_files = _file_records(pack_root.resolve())
-    if current_files != unsigned.get("files"):
-        raise PackSignatureError("Pack file manifest mismatch")
     return {
         "verified": True,
         "pack_id": unsigned.get("pack_id"),
@@ -219,6 +220,39 @@ def verify_signed_pack(
         "key_id": public_key_id,
         "authority_granted": False,
     }
+
+
+def verify_signed_pack(
+    pack_root: Path,
+    manifest: dict[str, Any],
+    public_key: Ed25519PublicKey,
+    *,
+    expected_publisher_id: str | None = None,
+    expected_pack_id: str | None = None,
+    expected_version: str | None = None,
+    expected_key_id: str | None = None,
+    expected_contract_versions: dict[str, str] | None = None,
+    expected_capabilities: list[str] | None = None,
+    revoked_key_ids: set[str] | None = None,
+    core_version: str | None = None,
+) -> dict[str, Any]:
+    """Verify signature, publisher, revocation, and the complete source file set."""
+    verified = verify_signed_manifest(
+        manifest,
+        public_key,
+        expected_publisher_id=expected_publisher_id,
+        expected_pack_id=expected_pack_id,
+        expected_version=expected_version,
+        expected_key_id=expected_key_id,
+        expected_contract_versions=expected_contract_versions,
+        expected_capabilities=expected_capabilities,
+        revoked_key_ids=revoked_key_ids,
+        core_version=core_version,
+    )
+    current_files = _file_records(pack_root.resolve())
+    if current_files != _unsigned_manifest(manifest).get("files"):
+        raise PackSignatureError("Pack file manifest mismatch")
+    return verified
 
 
 def _file_records(root: Path) -> list[dict[str, Any]]:
