@@ -187,7 +187,7 @@ def test_regular_leaf_replaced_by_fifo_is_rejected_without_blocking(
             assert flags & os.O_NONBLOCK
             swapped = True
             os.unlink(path, dir_fd=kwargs["dir_fd"])
-            os.mkfifo(path, dir_fd=kwargs["dir_fd"])
+            os.mkfifo(root / path)
         return original_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(module.os, "open", racing_open)
