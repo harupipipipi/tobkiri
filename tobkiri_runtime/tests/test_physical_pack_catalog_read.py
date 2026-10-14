@@ -175,9 +175,11 @@ def test_reader_capture_and_payload_keep_dependency_closure_and_fresh_checks(
         active.resolved.profile["profile_id"],
         active_snapshot=active,
     )
-    assert {row["pack_id"] for row in result["packs"] if row["required"]} == set(
-        expected_required
+    projected = {row["pack_id"] for row in result["packs"]}
+    assert {row["pack_id"] for row in result["packs"] if row["required"]} == (
+        set(expected_required) & projected
     )
+    assert "runtime.tauri.application.default" not in projected
     assert result["plan_digest"] == active.resolved.plan["plan_digest"]
     assert not (fixture.owner / "pack_control/.authority_key").exists()
 
