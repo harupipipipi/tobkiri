@@ -57,6 +57,13 @@ def frozen_successor_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     })
     _approve_gateway_profile_revision(fixture.owner, "defaults")
     active = profile_capture.capture_active_profile()
+    session = capture_pack_control_session(
+        active=active, bundle_root=fixture.bundle,
+        runtime_surface_factory=create_runtime_surface_services,
+    )
+    session.invoke(PACK_CONTROL_CONTRACT, "pack.install", {
+        "pack_id": PACK_ID, "_session_id": "frozen-read-setup",
+    })
     drift = tmp_path / "new-source" / PACK_ID
     shutil.copytree(source, drift, ignore=shutil.ignore_patterns(".tobkiri"))
     manifest = validate_file(drift / "pack.v4.json", "pack")
@@ -76,10 +83,6 @@ def frozen_successor_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     )
     with pytest.raises(external.ExternalPackCatalogDenied, match="compatibility"):
         external.load_external_pack_catalog({PACK_ID: admitted["artifact_digest"]})
-    session = capture_pack_control_session(
-        active=active, bundle_root=fixture.bundle,
-        runtime_surface_factory=create_runtime_surface_services,
-    )
     yield session, fixture, admitted
     session.close()
 
@@ -108,5 +111,6 @@ def test_read_projection_keeps_frozen_baseline_until_payload_is_verified(
             if operation == "catalog.read" else result
         )
         assert row["pack_artifact_digest"] == admitted["artifact_digest"]
+        assert row["installed"] is True
     assert pointer.read_bytes() == before
     assert baselines.current_bundled_host_baseline_read() is None

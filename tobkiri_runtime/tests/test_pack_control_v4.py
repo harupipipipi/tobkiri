@@ -550,7 +550,7 @@ def test_control_operation_reuses_only_its_scoped_capture(
     captured_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repeated binding checks share one capture, while each operation is fresh."""
+    """Projection shares its capture and performs one fresh capture on exit."""
 
     from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore
 
@@ -570,9 +570,9 @@ def test_control_operation_reuses_only_its_scoped_capture(
     )
 
     assert _invoke(session, "catalog.read")["profile_id"] == "defaults"
-    assert loads == 1
-    assert _invoke(session, "catalog.read")["profile_id"] == "defaults"
     assert loads == 2
+    assert _invoke(session, "catalog.read")["profile_id"] == "defaults"
+    assert loads == 4
 
 
 def test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture(

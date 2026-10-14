@@ -1097,7 +1097,10 @@ class CapturedPackControlSession:
         _require_catalog_read(_read)
         binding = self._binding
         records = _read.catalog()
-        installed = _read_control_state(binding.profile_id, read_only=True)
+        known_pack_ids = frozenset(records)
+        installed = _read_control_state(
+            binding.profile_id, read_only=True, _known_pack_ids=known_pack_ids,
+        )
         approval_identity = _approval_read_identity(binding.profile_id, tuple(records))
         _state, active_profile = _active_profile(active_snapshot, _read=_read)
         active = set(active_profile.get("packs") or [])
@@ -1120,7 +1123,10 @@ class CapturedPackControlSession:
         def check_mutable_state() -> None:
             if (
                 self._binding != binding
-                or _read_control_state(binding.profile_id, read_only=True) != installed
+                or _read_control_state(
+                    binding.profile_id, read_only=True,
+                    _known_pack_ids=known_pack_ids,
+                ) != installed
                 or _approval_read_identity(binding.profile_id, tuple(records))
                 != approval_identity
             ):
@@ -1342,7 +1348,10 @@ def _catalog_payload(
             final_grants: dict[str, Any] = {}
             current_grants = _active_grant_bindings(state, _inspection=final_grants)
             if (
-                _read_control_state(binding.profile_id, read_only=True) != installed
+                _read_control_state(
+                    binding.profile_id, read_only=True,
+                    _known_pack_ids=frozenset(records),
+                ) != installed
                 or current_grants != active_grant_bindings
                 or final_grants != grant_inspection
                 or _approval_read_identity(binding.profile_id, tuple(records))
@@ -1615,7 +1624,15 @@ def _physical_catalog_read(
 
     root = _user_data_root()
     try:
-        captured = capture_active_profile() if active is None else active
+        if active is None:
+            try:
+                captured = capture_active_profile()
+            except Exception as error:
+                raise PackControlDigestMismatch(
+                    "active v4 Profile session is missing or invalid"
+                ) from error
+        else:
+            captured = active
         identity = _active_read_identity(captured)
         pins = {
             str(row["identity"]): str(row["artifact_digest"])
@@ -2437,14 +2454,26 @@ def _panel_session_root(authority_session_id: str) -> str:
     return parts[0]
 
 
-def _read_control_state(profile_id: str, *, read_only: bool = False) -> dict[str, Any]:
+def _read_control_state(
+    profile_id: str, *, read_only: bool = False,
+    _known_pack_ids: frozenset[str] | None = None,
+) -> dict[str, Any]:
+    # Exit checks follow physical-root verification, after its lexical scope
+    # closes. Their known identities come only from that verified read.
+    if _known_pack_ids is not None and (
+        not read_only or type(_known_pack_ids) is not frozenset
+    ):
+        raise PackControlDigestMismatch("captured Pack identities require a read")
     value = _read_control_envelope(profile_id, create=not read_only)
     if not value:
         return {}
     if not read_only:
         value = _migrate_control_envelope(profile_id, value)
     installed = dict(value["installed"])
-    if any(pack_id not in load_pack_catalog() for pack_id in installed):
+    known = _known_pack_ids
+    if known is None and installed:
+        known = frozenset(load_pack_catalog())
+    if any(pack_id not in known for pack_id in installed):
         raise PackControlDigestMismatch("Pack control state contains an unknown Pack")
     return installed
 
