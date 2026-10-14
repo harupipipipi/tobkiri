@@ -49,6 +49,26 @@ def _identity(value: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _open_root(path: Path) -> int:
+    absolute = path.absolute()
+    if ".." in absolute.parts:
+        raise ValueError("compiled UI root cannot contain parent traversal")
+    descriptor = os.open(absolute.anchor, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in absolute.parts[1:]:
+            child = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 def _digest_file(parent_fd: int, name: str) -> str:
     descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
     try:
@@ -120,7 +140,7 @@ def compiled_ui_artifacts(ui_root: Path) -> list[dict[str, str]]:
         if _identity(before) != _identity(os.fstat(descriptor)):
             raise ValueError("compiled UI directory changed while it was read")
 
-    descriptor = os.open(ui_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    descriptor = _open_root(ui_root)
     try:
         walk(descriptor, ())
     finally:

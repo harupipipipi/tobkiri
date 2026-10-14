@@ -78,6 +78,14 @@ def test_hardlinked_and_oversize_assets_are_rejected(tmp_path: Path) -> None:
         compiled_ui_artifacts(root)
 
 
+def test_symlink_above_ui_root_is_rejected(tmp_path: Path) -> None:
+    root = _ui(tmp_path)
+    link = tmp_path.parent / (tmp_path.name + "-linked-parent")
+    link.symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(OSError):
+        compiled_ui_artifacts(link / root.name)
+
+
 def test_catalog_update_preserves_other_packs_and_authority(tmp_path: Path) -> None:
     root = _ui(tmp_path)
     original = {
