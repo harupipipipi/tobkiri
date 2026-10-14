@@ -154,6 +154,7 @@ def test_additive_reader_honors_revocation_for_both_key_generations(
     """An exact additive scope does not override a revoked publisher key."""
     policy = _policy()
     policy["publishers"][PUBLISHER]["revoked_key_ids"] = [key_id]
+    policy["policy_digest"] = _policy_digest(policy)
     with pytest.raises(ValueError, match="revoked"):
         _resolve(
             policy, key_id=key_id,
@@ -189,6 +190,9 @@ def test_malformed_additive_policy_fails_closed_even_for_legacy_key(
         record["scopes"] *= 257
     else:
         record["approved"] = True
+    # Keep the outer policy authenticated so this tests the additive schema,
+    # rather than stopping at the unrelated policy-envelope digest check.
+    policy["policy_digest"] = _policy_digest(policy)
     with pytest.raises(ValueError):
         _resolve(policy, key_id=OLD_ID, pack_id=GATEWAY)
 

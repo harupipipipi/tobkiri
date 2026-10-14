@@ -28,7 +28,8 @@ from core_runtime.pack_artifact_integrity import (
 )
 from core_runtime.publisher_key_versions import FIELD, resolve_publisher_key
 from tests.test_native_pack_publisher_key_versions import (
-    ADAPTER, ARTIFACT, GATEWAY, NEW_ID, NEW_PEM, OLD_ID, OLD_PEM, PUBLISHER,
+    ADAPTER, ARTIFACT, GATEWAY, NEW_FINGERPRINT, NEW_ID, NEW_PEM,
+    OLD_FINGERPRINT, OLD_ID, OLD_PEM, PUBLISHER,
     SIGNED_MANIFEST, _policy,
 )
 from tests.test_external_pack_catalog_v4 import _signed_external_pack
@@ -74,6 +75,7 @@ class ReviewOwner:
         self.preview = {
             "pack_id": ADAPTER, "version": "1.0.1", "publisher_id": PUBLISHER,
             "key_id": NEW_ID, "artifact_digest": ARTIFACT,
+            "key_fingerprint": NEW_FINGERPRINT,
             "predecessor_artifact_digest": PREDECESSOR,
             "preview_digest": "sha256:" + "4" * 64,
         }
@@ -193,7 +195,9 @@ def test_existing_onboarding_paths_need_no_additive_review(
     """Legacy trust and first-publisher onboarding keep their separate ceremony."""
     before = owner.path.read_bytes()
     if kind == "legacy":
-        owner.preview.update(pack_id=GATEWAY, key_id=OLD_ID)
+        owner.preview.update(
+            pack_id=GATEWAY, key_id=OLD_ID, key_fingerprint=OLD_FINGERPRINT,
+        )
     else:
         owner.preview["publisher_id"] = "new.publisher"
 
@@ -282,6 +286,7 @@ def test_fresh_authority_change_denies_and_consumes_exact_review(
     ("pack_id", GATEWAY),
     ("artifact_digest", "sha256:" + "e" * 64),
     ("key_id", OLD_ID),
+    ("key_fingerprint", OLD_FINGERPRINT),
     ("publisher_id", "different.publisher"),
     ("preview_digest", "sha256:" + "f" * 64),
     ("predecessor_artifact_digest", "sha256:" + "e" * 64),
