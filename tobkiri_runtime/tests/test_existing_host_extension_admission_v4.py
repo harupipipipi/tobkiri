@@ -127,7 +127,7 @@ def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     fixture = make_retention_fixture(tmp_path, monkeypatch)
     cache = _publish(fixture)
     key = Ed25519PrivateKey.generate()
-    selected = _release(fixture.source, tmp_path / "selected", "99.0.0", key)
+    selected = _release(cache, tmp_path / "selected", "99.0.0", key)
     trust = tmp_path / "host-policy/publisher-trust.json"
     trust.parent.mkdir(mode=0o700)
     _install_policy(selected, trust, key)
@@ -750,8 +750,9 @@ def test_native_first_known_bundled_update_retains_canonical_path(
 ) -> None:
     """A first bundled Host update still uses the existing canonical producer port."""
     fixture = make_retention_fixture(tmp_path, monkeypatch)
+    cache = _publish(fixture)
     key = Ed25519PrivateKey.generate()
-    candidate = _release(fixture.source, tmp_path / "first-successor", "99.0.0", key)
+    candidate = _release(cache, tmp_path / "first-successor", "99.0.0", key)
     public = tmp_path / "publisher.pem"
     public.write_bytes(
         key.public_key().public_bytes(

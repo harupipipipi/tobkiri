@@ -490,7 +490,7 @@ def test_private_confirmation_failures_retire_known_review_before_retry(
     elif failure == "invalid-path":
         body["source_root"] = "relative/candidate"
 
-    def fresh_preview(_source: Path, _key: Path) -> dict[str, Any]:
+    def fresh_preview(_source: Path, _key: Path, **_arguments: Any) -> dict[str, Any]:
         if failure == "fresh-preview":
             raise ValueError("synthetic artifact changed")
         return dict(owner.preview)
@@ -498,8 +498,8 @@ def test_private_confirmation_failures_retire_known_review_before_retry(
     def unexpected_commit(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         raise AssertionError("invalid confirmation must stop before admission")
 
-    monkeypatch.setattr(onboarding, "preview_signed_pack", fresh_preview)
-    monkeypatch.setattr(onboarding, "commit_signed_pack", unexpected_commit)
+    monkeypatch.setattr(onboarding, "preview_native_signed_pack", fresh_preview)
+    monkeypatch.setattr(onboarding, "commit_native_signed_pack", unexpected_commit)
     monkeypatch.setattr(native_http, "_current_review_context", owner.current_context)
     handler = NativeHandler(owner, body=body)
     before = owner.path.read_bytes()
@@ -542,9 +542,10 @@ def test_private_confirmation_binds_admission_to_written_policy_identity(
         }
 
     monkeypatch.setattr(
-        onboarding, "preview_signed_pack", lambda _source, _key: dict(owner.preview),
+        onboarding, "preview_native_signed_pack",
+        lambda _source, _key, **_arguments: dict(owner.preview),
     )
-    monkeypatch.setattr(onboarding, "commit_signed_pack", admission)
+    monkeypatch.setattr(onboarding, "commit_native_signed_pack", admission)
     monkeypatch.setattr(native_http, "_current_review_context", owner.current_context)
     handler = NativeHandler(owner, body=body)
     native_http.handle_native_pack_onboarding(handler, commit=True)
