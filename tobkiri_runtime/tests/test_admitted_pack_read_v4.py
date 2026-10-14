@@ -212,6 +212,7 @@ def test_capture_binding_batches_external_scans_with_real_bundled_pins(
 ) -> None:
     from copy import deepcopy
 
+    from core_runtime.bootstrap import profile_capture
     from core_runtime.pack_boundary import load_pack_catalog
     from core_runtime.pack_control_v4 import (
         _capture_binding,
@@ -259,20 +260,37 @@ def test_capture_binding_batches_external_scans_with_real_bundled_pins(
     )[:pack_count]
     assert len(pack_ids) == pack_count
     calls = []
+    recaptured = []
     verify = external._verify_entry_root
+    capture_active = profile_capture.capture_active_profile
 
     def counted_verify(pack_id, entry, root):
         calls.append(pack_id)
         return verify(pack_id, entry, root)
 
+    def counted_active_capture(*, base_dir: Path | None = None):
+        snapshot = capture_active(base_dir=base_dir)
+        recaptured.append(
+            (
+                snapshot.resolved.profile["profile_id"],
+                snapshot.resolved.plan["plan_digest"],
+                snapshot.activation["activation_id"],
+            )
+        )
+        return snapshot
+
     monkeypatch.setattr(external, "_verify_entry_root", counted_verify)
+    monkeypatch.setattr(profile_capture, "capture_active_profile", counted_active_capture)
     with _physical_catalog_read(active) as (read, captured):
         for pack_id in pack_ids:
             read.resolve(pack_id)
         binding = _capture_binding(captured, _read=read)
     assert binding.profile_id == profile_id
     assert binding.plan_digest == active.resolved.plan["plan_digest"]
-    assert calls == [PACK_ID] * 5
+    assert calls == [PACK_ID] * 2
+    assert recaptured == [
+        (profile_id, active.resolved.plan["plan_digest"], active.activation["activation_id"])
+    ]
 
 
 @pytest.mark.parametrize("pack_count", [1, 42])
