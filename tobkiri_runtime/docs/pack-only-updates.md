@@ -6,8 +6,8 @@ does not activate it. A Profile selects an exact artifact digest, then resolves,
 reviews, approves, and activates that revision through the existing ceremony.
 Neither operation replaces the Launcher executable or the registered VM.
 
-The separate [UI asset producer](ui-asset-pack-authoring.md) stages signed
-renderer revisions without changing the protected Defaults backend. Its
+The separate [UI asset producer](ui-asset-pack-authoring.md) stages unsigned
+renderer inputs for separate signing, keeping the protected Defaults backend. Its
 initial Native enrollment prerequisite and browser authority are documented
 separately from ordinary executable Pack updates.
 

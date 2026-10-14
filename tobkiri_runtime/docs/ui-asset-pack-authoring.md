@@ -13,8 +13,7 @@ replacing the protected Defaults backend.
 
 ## Build and sign
 
-Run the normal frontend build from `ecosystem/defaultspack/webapp`, then run
-the producer from `tobkiri_runtime`:
+Run these commands from `tobkiri_runtime`, including the normal frontend build:
 
 ```sh
 npm --prefix ecosystem/defaultspack/webapp run build
@@ -61,12 +60,14 @@ requires a nonlegacy publisher-key authorization for the exact Pack ID,
 artifact digest and canonical signed-manifest digest. A broad legacy publisher
 namespace is insufficient.
 
-Capture and subsequent reads verify the selected immutable CAS bytes,
-signature, publisher, file inventory, owner and activation identity. Current
+Capture verifies the selected immutable CAS bytes, signature, publisher, file
+inventory, owner and activation identity. Subsequent reads recheck the selected
+identity, current policy, owner, activation and requested asset digest. Current
 trust and revocation checks remain in force. A selected renderer that is
-missing, corrupt, stale or unauthorized fails closed. The bundled legacy UI is
-available only when no renderer slot is selected and its exact builtin
-identity verifies; a failed selected renderer cannot fall back silently.
+missing, corrupt, stale or unauthorized fails closed. When no renderer slot is
+selected, the original authenticated Application mount remains available only
+with its captured identity verified. A failed selected renderer cannot fall
+back silently.
 
 Host authentication, Origin, CORS and CSRF checks remain in place. This path
 does not introduce a separate browser origin or a new CSP isolation boundary.
