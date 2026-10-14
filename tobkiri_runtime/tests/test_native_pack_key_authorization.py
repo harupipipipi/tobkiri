@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.native_pack_key_authorization import NativePackKeyVersionCeremony
@@ -29,6 +31,7 @@ from tests.test_native_pack_publisher_key_versions import (
     ADAPTER, ARTIFACT, GATEWAY, NEW_ID, NEW_PEM, OLD_ID, OLD_PEM, PUBLISHER,
     SIGNED_MANIFEST, _policy,
 )
+from tests.test_external_pack_catalog_v4 import _signed_external_pack
 
 
 pytestmark = pytest.mark.skipif(
@@ -547,3 +550,36 @@ def test_private_confirmation_binds_admission_to_written_policy_identity(
     assert handler.status == 409
     assert len(observed) == 1
     assert owner.path.read_bytes() == committed
+
+
+def test_old_native_commit_cannot_add_selected_untrusted_publisher_key(
+    owner: ReviewOwner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """A real signed artifact still needs additive consent absent from old Native."""
+    runtime_data = tmp_path / "isolated-runtime-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(runtime_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(runtime_data))
+    signing_key = Ed25519PrivateKey.generate()
+    source_root = tmp_path / "signed-selection"
+    source_root.mkdir()
+    source, _unused_fixture_policy = _signed_external_pack(
+        source_root, publisher_id=PUBLISHER, signing_key=signing_key,
+    )
+    public_key = source_root / "separate-public.pem"
+    public_key.write_bytes(signing_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ))
+    del signing_key
+    from core_runtime.native_pack_onboarding import preview_signed_pack
+
+    preview = preview_signed_pack(source, public_key)
+    handler = NativeHandler(owner, body={
+        "source_root": str(source), "public_key_path": str(public_key),
+        "preview_digest": preview["preview_digest"],
+    })
+    before = owner.path.read_bytes()
+    native_http.handle_native_pack_onboarding(handler, commit=True)
+    assert handler.status == 409
+    assert owner.path.read_bytes() == before
+    assert FIELD not in read_host_policy_snapshot(owner.path)
