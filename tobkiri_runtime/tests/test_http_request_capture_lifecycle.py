@@ -269,7 +269,7 @@ def test_new_identity_does_not_accept_old_authenticated_cookie(
     server, initial, current = boundary
     cookie, _, _ = _panel_session(server)
     connection = _preconnect(server, monkeypatch)
-    current.activation_id = "activation:next"
+    current.activation_id = "activation:successor"
     try:
         _refresh(server, current)
         status, payload = _socket_request(connection, cookie)
