@@ -3514,8 +3514,8 @@
     {
       "path": "scripts/migrate_pack_artifacts_v4.py",
       "type": "regular-file",
-      "size": 67027,
-      "sha256": "17831600846becc46eeb878192b138313c816f5f19ac454ae5993b91d0f44447",
+      "size": 69134,
+      "sha256": "b8937f1bb514d59bff21bb6e404abbc48571414409d5a14cd9cd4abf59d932bc",
       "executable": false
     },
     {
@@ -3726,6 +3726,13 @@
       "type": "regular-file",
       "size": 2356,
       "sha256": "78e4560aca6a2b46acb6e3f885f50aef8ecc660dd7c3a23c94e93b34ac7e80bb",
+      "executable": false
+    },
+    {
+      "path": "scripts/stage_host_extension_successor_v4.py",
+      "type": "regular-file",
+      "size": 2456,
+      "sha256": "9bfce711351e5276ee308e6521a58571e98199af12e658dd1999b07775cb1622",
       "executable": false
     },
     {
@@ -4319,8 +4326,8 @@
     {
       "path": "tobkiri_protocol/secure_persistence.py",
       "type": "regular-file",
-      "size": 36853,
-      "sha256": "f308477eaa209960e413fa273eb0c2e0e8b60424a220fbb95b4144599aa698c7",
+      "size": 36916,
+      "sha256": "aa67304c6b4c07956cdec2aed90c6e11e39e58f19f09deb619da5662da970e2c",
       "executable": false
     },
     {
