@@ -14,7 +14,7 @@ import secrets
 import shutil
 import stat
 import tempfile
-from typing import Any, Callable, Iterator, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping
 import unicodedata
 
 from cryptography.hazmat.primitives import serialization
@@ -34,6 +34,9 @@ from .pack_artifact_integrity import (
 )
 from .pack_boundary import PackBoundaryError, load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
+
+if TYPE_CHECKING:
+    from .bundled_artifact_retention_v4 import BundledArtifactOrigin
 
 
 _CATALOG_VERSION = "io.tobkiri.external-normal-pack-catalog.v4"
@@ -522,11 +525,71 @@ def load_admitted_external_executable_catalog(
     return dict(executable)
 
 
+def load_verified_pack_executable_catalog(
+    pack_id: str,
+    expected_manifest: Mapping[str, Any],
+    *,
+    retained_bundled_origin: BundledArtifactOrigin | None = None,
+) -> Mapping[str, Any]:
+    """Load a signed external catalog or an explicitly retained active revision.
+
+    Retained origins never admit a new revision. Their fresh Authority checks
+    use normal Store initialization, which may write schema metadata.
+    """
+    if retained_bundled_origin is None:
+        return load_admitted_external_executable_catalog(pack_id, expected_manifest)
+    normalized = str(pack_id or "").strip()
+    if not normalized or not isinstance(expected_manifest, Mapping):
+        raise ExternalPackCatalogDenied("Pack executable request is invalid")
+    digest = str(expected_manifest["pack"]["artifact_digest"])
+    snapshot = load_external_pack_catalog({normalized: digest})
+    if normalized in snapshot.entries:
+        return load_admitted_external_executable_catalog(normalized, expected_manifest)
+    root = resolve_admitted_pack_root(
+        normalized, artifact_digest=digest, origin=retained_bundled_origin
+    )
+    # A current bundled source is not external admission. Only the separate,
+    # authenticated retained root can extend this exact-active read path.
+    if root == resolve_pack_root(normalized):
+        raise ExternalPackCatalogDenied("Pack executable revision is not retained")
+    try:
+        manifest = validate_document(
+            _read_regular_nofollow(root, "pack.v4.json")[0], "pack"
+        )
+        executable = validate_document(
+            _read_regular_nofollow(root, "executables.v4.json")[0],
+            "executable_catalog",
+        )
+        compiled = compile_pack_root(root)
+    except Exception as error:
+        raise ExternalPackCatalogDenied(
+            "retained Pack executable catalog verification failed"
+        ) from error
+    checked = _verify_retained_bundled_pack(
+        retained_bundled_origin, pack_id=normalized, artifact_digest=digest
+    )
+    if (
+        checked != root
+        or canonical_digest(manifest) != canonical_digest(expected_manifest)
+        or manifest["pack"]["id"] != normalized
+        or manifest["pack"]["artifact_digest"] != digest
+        or compiled.artifact.pack_id != normalized
+        or compiled.artifact.digest != digest
+        or executable["pack_id"] != normalized
+        or executable["source_identity"] != manifest["integrity"]["source_identity"]
+    ):
+        raise ExternalPackCatalogDenied(
+            "retained Pack executable catalog does not match the selected manifest"
+        )
+    return dict(executable)
+
+
 def resolve_admitted_pack_root(
     pack_id: str,
     bundled_root: Path | None = None,
     *,
     artifact_digest: str | None = None,
+    origin: BundledArtifactOrigin | None = None,
 ) -> Path:
     """Resolve one exact bundled or committed external Normal Pack root."""
 
@@ -540,6 +603,10 @@ def resolve_admitted_pack_root(
         root = resolve_pack_root(normalized, bundled_root)
         if artifact_digest is not None:
             if compile_pack_root(root).artifact.digest != artifact_digest:
+                if origin is not None:
+                    return _verify_retained_bundled_pack(
+                        origin, pack_id=normalized, artifact_digest=artifact_digest
+                    )
                 raise PackBoundaryError("selected bundled Pack revision is unavailable")
         return root
     if root is None:
@@ -554,6 +621,7 @@ def resolve_admitted_pack_roots(
     bundled_root: Path | None = None,
     *,
     artifact_pins: Mapping[str, str] | None = None,
+    origin: BundledArtifactOrigin | None = None,
 ) -> dict[str, Path]:
     """Resolve exactly the selected Host catalog Pack IDs."""
 
@@ -562,10 +630,57 @@ def resolve_admitted_pack_roots(
         raise PackBoundaryError("selected Pack IDs must be unique and non-empty")
     return {
         pack_id: resolve_admitted_pack_root(
-            pack_id, bundled_root, artifact_digest=(artifact_pins or {}).get(pack_id)
+            pack_id,
+            bundled_root,
+            artifact_digest=(artifact_pins or {}).get(pack_id),
+            origin=origin,
         )
         for pack_id in normalized
     }
+
+
+def _assert_retention_origin_current_owner(origin: BundledArtifactOrigin) -> None:
+    from .bundled_artifact_retention_v4 import (
+        BundledArtifactOrigin,
+        BundledArtifactRetentionDenied,
+        assert_retention_origin_current,
+    )
+
+    try:
+        if not isinstance(origin, BundledArtifactOrigin):
+            raise ExternalPackCatalogDenied("retention origin is invalid")
+        if _user_data_root().resolve(strict=True) != origin.user_data_root.resolve(
+            strict=True
+        ):
+            raise ExternalPackCatalogDenied(
+                "retention origin belongs to another Host owner"
+            )
+        assert_retention_origin_current(origin)
+    except BundledArtifactRetentionDenied as error:
+        raise ExternalPackCatalogDenied(
+            "retention origin is stale or invalid"
+        ) from error
+
+
+def _verify_retained_bundled_pack(
+    origin: BundledArtifactOrigin, *, pack_id: str, artifact_digest: str
+) -> Path:
+    from .bundled_artifact_retention_v4 import (
+        BundledArtifactRetentionDenied,
+        verify_retained_bundled_artifact,
+    )
+
+    _assert_retention_origin_current_owner(origin)
+    try:
+        root = verify_retained_bundled_artifact(
+            origin, pack_id=pack_id, artifact_digest=artifact_digest
+        )
+    except BundledArtifactRetentionDenied as error:
+        raise ExternalPackCatalogDenied(
+            "retained bundled Pack is unavailable"
+        ) from error
+    _assert_retention_origin_current_owner(origin)
+    return root
 
 
 def _verify_signed_source(
