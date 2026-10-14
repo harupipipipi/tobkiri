@@ -3465,8 +3465,8 @@
     {
       "path": "scripts/generate_packaged_defaultspack_v4_bundle.py",
       "type": "regular-file",
-      "size": 42017,
-      "sha256": "1ae4e47744e6aacf967addc910e6865a08ddb018e99b178cdaf729398500b8db",
+      "size": 42549,
+      "sha256": "de4b346abb96789c9c1718450222739ec04d7c8f885265b14fbceb2bcb8672e9",
       "executable": false
     },
     {
@@ -3516,6 +3516,13 @@
       "type": "regular-file",
       "size": 8570,
       "sha256": "cc83153ea12f970969a825d4545351d0693d50ee629daf368faf1b861331c6af",
+      "executable": false
+    },
+    {
+      "path": "scripts/package_debug_prebuilt_shell_v4.py",
+      "type": "regular-file",
+      "size": 6484,
+      "sha256": "465410826e1dc70321d0b7608dc6d710dc8777eb14c48b30e70fe69c6aaa2dea",
       "executable": false
     },
     {

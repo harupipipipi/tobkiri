@@ -242,6 +242,12 @@ def assert_retention_origin_current(origin: BundledArtifactOrigin) -> None:
     _deny(pointers.require(verify_snapshot=True) != origin._pointer, "retention pointer changed")
 
 
+def authenticated_retention_plan(origin: BundledArtifactOrigin) -> dict[str, Any]:
+    """Return an independent Plan copy after rechecking its captured authority."""
+    assert_retention_origin_current(origin)
+    return strict_loads(origin._plan)
+
+
 def _relative(value: Any) -> str:
     _deny(not isinstance(value, str) or len(value) > 4096, "retention path is invalid")
     path = PurePosixPath(value)

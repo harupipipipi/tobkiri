@@ -12,7 +12,7 @@ import stat
 import tempfile
 import uuid
 from pathlib import Path, PureWindowsPath
-from typing import Any, Mapping, TypedDict
+from typing import Any, Callable, Mapping, TypedDict
 
 from .generator_source_manifest import (
     PROVENANCE_ERROR_FILE_REQUIRED,
@@ -550,6 +550,8 @@ def _publish_directories(
     bundle_root: Path,
     staged_artifacts: Path,
     artifact_root: Path,
+    *,
+    validate_publication: Callable[[], None] | None = None,
 ) -> None:
     """Publish both roots with rollback if any rename fails."""
     records: list[_PublishRecord] = []
@@ -580,6 +582,8 @@ def _publish_directories(
             records.append(record)
             os.replace(staged, destination)
             record["published"] = True
+        if validate_publication is not None:
+            validate_publication()
     except Exception:
         for record in reversed(records):
             destination = record["destination"]
@@ -735,6 +739,54 @@ def _validate_staged_bundle(
         raise ValueError("staged Profile entrypoint digest does not match the Shell")
 
 
+def refresh_packaged_profile_and_lock(
+    bundle_root: Path,
+    *,
+    variant: Mapping[str, str],
+    definition_revision: str,
+    generator_path: Path | None = None,
+    generator_name: str = "defaultspack-v4-packager",
+) -> None:
+    """Regenerate the compatibility Profile and exact bundle-lock entries."""
+    profile_path = bundle_root / "defaults.profile.v5.json"
+    profile = _read_json(profile_path, "Profile")
+    if not isinstance(profile.get("shell"), dict):
+        raise ValueError("packaged Profile has no Shell definition")
+    profile["shell"].update(
+        platform=variant["platform"],
+        architecture=variant["architecture"],
+        artifact_digest=variant["artifact_digest"],
+        executable_artifact_digest=variant["entrypoint_digest"],
+        definition_revision=definition_revision,
+    )
+    profile["provenance"] = compatibility_profile_provenance(
+        root=ROOT,
+        profile=profile,
+        source_path="ecosystem/defaultspack/v4/defaults.profile.v5.json",
+        generator=generator_name,
+        generator_version="2.0.0",
+        generator_path=generator_path or Path(__file__),
+        input_paths=COMPATIBILITY_PROVENANCE_INPUTS,
+    )
+    profile = validate_document(profile, "profile")
+    validate_compatibility_profile(profile)
+    _write_json(profile_path, profile)
+
+    lock_path = bundle_root / "bundle.lock.json"
+    lock = _read_json(lock_path, "bundle lock")
+    if not isinstance(lock.get("entries"), list):
+        raise ValueError("bundle lock has no entries")
+    for entry in lock["entries"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise ValueError("bundle lock contains a malformed entry")
+        entry["path"] = _normalize_relative_path(entry["path"], "bundle lock path")
+        path = _safe_join(bundle_root, entry["path"], "bundle lock path")
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"bundle lock entry is unavailable: {path}")
+        entry["digest"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    _write_json(lock_path, lock)
+
+
 def _package_transaction(
     *,
     source_artifact: Path | None,
@@ -881,43 +933,10 @@ def _package_transaction(
             )
             _write_json(staged_bundle / "packs" / pack_name, _normalize_pack(pack))
 
-        profile_path = staged_bundle / "defaults.profile.v5.json"
-        profile = _read_json(profile_path, "Profile")
-        if not isinstance(profile.get("shell"), dict):
-            raise ValueError("packaged Profile has no Shell definition")
-        profile["shell"].update(
-            platform=platform,
-            architecture=architecture,
-            artifact_digest=digest,
-            executable_artifact_digest=entrypoint_digest,
+        refresh_packaged_profile_and_lock(
+            staged_bundle, variant=variant,
             definition_revision=shell["definition_revision"],
         )
-        profile["provenance"] = compatibility_profile_provenance(
-            root=ROOT,
-            profile=profile,
-            source_path="ecosystem/defaultspack/v4/defaults.profile.v5.json",
-            generator="defaultspack-v4-packager",
-            generator_version="2.0.0",
-            generator_path=Path(__file__),
-            input_paths=COMPATIBILITY_PROVENANCE_INPUTS,
-        )
-        profile = validate_document(profile, "profile")
-        validate_compatibility_profile(profile)
-        _write_json(profile_path, profile)
-
-        lock_path = staged_bundle / "bundle.lock.json"
-        lock = _read_json(lock_path, "bundle lock")
-        if not isinstance(lock.get("entries"), list):
-            raise ValueError("bundle lock has no entries")
-        for entry in lock["entries"]:
-            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
-                raise ValueError("bundle lock contains a malformed entry")
-            entry["path"] = _normalize_relative_path(entry["path"], "bundle lock path")
-            path = _safe_join(staged_bundle, entry["path"], "bundle lock path")
-            if path.is_symlink() or not path.is_file():
-                raise ValueError(f"bundle lock entry is unavailable: {path}")
-            entry["digest"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
-        _write_json(lock_path, lock)
         _validate_staged_bundle(
             staged_bundle,
             staged_artifacts,

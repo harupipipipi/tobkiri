@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -17,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import Mapping, Sequence
+from typing import Iterator, Mapping, Sequence
 
 sys.dont_write_bytecode = True
 
@@ -53,7 +54,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--target",
         help=f"Rust target triple. Defaults to ${TAURI_TARGET_ENV}, then the host target.",
     )
-    return parser.parse_args(argv)
+    for name in ("owner-root", "bundle-root", "artifact-root", "host-root"):
+        parser.add_argument(f"--debug-prebuilt-{name}", type=Path)
+    args = parser.parse_args(argv)
+    prebuilt = [getattr(args, f"debug_prebuilt_{name}") for name in (
+        "owner_root", "bundle_root", "artifact_root", "host_root",
+    )]
+    if any(value is not None for value in prebuilt) and (
+        args.mode != "dev" or any(value is None for value in prebuilt)
+    ):
+        parser.error("debug prebuilt input requires dev mode and all four explicit roots")
+    return args
 
 
 def host_target() -> str:
@@ -579,6 +590,34 @@ def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
     shutil.copytree(runtime_root / "ecosystem" / "defaultspack" / "v4", bundle_root)
     artifact_root.mkdir(parents=True)
 
+    with development_source_provenance(repo_root) as provenance:
+        python = repo_root / ".venv" / ("Scripts/python.exe" if is_windows_target(target) else "bin/python3")
+        if not python.is_file():
+            raise RuntimeError(f"Development Python environment is missing: {python}")
+        run_command(
+            [
+                python, "-I", "-B", "-c", ISOLATED_MODULE_CODE,
+                runtime_root, "scripts.generate_packaged_defaultspack_v4_bundle",
+                "--source-artifact", staged_shell,
+                "--bundle-root", bundle_root,
+                "--artifact-root", artifact_root,
+                "--relative-path", str(spec["relative_path"]),
+                "--entrypoint", str(spec["entrypoint"]),
+                "--platform", str(spec["platform"]),
+                "--architecture", str(spec["architecture"]),
+                "--bundle-identity", "io.tobkiri.shell.tauri",
+                "--source-provenance-file", provenance,
+            ],
+            cwd=runtime_root,
+        )
+    print(f"Prepared unsigned development Defaults Profile at {bundle_root}")
+    return bundle_root
+
+
+@contextmanager
+def development_source_provenance(repo_root: Path) -> Iterator[Path]:
+    """Bind either development packaging path to the same clean source input."""
+    runtime_root = repo_root / "tobkiri_runtime"
     manifest = runtime_root / "packaged_defaultspack_source_manifest.v1.json"
     provenance = runtime_root / SOURCE_PROVENANCE_FILENAME
     if provenance.exists() or provenance.is_symlink():
@@ -603,38 +642,58 @@ def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
     try:
         provenance.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
         provenance.chmod(0o444)
-        python = repo_root / ".venv" / ("Scripts/python.exe" if is_windows_target(target) else "bin/python3")
-        if not python.is_file():
-            raise RuntimeError(f"Development Python environment is missing: {python}")
-        run_command(
-            [
-                python, "-I", "-B", "-c", ISOLATED_MODULE_CODE,
-                runtime_root, "scripts.generate_packaged_defaultspack_v4_bundle",
-                "--source-artifact", staged_shell,
-                "--bundle-root", bundle_root,
-                "--artifact-root", artifact_root,
-                "--relative-path", str(spec["relative_path"]),
-                "--entrypoint", str(spec["entrypoint"]),
-                "--platform", str(spec["platform"]),
-                "--architecture", str(spec["architecture"]),
-                "--bundle-identity", "io.tobkiri.shell.tauri",
-                "--source-provenance-file", SOURCE_PROVENANCE_FILENAME,
-            ],
-            cwd=runtime_root,
-        )
+        yield provenance
     finally:
         if provenance.exists():
             provenance.chmod(0o600)
             provenance.unlink()
-    print(f"Prepared unsigned development Defaults Profile at {bundle_root}")
-    return bundle_root
 
 
-def prepare_dev_environment(repo_root: Path, target: str) -> None:
+def prepare_debug_prebuilt_defaults(
+    repo_root: Path, target: str, inputs: Sequence[Path],
+) -> Path:
+    """Use only normal full capture to authenticate explicit old Shell suppliers."""
+    if is_windows_target(target):
+        raise RuntimeError("Debug prebuilt Shell snapshots require POSIX descriptors")
+    runtime_root = repo_root / "tobkiri_runtime"
+    output = repo_root / "tobkiri_launcher/src-tauri/target/dev-defaults"
+    python = repo_root / ".venv/bin/python3"
+    if not python.is_file():
+        raise RuntimeError(f"Development Python environment is missing: {python}")
+    # These values select the established source-launch composition. They
+    # authorize nothing: the child must mint its typed origin through normal
+    # full capture, including Shell verification and real Authority checks.
+    environment = dict(os.environ)
+    environment["RUMI_ENVIRONMENT"] = "development"
+    environment["RUMI_APP_DIR"] = str(runtime_root)
+    with development_source_provenance(repo_root) as provenance:
+        run_command(
+            [
+                python, "-I", "-B", "-c", ISOLATED_MODULE_CODE,
+                runtime_root, "scripts.package_debug_prebuilt_shell_v4",
+                "--owner-root", inputs[0], "--old-bundle-root", inputs[1],
+                "--old-artifact-root", inputs[2], "--old-host-root", inputs[3],
+                "--bundle-root", output / "v4",
+                "--artifact-root", output / "platform-artifacts",
+                "--source-provenance-file", provenance,
+                "--platform", str(_target_shell_spec(repo_root, target)["platform"]),
+                "--architecture", str(_target_shell_spec(repo_root, target)["architecture"]),
+            ],
+            cwd=runtime_root, env=environment,
+        )
+    return output / "v4"
+
+
+def prepare_dev_environment(
+    repo_root: Path, target: str, *, prebuilt_inputs: Sequence[Path] | None = None,
+) -> None:
     """Prepare development tools and the matching Defaults application."""
     prepare_dev(repo_root, target)
     prepare_dev_pack_shell(repo_root, target)
-    prepare_dev_defaults(repo_root, target)
+    if prebuilt_inputs is None:
+        prepare_dev_defaults(repo_root, target)
+    else:
+        prepare_debug_prebuilt_defaults(repo_root, target, prebuilt_inputs)
 
 
 def load_resource_preparer(repo_root: Path) -> ModuleType:
@@ -714,7 +773,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.mode == "dev":
-            prepare_dev_environment(repo_root, target)
+            values = [getattr(args, f"debug_prebuilt_{name}") for name in (
+                "owner_root", "bundle_root", "artifact_root", "host_root",
+            )]
+            prepare_dev_environment(
+                repo_root, target,
+                prebuilt_inputs=values if values[0] is not None else None,
+            )
         else:
             prepare_release(repo_root, target)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
