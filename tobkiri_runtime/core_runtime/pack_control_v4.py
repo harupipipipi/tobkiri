@@ -32,6 +32,11 @@ from .external_pack_catalog_v4 import (
 )
 from .profile_runtime_port import require_profile_runtime
 from .active_profile_store_v4 import ActiveProfilePointer
+from .profile_operation_timing import (
+    profile_operation_phase,
+    timed_profile_control_operation,
+    timed_profile_reader,
+)
 
 if TYPE_CHECKING:
     from .bundled_artifact_retention_v4 import BundledArtifactOrigin
@@ -290,7 +295,7 @@ class HostProfileControlSession:
         if runtime_surface_factory is None:
             raise PackControlUnavailable("runtime surface composition is unavailable")
         self._runtime_surface, self._profile_changes = runtime_surface_factory(
-            catalog_loader=load_catalog,
+            catalog_loader=timed_profile_reader(load_catalog, "artifact_catalog"),
             bundle_root=bundle_root,
             user_data_root=self._user_data_root,
         )
@@ -366,6 +371,7 @@ class HostProfileControlSession:
             for operation_id in sorted(self._OPERATIONS)
         )
 
+    @timed_profile_control_operation
     def invoke(
         self,
         contract_id: str,
@@ -489,8 +495,10 @@ class CapturedPackControlSession:
         if runtime_surface_factory is None:
             raise PackControlUnavailable("runtime surface composition is unavailable")
         self._runtime_surface, self._profile_changes = runtime_surface_factory(
-            snapshot_loader=active_profile_loader,
-            catalog_loader=catalog_loader,
+            snapshot_loader=timed_profile_reader(
+                active_profile_loader, "active_snapshot"
+            ),
+            catalog_loader=timed_profile_reader(catalog_loader, "artifact_catalog"),
             packvm_readiness_reader=packvm_readiness_reader,
             bundle_root=bundle_root,
         )
@@ -560,6 +568,7 @@ class CapturedPackControlSession:
 
         self._runtime_surface.close()
 
+    @timed_profile_control_operation
     def invoke(
         self,
         contract_id: str,
@@ -646,6 +655,7 @@ class CapturedPackControlSession:
                     return {"restart_requested": True, **self._binding_payload()}
         raise PackControlUnapproved("qualified operation is unavailable")
 
+    @profile_operation_phase("handler")
     def _invoke_control_presentation(
         self,
         operation_id: str,
@@ -1515,6 +1525,7 @@ def _binding_for_resolved(resolved: Any) -> _Binding:
     )
 
 
+@profile_operation_phase("approval_reconfirmation")
 def verify_reconfirmed_pack_approvals(resolved: Any, catalog: Any) -> None:
     """Require live install and approval receipts for preserved optional roots.
 
@@ -1756,6 +1767,7 @@ def catalog_with_admitted_pack_closure(
     )
 
 
+@profile_operation_phase("candidate_resolution")
 def resolve_profile_pack_set(
     pack_ids: list[str],
     *,
