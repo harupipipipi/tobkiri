@@ -87,10 +87,19 @@ function profileSnapshot(): RuntimeSurfaceEnvelope<unknown> {
       shell: {pack_id: 'shell-pack'},
       application: {pack_id: 'application-pack', role: 'application'},
       pack_closure: [{pack_id: 'provider-pack'}],
-      profile_lock: {lock_digest: digest('d')},
-      resolved_plan: {plan_digest: digest('b')},
-      activation_record: {activation_id: 'activation-one'},
-      authority_snapshot: {profile_authority_snapshot_digest: digest('e')},
+      profile_lock: {
+        lock_digest: digest('d'), plan_digest: digest('b'), bundle_digest: digest('8'),
+        closure_digest: digest('9'), profile_authority_snapshot_digest: digest('e'), security_epoch: 4,
+      },
+      resolved_plan: {plan_digest: digest('b'), bundle_digest: digest('8'), closure_digest: digest('9')},
+      activation_record: {
+        activation_api_version: 'io.tobkiri.activation-record.v2', profile_id: 'defaults',
+        profile_revision: digest('a'), activation_id: 'activation:defaults-one', state: 'active', state_generation: 1,
+        catalog_revision: digest('c'), bundle_digest: digest('8'), lock_digest: digest('d'),
+        plan_digest: digest('b'), closure_digest: digest('9'), profile_authority_snapshot_digest: digest('e'),
+        security_epoch: 4, fencing_token: 7, created_at: '2026-08-10T00:00:00Z',
+      },
+      authority_snapshot: {profile_authority_snapshot_digest: digest('e'), security_epoch: 4, fencing_token: 7},
       resolved_wiring: {requested_edges: [], bindings: []},
     },
   };

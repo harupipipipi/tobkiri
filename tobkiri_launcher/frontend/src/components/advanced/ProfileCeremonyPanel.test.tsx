@@ -5,7 +5,8 @@ import {JSDOM} from 'jsdom';
 import test from 'node:test';
 
 import {ProfileCeremonyPanel} from './ProfileCeremonyPanel';
-import {MutationResultUnknownError} from '@/src/lib/mutationJournal';
+import {listMutationJournal, MutationResultUnknownError} from '@/src/lib/mutationJournal';
+import {predecessorForProfileCeremony} from '@/src/lib/profileCeremony';
 import type {
   ProfileActivateResult,
   ProfileApproveResult,
@@ -46,10 +47,19 @@ function snapshot(): RuntimeSurfaceEnvelope<unknown> {
       shell: {pack_id: 'shell-pack'},
       application: {pack_id: 'application-pack', role: 'application'},
       pack_closure: [{pack_id: 'provider-pack'}],
-      profile_lock: {lock_digest: digest('d')},
-      resolved_plan: {plan_digest: digest('b')},
-      activation_record: {activation_id: 'activation-one'},
-      authority_snapshot: {profile_authority_snapshot_digest: digest('e')},
+      profile_lock: {
+        lock_digest: digest('d'), plan_digest: digest('b'), bundle_digest: digest('8'),
+        closure_digest: digest('9'), profile_authority_snapshot_digest: digest('e'), security_epoch: 4,
+      },
+      resolved_plan: {plan_digest: digest('b'), bundle_digest: digest('8'), closure_digest: digest('9')},
+      activation_record: {
+        activation_api_version: 'io.tobkiri.activation-record.v2', profile_id: 'defaults',
+        profile_revision: digest('a'), activation_id: 'activation:defaults-one', state: 'active', state_generation: 1,
+        catalog_revision: digest('c'), bundle_digest: digest('8'), lock_digest: digest('d'),
+        plan_digest: digest('b'), closure_digest: digest('9'), profile_authority_snapshot_digest: digest('e'),
+        security_epoch: 4, fencing_token: 7, created_at: '2026-08-10T00:00:00Z',
+      },
+      authority_snapshot: {profile_authority_snapshot_digest: digest('e'), security_epoch: 4, fencing_token: 7},
       resolved_wiring: {requested_edges: [], bindings: []},
     },
   };
@@ -190,6 +200,30 @@ function authoritativeSelection(entry = catalogEntry()) {
   };
 }
 
+function unavailableProfileSurface(): RuntimeSurfaceState<unknown> {
+  return {
+    ...surfaceState().state, data: null, status: 'digest_mismatch',
+    error: {code: 'DIGEST_MISMATCH', message: 'Selected old Pack presentation is unavailable.'},
+  };
+}
+
+function resolvedCandidate(): ProfileResolveResult {
+  return {
+    state: 'resolved', candidate_id: 'catalog-predecessor-candidate', candidate_digest: digest('2'),
+    expires_in: 60, next_action: 'review', write_set: [],
+    review: {
+      profile: {profile_id: 'defaults'},
+      profile_lock: {effective_set: [{identity: 'provider-pack', artifact_digest: digest('f')}]},
+      resolved_plan: {profile_revision: digest('f'), plan_digest: digest('3')},
+      predecessor: {profile_revision: digest('a'), plan_digest: digest('b')},
+      catalog_binding: {
+        profile_definition_digest: digest('6'), profile_catalog_digest: digest('c'),
+        bundle_lock_digest: digest('d'),
+      },
+    },
+  };
+}
+
 function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
   Object.defineProperties(globalThis, {
@@ -208,6 +242,297 @@ function buttonContaining(container: HTMLElement, text: string): HTMLButtonEleme
   assert.ok(button, `missing button ${text}`);
   return button as HTMLButtonElement;
 }
+
+test('catalog predecessor uses authenticated active records and rejects malformed or contradictory ready snapshots', () => {
+  const unavailable = unavailableProfileSurface();
+  const entry = catalogEntry(['provider-pack']);
+  entry.pack_closure[0].artifact_digest = digest('f');
+  entry.pack_closure[0].artifact_ref = `pack-v4://provider-pack@${digest('f')}`;
+  const catalog = catalogSurfaceState(entry);
+  assert.deepEqual(predecessorForProfileCeremony(unavailable, catalog), {
+    profile_id: 'defaults', profile_revision: digest('a'), plan_digest: digest('b'),
+  });
+  assert.deepEqual(predecessorForProfileCeremony(surfaceState().state, catalog), {
+    profile_id: 'defaults', profile_revision: digest('a'), plan_digest: digest('b'),
+  });
+  for (const field of ['profile_id', 'profile_revision', 'plan_digest'] as const) {
+    const malformed = structuredClone(catalog.data!);
+    malformed[field] = field === 'profile_id' ? 'other-profile' : digest('f');
+    assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, data: malformed}), null, field);
+  }
+  for (const field of ['profile_revision', 'profile_lock_digest', 'plan_digest'] as const) {
+    const malformed = structuredClone(catalog.data!);
+    malformed.data.profiles[0].records[field] = digest('f');
+    assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, data: malformed}), null, field);
+  }
+  const wrongPlanRecord = structuredClone(catalog.data!);
+  wrongPlanRecord.records.resolved_plan.digest = digest('f');
+  assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, data: wrongPlanRecord}), null);
+  const wrongActiveId = structuredClone(catalog.data!);
+  wrongActiveId.data.active_profile_id = 'other-profile';
+  assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, data: wrongActiveId}), null);
+  for (const state of ['stale', 'blocked'] as const) {
+    assert.equal(predecessorForProfileCeremony({
+      ...surfaceState().state, data: {...snapshot(), state},
+    }, catalog), null, state);
+  }
+  for (const field of ['profile_lock', 'activation_record', 'authority_snapshot'] as const) {
+    const conflicting = snapshot();
+    conflicting.records[field].source_ref += '-other';
+    assert.equal(predecessorForProfileCeremony({
+      ...surfaceState().state, data: conflicting,
+    }, catalog), null, field);
+  }
+  assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, stale: true}), null);
+  assert.equal(predecessorForProfileCeremony(unavailable, {...catalog, status: 'loading'}), null);
+});
+
+test('catalog predecessor permits only completed presentation failures and authenticated no-active bootstrap', () => {
+  const catalog = catalogSurfaceState(catalogEntry(['provider-pack']));
+  const unavailable = unavailableProfileSurface();
+  for (const status of ['unavailable', 'error', 'timeout', 'digest_mismatch'] as const) {
+    assert.ok(predecessorForProfileCeremony({...unavailable, status, error: null}, catalog), status);
+  }
+  for (const status of ['approval_denied', 'stale', 'idle', 'loading', 'profile_not_active'] as const) {
+    assert.equal(predecessorForProfileCeremony({...unavailable, status, error: null}, catalog), null, status);
+  }
+  assert.equal(predecessorForProfileCeremony({...surfaceState().state, stale: true}, catalog), null);
+  for (const code of ['APPROVAL_DENIED', 'STALE', 'PROFILE_NOT_ACTIVE'] as const) {
+    for (const surface of [unavailable, surfaceState().state]) {
+      assert.equal(predecessorForProfileCeremony({
+        ...surface, error: {code, message: 'Explicit Host denial.'},
+      }, catalog), null, `${surface.status}/${code}`);
+    }
+  }
+  const entry = catalogEntry(['provider-pack'], 'alternate', false);
+  const bootstrap = catalogSurfaceState(entry);
+  bootstrap.data = {
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
+    surface: 'profiles', state: 'catalog_ready', host_catalog_digest: digest('c'),
+    bundle_lock_digest: digest('d'), write_set: [], data: {
+      ...bootstrap.data!.data, active_profile_id: null, profiles: [entry], count: 1,
+    },
+  } as unknown as RuntimeSurfaceEnvelope<RuntimeProfileCatalogProjection>;
+  assert.deepEqual(predecessorForProfileCeremony({
+    ...unavailable, status: 'profile_not_active',
+    error: {code: 'PROFILE_NOT_ACTIVE', message: 'No active Profile.'},
+  }, bootstrap), {
+    profile_id: '',
+    profile_revision: 'sha256:edce803cae9e07be4b409a12b7c775320d8626a86e0ee7dd540738bf39b4aad5',
+    plan_digest: 'sha256:0ef670f236250f9e03a6f9a8c462de318bda850ed28a5b6cff5f591a170a264c',
+  });
+  for (const status of ['approval_denied', 'stale', 'ready', 'idle', 'loading'] as const) {
+    assert.equal(predecessorForProfileCeremony({...unavailable, status, error: null}, bootstrap), null, status);
+  }
+  for (const code of ['APPROVAL_DENIED', 'STALE'] as const) {
+    assert.equal(predecessorForProfileCeremony({
+      ...unavailable, error: {code, message: 'Explicit Host denial.'},
+    }, bootstrap), null, code);
+  }
+  for (const code of ['APPROVAL_DENIED', 'STALE', 'PROFILE_NOT_ACTIVE', 'DIGEST_MISMATCH'] as const) {
+    for (const freshCatalog of [catalog, bootstrap]) {
+      assert.equal(predecessorForProfileCeremony(unavailable, {
+        ...freshCatalog, error: {code, message: 'Catalog read is not fresh.'},
+      }), null, code);
+    }
+  }
+  assert.equal(predecessorForProfileCeremony(surfaceState().state, bootstrap), null);
+});
+
+test('fresh catalog predecessor resolves through the normal ceremony when full Profile presentation fails', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const entry = catalogEntry(['provider-pack']);
+  entry.pack_closure[0].artifact_digest = digest('f');
+  entry.pack_closure[0].artifact_ref = `pack-v4://provider-pack@${digest('f')}`;
+  const calls: Array<Record<string, unknown>> = [];
+  const client: ProfileCeremonyClient = {
+    resolve: async (input) => { calls.push({...input}); return resolvedCandidate(); },
+    review: async () => { throw new Error('review requires the next explicit action'); },
+    approve: async () => { throw new Error('approval requires the normal Kernel step'); },
+    activate: async () => { throw new Error('activation requires the normal approved candidate'); },
+  };
+  try {
+    await act(async () => {
+      root.render(<ProfileCeremonyPanel surface={unavailableProfileSurface()}
+        packs={[{...pack('provider-pack'), required: true}]} loadPacks={async () => {}} client={client}
+        authoritativeSelection={authoritativeSelection(entry)} catalogSurface={catalogSurfaceState(entry)} />);
+    });
+    assert.equal(buttonContaining(container, 'Resolve candidate').disabled, false);
+    await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
+    assert.deepEqual(calls, [{
+      profile_id: 'defaults', expected_profile_revision: digest('a'), expected_plan_digest: digest('b'),
+      desired_pack_ids: ['provider-pack'], profile_definition_digest: digest('6'),
+      profile_catalog_digest: digest('c'), bundle_lock_digest: digest('d'),
+    }]);
+    assert.equal(buttonContaining(container, 'Review exact candidate').disabled, false);
+    assert.doesNotMatch(container.textContent ?? '', /Authority Kernel approval recorded/);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
+
+test('catalog predecessor keeps missing Pack rows, optional lifecycle and stale or mismatched identities locked', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const entry = catalogEntry(['provider-pack']);
+  const catalog = catalogSurfaceState(entry);
+  const wrongIdentity = structuredClone(catalog.data!);
+  wrongIdentity.profile_revision = digest('f');
+  const contradictoryProfile = snapshot();
+  contradictoryProfile.records.profile_lock.source_ref += '-other';
+  const scenarios = [
+    {label: 'missing rows', packs: [], catalog, surface: unavailableProfileSurface()},
+    {label: 'optional approval', packs: [pack('provider-pack', false)], catalog, surface: unavailableProfileSurface()},
+    {label: 'optional install', packs: [{...pack('provider-pack'), installed: false}], catalog, surface: unavailableProfileSurface()},
+    {label: 'optional enable', packs: [{...pack('provider-pack'), enabled: false}], catalog, surface: unavailableProfileSurface()},
+    {label: 'stale catalog', packs: [pack('provider-pack')], catalog: {...catalog, stale: true}, surface: unavailableProfileSurface()},
+    {label: 'wrong identity', packs: [pack('provider-pack')], catalog: {...catalog, data: wrongIdentity}, surface: unavailableProfileSurface()},
+    {label: 'contradictory ready Profile', packs: [pack('provider-pack')], catalog,
+      surface: {...surfaceState().state, data: contradictoryProfile}},
+  ];
+  let dispatches = 0;
+  const client: ProfileCeremonyClient = {
+    resolve: async () => { dispatches += 1; return resolvedCandidate(); },
+    review: async () => { throw new Error('review must remain blocked'); },
+    approve: async () => { throw new Error('approval must remain blocked'); },
+    activate: async () => { throw new Error('activation must remain blocked'); },
+  };
+  try {
+    for (const scenario of scenarios) {
+      await act(async () => {
+        root.render(<ProfileCeremonyPanel surface={scenario.surface} packs={scenario.packs}
+          loadPacks={async () => {}} client={client} authoritativeSelection={authoritativeSelection(entry)}
+          catalogSurface={scenario.catalog} />);
+      });
+      assert.equal(buttonContaining(container, 'Resolve candidate').disabled, true, scenario.label);
+      await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
+    }
+    assert.equal(dispatches, 0);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
+
+test('equivalent predecessor sources retain a candidate and an active binding change invalidates it', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const entry = catalogEntry(['provider-pack']);
+  const catalog = catalogSurfaceState(entry);
+  let resolves = 0;
+  const client: ProfileCeremonyClient = {
+    resolve: async () => { resolves += 1; return resolvedCandidate(); },
+    review: async () => { throw new Error('review must wait for an explicit action'); },
+    approve: async () => { throw new Error('approval must not run'); },
+    activate: async () => { throw new Error('activation must not run'); },
+  };
+  const render = (surface: RuntimeSurfaceState<unknown>, nextCatalog = catalog) => (
+    root.render(<ProfileCeremonyPanel surface={surface} packs={[pack('provider-pack')]}
+      loadPacks={async () => {}} client={client} authoritativeSelection={authoritativeSelection(entry)}
+      catalogSurface={nextCatalog} />)
+  );
+  try {
+    await act(async () => { render(unavailableProfileSurface()); });
+    await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
+    assert.equal(buttonContaining(container, 'Review exact candidate').disabled, false);
+    await act(async () => { render(surfaceState().state); });
+    assert.equal(buttonContaining(container, 'Review exact candidate').disabled, false);
+    const changed = structuredClone(catalog.data!);
+    changed.profile_revision = digest('f');
+    changed.data.profiles[0].records.profile_revision = digest('f');
+    await act(async () => { render(unavailableProfileSurface(), {...catalog, data: changed}); });
+    assert.equal(buttonContaining(container, 'Resolve candidate').disabled, false);
+    assert.doesNotMatch(container.textContent ?? '', /Review exact candidate|Request Kernel approval|Activate approved Profile/);
+    assert.equal(resolves, 1);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
+
+test('unknown fallback resolve stays journal-bound through stale catalog recovery and equivalent full Profile reads', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const previousFetch = globalThis.fetch;
+  const {dom, container, root} = createDom();
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  }});
+  const readMethods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    readMethods.push(init?.method ?? 'GET');
+    return new Response(JSON.stringify({success: false, error: 'Status read unavailable in test.'}), {
+      status: 503, headers: {'Content-Type': 'application/json'},
+    });
+  };
+  const entry = catalogEntry(['provider-pack']);
+  const catalog = catalogSurfaceState(entry);
+  let resolves = 0;
+  const client: ProfileCeremonyClient = {
+    resolve: async (_input, requestId) => {
+      resolves += 1;
+      throw new MutationResultUnknownError('test-only-unknown', requestId!);
+    },
+    review: async () => { throw new Error('unknown resolve cannot be reviewed'); },
+    approve: async () => { throw new Error('unknown resolve cannot be approved'); },
+    activate: async () => { throw new Error('unknown resolve cannot be activated'); },
+  };
+  const render = (surface: RuntimeSurfaceState<unknown>, nextCatalog = catalog) => (
+    root.render(<ProfileCeremonyPanel surface={surface} packs={[pack('provider-pack')]}
+      loadPacks={async () => {}} client={client} authoritativeSelection={authoritativeSelection(entry)}
+      catalogSurface={nextCatalog} />)
+  );
+  try {
+    await act(async () => { render(unavailableProfileSurface()); });
+    await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
+    assert.match(container.textContent ?? '', /Profile ceremony result is unknown/);
+    const pending = listMutationJournal();
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].state, 'unknown');
+    await act(async () => { render(unavailableProfileSurface(), {...catalog, stale: true}); });
+    await act(async () => { render(unavailableProfileSurface()); });
+    assert.match(container.textContent ?? '', /Profile ceremony result is unknown/);
+    await act(async () => { render(surfaceState().state); });
+    const action = buttonContaining(container, 'Resolve candidate');
+    assert.equal(action.disabled, true);
+    await act(async () => { action.click(); });
+    assert.equal(resolves, 1);
+    assert.deepEqual(listMutationJournal(), pending);
+    assert.ok(readMethods.length > 0);
+    assert.ok(readMethods.every((method) => method === 'GET'));
+  } finally {
+    act(() => root.unmount());
+    globalThis.fetch = previousFetch;
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
 
 test('Profile closure candidates come from the authoritative catalog and execute resolve through activation', async () => {
   const previousWindow = globalThis.window;
@@ -418,15 +743,19 @@ test('initial and browsing Profiles retain exact executable matching without the
   const entry = catalogEntry(['provider-pack'], 'alternate', false);
   const initialCatalog = catalogSurfaceState(entry);
   assert.ok(initialCatalog.data);
-  initialCatalog.data = {...initialCatalog.data, data: {
-    ...initialCatalog.data.data, active_profile_id: null, profiles: [entry], count: 1,
-  }};
+  initialCatalog.data = {
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
+    surface: 'profiles', state: 'catalog_ready', host_catalog_digest: digest('c'),
+    bundle_lock_digest: digest('d'), write_set: [], data: {
+      ...initialCatalog.data.data, active_profile_id: null, profiles: [entry], count: 1,
+    },
+  } as unknown as RuntimeSurfaceEnvelope<RuntimeProfileCatalogProjection>;
   const contexts: Array<{
     runtime: RuntimeSurfaceState<unknown>;
     catalog: RuntimeSurfaceState<RuntimeProfileCatalogProjection>;
   }> = [
     {runtime: surface.state, catalog: catalogSurfaceState(entry)},
-    {runtime: {...surface.state, data: null, status: 'idle'}, catalog: initialCatalog},
+    {runtime: {...surface.state, data: null, status: 'profile_not_active'}, catalog: initialCatalog},
   ];
   try {
     for (const context of contexts) {

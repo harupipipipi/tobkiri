@@ -82,7 +82,11 @@ function StatusNotice({
     || state.status === 'approval_denied'
     || state.status === 'stale'
     || state.status === 'profile_not_active';
-  const title = state.status === 'unavailable'
+  const profileDetailsUnavailable = descriptor.id === 'profile'
+    && ['unavailable', 'error', 'timeout', 'digest_mismatch'].includes(state.status);
+  const title = profileDetailsUnavailable
+    ? 'Profile details are unavailable'
+    : state.status === 'unavailable'
     ? 'Canonical v4 surface is not published'
     : state.status === 'profile_not_active'
       ? 'Active Profile is unavailable'
@@ -94,7 +98,9 @@ function StatusNotice({
           : 'Action is locked and fail-closed'
         : 'Canonical v4 surface could not be loaded';
   const message = state.error?.message ?? 'No new data was accepted.';
-  const staleExplanation = 'Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.';
+  const staleExplanation = profileDetailsUnavailable
+    ? 'Showing the last accepted Profile details.'
+    : 'Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.';
   const diagnosticText = [
     title,
     message,

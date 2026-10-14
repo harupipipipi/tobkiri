@@ -1,6 +1,8 @@
 import {fetchFrontendContractOperation} from './defaultspackClient';
+import type {RuntimeSurfaceState} from '../hooks/useRuntimeSurface';
 import {
   assertVerifiedRuntimeTarget,
+  extractExactProfileCatalog,
   RUNTIME_PROFILE_CEREMONY_TARGETS as GENERATED_PROFILE_CEREMONY_TARGETS,
   RuntimeSurfaceError,
   RUNTIME_SURFACE_API_VERSION,
@@ -544,4 +546,67 @@ export function snapshotForProfileCeremony<T>(
     profile_revision: envelope.profile_revision,
     plan_digest: envelope.plan_digest,
   };
+}
+
+type ProfileCeremonyReadState = Pick<RuntimeSurfaceState<unknown>, 'data' | 'status' | 'stale'>
+  & {error?: RuntimeSurfaceState<unknown>['error']};
+
+const PROFILE_PRESENTATION_FAILURES: ReadonlySet<ProfileCeremonyReadState['status']> = new Set([
+  'unavailable', 'error', 'timeout', 'digest_mismatch',
+]);
+
+/** Read only the verified active predecessor, never the selected successor closure. */
+export function predecessorForProfileCeremony(
+  profileSurface: ProfileCeremonyReadState,
+  catalogSurface: ProfileCeremonyReadState,
+): ProfileCeremonySnapshot | null {
+  if (catalogSurface.status !== 'ready' || catalogSurface.stale || catalogSurface.error) return null;
+  if (profileSurface.status === 'approval_denied' || profileSurface.status === 'stale'
+    || (profileSurface.status === 'ready' && profileSurface.stale)
+    || profileSurface.error?.code === 'APPROVAL_DENIED'
+    || profileSurface.error?.code === 'STALE') return null;
+  const profileReady = profileSurface.status === 'ready' && !profileSurface.stale;
+  try {
+    const catalog = validateRuntimeSurfaceEnvelope('profiles', catalogSurface.data);
+    const projection = extractExactProfileCatalog(catalog.data);
+    if (!projection) return null;
+    if (projection.active_profile_id === null) {
+      if (profileReady || catalog.state === 'ready'
+        || (!PROFILE_PRESENTATION_FAILURES.has(profileSurface.status)
+          && profileSurface.status !== 'profile_not_active')) return null;
+      // The authenticated catalog-only envelope has no execution identity.
+      return {
+        profile_id: '',
+        profile_revision: 'sha256:edce803cae9e07be4b409a12b7c775320d8626a86e0ee7dd540738bf39b4aad5',
+        plan_digest: 'sha256:0ef670f236250f9e03a6f9a8c462de318bda850ed28a5b6cff5f591a170a264c',
+      };
+    }
+    if (profileSurface.error?.code === 'PROFILE_NOT_ACTIVE'
+      || (profileReady && profileSurface.error)
+      || (!profileReady && !PROFILE_PRESENTATION_FAILURES.has(profileSurface.status))) return null;
+    const snapshot = snapshotForProfileCeremony(catalog);
+    const active = projection.profiles.find((entry) => entry.active);
+    if (!snapshot || !active
+      || projection.active_profile_id !== snapshot.profile_id
+      || active.profile_id !== snapshot.profile_id
+      || active.records.profile_revision !== snapshot.profile_revision
+      || active.records.plan_digest !== snapshot.plan_digest
+      || catalog.records.resolved_plan.digest !== snapshot.plan_digest
+      || active.records.profile_lock_digest !== catalog.records.profile_lock.digest
+      || active.authority_snapshot.digest !== catalog.records.authority_snapshot.digest) return null;
+    if (profileReady) {
+      const profile = validateRuntimeSurfaceEnvelope('profile', profileSurface.data);
+      if (profile.state !== 'ready'
+        || profile.profile_id !== snapshot.profile_id
+        || profile.profile_revision !== snapshot.profile_revision
+        || profile.plan_digest !== snapshot.plan_digest
+        || profile.catalog_revision !== catalog.catalog_revision
+        || (['profile_lock', 'resolved_plan', 'activation_record', 'authority_snapshot'] as const)
+          .some((key) => profile.records[key].digest !== catalog.records[key].digest
+            || profile.records[key].source_ref !== catalog.records[key].source_ref)) return null;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
 }

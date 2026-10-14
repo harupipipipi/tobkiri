@@ -22,7 +22,7 @@ import {
   validateProfileApproveResult,
   validateProfileResolveResult,
   validateProfileReviewResult,
-  snapshotForProfileCeremony,
+  predecessorForProfileCeremony,
   type ProfileActivateResult,
   type ProfileApproveResult,
   type ProfileCeremonyClient,
@@ -59,8 +59,6 @@ function snapshotKey(snapshot: {profile_id: string; profile_revision: string; pl
 }
 
 const PROFILE_CONTROL_CONTRACT = 'tobkiri.host.control-presentation.v4';
-const NO_ACTIVE_PROFILE_REVISION = 'sha256:edce803cae9e07be4b409a12b7c775320d8626a86e0ee7dd540738bf39b4aad5';
-const NO_ACTIVE_PLAN_DIGEST = 'sha256:0ef670f236250f9e03a6f9a8c462de318bda850ed28a5b6cff5f591a170a264c';
 
 function profileOperationId(step: unknown): string {
   if (step === 'resolving') return 'profile.change.resolve';
@@ -126,7 +124,8 @@ export function ProfileCeremonyPanel({
     )),
   );
   const selectedPackKey = selectedPackIds.slice().sort().join(',');
-  const currentSnapshot = snapshotForProfileCeremony(surface.data);
+  const predecessorSnapshot = predecessorForProfileCeremony(surface, catalogSurface);
+  const currentSnapshot = predecessorSnapshot?.profile_id ? predecessorSnapshot : null;
   const catalogPackRows = selectedPackIds.map((id) => packs.find((pack) => pack.id === id) ?? null);
   const catalogMissingPackIds = catalogPackRows.flatMap((pack, index) => pack ? [] : [selectedPackIds[index] ?? '']);
   const catalogIncompatiblePackIds = catalogPackRows.flatMap((pack, index) => {
@@ -181,15 +180,6 @@ export function ProfileCeremonyPanel({
     };
   }, [ceremonyState, onBusyChange]);
 
-  const predecessorSnapshot = currentSnapshot ?? (
-    catalogProjection?.active_profile_id === null
-      ? {
-        profile_id: '',
-        profile_revision: NO_ACTIVE_PROFILE_REVISION,
-        plan_digest: NO_ACTIVE_PLAN_DIGEST,
-      }
-      : null
-  );
   const ceremonyIsBusy = externalBusy || ['resolving', 'reviewing', 'approving', 'activating'].includes(ceremonyState);
   const desiredPackIds = selectedPackIds;
   const currentBindingKey = [
@@ -205,19 +195,6 @@ export function ProfileCeremonyPanel({
   const previousBindingKey = useRef(currentBindingKey);
 
   useEffect(() => {
-    if (unknownMutation) return;
-    const hydrated = listMutationJournal().find((record) => (
-      record.state === 'unknown'
-      && record.metadata.kind === 'profile.ceremony'
-      && record.metadata.binding_key === currentBindingKey
-    ));
-    if (!hydrated) return;
-    setUnknownMutation(hydrated);
-    setFailure({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
-    setCeremonyState('result_unknown');
-  }, [currentBindingKey, unknownMutation]);
-
-  useEffect(() => {
     if (previousBindingKey.current === currentBindingKey) return;
     previousBindingKey.current = currentBindingKey;
     requestVersion.current += 1;
@@ -231,6 +208,20 @@ export function ProfileCeremonyPanel({
     setUnknownMutation(null);
   }, [currentBindingKey]);
 
+  // Restore the retained unknown after resetting a newly accepted binding.
+  useEffect(() => {
+    if (unknownMutation) return;
+    const hydrated = listMutationJournal().find((record) => (
+      record.state === 'unknown'
+      && record.metadata.kind === 'profile.ceremony'
+      && record.metadata.binding_key === currentBindingKey
+    ));
+    if (!hydrated) return;
+    setUnknownMutation(hydrated);
+    setFailure({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
+    setCeremonyState('result_unknown');
+  }, [currentBindingKey, unknownMutation]);
+
   const catalogSelectionAvailable = Boolean(
     catalogEntry.available
     && selectedPackIds.length > 0
@@ -243,11 +234,7 @@ export function ProfileCeremonyPanel({
     unavailableProfileHeading,
     ...catalogEntry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`),
   ].join('\n');
-  const isRuntimeReady = (
-    (surface.status === 'ready' && !surface.stale && currentSnapshot !== null)
-    || (catalogProjection?.active_profile_id === null && catalogBindingStable)
-  )
-    && catalogSelectionAvailable;
+  const isRuntimeReady = predecessorSnapshot !== null && catalogSelectionAvailable;
   const snapshotChanged = Boolean(
     ceremonySnapshot && ceremonySnapshot !== currentBindingKey,
   );

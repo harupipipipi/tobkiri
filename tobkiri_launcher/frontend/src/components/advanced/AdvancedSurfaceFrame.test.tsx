@@ -65,6 +65,37 @@ test('surface failures distinguish destructive, timeout, and blocked semantics',
   assert.match(blocked, /lucide-shield-alert/);
 });
 
+test('unavailable Profile details do not claim the separate update ceremony is disabled', () => {
+  for (const status of ['unavailable', 'error', 'timeout', 'digest_mismatch'] as const) {
+    const html = renderToStaticMarkup(
+      <AdvancedSurfaceFrame
+        descriptor={LAUNCHER_ADVANCED_VIEWS.profile}
+        state={{status, stale: true, error: {code: 'DIGEST_MISMATCH', message: 'Previous details could not be read.'}}}
+        onRetry={() => {}}
+      >
+        <p>Profile update controls</p>
+      </AdvancedSurfaceFrame>,
+    );
+    assert.match(html, /Profile details are unavailable/);
+    assert.match(html, /Showing the last accepted Profile details/);
+    assert.doesNotMatch(html, /Action is locked|Actions are disabled/);
+    assert.match(html, /Profile update controls/);
+  }
+  for (const status of ['approval_denied', 'stale'] as const) {
+    const html = renderToStaticMarkup(
+      <AdvancedSurfaceFrame
+        descriptor={LAUNCHER_ADVANCED_VIEWS.profile}
+        state={{status, stale: true, error: {code: 'APPROVAL_DENIED', message: 'Profile update is blocked.'}}}
+        onRetry={() => {}}
+      >
+        <p>Profile update controls</p>
+      </AdvancedSurfaceFrame>,
+    );
+    assert.match(html, /Action is locked and fail-closed/);
+    assert.match(html, /Actions are disabled until the authoritative surface is fresh/);
+  }
+});
+
 function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
   Object.defineProperties(globalThis, {
