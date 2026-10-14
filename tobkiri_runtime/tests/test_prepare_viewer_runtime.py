@@ -113,7 +113,9 @@ def test_linux_prepare_requires_this_builds_exact_output(
 
     def command(arguments, **kwargs):
         parts = [os.fspath(part) for part in arguments]
-        if parts[:3] == ["cargo", "tauri", "build"] and produce_current:
+        if parts[:7] == [
+            "npm", "exec", "--prefix", "frontend", "--", "tauri", "build",
+        ] and produce_current:
             expected.write_bytes(b"current build")
         if "scripts.generate_packaged_defaultspack_v4_bundle" in parts:
             packaged.append(parts)
