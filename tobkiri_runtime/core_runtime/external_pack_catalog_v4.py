@@ -1048,7 +1048,7 @@ def _read_regular_from_root_descriptor(
     *,
     max_file_bytes: int = _MAX_PACK_FILE_BYTES,
 ) -> tuple[bytes, int]:
-    if not 0 < max_file_bytes <= _MAX_PACK_FILE_BYTES:
+    if type(max_file_bytes) is not int or not 0 < max_file_bytes <= _MAX_PACK_FILE_BYTES:
         raise ExternalPackCatalogDenied("signed Pack entry size bound is invalid")
     parts = PurePosixPath(relative).parts
     parent_descriptor, ancestors = _open_directory_components(

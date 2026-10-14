@@ -4112,32 +4112,6 @@ def capture_production_dispatch(
         """Fence Host sources before any Broker shutdown or read restart."""
         close_captured_wake_drivers_v4(wake_drivers)
 
-    dispatch = runtime.dispatch_session(
-        broker=broker,
-        context_for=context_for,
-        effect_scope_for=effect_scope_for,
-        providers=providers,
-        authority_control=authority_control,
-        current_capture_check=assert_current_capture,
-        owned_authority_store=authority_store,
-        close_callbacks=(
-            *close_callbacks,
-            *((workspace_mutation_port.close,) if workspace_mutation_port else ()),
-            *((control_session.close,) if control_session is not None else ()),
-            *tuple(
-                backend.close
-                for backend in (*owned_packvm_backends, *owned_wasm_backends)
-                if callable(getattr(backend, "close", None))
-            ),
-        ),
-        stop_callbacks=(
-            close_wake_drivers,
-            cancellation_handles.close,
-            *((control_session.cancel_pending_reads,) if control_session is not None else ()),
-        ),
-        before_close_callbacks=(close_wake_drivers,),
-    )
-    dispatch_holder.append(dispatch)
     from ..captured_pack_ui_assets_v4 import CapturedPackUIAssets
     from ..pack_boundary import load_pack_catalog, resolve_pack_root
 
@@ -4178,7 +4152,33 @@ def capture_production_dispatch(
             legacy_builtin=legacy_builtin,
         )
 
-    dispatch.pack_ui_assets_for = capture_selected_pack_ui_assets
+    dispatch = runtime.dispatch_session(
+        broker=broker,
+        context_for=context_for,
+        effect_scope_for=effect_scope_for,
+        providers=providers,
+        authority_control=authority_control,
+        current_capture_check=assert_current_capture,
+        pack_ui_assets_for=capture_selected_pack_ui_assets,
+        owned_authority_store=authority_store,
+        close_callbacks=(
+            *close_callbacks,
+            *((workspace_mutation_port.close,) if workspace_mutation_port else ()),
+            *((control_session.close,) if control_session is not None else ()),
+            *tuple(
+                backend.close
+                for backend in (*owned_packvm_backends, *owned_wasm_backends)
+                if callable(getattr(backend, "close", None))
+            ),
+        ),
+        stop_callbacks=(
+            close_wake_drivers,
+            cancellation_handles.close,
+            *((control_session.cancel_pending_reads,) if control_session is not None else ()),
+        ),
+        before_close_callbacks=(close_wake_drivers,),
+    )
+    dispatch_holder.append(dispatch)
     for wake_port, declaration, owner_binding in captured_wake_ports:
         owner_id = owner_binding.principal_ref.value
         candidates = tuple(edge for edge in captured_edges

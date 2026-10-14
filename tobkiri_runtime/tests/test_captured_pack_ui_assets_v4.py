@@ -331,6 +331,20 @@ def test_oversized_asset_is_rejected_before_any_content_allocation(
         cas_assets.read("/shell-app.js", False)
 
 
+@pytest.mark.parametrize("limit", [True, 1.5, None, "1", 0, 128 * 1024 * 1024 + 1])
+def test_invalid_descriptor_size_bound_is_denied_before_any_filesystem_access(
+    limit: object,
+) -> None:
+    from core_runtime.external_pack_catalog_v4 import _read_regular_from_root_descriptor
+
+    with pytest.raises(RuntimeError, match="size bound"):
+        _read_regular_from_root_descriptor(
+            -1,
+            "not-opened",
+            max_file_bytes=limit,  # type: ignore[arg-type]
+        )
+
+
 def test_legacy_compatibility_mount_must_equal_captured_builtin_root(
     cas_assets: CapturedPackUIAssets,
     tmp_path: Path,

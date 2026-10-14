@@ -134,6 +134,9 @@ class ProductionRuntimeV4:
         providers: Mapping[str, tuple[Mapping[str, Any], ...]],
         authority_control: AuthorityV4Adapter | None = None,
         current_capture_check: Callable[[], None] | None = None,
+        pack_ui_assets_for: (
+            Callable[[str, str], CapturedPackUIAssets | None] | None
+        ) = None,
         owned_authority_store: AuthorityStore | None = None,
         close_callbacks: tuple[Callable[[], None], ...] = (),
         stop_callbacks: tuple[Callable[[], None], ...] = (),
@@ -154,6 +157,7 @@ class ProductionRuntimeV4:
             security_epoch=int(self.composition.activation["security_epoch"]),
             authority_control=authority_control,
             current_capture_check=current_capture_check,
+            pack_ui_assets_for=pack_ui_assets_for,
             owned_authority_store=owned_authority_store,
             close_callbacks=close_callbacks,
             stop_callbacks=stop_callbacks,
