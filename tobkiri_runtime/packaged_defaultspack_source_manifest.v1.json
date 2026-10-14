@@ -203,8 +203,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
       "type": "regular-file",
-      "size": 19764,
-      "sha256": "a5f6292305cd45ec433cdcbde6c5b17fad12f1508ba36b9e342aaaf86d9a8f4e",
+      "size": 20026,
+      "sha256": "0483f9cbe974dea948fea96c58eb219f6f895fed9ce09408a30a835cfd38fa64",
       "executable": false
     },
     {
@@ -315,8 +315,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_surface_v4.py",
       "type": "regular-file",
-      "size": 135603,
-      "sha256": "85fe81b280b24fbe5d4774ffa1f1a4672f8cec01ebcbaa7a7e587768f4a455e7",
+      "size": 137598,
+      "sha256": "8797695f81437d40342e60c74f67442717b3e93193443a64e8aa4c23a5be7f5e",
       "executable": false
     },
     {
