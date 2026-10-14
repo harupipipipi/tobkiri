@@ -14,8 +14,8 @@
     {
       "path": "ecosystem/defaultspack/artifact-index.v4.json",
       "type": "regular-file",
-      "size": 25216,
-      "sha256": "205cf7f566dad762aeb7129ffa16098b1c4fe9c8ef6b905f14efd64b72d34b97",
+      "size": 28683,
+      "sha256": "404074cc628444e77c51f7cd3e21ee2fa5f4aa6d583ac929c088de5d446fcc14",
       "executable": false
     },
     {
@@ -29,7 +29,7 @@
       "path": "ecosystem/defaultspack/contracts.v4.json",
       "type": "regular-file",
       "size": 37024,
-      "sha256": "ace3b81010072c8eb19a218f88115cd8b0684b4575c60dfbdb5a73b1435dc0bd",
+      "sha256": "0e5ed093d1d224c5ee66af2a9773ce8fd5a88e61b6bf7704fb6bbd4de2624f09",
       "executable": false
     },
     {
@@ -337,7 +337,7 @@
       "path": "ecosystem/defaultspack/executables.v4.json",
       "type": "regular-file",
       "size": 33678,
-      "sha256": "6df8e4db190e32a6dd82f6ecdab82bd2f52868e91e1aba877cdf9eeaea3c775e",
+      "sha256": "3a7b384c37cf8afa43d5192d3b83b6de5a9de1bdb9c7d6234b1b3e8c4abf01dc",
       "executable": false
     },
     {
@@ -364,8 +364,8 @@
     {
       "path": "ecosystem/defaultspack/pack.v4.json",
       "type": "regular-file",
-      "size": 32499,
-      "sha256": "9f1dcdce4c639ddfb4d8f2093dedfcf4ecd2b23a4c67ff8c84536870d3dd07ba",
+      "size": 35966,
+      "sha256": "6ee7f2a381ea9e5dc1a299ba3dec4c49a4f1a3a926dacadd9bcf7e86afb14f65",
       "executable": false
     },
     {
@@ -3423,8 +3423,8 @@
     {
       "path": "scripts/compiled_ui_artifacts_v4.py",
       "type": "regular-file",
-      "size": 8171,
-      "sha256": "5f8f70242e14524e2b8645b6972af76f33898893d6eb91f69cfb9fc04a6a8b9f",
+      "size": 8452,
+      "sha256": "3b09f42f60752e9f5436d9a0ae79beae5c671924e805ff76187d72ff0628787d",
       "executable": false
     },
     {

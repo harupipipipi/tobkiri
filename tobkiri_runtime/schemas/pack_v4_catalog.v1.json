@@ -931,10 +931,8 @@
           "owner": "defaultspack",
           "provider_id": "defaultspack.python-sandbox-guest",
           "required_capabilities": [],
-          "security": "restricted",
           "schemas": {
             "error": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
                 "code": {
@@ -947,94 +945,22 @@
               "required": [
                 "code",
                 "message"
-              ]
+              ],
+              "type": "object"
             },
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "script",
-                    "unittest"
-                  ]
-                },
-                "script_path": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512,
-                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$"
-                },
-                "test_targets": {
-                  "type": "array",
-                  "minItems": 1,
-                  "maxItems": 16,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 256,
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
-                  },
-                  "uniqueItems": true
-                },
-                "arguments": {
-                  "type": "array",
-                  "maxItems": 32,
-                  "items": {
-                    "type": "string",
-                    "maxLength": 1024,
-                    "minLength": 1
-                  }
-                },
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512,
-                  "default": ".",
-                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$"
-                },
-                "stdin": {
-                  "type": "string",
-                  "maxLength": 16384
-                },
-                "timeout_seconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 60
-                },
-                "workspace_snapshot": {
-                  "type": "array",
-                  "maxItems": 256,
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "path": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512
-                      },
-                      "content_base64": {
-                        "type": "string",
-                        "maxLength": 87384
-                      }
-                    },
-                    "required": [
-                      "path",
-                      "content_base64"
-                    ]
-                  },
-                  "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only."
-                }
-              },
-              "required": [
-                "mode",
-                "cwd",
-                "timeout_seconds",
-                "workspace_snapshot"
-              ],
               "oneOf": [
                 {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "test_targets"
+                        ]
+                      }
+                    ]
+                  },
                   "properties": {
                     "mode": {
                       "const": "script"
@@ -1045,27 +971,9 @@
                     "script_path",
                     "arguments",
                     "stdin"
-                  ],
-                  "not": {
-                    "anyOf": [
-                      {
-                        "required": [
-                          "test_targets"
-                        ]
-                      }
-                    ]
-                  }
+                  ]
                 },
                 {
-                  "properties": {
-                    "mode": {
-                      "const": "unittest"
-                    }
-                  },
-                  "required": [
-                    "mode",
-                    "test_targets"
-                  ],
                   "not": {
                     "anyOf": [
                       {
@@ -1084,37 +992,127 @@
                         ]
                       }
                     ]
-                  }
+                  },
+                  "properties": {
+                    "mode": {
+                      "const": "unittest"
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "test_targets"
+                  ]
                 }
-              ]
+              ],
+              "properties": {
+                "arguments": {
+                  "items": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "cwd": {
+                  "default": ".",
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                  "type": "string"
+                },
+                "mode": {
+                  "enum": [
+                    "script",
+                    "unittest"
+                  ]
+                },
+                "script_path": {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                  "type": "string"
+                },
+                "stdin": {
+                  "maxLength": 16384,
+                  "type": "string"
+                },
+                "test_targets": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "timeout_seconds": {
+                  "maximum": 60,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "workspace_snapshot": {
+                  "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "content_base64": {
+                        "maxLength": 87384,
+                        "type": "string"
+                      },
+                      "path": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "content_base64"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 256,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "mode",
+                "cwd",
+                "timeout_seconds",
+                "workspace_snapshot"
+              ],
+              "type": "object"
             },
             "output": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "duration_ms": {
+                  "maximum": 60000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "exit_code": {
+                  "maximum": 255,
+                  "minimum": -255,
+                  "type": "integer"
+                },
                 "status": {
                   "enum": [
                     "completed",
                     "failed"
                   ]
                 },
-                "exit_code": {
-                  "type": "integer",
-                  "minimum": -255,
-                  "maximum": 255
+                "stderr": {
+                  "maxLength": 65536,
+                  "type": "string"
                 },
                 "stdout": {
-                  "type": "string",
-                  "maxLength": 65536
-                },
-                "stderr": {
-                  "type": "string",
-                  "maxLength": 65536
-                },
-                "duration_ms": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 60000
+                  "maxLength": 65536,
+                  "type": "string"
                 }
               },
               "required": [
@@ -1123,9 +1121,11 @@
                 "stdout",
                 "stderr",
                 "duration_ms"
-              ]
+              ],
+              "type": "object"
             }
           },
+          "security": "restricted",
           "version": "1.0.0"
         }
       ],
@@ -1187,19 +1187,57 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
+          "digest": "sha256:a5aacf576f868c970831e9ed5898396c8070dd1a84a1feee264578ff3d4ac442",
           "kind": "executable",
-          "path": "runtime/conversation.py"
+          "path": "defaultspack/chat_reference_presentation.py"
         },
         {
-          "digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
-          "kind": "executable",
-          "path": "runtime/application_presentation.py"
+          "digest": "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "defaultspack/frontend_contract_map.v4.json"
         },
         {
-          "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+          "digest": "sha256:d5714005b16a5f652ef7dcae72da883625410d8e324c82a6d78524499f2e0c24",
           "kind": "executable",
-          "path": "runtime/saved_conversation.py"
+          "path": "defaultspack/http_surface_presentation.py"
+        },
+        {
+          "digest": "sha256:e7ac05f4164931e35e654d0c2e8c6ca522d32fb1e0cb902e104a774d6efe78c1",
+          "kind": "executable",
+          "path": "defaultspack/kanban_presentation.py"
+        },
+        {
+          "digest": "sha256:dcabf7bd622d9312e44150d741588f5bfa7b0119c48294320d0574702c9b25bc",
+          "kind": "executable",
+          "path": "defaultspack/managed_desktop_presentation.py"
+        },
+        {
+          "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
+          "kind": "executable",
+          "path": "defaultspack/model_access_presentation.py"
+        },
+        {
+          "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
+          "kind": "executable",
+          "path": "defaultspack/provider_status_presentation.py"
+        },
+        {
+          "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
+          "kind": "executable",
+          "path": "defaultspack/turn_progress_presentation.py"
+        },
+        {
+          "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "extensions/tools/settings_inspect/manifest.json"
+        },
+        {
+          "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "extensions/tools/settings_update/manifest.json"
         },
         {
           "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
@@ -1208,10 +1246,24 @@
           "path": "host_contract_contributions.v1.json"
         },
         {
-          "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
-          "index_role": "host_contract_update_metadata",
-          "kind": "sidecar",
-          "path": "update_metadata.v1.json"
+          "digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
+          "kind": "executable",
+          "path": "runtime/application_presentation.py"
+        },
+        {
+          "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
+          "kind": "executable",
+          "path": "runtime/conversation.py"
+        },
+        {
+          "digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+          "kind": "executable",
+          "path": "runtime/python_sandbox_guest.py"
+        },
+        {
+          "digest": "sha256:361ce9e7d9f7085835f2638d96543ed085e618767ae26597bc786fddac6fa3d7",
+          "kind": "executable",
+          "path": "runtime/saved_conversation.py"
         },
         {
           "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
@@ -1550,6 +1602,54 @@
           "path": "tools/linear_issue_sync/manifest.json"
         },
         {
+          "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_create_note/manifest.json"
+        },
+        {
+          "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_folder_upsert/manifest.json"
+        },
+        {
+          "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_get/manifest.json"
+        },
+        {
+          "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_list/manifest.json"
+        },
+        {
+          "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_list_notes/manifest.json"
+        },
+        {
+          "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_note_upsert/manifest.json"
+        },
+        {
+          "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_search/manifest.json"
+        },
+        {
+          "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30",
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/memo_search_notes/manifest.json"
+        },
+        {
           "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
           "index_role": "sidecar",
           "kind": "sidecar",
@@ -1868,110 +1968,130 @@
           "path": "tools/workflow_status/manifest.json"
         },
         {
-          "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_create_note/manifest.json"
-        },
-        {
-          "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_folder_upsert/manifest.json"
-        },
-        {
-          "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_get/manifest.json"
-        },
-        {
-          "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_list/manifest.json"
-        },
-        {
-          "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_list_notes/manifest.json"
-        },
-        {
-          "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_note_upsert/manifest.json"
-        },
-        {
-          "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_search/manifest.json"
-        },
-        {
-          "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "tools/memo_search_notes/manifest.json"
-        },
-        {
-          "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "extensions/tools/settings_inspect/manifest.json"
-        },
-        {
-          "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591",
-          "index_role": "sidecar",
-          "kind": "sidecar",
-          "path": "extensions/tools/settings_update/manifest.json"
-        },
-        {
-          "digest": "sha256:56cd60d5dcd45c24e200e67b035c913ed458e93f264a0e17e7c711e583b8bcd0",
-          "kind": "executable",
-          "path": "defaultspack/turn_progress_presentation.py"
-        },
-        {
-          "digest": "sha256:0e858dda9ff554acb5b89b2a0c685ceac9a710b702e2ecfc8f7dc5a1d4d3580a",
-          "kind": "executable",
-          "path": "defaultspack/provider_status_presentation.py"
-        },
-        {
-          "digest": "sha256:e7ac05f4164931e35e654d0c2e8c6ca522d32fb1e0cb902e104a774d6efe78c1",
-          "kind": "executable",
-          "path": "defaultspack/kanban_presentation.py"
-        },
-        {
-          "digest": "sha256:dcabf7bd622d9312e44150d741588f5bfa7b0119c48294320d0574702c9b25bc",
-          "kind": "executable",
-          "path": "defaultspack/managed_desktop_presentation.py"
-        },
-        {
-          "digest": "sha256:3c372af155e2c2e2c7072065d969c83a0b0b9fe3a7f4db29ba7c08b1af712b1b",
+          "digest": "sha256:705b03aa96998b10affc7ed2d1b45aee639aa1bb7e2bce48248cbf0ed95e60af",
           "index_role": "asset",
           "kind": "asset",
-          "path": "defaultspack/frontend_contract_map.v4.json"
+          "path": "ui/assets/tobkiri-startup-blade-cut.svg"
         },
         {
-          "digest": "sha256:8f2b06c0549bbe0b042100cb0703d5baec071a350158cf64a6b779b62fe29852",
-          "kind": "executable",
-          "path": "defaultspack/model_access_presentation.py"
+          "digest": "sha256:de7d43f3386105ab20952958c2c25beb0d903e2aeb6e1aef57c49a648c0d1c07",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/codex.png"
         },
         {
-          "digest": "sha256:a5aacf576f868c970831e9ed5898396c8070dd1a84a1feee264578ff3d4ac442",
-          "kind": "executable",
-          "path": "defaultspack/chat_reference_presentation.py"
+          "digest": "sha256:fc4029a648877c8fcc29da22a49ec7e495aafacd0848e5f4a2c5647c261bc25b",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/dev_panel.js"
         },
         {
-          "digest": "sha256:d5714005b16a5f652ef7dcae72da883625410d8e324c82a6d78524499f2e0c24",
-          "kind": "executable",
-          "path": "defaultspack/http_surface_presentation.py"
+          "digest": "sha256:27aa18de562bc702c2b88e3548cb1823661a3077c4951f132e103cbaa24ca1eb",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/licenses/Beautiful-UI-MIT.txt"
         },
         {
-          "path": "runtime/python_sandbox_guest.py",
-          "digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
-          "kind": "executable"
+          "digest": "sha256:b72c00e3990064d4f87009d62fb1fbd3e7154c39d41eb23c94342d209f6defc0",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/NOTICE.md"
+        },
+        {
+          "digest": "sha256:11fdcbe35b15e222bd60f02c1be7e5f8dd8a73721a0a55cf8adcf38b88977b9e",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_internal.js"
+        },
+        {
+          "digest": "sha256:6a5c64584c2ab61c763b6e204afbdbc7ce1caf7f5216187322bca8df94f646bc",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_internal.wasm"
+        },
+        {
+          "digest": "sha256:e23be0c990685926cc0a13a46936015527f36e95adf965250ea08d3b9fd28ef2",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_module_internal.js"
+        },
+        {
+          "digest": "sha256:617b8e0248dbd27e9d7ece4218004eae4cefb499196d1bb4fa0e3fef21708756",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_module_internal.wasm"
+        },
+        {
+          "digest": "sha256:df375e4da93bbc1078481da6e2e519fd55ea125a14a00379a9b7bb395fb56c80",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.js"
+        },
+        {
+          "digest": "sha256:8a3092d34c79d3f57e6ba8592105e8a90f6b07c27891ffecd14cca428bfd3e31",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm"
+        },
+        {
+          "digest": "sha256:fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/models/hand_landmarker.task"
+        },
+        {
+          "digest": "sha256:45506ec23dc49905a1ba7387454e558a33e3fca8833b072fde0fe6b908bf0ab0",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/pet/tobkiri-pet.png"
+        },
+        {
+          "digest": "sha256:9d44b1d8ed20fce06be193b5d704356cf471c45f4a3e534a92ec3870840d5597",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-app.css"
+        },
+        {
+          "digest": "sha256:0d8104d33ed109481722b7ab83997ca555b769593db0ab3477b3fca8b4649f4e",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-app.js"
+        },
+        {
+          "digest": "sha256:8268809d3d38288c5c643c7cfbfe66229dafd74f7a21d5f8149b82981583d234",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-defaultspack-app.js"
+        },
+        {
+          "digest": "sha256:8c9df56aeeebf2c268ac745246696c22b4ef074941a55802de5d1c88fab83807",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-icons.js"
+        },
+        {
+          "digest": "sha256:6f5330f281c713c1b765ec52977b36599538b8d52c5dd3ce94d211f5b0e7debf",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-rolldown-runtime.js"
+        },
+        {
+          "digest": "sha256:2710d017c11571b9cb3dd7fb175ccfb6c0b085d6c06e99b1b221da67d44a6562",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell-vendor.js"
+        },
+        {
+          "digest": "sha256:818fdd2381f16aa51cfbc03c8b9686b13a1b437da6a753d27fb3967f5dadfeab",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "ui/shell.html"
+        },
+        {
+          "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
+          "index_role": "host_contract_update_metadata",
+          "kind": "sidecar",
+          "path": "update_metadata.v1.json"
         }
       ],
       "secrets": [],
@@ -1988,7 +2108,7 @@
         "owner": "defaultspack",
         "source_format": "pack.v4.json"
       },
-      "version": "4.0.1",
+      "version": "4.0.2",
       "workspace_boundary": "pack_local"
     },
     {
@@ -17621,7 +17741,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
+              "implementation_digest": "sha256:49a580bd1bd18cf55f35ee69b6907a7c8048efc145f5e1f3fd49956dee509a5b"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -17657,7 +17777,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
+              "implementation_digest": "sha256:49a580bd1bd18cf55f35ee69b6907a7c8048efc145f5e1f3fd49956dee509a5b"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -17693,7 +17813,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
+              "implementation_digest": "sha256:49a580bd1bd18cf55f35ee69b6907a7c8048efc145f5e1f3fd49956dee509a5b"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -17729,7 +17849,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3"
+              "implementation_digest": "sha256:49a580bd1bd18cf55f35ee69b6907a7c8048efc145f5e1f3fd49956dee509a5b"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -17771,9 +17891,9 @@
       ],
       "runtime_artifacts": [
         {
-          "path": "domain/ai_client/provider_compiler/openai_chat.py",
           "digest": "sha256:57f3e864959c2078db46517a3c86a99adcf7d801a260be48b3dc31e463b0c585",
-          "kind": "sidecar"
+          "kind": "sidecar",
+          "path": "domain/ai_client/provider_compiler/openai_chat.py"
         },
         {
           "digest": "sha256:99779c627cd7a1ee6667657a0b88d7abfdae2eb07007c017cbf30ad6306ca724",
@@ -17781,12 +17901,12 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:a4d4516d5ac9237696ee387f5b137b00f4d08d443257a43d604cffcb243d5fc3",
+          "digest": "sha256:49a580bd1bd18cf55f35ee69b6907a7c8048efc145f5e1f3fd49956dee509a5b",
           "kind": "executable",
           "path": "runtime/adapter.py"
         },
         {
-          "digest": "sha256:8e4ca629a368310bf781cda78065ba694216bc93e4b382e2648910522bd96078",
+          "digest": "sha256:c0af946decb2dde1b2fb3f003b1b5e9d60f7dfe69acd3a7ec76d4497538666eb",
           "kind": "sidecar",
           "path": "runtime/streaming.py"
         }
@@ -17810,7 +17930,7 @@
         "owner": "rumi_provider_adapters_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.2",
       "workspace_boundary": "host_brokered"
     },
     {
