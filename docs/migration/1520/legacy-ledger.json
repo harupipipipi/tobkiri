@@ -15,7 +15,9 @@
       "pr-1519": "6eb9704e573135771d85e160be6d3bfdd8fb9701",
       "signed-gateway": "cd7c20e9d52535674c36cccac4d03ef70e9f809b"
     },
-    "all_heads_must_remain_reachable": true
+    "all_heads_must_remain_reachable": true,
+    "merge_commit": "7260658b22dae1412fd2ac187ddd7cc0c0cafd84",
+    "latest_verified_legacy_source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496"
   },
   "acceptance_policy": "A planned suite/case is a trace target, not an implemented or passing test. No row is complete or retired without parity evidence and any required human approval.",
   "rows": [
@@ -1194,5 +1196,35 @@
       "note": "No baseline, test, approval, signature or evidence requirement has been weakened.",
       "human_retirement_approval": null
     }
-  ]
+  ],
+  "m0_source_integration_verification": {
+    "status": "source_integration_verified_migration_open",
+    "source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496",
+    "source_cluster": {
+      "passed": 311,
+      "failed": 0,
+      "skipped": 1,
+      "existing_skip": "native Windows MAX_PATH regression"
+    },
+    "broader_boundary_cluster": {
+      "source_commit": "682b8e8a0b0e7214da7a45bdbe9bdf9ebca48813",
+      "passed": 362,
+      "failed": 0
+    },
+    "producer_freshness": {
+      "passed": 9,
+      "failed": 0
+    },
+    "lint": {
+      "ruff": "passed",
+      "mypy_source_files": 571
+    },
+    "qualification": "M0 preserves legacy source. These checks do not implement or establish acceptance for any planned Rust migration row, native launch, local model execution, or the eight known browser failures.",
+    "final_boundary_targeted_cluster": {
+      "source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    }
+  }
 }

@@ -112,7 +112,7 @@ Repairs preserve both public model registration modes: selector-only create/conf
 
 Malformed Workflow expressions are rejected by definition validation before authority. The pure PR1519 resolver retains non-whole strings literally and never interpolates them. The signed branch's whole-output missing-dependency denial remains compatible, while PR1519 field references retain their conflict/provenance semantics. The model-search contract map keeps one copy of connection_id. The captured Provider imports its local endpoint helper only after that helper is explicitly declared with its measured immutable digest. Two constructor-only test doubles now remain class objects, preserving actual production Native owner type validation. No security guard or acceptance test was removed or disabled.
 
-The source-only clean checkout and retained logs are bound to the exact tested commit. Follow-up results are recorded after their genuine committed-source verification.
+The source-only clean checkout and retained logs are bound to the exact tested commits below. The clean-checkout fixture and source closure checks were not bypassed.
 
 ### Additional reconciliation details
 
@@ -122,3 +122,30 @@ The source-only clean checkout and retained logs are bound to the exact tested c
 - `tobkiri_runtime/ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json`: Remove duplicated connection_id in the automatically merged model-search allowed key list; retain the union of all allowed fields and exact map digest validation.
 
 The committed repair `682b8e8a0b0e7214da7a45bdbe9bdf9ebca48813` passed all 362 boundary tests. Its expanded 312-case source cluster passed 309, with two compatibility failures and one existing Windows skip. The final compatibility repair preserves the pure resolver's literal-string contract while rejecting invalid expressions at definition validation; selector-only normalization no longer emits an update-only enabled flag, and the owner enables fresh records by default. The direct create API still rejects update fields.
+
+
+## Final committed-source verification
+
+The final legacy source and regenerated artifact candidate is `4c2a5c6f6150f69b8b40e2008a59b0e38eebf496`, following the real two-parent merge `7260658b22dae1412fd2ac187ddd7cc0c0cafd84` and first integration repair `682b8e8a0b0e7214da7a45bdbe9bdf9ebca48813`. All five frozen heads are ancestors of the final source candidate. Later receipt-only documentation does not change the tested source.
+
+On the final candidate, the source-only clean verification checkout ran the following from `tobkiri_runtime/`, using the existing Python environment and no dependency copies:
+
+```sh
+python -B -m pytest tests/test_pack_authoring.py tests/test_ui_asset_pack_authoring.py tests/test_host_extension_authoring.py tests/test_workflow_v4.py tests/test_workflow_dependency_output.py tests/test_workflow_v4_step_output_binding.py tests/test_ai_gateway_pack.py tests/test_model_registry_pack.py tests/test_provider_adapters_pack.py tests/test_model_registry_host.py tests/test_model_route_provider_binding.py tests/test_defaults_model_profile_presentation.py -q
+```
+
+Result: **311 passed, zero failed, one existing Windows-only MAX_PATH skip** in 8.49 seconds. All 19 failures from the first genuine clean source run are repaired. The inherited jsonschema deprecation warnings remain visible.
+
+The complete 362-case boundary cluster passed at repair `682b8e8a0b0e7214da7a45bdbe9bdf9ebca48813` in 281.89 seconds. It covered credential HTTP lifetime, interactive effects, saved bridge callbacks/tool requirements, Profile registry/source reconfirmation, Pack API lifecycle and native failure-stage unit tests. This is a distinct source-bound receipt from the final candidate. All 16 originally failing boundary cases are additionally rerun on the final candidate using:
+
+```sh
+python -B -m pytest tests/test_saved_bridge_callbacks.py::test_production_capture_binds_saved_edges_and_real_owner_broker tests/test_saved_bridge_callbacks.py::test_normal_defaults_saved_coordinator_dispatches_owner_stages_once tests/test_profile_source_reconfirmation.py::test_source_additions_require_their_own_confirmation_and_survive_restart tests/test_pack_api_server.py::test_server_closes_server_captured_refresh_session_on_stop tests/test_pack_api_server.py::test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture -q
+```
+
+The final candidate passed all **16** originally failing boundary cases, with zero failures/skips, in 225.29 seconds.
+
+Final source lint passed Ruff and mypy (571 files). All nine normal freshness checks passed: Workflow, Pack artifacts, authority, executable source registry, executable catalogs, Defaults bundle, presentation catalog, architecture and source closure manifest. Normal evidence generation remains separate from acceptance: the strict complete migration gate still exits 1/RED with no evidence drift.
+
+Retained receipts and logs are outside the verification checkout under `.work/evidence/`: `m0-final-verification-results.json`, `m0-final-reachability.json`, `m0-verification-final-identity.json`, `m0-pytest-source-final-clean.log`, `m0-pytest-boundaries-final-targeted-clean.log`, the earlier full boundary/tooling logs, and the nine producer-check logs. The feature ledger records these as M0 source verification only; its 69 feature/evidence rows remain open, including exactly eight known browser failures and the inherited native WIP acceptance gap.
+
+The final verification checkout was confirmed clean at its tested source commit before removal. Both original source checkouts still have empty tracked/untracked porcelain status. Parent-owned root/Rust/CI changes were excluded from every M0 commit.
