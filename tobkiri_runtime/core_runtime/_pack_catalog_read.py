@@ -106,7 +106,7 @@ class _CatalogRead:
                 "records": value.records,
                 "entries": value.entries,
                 "versions": value.versions,
-                "journal": value.journal,
+                "journal": list(value.journal),
                 "roots": {key: str(root) for key, root in value.roots.items()},
             }
         )

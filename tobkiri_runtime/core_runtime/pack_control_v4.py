@@ -1460,7 +1460,10 @@ def _approval_read_identity(profile_id: str, pack_ids: tuple[str, ...]) -> str:
         )
     except FileNotFoundError:
         key_identity = None
-    return canonical_digest({"approvals": records, "key_identity": key_identity})
+    return canonical_digest({
+        "approvals": records,
+        "key_identity": list(key_identity) if key_identity is not None else None,
+    })
 
 
 def _capability_projection(record: Mapping[str, Any]) -> list[dict[str, str]]:

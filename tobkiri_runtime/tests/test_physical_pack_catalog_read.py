@@ -91,6 +91,7 @@ def test_physical_scope_rejects_current_bytes_or_policy_drift(
     mutation: str,
 ) -> None:
     owner, entry = admitted
+    completed = False
     with pytest.raises((external.ExternalPackCatalogDenied, ValueError)):
         with metadata._catalog_metadata_read(
             owner, {PACK_ID: entry["artifact_digest"]}
