@@ -13,6 +13,7 @@ from core_runtime import external_pack_catalog_v4 as external
 from core_runtime.bootstrap import profile_capture
 from core_runtime.pack_control_v4 import (
     PACK_CONTROL_CONTRACT,
+    _read_control_state,
     capture_pack_control_session,
 )
 from core_runtime.profile_pack_versions import (
@@ -30,6 +31,8 @@ from tests.test_host_extension_dispatch_update_v4 import (
 from tests.test_host_extension_update_v4 import _refresh
 from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.validation import validate_file
+
+UNCHANGED_NORMAL_PACK = "rumi_model_evals_pack"
 
 
 @pytest.fixture
@@ -62,8 +65,11 @@ def frozen_successor_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         runtime_surface_factory=create_runtime_surface_services,
     )
     session.invoke(PACK_CONTROL_CONTRACT, "pack.install", {
-        "pack_id": PACK_ID, "_session_id": "frozen-read-setup",
+        "pack_id": UNCHANGED_NORMAL_PACK, "_session_id": "frozen-read-setup",
     })
+    assert UNCHANGED_NORMAL_PACK in _read_control_state(
+        session.profile_id, read_only=True,
+    )
     drift = tmp_path / "new-source" / PACK_ID
     shutil.copytree(source, drift, ignore=shutil.ignore_patterns(".tobkiri"))
     manifest = validate_file(drift / "pack.v4.json", "pack")
@@ -112,5 +118,11 @@ def test_read_projection_keeps_frozen_baseline_until_payload_is_verified(
         )
         assert row["pack_artifact_digest"] == admitted["artifact_digest"]
         assert row["installed"] is True
+        if operation == "catalog.read":
+            sentinel = next(
+                item for item in result["packs"]
+                if item["pack_id"] == UNCHANGED_NORMAL_PACK
+            )
+            assert sentinel["installed"] is True
     assert pointer.read_bytes() == before
     assert baselines.current_bundled_host_baseline_read() is None
