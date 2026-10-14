@@ -165,22 +165,22 @@ class _ExistingHostExtensionProof:
                 "pack_id": self.pack_id,
                 "predecessor": self.predecessor_digest,
                 "baseline": self.baseline_digest,
-                "bundle": (
+                "bundle": [
                     id(self._bundle),
                     str(self._bundle.root),
                     _digest(self._lock),
-                ),
+                ],
                 "selected_root": str(self._selected_root),
                 "selected_entry": self._selected_entry,
                 "snapshot": {
                     "revision": self._snapshot.revision,
                     "entries": self._snapshot.entries,
                     "versions": self._snapshot.versions,
-                    "journal": self._snapshot.journal,
+                    "journal": list(self._snapshot.journal),
                     "roots": {key: str(path) for key, path in self._snapshot.roots.items()},
                 },
                 "used": {
-                    key: (str(path), identity) for key, (path, identity) in self._used.items()
+                    key: [str(path), list(identity)] for key, (path, identity) in self._used.items()
                 },
                 "thread": self._thread,
                 "process": self._process,
@@ -204,9 +204,9 @@ class _ExistingHostExtensionProof:
             "active_pointer": canonical_digest(self.origin._pointer.payload()),
             "owner_binding": canonical_digest(
                 {
-                    "owner": self.origin._owner_identity,
-                    "workspace": self.origin._workspace_identity,
-                    "authority": self.origin._authority_identity,
+                    "owner": list(self.origin._owner_identity),
+                    "workspace": list(self.origin._workspace_identity),
+                    "authority": list(self.origin._authority_identity),
                 }
             ),
             "bundle_digest": self.origin.bundle_digest,

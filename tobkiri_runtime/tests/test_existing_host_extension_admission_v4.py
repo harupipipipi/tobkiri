@@ -140,6 +140,10 @@ def _release(previous: Path, target: Path, version: str, key: Any) -> Path:
 
 def _install_policy(source: Path, trust: Path, key: Any) -> None:
     signed = json.loads((source / SIGNED_MANIFEST_RELATIVE).read_bytes())
+    previous = (
+        read_host_policy_snapshot(trust).get("install_records", {}).get(PACK_ID)
+        if trust.exists() else None
+    )
     write_host_install_record(
         trust,
         pack_id=PACK_ID,
@@ -153,6 +157,7 @@ def _install_policy(source: Path, trust: Path, key: Any) -> None:
             "contract_versions": signed["contract_versions"],
             "requested_capabilities": signed["requested_capabilities"],
         },
+        expected_install_record=previous,
         publisher_record={
             "public_key_pem": key.public_key()
             .public_bytes(
