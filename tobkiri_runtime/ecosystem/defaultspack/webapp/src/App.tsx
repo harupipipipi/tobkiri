@@ -1,6 +1,7 @@
 import { savedCodingContext, savedCodingContextAfterMutation } from "./lib/savedCodingContext";
 import { assertSavedProjectSendSupported } from "./lib/savedProjectSendPreflight";
 import { useToolSelectionControlPreference } from "./lib/toolSelectionControlPreference";
+import { freshPendingTurnSnapshot, publishPendingTerminal, removeObservedPendingTerminal } from "./lib/pendingTerminalObservation";
 import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
@@ -176,7 +177,6 @@ import {
   savedTurnProgressState,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
-  savedTurnTerminalNotice,
   shouldClearPendingAfterConversationRefresh,
   shouldForgetPendingAfterPollError,
   shouldReconcileSavedTurnAfterAcknowledgedStop,
@@ -3251,8 +3251,8 @@ export function ChatApp() {
   const [pendingMentionAttachmentPaths, setPendingMentionAttachmentPaths] = useState<string[]>([]);
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
-  const recoveryDraftStateRef = useRef({ input, attachedFiles, droppedWidgets, composerEntityReferences });
-  recoveryDraftStateRef.current = { input, attachedFiles, droppedWidgets, composerEntityReferences };
+  const recoveryDraftStateRef = useRef({ input, attachedFiles, droppedWidgets, composerEntityReferences, pendingMentionAttachmentPaths });
+  recoveryDraftStateRef.current = { input, attachedFiles, droppedWidgets, composerEntityReferences, pendingMentionAttachmentPaths };
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
   const legacySelectedToolIdsRef = useRef(storedSelectedToolIds);
   const [toolMentionMigrations, setToolMentionMigrations] = useLocalStorage<string[]>("rumi-composer-tool-mention-migrations-v1", []);
@@ -4893,6 +4893,7 @@ export function ChatApp() {
     updateUrl = true,
     workspaceTabId = savedTurnViewFenceRef.current.capture().workspaceTabId,
     onViewLoad?: (ticket: ConversationLoadTicket) => void,
+    onConversationLoad?: (conversation: Conversation, ticket: ConversationLoadTicket) => boolean | void,
   ) {
     await conversationViewLoaderRef.current.load({
       workspaceTabId,
@@ -4903,6 +4904,7 @@ export function ChatApp() {
         onViewLoad?.(ticket);
       },
       publishConversation: (conversation, ticket) => {
+        if (onConversationLoad?.(conversation, ticket) === false) return;
         setActiveConversation(conversation);
         refreshPreview(conversation.id, ticket, conversation);
       },
@@ -4914,13 +4916,14 @@ export function ChatApp() {
     preferredId?: string | null,
     ticket = conversationViewLoaderRef.current.capture(),
     onViewLoad?: (ticket: ConversationLoadTicket) => void,
+    onConversationLoad?: (conversation: Conversation, ticket: ConversationLoadTicket) => boolean | void,
   ) {
     return conversationViewLoaderRef.current.refresh({
       ticket, preferredId, onViewLoad,
       readList: api.listConversations,
       publishList: setConversations,
       locationConversationId: chatIdFromLocation,
-      loadConversation: (id, workspaceTabId, onSelection) => loadConversation(id, true, workspaceTabId, onSelection),
+      loadConversation: (id, workspaceTabId, onSelection) => loadConversation(id, true, workspaceTabId, onSelection, onConversationLoad),
     });
   }
 
@@ -5197,12 +5200,8 @@ export function ChatApp() {
               throw new Error("登録された送信IDが保留中の会話と一致しません。");
             }
           }
-          let turn = (
-            await api.getSavedTurnEvents(
-              pendingRequest.operationId,
-              activeConversationId,
-            )
-          ).turn;
+          const initialSnapshot = await api.getSavedTurnEvents(pendingRequest.operationId, activeConversationId);
+          let turn = initialSnapshot.turn;
           if (!pollUiIsCurrent()) return;
           if (pollUiIsCurrent()) {
             updatePendingRequests((current) => markSavedTurnOwnerObserved(
@@ -5218,79 +5217,69 @@ export function ChatApp() {
             pendingRequest.operationId,
             turn,
           );
-          if (turn.status === "running" || turn.status === "waiting") {
-            turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
-            if (!pollUiIsCurrent()) return;
-            bindOptimisticSavedTurnOverlayToTurn(
-              activeConversationId,
-              pendingRequest.operationId,
-              turn,
-            );
-          }
+          const snapshot = await freshPendingTurnSnapshot({
+            initial: initialSnapshot, isCurrent: pollUiIsCurrent,
+            reconcile: () => api.reconcileSavedTurn(pendingRequest.operationId!, activeConversationId),
+            readEvents: () => api.getSavedTurnEvents(pendingRequest.operationId!, activeConversationId),
+          });
+          if (!snapshot || !pollUiIsCurrent()) return;
+          turn = snapshot.turn;
+          bindOptimisticSavedTurnOverlayToTurn(activeConversationId, pendingRequest.operationId, turn);
           setCurrentSteerItems(savedTurnGuidanceItems(turn));
-          if (turn.status !== "running" && turn.status !== "waiting") {
-            const snapshot = await api.getSavedTurnEvents(pendingRequest.operationId, activeConversationId).catch(() => null);
-            if (disposed) return;
-            if (snapshot && liveTaskContextRef.current.profileId === runtimeProfileId
-              && liveTaskContextRef.current.conversationId === activeConversationId) {
-              setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
-            }
+          if (turn.status !== "running" && turn.status !== "waiting" && pollUiIsCurrent()) {
+            setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
           }
-          if (turn.status !== "running" && turn.status !== "waiting") {
-            const snapshot = await api.getSavedTurnEvents(pendingRequest.operationId, activeConversationId).catch(() => null);
-            if (disposed) return;
-            if (snapshot && liveTaskContextRef.current.profileId === runtimeProfileId
-              && liveTaskContextRef.current.conversationId === activeConversationId) {
-              setTaskPetSnapshot({ profileId: runtimeProfileId, snapshot });
-            }
-          }
-          const terminalNotice = savedTurnTerminalNotice(
-            turn,
-            activeConversationId,
-            pendingRequest.operationId,
-          );
-          if (terminalNotice) {
-            const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
-              if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
-              throw error;
-            });
-            if (!pollUiIsCurrent()) return;
-            const recoveryDraft = unwrittenSavedTurnDrafts.find((draft) => (
-              draft.conversationId === activeConversationId
-              && draft.operationId === pendingRequest.operationId
-            ));
-            const canRestoreUnwrittenDraft = Boolean(recoveryDraft)
-              && savedTurnViewFenceRef.current.matches(recoveryDraft!.viewTicket)
-              && !input.trim()
-              && attachedFiles.length === 0
-              && droppedWidgets.length === 0
-              && composerEntityReferences.length === 0
-              && pendingMentionAttachmentPaths.length === 0
-              && savedTurnCanRestoreUnwrittenDraft(
-                turn,
-                conversation,
-                activeConversationId,
-                pendingRequest.operationId,
+          const readScope = { profileId: runtimeProfileId, storeId: savedTurnStoreId, view: pollViewTicket };
+          const currentTerminalScope = () => ({
+            profileId: liveTaskContextRef.current.profileId,
+            storeId: savedTurnStoreIdRef.current,
+            view: savedTurnViewFenceRef.current.capture(),
+          });
+          const recoveryDraft = unwrittenSavedTurnDrafts.find((draft) => (
+            draft.conversationId === activeConversationId
+            && draft.operationId === pendingRequest.operationId
+          ));
+          const historyTicket = conversationViewLoaderRef.current.capture();
+          if (publishPendingTerminal({
+            snapshot, expected: pendingRequest, current: pendingRequestsRef.current,
+            readScope, currentScope: currentTerminalScope(),
+            publish: (observation) => {
+              // Retire the matching request before history reads, without touching another outbox entry.
+              pendingRequestsRef.current = removeObservedPendingTerminal(
+                pendingRequestsRef.current, pendingRequest, observation, readScope, currentTerminalScope(),
               );
-            if (recoveryDraft && !canRestoreUnwrittenDraft) {
-              discardUnwrittenSavedTurnDraftForRequest(
-                activeConversationId,
-                pendingRequest.operationId,
-              );
-            }
-            discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId);
-            forgetPendingRequest(activeConversationId);
-            if (pollUiIsCurrent()) {
-              if (conversation) setActiveConversation(conversation);
-              setError(canRestoreUnwrittenDraft
-                ? "送信は失敗で終了しました。メッセージは保存されていません。"
-                : terminalNotice);
+              updatePendingRequests((current) => removeObservedPendingTerminal(
+                current, pendingRequest, observation, readScope, currentTerminalScope(),
+              ));
+              discardOptimisticSavedTurnOverlayForRequest(activeConversationId, pendingRequest.operationId!);
+              discardUnwrittenSavedTurnDraftForRequest(activeConversationId, pendingRequest.operationId!);
+              setSavedTurnCompletionNotice(null);
+              setError(observation.notice);
               replaceChatIdInUrl(activeConversationId, false);
               setIsGenerating(false);
-              void refreshConversations(activeConversationId);
-            }
-            return;
-          }
+            },
+            refreshHistory: () => {
+              const scope = currentTerminalScope();
+              if (scope.profileId !== readScope.profileId || scope.storeId !== readScope.storeId
+                || !conversationViewLoaderRef.current.matches(historyTicket)
+                || pendingRequestsRef.current[activeConversationId]) return Promise.resolve();
+              return refreshConversations(activeConversationId, historyTicket, undefined, (conversation, ticket) => {
+                const currentScope = currentTerminalScope();
+                if (currentScope.profileId !== readScope.profileId || currentScope.storeId !== readScope.storeId
+                  || !conversationViewLoaderRef.current.matches(ticket)
+                  || !savedTurnViewFenceRef.current.matches(pollViewTicket)
+                  || pendingRequestsRef.current[activeConversationId]) return false;
+                const draft = recoveryDraftStateRef.current;
+                if (recoveryDraft && !draft.input.trim() && draft.attachedFiles.length === 0
+                  && draft.droppedWidgets.length === 0 && draft.composerEntityReferences.length === 0
+                  && draft.pendingMentionAttachmentPaths.length === 0
+                  && savedTurnViewFenceRef.current.matches(recoveryDraft.viewTicket)
+                  && savedTurnCanRestoreUnwrittenDraft(turn, conversation, activeConversationId, pendingRequest.operationId!)) {
+                  retainUnwrittenSavedTurnDraft(recoveryDraft);
+                }
+              });
+            },
+          })) return;
           if (turn.status === "completed") {
             let listedTurns = await api.listSavedTurns(activeConversationId);
             let chain = pendingSavedTurnChainForConversation(
