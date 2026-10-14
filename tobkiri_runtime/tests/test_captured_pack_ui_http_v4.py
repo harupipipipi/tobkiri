@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import contextmanager
 import http.client
 from pathlib import Path
 
@@ -69,7 +70,7 @@ def test_signed_ui_activation_rebinds_real_http_mounts_without_source_replacemen
 ) -> None:
     """Admission alone cannot switch UI; activation refresh binds all aliases."""
     baseline = RUNTIME_ROOT / "ecosystem/defaultspack"
-    with _captured_production_server(tmp_path, monkeypatch) as (
+    with contextmanager(_captured_production_server)(tmp_path, monkeypatch) as (
         server,
         old_session,
         _authority,
@@ -147,7 +148,7 @@ def test_external_pack_without_ui_cannot_recover_via_legacy_source_mount(
 ) -> None:
     """An admitted non-UI successor cannot inherit the old source HTML."""
     baseline = RUNTIME_ROOT / "ecosystem/defaultspack"
-    with _captured_production_server(tmp_path, monkeypatch) as (
+    with contextmanager(_captured_production_server)(tmp_path, monkeypatch) as (
         server,
         _session,
         _authority,
