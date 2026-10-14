@@ -28,7 +28,8 @@ def test_selected_admitted_data_is_pinned_and_cached(
     root, digest = data_pack
     calls = []
 
-    def resolve(pack_id: str, ecosystem_root: Path) -> Path:
+    def resolve(pack_id: str, ecosystem_root: Path, *, artifact_digest: str) -> Path:
+        assert artifact_digest == digest
         calls.append((pack_id, ecosystem_root))
         return root
 
@@ -72,7 +73,7 @@ def test_selected_digest_mismatch_is_not_an_empty_catalog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root, _ = data_pack
-    monkeypatch.setattr(data_capture, "resolve_admitted_pack_root", lambda *_args: root)
+    monkeypatch.setattr(data_capture, "resolve_admitted_pack_root", lambda *_args, **_kwargs: root)
     owner = data_capture.HostProviderDataCaptureV4(_lock("sha256:" + "0" * 64), root.parent)
     with pytest.raises(InvalidArtifactError, match="artifact identity mismatch"):
         owner.capture_for(_factory())
@@ -85,7 +86,7 @@ def test_replaced_data_root_fences_both_cached_capture_and_invocation(
     replacement: str,
 ) -> None:
     root, digest = data_pack
-    monkeypatch.setattr(data_capture, "resolve_admitted_pack_root", lambda *_args: root)
+    monkeypatch.setattr(data_capture, "resolve_admitted_pack_root", lambda *_args, **_kwargs: root)
     owner = data_capture.HostProviderDataCaptureV4(_lock(digest), root.parent)
     owner.capture_for(_factory())
     previous = root.with_name("previous")

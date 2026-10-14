@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import stat
 from threading import Thread
+from types import SimpleNamespace
 from typing import Any
 
 from cryptography.hazmat.primitives import serialization
@@ -42,6 +43,9 @@ from tests.test_host_extension_dispatch_update_v4 import (
     _approve_gateway_profile_revision,
 )
 from tests.test_host_extension_update_v4 import _refresh
+from tests.test_live_production_v4_dispatch import (
+    _deny_production_test_internet,  # noqa: F401 - explicitly reused pytest fixture
+)
 from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.validation import validate_file
 
@@ -139,6 +143,7 @@ def test_canonical_baseline_roundtrip_is_separate_and_noclobber(
         read.resolve(PACK_ID)
 
 
+@pytest.mark.usefixtures("_deny_production_test_internet")
 def test_real_active_successor_uses_frozen_baseline_after_source_version_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -236,6 +241,100 @@ def test_real_active_successor_uses_frozen_baseline_after_source_version_drift(
         ).profile_binding
         == origin.profile_binding
     )
+
+    from core_runtime.authority.v4 import AuthorityStore
+    from core_runtime.bootstrap import production_v4
+    from core_runtime.host_provider_backend_v4 import HostProviderDataRequestV4
+    from core_runtime.host_provider_data_v4 import HostProviderDataCaptureV4
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_activation_snapshot_loader,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+    from tobkiri_host.backends import BackendRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.errors import AuthorizationError
+
+    runtime_root = Path(profile_capture.__file__).resolve().parents[2]
+    # The ordinary loader remains strict outside an explicitly captured read.
+    assert baselines.current_bundled_host_baseline_read() is None
+    data = HostProviderDataCaptureV4(active.resolved.lock, runtime_root / "ecosystem")
+    declaration = SimpleNamespace(
+        declared_pack_data=(HostProviderDataRequestV4("rumi_default_tools_pack", "tools/"),)
+    )
+    with pytest.raises(external.ExternalPackCatalogDenied, match="compatibility boundary"):
+        data.capture_for(declaration)
+
+    def capture_dispatch(authority: AuthorityStore) -> Any:
+        return production_v4.capture_production_dispatch(
+            active,
+            bundle_root=fixture.bundle,
+            ecosystem_root=runtime_root / "ecosystem",
+            authority_store=authority,
+            activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+            runtime_surface_factory=create_runtime_surface_services,
+            credential_store_factory=host_credential_store_factory,
+            backends=BackendRegistry(()),
+        )
+
+    failed_reads = []
+    refusal = AuthorizationError("isolated provider data capture failure")
+
+    def refuse_data(_self: Any, _factory: Any) -> Any:
+        read = baselines.current_bundled_host_baseline_read()
+        assert read is not None
+        assert profile_capture.runtime_user_data_root() == fixture.owner
+        failed_reads.append(read)
+        with pytest.raises(BundledArtifactRetentionDenied, match="nested"):
+            with baselines.bundled_host_baseline_read(origin, bundle_root=fixture.bundle):
+                pytest.fail("nested capture must not reuse a borrowed baseline")
+        assert baselines.current_bundled_host_baseline_read() is read
+        raise refusal
+
+    other_owner = tmp_path / "ambient-owner"
+    with profile_capture.runtime_user_data_scope(other_owner), monkeypatch.context() as altered:
+        altered.setattr(HostProviderDataCaptureV4, "capture_for", refuse_data)
+        with AuthorityStore(fixture.owner / "authority/v4.sqlite3") as authority:
+            with pytest.raises(AuthorizationError) as rejected:
+                capture_dispatch(authority)
+        assert rejected.value is refusal
+        assert baselines.current_bundled_host_baseline_read() is None
+        assert profile_capture.runtime_user_data_root() == other_owner
+    assert len(failed_reads) == 1
+    with pytest.raises(BundledArtifactRetentionDenied, match="closed"):
+        failed_reads[0].resolve(PACK_ID)
+
+    captured_reads = []
+    capture_data = HostProviderDataCaptureV4.capture_for
+
+    def observed_data(self: Any, factory: Any) -> Any:
+        read = baselines.current_bundled_host_baseline_read()
+        assert read is not None
+        assert profile_capture.runtime_user_data_root() == fixture.owner
+        result = capture_data(self, factory)
+        captured_reads.append((read, result))
+        return result
+
+    with profile_capture.runtime_user_data_scope(other_owner), monkeypatch.context() as altered:
+        altered.setattr(HostProviderDataCaptureV4, "capture_for", observed_data)
+        with AuthorityStore(fixture.owner / "authority/v4.sqlite3") as authority:
+            session = capture_dispatch(authority)
+            try:
+                assert session.plan_digest == origin.plan_digest
+                assert session.activation_id == origin.activation_id
+                assert session.owned_authority_store is authority
+                session.assert_current()
+            finally:
+                session.close()
+        assert baselines.current_bundled_host_baseline_read() is None
+        assert profile_capture.runtime_user_data_root() == other_owner
+    assert captured_reads and any(result for _read, result in captured_reads)
+    assert len({id(read) for read, _result in captured_reads}) == len(captured_reads)
+    for read, _result in captured_reads:
+        with pytest.raises(BundledArtifactRetentionDenied, match="closed"):
+            read.resolve(PACK_ID)
+    assert not other_owner.exists()
 
 
 @pytest.mark.parametrize("change", ["manifest", "record", "runtime", "index_role", "missing"])

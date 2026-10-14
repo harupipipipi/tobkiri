@@ -3406,6 +3406,17 @@ def capture_production_dispatch(
     from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
 
     host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
+
+    def capture_provider_pack_data(factory: Any) -> tuple[CapturedHostPackDataV4, ...]:
+        """Read finite factory data under the captured owner and fresh baseline."""
+        scoped_baseline = (
+            bundled_host_baseline_read(retained_origin, bundle_root=bundle_root)
+            if retained_origin is not None
+            else nullcontext()
+        )
+        with runtime_user_data_scope(authority_user_data), scoped_baseline:
+            return host_provider_data.capture_for(factory)
+
     captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
                                    ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
@@ -3415,8 +3426,7 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("captured wake declaration is invalid")
         wake_port = LateBoundWakePortV4() if declaration is not None else None
-        with runtime_user_data_scope(authority_user_data):
-            declared_pack_data = host_provider_data.capture_for(factory)
+        declared_pack_data = capture_provider_pack_data(factory)
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
@@ -4063,7 +4073,7 @@ def capture_production_dispatch(
             _, bindings_for_owner, owner_factory, _ = matches[0]
             return host_provider_capture_context(
                 bindings_for_owner, workspace_mutation_port=workspace_mutation_port,
-                declared_pack_data=host_provider_data.capture_for(owner_factory),
+                declared_pack_data=capture_provider_pack_data(owner_factory),
             )
 
         def read_policy_conversation(invocation: Any, conversation_id: str) -> Mapping[str, Any]:
