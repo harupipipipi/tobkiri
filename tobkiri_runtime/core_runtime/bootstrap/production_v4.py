@@ -26,6 +26,10 @@ from core_runtime.capture_guard_traversal_v4 import (
     _capture_guard_traversal,
     _check_shared_capture,
 )
+from core_runtime.profile_operation_timing import (
+    profile_operation_phase,
+    timed_profile_reader,
+)
 
 from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
 from tobkiri_host.admission import (
@@ -2013,7 +2017,9 @@ def capture_production_dispatch(
 
         control_session = capture_pack_control_session(
             active=active,
-            packvm_readiness_reader=packvm_readiness_reader,
+            packvm_readiness_reader=timed_profile_reader(
+                packvm_readiness_reader, "packvm_readiness"
+            ),
             active_profile_loader=load_active_profile,
             bundle_root=bundle_root,
             runtime_surface_factory=runtime_surface_factory,
@@ -4203,6 +4209,7 @@ def capture_production_dispatch(
             dispatch.close()
             raise AuthorityDenied("capability invocation binding is absent or ambiguous")
 
+        @profile_operation_phase("capability_binding")
         def capability_binding_reader() -> tuple[Mapping[str, object], Mapping[str, Any]]:
             from ..pack_control_v4 import capture_pack_catalog_reader
 

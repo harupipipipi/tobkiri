@@ -96,8 +96,9 @@ def test_logs_are_bounded_with_terminal_record_reserved(caplog: pytest.LogCaptur
     """Preserve the stated privacy, lifecycle or outcome contract."""
 
     def many_phases(payload: Any) -> Any:
-        for _ in range(100):
-            with timing.profile_operation_phase("artifact_catalog"):
+        phases = ("artifact_catalog", "capability_binding", "packvm_readiness")
+        for index in range(100):
+            with timing.profile_operation_phase(phases[index % len(phases)]):
                 pass
         return {"code": "TIMEOUT"}
 
@@ -151,7 +152,11 @@ def test_reader_remains_fresh_and_none_preserves_composition_default(
     assert sum("phase=active_snapshot.finish" in m for m in _messages(caplog)) == 2
 
 
+@pytest.mark.parametrize(
+    "phase", ["active_snapshot", "capability_binding", "packvm_readiness"]
+)
 def test_copied_worker_context_closes_without_late_or_leaked_logs(
+    phase: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Preserve the stated privacy, lifecycle or outcome contract."""
@@ -161,7 +166,7 @@ def test_copied_worker_context_closes_without_late_or_leaked_logs(
 
     def callback(payload: Any) -> Any:
         def worker() -> None:
-            with timing.profile_operation_phase("active_snapshot"):
+            with timing.profile_operation_phase(phase):
                 started.set()
                 assert release.wait(timeout=5)
 
@@ -174,7 +179,7 @@ def test_copied_worker_context_closes_without_late_or_leaked_logs(
     try:
         _Control(callback).invoke("contract", "profile.change.review", {})
         completed = _messages(caplog)
-        assert any("phase=active_snapshot.start" in m for m in completed)
+        assert any(f"phase={phase}.start" in m for m in completed)
         assert "phase=dispatch.finish" in completed[-1]
     finally:
         release.set()
@@ -182,9 +187,68 @@ def test_copied_worker_context_closes_without_late_or_leaked_logs(
             thread.join(timeout=5)
             assert not thread.is_alive()
     assert _messages(caplog) == completed
-    with timing.profile_operation_phase("active_snapshot"):
+    with timing.profile_operation_phase(phase):
         pass
     assert _messages(caplog) == completed
+
+
+@pytest.mark.parametrize("phase", ["capability_binding", "packvm_readiness"])
+def test_presentation_reader_timing_preserves_fresh_values_without_private_output(
+    phase: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each wrapped callback runs fresh and projects only its fixed phase."""
+
+    calls: list[object] = []
+
+    def reader() -> object:
+        result = {"SECRET-path-payload": "SECRET-header-error"}
+        calls.append(result)
+        return result
+
+    wrapped = (
+        timing.profile_operation_phase(phase)(reader)
+        if phase == "capability_binding"
+        else timing.timed_profile_reader(reader, phase)
+    )
+    assert wrapped is not None
+    assert timing.timed_profile_reader(None, phase) is None
+    assert wrapped() is calls[0]
+    assert not _messages(caplog)
+    control = _Control(lambda payload: wrapped())
+    assert control.invoke("SECRET-contract", "profile.read", {}) is calls[1]
+    assert control.invoke("SECRET-contract", "profile.read", {}) is calls[2]
+    assert calls[1] is not calls[2]
+    messages = _messages(caplog)
+    assert sum(f"phase={phase}.finish" in item for item in messages) == 2
+    assert "SECRET" not in "\n".join(messages)
+
+
+@pytest.mark.parametrize("phase", ["capability_binding", "packvm_readiness"])
+def test_presentation_reader_timing_preserves_exception_and_timeout_identity(
+    phase: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Timing preserves callback errors while logging only a fixed timeout code."""
+
+    error = TimeoutError("SECRET-private-path-header")
+
+    def reader() -> None:
+        raise error
+
+    wrapped = (
+        timing.profile_operation_phase(phase)(reader)
+        if phase == "capability_binding"
+        else timing.timed_profile_reader(reader, phase)
+    )
+    assert wrapped is not None
+    with pytest.raises(TimeoutError) as caught:
+        _Control(lambda payload: wrapped()).invoke("SECRET-contract", "profile.read", {})
+    assert caught.value is error
+    messages = _messages(caplog)
+    assert f"phase={phase}.finish" in messages[-2]
+    assert "timeout_code=TIMEOUT" in messages[-2]
+    assert "SECRET" not in "\n".join(messages)
 
 
 def test_logging_failure_does_not_change_return_or_error(

@@ -31,6 +31,8 @@ _PHASES = frozenset(
         "handler",
         "active_snapshot",
         "artifact_catalog",
+        "capability_binding",
+        "packvm_readiness",
         "candidate_resolution",
         "approval_reconfirmation",
     }
