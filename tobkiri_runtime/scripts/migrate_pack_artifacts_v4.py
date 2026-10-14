@@ -1118,27 +1118,67 @@ def _render_record(record: Mapping[str, Any]) -> dict[str, str]:
         "sha256:" + hashlib.sha256(contract_text.encode("utf-8")).hexdigest(),
         executable_artifact_digest,
     )
-    manifest_text = _json_text(manifest)
-    unsigned_index["artifacts"] = [
-        {
-            **item,
-            "digest": (
-                _file_digest_text(manifest_text)
-                if item["path"] == "pack.v4.json"
-                else item["digest"]
-            ),
-        }
-        for item in unsigned_index["artifacts"]
-    ]
-    unsigned_index["artifacts"].append(
-        {
-            "path": "executables.v4.json",
-            "digest": executable_artifact_digest,
-            "role": "sidecar",
-        }
+    return render_artifact_documents(
+        manifest, contract_catalog, executable, unsigned_index["artifacts"],
     )
-    unsigned_index["artifacts"].sort(key=lambda item: item["path"])
-    unsigned_index["artifact_set_digest"] = manifest["integrity"]["artifact_set_digest"]
+
+
+def render_artifact_documents(
+    manifest: Mapping[str, Any],
+    contract_catalog: Mapping[str, Any],
+    executable: Mapping[str, Any],
+    index_artifacts: Iterable[Mapping[str, Any]],
+) -> dict[str, str]:
+    """Seal a canonical quartet from explicit documents without changing authority.
+
+    Contract documents and executable declarations are caller-owned inputs. This
+    shared producer computes only their resulting metadata identities; schemas
+    and the real artifact compiler remain the validation boundary.
+    """
+    manifest = copy.deepcopy(dict(manifest))
+    contract_catalog = copy.deepcopy(dict(contract_catalog))
+    executable = copy.deepcopy(dict(executable))
+    executable["catalog_digest"] = _digest(
+        {key: value for key, value in executable.items() if key != "catalog_digest"}
+    )
+    contract_text = _json_text(contract_catalog)
+    executable_text = _json_text(executable)
+    executable_digest = _file_digest_text(executable_text)
+    executable_entries = [
+        item for item in manifest["artifacts"] if item["path"] == "executables.v4.json"
+    ]
+    if len(executable_entries) != 1:
+        raise PackV4MigrationError("manifest must pin one executable catalog")
+    executable_entries[0]["digest"] = executable_digest
+    artifact_digest = _artifact_set_digest(manifest["artifacts"])
+    manifest["pack"]["artifact_digest"] = artifact_digest
+    manifest["integrity"]["artifact_set_digest"] = artifact_digest
+    manifest["integrity"]["contract_catalog_digest"] = _file_digest_text(contract_text)
+    manifest_text = _json_text(manifest)
+    metadata_digests = {
+        "pack.v4.json": _file_digest_text(manifest_text),
+        "contracts.v4.json": _file_digest_text(contract_text),
+        "executables.v4.json": executable_digest,
+    }
+    artifacts = [copy.deepcopy(dict(item)) for item in index_artifacts]
+    if not any(item["path"] == "executables.v4.json" for item in artifacts):
+        artifacts.append(
+            {
+                "path": "executables.v4.json",
+                "digest": executable_digest,
+                "role": "sidecar",
+            }
+        )
+    for item in artifacts:
+        if item["path"] in metadata_digests:
+            item["digest"] = metadata_digests[item["path"]]
+    unsigned_index = {
+        "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+        "pack_id": manifest["pack"]["id"],
+        "source_identity": manifest["integrity"]["source_identity"],
+        "artifacts": sorted(artifacts, key=lambda item: item["path"]),
+        "artifact_set_digest": artifact_digest,
+    }
     index = {
         **unsigned_index,
         "integrity_seal": {
@@ -1146,9 +1186,13 @@ def _render_record(record: Mapping[str, Any]) -> dict[str, str]:
             "signed_digest": _digest(unsigned_index),
         },
     }
-    validate_document(manifest, "pack")
-    validate_document(contract_catalog, "pack_contract_catalog")
-    validate_document(index, "pack_artifact_index")
+    for document, schema in (
+        (manifest, "pack"),
+        (contract_catalog, "pack_contract_catalog"),
+        (executable, "executable_catalog"),
+        (index, "pack_artifact_index"),
+    ):
+        validate_document(document, schema)
     return {
         "pack.v4.json": manifest_text,
         "contracts.v4.json": contract_text,
