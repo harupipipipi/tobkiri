@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import multiprocessing
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 import threading
 import time
@@ -1125,6 +1126,222 @@ def test_expected_revision_and_digest_fail_closed(active_runtime) -> None:
     with pytest.raises(RuntimeSurfaceError) as mismatch:
         service.read_profile(expected_plan_digest="sha256:" + "0" * 64)
     assert mismatch.value.code is RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+def _read_predecessor(service, active_runtime):
+    return service.read_profile_predecessor(
+        expected_profile_revision=active_runtime.resolved.plan["profile_revision"],
+        expected_plan_digest=active_runtime.resolved.plan["plan_digest"],
+        user_data_root=runtime_user_data_root(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "code"),
+    [
+        ("expected_profile_revision", RuntimeSurfaceErrorCode.STALE_REVISION),
+        ("expected_plan_digest", RuntimeSurfaceErrorCode.DIGEST_MISMATCH),
+    ],
+)
+def test_profile_predecessor_rejects_wrong_expected_identity(
+    active_runtime, field, code
+) -> None:
+    request = {
+        "expected_profile_revision": active_runtime.resolved.plan["profile_revision"],
+        "expected_plan_digest": active_runtime.resolved.plan["plan_digest"],
+        "user_data_root": runtime_user_data_root(),
+    }
+    request[field] = "sha256:" + "0" * 64
+    service = RuntimeSurfaceService()
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            service.read_profile_predecessor(**request)
+        assert error.value.code is code
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_rejects_snapshot_not_bound_to_host_pointer(
+    active_runtime,
+) -> None:
+    stale = replace(
+        active_runtime,
+        activation={
+            **active_runtime.activation,
+            "activation_id": "activation:defaults-stale-predecessor",
+        },
+    )
+    service = _service(stale)
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            _read_predecessor(service, active_runtime)
+        assert error.value.code is RuntimeSurfaceErrorCode.STALE_REVISION
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_rejects_tampered_persisted_pointer(
+    active_runtime,
+) -> None:
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+
+    pointer_path = ActiveProfileStore(runtime_user_data_root()).path
+    pointer = json.loads(pointer_path.read_bytes())
+    pointer["plan_digest"] = "sha256:" + "0" * 64
+    pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
+    service = RuntimeSurfaceService()
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            _read_predecessor(service, active_runtime)
+        assert error.value.code is RuntimeSurfaceErrorCode.API_FAILURE
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_rejects_changed_authority_epoch(active_runtime) -> None:
+    with AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3") as authority:
+        authority.advance_security_epoch("predecessor read regression")
+    service = RuntimeSurfaceService()
+    try:
+        with pytest.raises(RuntimeSurfaceError):
+            _read_predecessor(service, active_runtime)
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_rejects_another_host_root(
+    active_runtime, tmp_path: Path
+) -> None:
+    service = _service(active_runtime)
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            service.read_profile_predecessor(
+                expected_profile_revision=active_runtime.resolved.plan[
+                    "profile_revision"
+                ],
+                expected_plan_digest=active_runtime.resolved.plan["plan_digest"],
+                user_data_root=tmp_path / "another-host",
+            )
+        assert error.value.code is RuntimeSurfaceErrorCode.API_FAILURE
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_rechecks_pointer_before_return(active_runtime) -> None:
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+
+    pointers = ActiveProfileStore(runtime_user_data_root())
+
+    def republished_snapshot():
+        predecessor = pointers.require(verify_snapshot=True)
+        pointers.commit(predecessor, expected=predecessor)
+        return active_runtime
+
+    service = RuntimeSurfaceService(snapshot_loader=republished_snapshot)
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            _read_predecessor(service, active_runtime)
+        assert error.value.code is RuntimeSurfaceErrorCode.STALE_REVISION
+    finally:
+        service.close()
+
+
+def test_profile_predecessor_read_keeps_bounded_deadline(active_runtime) -> None:
+    ticks = iter((0.0, 16.0))
+    service = RuntimeSurfaceService(clock=lambda: next(ticks))
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            _read_predecessor(service, active_runtime)
+        assert error.value.code is RuntimeSurfaceErrorCode.TIMEOUT
+    finally:
+        service.close()
+
+
+def test_profile_ceremony_preserves_ui_denial_for_drifted_source(
+    active_runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verified predecessor can be replaced without reading old UI schemas."""
+    from core_runtime import admitted_pack_read_v4
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+    from core_runtime.profile_catalog_v4 import (
+        bundle_lock_digest,
+        profile_catalog_digest,
+    )
+    from tests.test_host_extension_update_v4 import _refresh
+
+    pack_id = "rumi_provider_adapters_pack"
+    source = RUNTIME_ROOT / "ecosystem" / pack_id
+    drifted = tmp_path / "changed-source" / pack_id
+    shutil.copytree(source, drifted, ignore=shutil.ignore_patterns("__pycache__"))
+    streaming = drifted / "runtime" / "streaming.py"
+    streaming.write_bytes(streaming.read_bytes() + b"\n# Source changed after capture\n")
+    _refresh(drifted)
+    resolve_root = admitted_pack_read_v4.resolve_pack_root
+    monkeypatch.setattr(
+        admitted_pack_read_v4,
+        "resolve_pack_root",
+        lambda selected: drifted if selected == pack_id else resolve_root(selected),
+    )
+    surface = RuntimeSurfaceService()
+    try:
+        with pytest.raises(RuntimeSurfaceError) as error:
+            surface.read_profile()
+        assert error.value.code is RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+        assert _read_predecessor(surface, active_runtime) == {
+            "profile_id": "defaults",
+            "activation_id": active_runtime.activation["activation_id"],
+        }
+        catalog = host_profile_catalog()
+        definition = catalog.profiles["defaults"]
+        ceremony = RuntimeProfileChangeService(surface_service=surface)
+        candidate = ceremony.resolve(
+            {
+                "profile_id": "defaults",
+                "expected_profile_revision": active_runtime.resolved.plan[
+                    "profile_revision"
+                ],
+                "expected_plan_digest": active_runtime.resolved.plan["plan_digest"],
+                "desired_pack_ids": [
+                    row["pack_id"]
+                    for row in definition["packs"]
+                    if row.get("role") != "application"
+                ],
+                "profile_definition_digest": canonical_digest(definition),
+                "profile_catalog_digest": profile_catalog_digest(catalog),
+                "bundle_lock_digest": bundle_lock_digest(catalog),
+            },
+            session_id="source-drift-review",
+        )
+        reviewed = ceremony.review(
+            {
+                "candidate_id": candidate["candidate_id"],
+                "candidate_digest": candidate["candidate_digest"],
+            },
+            session_id="source-drift-review",
+        )
+        approved = ceremony.approve(
+            {
+                "candidate_id": reviewed["candidate_id"],
+                "candidate_digest": reviewed["candidate_digest"],
+            },
+            session_id="source-drift-review",
+        )
+        activated = ceremony.activate(
+            {
+                "approval_id": approved["approval_id"],
+                "approval_digest": approved["approval_digest"],
+            },
+            session_id="source-drift-review",
+        )
+        assert activated["state"] == "active"
+        assert ActiveProfileStore(runtime_user_data_root()).require().activation_id == (
+            activated["activation_id"]
+        )
+        with pytest.raises(RuntimeSurfaceError) as still_denied:
+            surface.read_profile()
+        assert still_denied.value.code is RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+    finally:
+        surface.close()
 
 
 def test_catalog_artifact_mismatch_fails_closed(active_runtime) -> None:

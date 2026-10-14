@@ -377,7 +377,6 @@ class RuntimeProfileChangeService:
                     "Profile activation predecessor is no longer empty",
                 )
             current: Mapping[str, Any] | None = None
-            current_data: Mapping[str, Any] | None = None
         else:
             if hmac.compare_digest(revision, NO_ACTIVE_PROFILE_REVISION) or hmac.compare_digest(
                 plan_digest, NO_ACTIVE_PLAN_DIGEST
@@ -386,11 +385,11 @@ class RuntimeProfileChangeService:
                     RuntimeSurfaceErrorCode.INVALID_REQUEST,
                     "Profile predecessor binding is incomplete",
                 )
-            current = self._surface().read_profile(
+            current = self._surface().read_profile_predecessor(
                 expected_profile_revision=revision,
                 expected_plan_digest=plan_digest,
+                user_data_root=self._user_data_root,
             )
-            current_data = cast(Mapping[str, Any], current["data"])
         if authoritative_selection:
             definition_digest = _required_string(body.get("profile_definition_digest"))
             catalog_digest = _required_string(body.get("profile_catalog_digest"))
@@ -458,8 +457,8 @@ class RuntimeProfileChangeService:
         execution_profile_id = None if current is None else str(current["profile_id"])
         execution_activation_id = (
             NO_ACTIVE_ACTIVATION_ID
-            if current_data is None
-            else str(current_data["activation_record"]["activation_id"])
+            if current is None
+            else str(current["activation_id"])
         )
         review = {
             "candidate_generation": "profile-change-generation:" + secrets.token_hex(16),
@@ -472,7 +471,7 @@ class RuntimeProfileChangeService:
                 "execution_profile_revision": revision,
                 "execution_plan_digest": plan_digest,
                 "execution_activation_id": (
-                    None if current_data is None else execution_activation_id
+                    None if current is None else execution_activation_id
                 ),
             },
             "predecessor": {
@@ -986,6 +985,71 @@ class RuntimeSurfaceService:
         from core_runtime.bootstrap.profile_capture import host_profile_catalog
 
         return host_profile_catalog()
+
+    def read_profile_predecessor(
+        self,
+        *,
+        expected_profile_revision: str,
+        expected_plan_digest: str,
+        user_data_root: Path,
+    ) -> dict[str, str]:
+        """Read the authenticated activation identity without projecting Pack schemas.
+
+        Candidate resolution verifies its own selected artifacts. Its predecessor
+        needs the Authority-verified active snapshot and exact Host pointer, even
+        when the old bundled Source has since changed. Full presentation reads
+        continue to require every selected materialized Contract catalog.
+        """
+
+        def read(deadline: _ReadDeadline) -> dict[str, str]:
+            from core_runtime.active_profile_store_v4 import ActiveProfileStore
+            from core_runtime.bootstrap.profile_capture import runtime_user_data_scope
+
+            try:
+                deadline.checkpoint()
+                pointers = ActiveProfileStore(user_data_root)
+                predecessor = pointers.require(verify_snapshot=True)
+                with runtime_user_data_scope(user_data_root):
+                    active = self._snapshot_loader()
+                deadline.checkpoint()
+                self._check_expected_bindings(
+                    active,
+                    expected_profile_revision=expected_profile_revision,
+                    expected_plan_digest=expected_plan_digest,
+                )
+                identity = (
+                    str(active.resolved.profile["profile_id"]),
+                    str(active.resolved.plan["profile_revision"]),
+                    str(active.activation["activation_id"]),
+                    str(active.resolved.plan["plan_digest"]),
+                    str(active.resolved.lock["lock_digest"]),
+                )
+                if identity != predecessor.identity():
+                    raise RuntimeSurfaceError(
+                        RuntimeSurfaceErrorCode.STALE_REVISION,
+                        "Profile activation predecessor does not match the Host pointer",
+                    )
+                if pointers.require(verify_snapshot=True) != predecessor:
+                    raise RuntimeSurfaceError(
+                        RuntimeSurfaceErrorCode.STALE_REVISION,
+                        "Profile activation predecessor changed while reading",
+                    )
+                deadline.checkpoint()
+                return {
+                    "profile_id": predecessor.profile_id,
+                    "activation_id": predecessor.activation_id,
+                }
+            except ProfileResolutionDenied as error:
+                raise _map_profile_error(error) from error
+            except RuntimeSurfaceError:
+                raise
+            except (OSError, RuntimeError, ValueError) as error:
+                raise RuntimeSurfaceError(
+                    RuntimeSurfaceErrorCode.API_FAILURE,
+                    "canonical Profile predecessor is unavailable",
+                ) from error
+
+        return self._run_read("canonical Profile predecessor timed out", read)
 
     def read_profile(
         self,
