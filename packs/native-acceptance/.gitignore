@@ -1,0 +1,4 @@
+provider/target/
+staged/
+!provider/wit/deps/
+!provider/wit/deps/core.wit

@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/tobkiri-canon",
+  "crates/tobkiri-wit",
+  "crates/tobkiri-manifest",
+  "crates/tobkiri-profile",
+  "crates/tobkiri-flow",
+  "crates/tobkiri-gate",
+  "crates/tobkiri-store",
+  "crates/tobkiri-wasm",
+  "crates/tobkiri-core",
+  "crates/tobkiri-cli",
+  "crates/tobkiri-e2e",
+  "tobkiri_launcher/core-host",
+]
+exclude = ["packs", "crates/test-guests", "vendor/wasmtime", "vendor/wasmtime-internal-fiber", "pack-shell", "tobkiri_launcher/src-tauri", "tobkiri_launcher/windows-packaging-checks", "tobkiri_runtime/docs/examples/rust_pack"]
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+[workspace.dependencies]
+tobkiri-canon = { path = "crates/tobkiri-canon" }
+tobkiri-wit = { path = "crates/tobkiri-wit" }
+tobkiri-manifest = { path = "crates/tobkiri-manifest" }
+tobkiri-profile = { path = "crates/tobkiri-profile" }
+tobkiri-flow = { path = "crates/tobkiri-flow" }
+tobkiri-gate = { path = "crates/tobkiri-gate" }
+tobkiri-store = { path = "crates/tobkiri-store" }
+tobkiri-wasm = { path = "crates/tobkiri-wasm" }
+tobkiri-core = { path = "crates/tobkiri-core" }
+tobkiri-cli = { path = "crates/tobkiri-cli" }
+tobkiri-e2e = { path = "crates/tobkiri-e2e" }
+anyhow = { version = "=1.0.104" }
+async-trait = { version = "=0.1.92" }
+base64 = { version = "=0.22.1" }
+bytes = { version = "=1.12.1" }
+chacha20poly1305 = { version = "=0.10.1" }
+clap = { version = "=4.6.7", features = ["derive"] }
+dirs = { version = "=6.0.0" }
+ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }
+futures = { version = "=0.3.34" }
+futures-util = { version = "=0.3.34" }
+getrandom = { version = "=0.3.4" }
+hex = { version = "=0.4.3" }
+hmac = { version = "=0.12.1" }
+keyring = { version = "=3.6.3", features = ["apple-native", "windows-native", "linux-native"] }
+libc = { version = "=0.2.190" }
+rand = { version = "=0.8.8" }
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "stream", "json"] }
+rusqlite = { version = "=0.40.2", features = ["bundled", "hooks"] }
+ryu = { version = "=1.0.23" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["arbitrary_precision"] }
+sha2 = { version = "=0.10.9" }
+tar = { version = "=0.4.46" }
+tempfile = { version = "=3.27.0" }
+thiserror = { version = "=2.0.21" }
+tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs", "signal", "net"] }
+tokio-util = { version = "=0.7.20", features = ["rt"] }
+ulid = { version = "=1.2.1" }
+url = { version = "=2.5.8" }
+wat = { version = "=1.252.0" }
+wit-component = { version = "=0.252.0" }
+wit-bindgen = { version = "=0.62.0" }
+wit-parser = { version = "=0.252.0" }
+wasmtime = { version = "=47.0.4", default-features = false, features = ["runtime", "cranelift", "component-model", "async", "cache", "std", "parallel-compilation", "anyhow"] }
+wasmtime-wasi = { version = "=47.0.4" }
+zeroize = { version = "=1.9.1" }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[patch.crates-io]
+wasmtime = { path = "vendor/wasmtime" }
+wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
+
+[profile.test]
+debug = 0
+incremental = false

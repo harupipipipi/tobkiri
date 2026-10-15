@@ -1226,5 +1226,73 @@
       "failed": 0,
       "skipped": 0
     }
+  },
+  "m5_launcher_preparation": {
+    "status": "implemented_source_native_unverified",
+    "core_host_internal_dependencies": [
+      "tobkiri-core"
+    ],
+    "local_checks": {
+      "rust_adapter": {
+        "passed": 4,
+        "failed": 0
+      },
+      "renderer_and_actual_sdk": {
+        "passed": 8,
+        "failed": 0
+      },
+      "frontend_lint": "passed",
+      "separate_ui_build": "passed",
+      "owned_clippy": "passed"
+    },
+    "native_feature_typecheck": "passed_macos_checkpoint_final_acl_scope_recheck_pending",
+    "native_tauri_build": "not_run",
+    "native_isolation_acceptance": "open",
+    "guest_ui_attachment_lifecycle": "open",
+    "non_macos_complete_approval_renderer": "open",
+    "legacy_default_startup": "preserved",
+    "retired_features": 0,
+    "receipt": ".work/evidence/m5-launcher-preparation-receipt.json",
+    "non_macos_owned_picker_renderer": "open",
+    "swe_b1_b6": {
+      "status": "source_fixed_native_unverified",
+      "rust_contract_tests": {
+        "passed": 8,
+        "failed": 0
+      },
+      "js_sdk_config_tests": {
+        "passed": 9,
+        "failed": 0
+      },
+      "guest_slot_guard": "supplementary_not_provenance",
+      "guest_wasm_unavailable_path": "separate_core_wasm_owner",
+      "caller_url": "top_level_not_frame_origin_proof",
+      "shutdown_budget_seconds": 155,
+      "forced_shutdown_audit_completion": "unconfirmed",
+      "core_build_appmanifest_commands": 8,
+      "native_run": "not_run",
+      "receipt": ".work/evidence/m5-launcher-b1-b6-receipt.json",
+      "generated_appmanifest_closed_eight": "pending_final_producer_scope_verification"
+    },
+    "native_typecheck_checkpoint": {
+      "target": "aarch64-apple-darwin",
+      "rustc": "1.94.0",
+      "status": "passed_before_final_acl_scope_change",
+      "command": "cargo check --offline --locked --lib --no-default-features --features core-host --manifest-path tobkiri_launcher/src-tauri/Cargo.toml",
+      "jobs": 2,
+      "debug": 0,
+      "incremental": false,
+      "elapsed_seconds": 8.04,
+      "minimum_available_gib": 5.48,
+      "linked_or_run": false,
+      "ui_regressions_passed": 9,
+      "generated_acl_before_scope": {
+        "commands": 47,
+        "permissions": 94
+      },
+      "final_acl_scope": "source_only_pending_capacity_restoration",
+      "capacity_floor_gib": 5,
+      "receipt": ".work/evidence/m5-native-typecheck-capacity-pause.json"
+    }
   }
 }

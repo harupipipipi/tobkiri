@@ -31,6 +31,19 @@ pub(crate) fn build_alert(
     accept: &str,
     detail: &str,
 ) -> Result<objc2::rc::Retained<objc2_app_kit::NSAlert>, String> {
+    build_alert_with_warning(mtm, screen_size, title, explanation, accept, detail, false)
+}
+
+#[cfg(target_os = "macos")]
+fn build_alert_with_warning(
+    mtm: objc2::MainThreadMarker,
+    screen_size: objc2_foundation::NSSize,
+    title: &str,
+    explanation: &str,
+    accept: &str,
+    detail: &str,
+    dangerous: bool,
+) -> Result<objc2::rc::Retained<objc2_app_kit::NSAlert>, String> {
     use objc2::MainThreadOnly;
     use objc2_app_kit::{
         NSAlert, NSAlertStyle, NSAutoresizingMaskOptions, NSFont, NSScrollView, NSTextView,
@@ -38,7 +51,11 @@ pub(crate) fn build_alert(
     use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
     let (mut width, mut height) = accessory_size(screen_size.width, screen_size.height)?;
     let alert = NSAlert::new(mtm);
-    alert.setAlertStyle(NSAlertStyle::Warning);
+    alert.setAlertStyle(if dangerous {
+        NSAlertStyle::Critical
+    } else {
+        NSAlertStyle::Warning
+    });
     alert.setMessageText(&NSString::from_str(title));
     alert.setInformativeText(&NSString::from_str(explanation));
     let confirm = alert.addButtonWithTitle(&NSString::from_str(accept));
@@ -100,6 +117,70 @@ pub(crate) fn show(
     plan: &Value,
     nonce: &str,
 ) -> Result<bool, String> {
+    let detail = full_detail(plan, nonce)?;
+    let digest = plan
+        .get("plan_digest")
+        .and_then(Value::as_str)
+        .ok_or("Native plan identity is missing")?;
+    let explanation = format!("{explanation}\n\nPlan: {digest}\nRead the complete plan below. This review expires in four minutes.");
+    show_detail(window, title, &explanation, accept, &detail)
+}
+
+/// Reuse the bounded, scrollable native sheet for a Core-produced review.
+#[cfg(target_os = "macos")]
+pub(crate) fn show_detail(
+    window: &tauri::WebviewWindow,
+    title: &str,
+    explanation: &str,
+    accept: &str,
+    detail: &str,
+) -> Result<bool, String> {
+    show_detail_cancellable(
+        window,
+        title,
+        explanation,
+        accept,
+        detail,
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
+}
+
+/// Cancellation retires only this owned native sheet, never a global modal.
+#[cfg(target_os = "macos")]
+pub(crate) fn show_detail_cancellable(
+    window: &tauri::WebviewWindow,
+    title: &str,
+    explanation: &str,
+    accept: &str,
+    detail: &str,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<bool, String> {
+    show_detail_cancellable_with_warning(
+        window,
+        title,
+        explanation,
+        accept,
+        detail,
+        cancelled,
+        false,
+    )
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn show_detail_cancellable_with_warning(
+    window: &tauri::WebviewWindow,
+    title: &str,
+    explanation: &str,
+    accept: &str,
+    detail: &str,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    dangerous: bool,
+) -> Result<bool, String> {
+    if detail.len() > 512 * 1024 {
+        return Err("Native review exceeds its display limit".into());
+    }
+    let detail = detail.to_owned();
+    let explanation = explanation.to_owned();
     use block2::RcBlock;
     use dispatch2::{DispatchQueue, MainThreadBound};
     use objc2::{rc::Retained, MainThreadMarker};
@@ -122,17 +203,11 @@ pub(crate) fn show(
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .map_err(|_| "A Native Host review is already open")?;
     let _lease = ReviewLease;
-    let detail = full_detail(plan, nonce)?;
-    let digest = plan
-        .get("plan_digest")
-        .and_then(Value::as_str)
-        .ok_or("Native plan identity is missing")?;
-    let explanation = format!("{explanation}\n\nPlan: {digest}\nRead the complete plan below. This review expires in four minutes.");
     let title = title.to_owned();
     let accept = accept.to_owned();
     let window = window.clone();
     let deadline = Instant::now() + Duration::from_secs(REVIEW_SECONDS);
-    let expired = Arc::new(AtomicBool::new(false));
+    let expired = cancelled;
     let task_expired = expired.clone();
     let (result_tx, result_rx) = std::sync::mpsc::channel();
     let app = window.app_handle().clone();
@@ -156,7 +231,15 @@ pub(crate) fn show(
             if parent.attachedSheet().is_some() {
                 return Err("Finish the existing Native sheet before this review".into());
             }
-            let alert = build_alert(mtm, visible.size, &title, &explanation, &accept, &detail)?;
+            let alert = build_alert_with_warning(
+                mtm,
+                visible.size,
+                &title,
+                &explanation,
+                &accept,
+                &detail,
+                dangerous,
+            )?;
             let owned = Arc::new(MainThreadBound::new((parent.clone(), alert.clone()), mtm));
             let (done_tx, done_rx) = std::sync::mpsc::channel();
             let callback_tx = result_tx.clone();
@@ -172,8 +255,18 @@ pub(crate) fn show(
             // No global modal cancellation and no main-thread join. The
             // watcher retains this exact alert until its one-shot completion.
             std::thread::spawn(move || {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if done_rx.recv_timeout(remaining).is_err() {
+                loop {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() || task_expired.load(Ordering::Acquire) {
+                        break;
+                    }
+                    match done_rx.recv_timeout(remaining.min(Duration::from_millis(100))) {
+                        Ok(()) => return,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+                {
                     task_expired.store(true, Ordering::Release);
                     DispatchQueue::main().exec_async(move || {
                         if let Some(mtm) = MainThreadMarker::new() {

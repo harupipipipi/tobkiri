@@ -1,0 +1,92 @@
+{
+  "files": [
+    {
+      "path": "app.js",
+      "sha256": "sha256:c66ae9ce7d277419ac1d4ea1ae6ca101fd0930118f4145460eefc2b38d6a5822",
+      "size": 5835
+    },
+    {
+      "path": "float.js",
+      "sha256": "sha256:385b6813a8582024df10dba4cbb363042d57234848723b2c8bc2a77616735890",
+      "size": 1570
+    },
+    {
+      "path": "index.html",
+      "sha256": "sha256:56ca9c8657ed03e1cb488c76e7bfb131e734a132153e96c17f340ef0344e3bfa",
+      "size": 1599
+    },
+    {
+      "path": "ports.js",
+      "sha256": "sha256:0950b3311192a2bf4cf6f4a6630844aa879e2bf77731b0399ef590959e5e5de6",
+      "size": 5277
+    },
+    {
+      "path": "style.css",
+      "sha256": "sha256:4facfeebd317d2cbbd8c8bab4eb0f276b62b60fb81b33b968fff04d92016509b",
+      "size": 729
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.native-acceptance-ui",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 10000,
+      "max_iterations": 4,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.native-acceptance-provider.review@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 100000000,
+      "memory_mib": 64,
+      "output_bytes": 65536,
+      "table_elements": 16384,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.native-acceptance-provider.review",
+        "version": "1.0"
+      }
+    ],
+    "provides": [],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "kind": "data"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": {
+    "entry": "index.html",
+    "ports_used": [
+      "local.native-acceptance-provider.review@1.0"
+    ]
+  },
+  "version": "0.1.0"
+}

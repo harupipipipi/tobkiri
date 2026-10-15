@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tobkiri Launcher</title></head>
+  <body>
+    <form id="profile-form"><label>Profile <input id="profile-id" required maxlength="128" autocomplete="off"></label><button>Start</button><button id="stop" type="button">Stop</button></form>
+    <p id="status" role="status"></p>
+    <main id="pack-ui"></main>
+    <section aria-label="Terminal"><pre id="terminal-output"></pre><form id="terminal-form" hidden><label id="terminal-prompt"></label><input id="terminal-input" autocomplete="off" maxlength="65536"><button>Submit</button></form></section>
+    <script type="module" src="/src/core-host/main.ts"></script>
+  </body>
+</html>

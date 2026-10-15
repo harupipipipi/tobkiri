@@ -149,3 +149,97 @@ Final source lint passed Ruff and mypy (571 files). All nine normal freshness ch
 Retained receipts and logs are outside the verification checkout under `.work/evidence/`: `m0-final-verification-results.json`, `m0-final-reachability.json`, `m0-verification-final-identity.json`, `m0-pytest-source-final-clean.log`, `m0-pytest-boundaries-final-targeted-clean.log`, the earlier full boundary/tooling logs, and the nine producer-check logs. The feature ledger records these as M0 source verification only; its 69 feature/evidence rows remain open, including exactly eight known browser failures and the inherited native WIP acceptance gap.
 
 The final verification checkout was confirmed clean at its tested source commit before removal. Both original source checkouts still have empty tracked/untracked porcelain status. Parent-owned root/Rust/CI changes were excluded from every M0 commit.
+
+
+## M5 Launcher preparation (native milestone remains open)
+
+The optional `core-host` path embeds Core in the Tauri process through
+`tobkiri_launcher/core-host`, whose only internal dependency is `tobkiri-core`.
+The adapter forwards Core-minted UI tokens, exact declared entry/verified bytes,
+strict canonical calls and cancellation. Core owns permissions, frozen principal,
+epoch/deadline, audit and stream registry; the host has no Pack-specific IDs,
+shapes or routing rules. A separate frontend mounts opaque `allow-scripts`
+iframes and one-use MessageChannels. Its custom scheme has closed CSP/no network,
+finite MIME, exact verified map lookup, no credentials, no cached authority and
+an intended no-native-IPC restriction whose per-OS proof is still open.
+Explicit bundled host capabilities and per-command
+host-origin/window checks supplement Tauri's patched frame invoke-key protection.
+
+Local checks pass: four Rust adapter tests, eight renderer/config/actual SDK
+value-and-stream interoperability tests, frontend lint, the separate UI build,
+and owned-package clippy with warnings denied. Native Rust syntax/format checks
+pass, but these do not establish native typecheck or runtime acceptance. The
+full-dependency clippy attempt separately recorded an inherited CanonValue
+Default derivation warning. Exact source/log fingerprints are retained in
+`.work/evidence/m5-launcher-preparation-receipt.json`.
+
+Generic Open/Update/Quit tray controls, the existing official updater and
+cancellable folder picker remain available in the new source path. The complete
+macOS native review renderer is reused with owned cancellation; terminal/display
+content becomes text. The new non-macOS picker is unavailable until it has an
+owned cancellation handle; its legacy default implementation remains present.
+Other-platform complete approval renderers, native feature
+compilation and each platform's iframe IPC/storage/network/CSP/module/lifecycle
+proof are open. Tauri's documented Linux/Android iframe-origin restriction is an
+explicit acceptance concern. Guest `request-ui-embed` is not registered with a
+Session yet; only verified startup UI attachments are rendered. Profile ceremony
+and all migrated product parity requirements also remain open.
+
+The legacy default startup, Python/PackVM, native handover and all 69 feature
+ledger rows are preserved. No native Tauri/VM build or feature retirement was
+performed. This preparation does not satisfy M5 or authorize a default switch.
+
+
+### SWE Launcher review repairs B1–B6
+
+The six local Launcher findings are repaired in source: non-startup UI slots
+return unavailable before minting; close hides/preserves the primary live
+webview; tray and desktop single-instance reopen restore that same window;
+shutdown is observed by an independent thread with the existing 155-second
+budget; native review contains the complete Core prompt/effect and a distinct
+Dangerous warning/Critical alert; Core AppManifest commands equal exactly its
+eight handlers and capability commands. The legacy default path remains.
+
+Targeted checks pass: eight Rust tests execute the shared slot/lifecycle/
+bounded-wait/full-review contracts and the adapter tests; nine JS tests include
+exact command-set equality, native callback wiring and actual SDK channel
+interoperability. Frontend lint and owned clippy with warnings denied pass.
+These are unit, mock-window and source-wiring checks; no native application was
+built or run. The earlier four/eight test counts remain historical checkpoints.
+
+The host sees the top-level webview URL, not the invoking iframe origin. Native
+IPC/isolation, actual window/tray/second-instance events and Critical appearance
+remain unverified. A caller-controlled startup slot is not provenance: the
+supplementary host guard requires the separate guest Wasm unavailable path until
+real Core attachment bridging. Cleanup failure/deadline/worker loss explicitly
+leave final audit completion unconfirmed before exit. No durable successful
+shutdown or native-isolation claim follows from the bounded-wait unit tests.
+
+### Native typecheck checkpoint and pending producer isolation
+
+The minimal macOS library check passed on `aarch64-apple-darwin`, Rust 1.94:
+`cargo check --offline --locked --lib --no-default-features --features core-host
+--manifest-path tobkiri_launcher/src-tauri/Cargo.toml`, with the shared target,
+two jobs, development debug information disabled and incremental compilation
+disabled. The two preceding failures were repaired in owned build source:
+AppManifest requires a static command slice, and still-compiled legacy handoff
+modules require the existing artifact-policy validation/binding. No policy
+fallback, guard relaxation or legacy resource staging was introduced.
+
+The green checkpoint took 8.04 seconds after dependencies were cached, with
+minimum available capacity 5.480GiB. Nine UI/SDK/config regressions passed after
+those repairs. This is native Rust typecheck evidence only; no application was
+linked or run. Retained legacy modules produce unused/dead-code warnings in the
+optional Core feature; they were not deleted to make the check quiet.
+
+Inspecting actual producer output exposed an additional B6 qualification:
+tauri-build 2.5 reads all `permissions/autogenerated` files, so the existing
+legacy files expanded its generated app ACL to 47 commands/94 permissions even
+though the Core command list is eight. A fresh Core-only OUT_DIR producer scope
+and explicit Core capability selector now prevent that ingestion while keeping
+the legacy source files intact. This final producer-scope source change has not
+yet been compiled: shared disk subsequently fell below the 5GiB floor, and all
+additional builds were stopped. Final generated-ACL verification remains open.
+Receipts are `m5-native-typecheck-third-result.json`, its corresponding log,
+`m5-native-postfix-ui-tests.log`, and `m5-native-typecheck-capacity-pause.json`
+under `.work/evidence`. M5 and every native-isolation acceptance row remain open.

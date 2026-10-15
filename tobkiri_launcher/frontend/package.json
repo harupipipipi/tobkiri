@@ -23,7 +23,8 @@
     "pretest": "npm run generate:contract-map:check && npm run generate:defaults-setup-contract:check",
     "audit": "node scripts/audit.mjs",
     "test": "node --test-concurrency=1 --import tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
-    "tauri": "cd .. && npm exec --prefix frontend -- tauri"
+    "tauri": "cd .. && npm exec --prefix frontend -- tauri",
+    "build:core-host": "vite build --config vite.core-host.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "2.10.1",

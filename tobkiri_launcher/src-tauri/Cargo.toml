@@ -3,6 +3,10 @@ name = "tobkiri-launcher"
 version = "1.0.0-beta.3"
 edition = "2021"
 
+[features]
+default = []
+core-host = ["dep:tobkiri-launcher-core-host", "dep:async-trait", "dep:tokio", "dep:ulid"]
+
 [lib]
 name = "tobkiri_launcher_lib"
 crate-type = ["lib"]
@@ -24,6 +28,10 @@ windows-sys = { version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_Fil
 libc = "0.2"
 
 [dependencies]
+tobkiri-launcher-core-host = { path = "../core-host", optional = true }
+async-trait = { version = "=0.1.92", optional = true }
+tokio = { version = "=1.53.3", features = ["sync", "time"], optional = true }
+ulid = { version = "=1.2.1", optional = true }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-dialog = "2.7.2"
 raw-window-handle = "0.6.2"
@@ -76,3 +84,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[patch.crates-io]
+wasmtime = { path = "../../vendor/wasmtime" }
+wasmtime-internal-fiber = { path = "../../vendor/wasmtime-internal-fiber" }

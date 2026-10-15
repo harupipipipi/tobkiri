@@ -12,6 +12,17 @@
 !/scripts/support/
 !/scripts/support/collect_managed_runtime_bundle.py
 !/tests/
+!/Cargo.toml
+!/Cargo.lock
+!/rust-toolchain.toml
+!/crates/
+!/packs/
+!/sdk/
+!/migration/
+!/vectors/
+!/tools/
+!/vendor/
+!/docs/
 
 # 整理退避用ディレクトリは Git 管理しない
 /others/

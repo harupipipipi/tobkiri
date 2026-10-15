@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = [
+  "guest-sdk",
+  "local.openai-compat-provider",
+  "local.mock-llm",
+  "local.harness-conversation-store",
+  "local.harness-prompt",
+  "local.terminal-input",
+  "local.terminal-output",
+  "local.echo-llm",
+  "local.echo-store",
+  "local.echo-prompt",
+  "local.echo-input",
+  "local.echo-output",
+  "local.pi-adapter",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+[workspace.dependencies]
+wit-bindgen = { version = "=0.62.0" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154" }
+tobkiri-guest-sdk = { path = "guest-sdk" }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+strip = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

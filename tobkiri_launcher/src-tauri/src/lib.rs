@@ -2,6 +2,9 @@
 //!
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 
+#[cfg(feature = "core-host")]
+mod core_host;
+
 mod artifact_integrity;
 mod ci_e2e_app_data;
 mod config;
@@ -3884,12 +3887,17 @@ pub(crate) fn debug_defaultspack_ports_from_env() -> Option<(u16, u16)> {
 }
 
 pub fn run() {
-    let context = tauri::generate_context!();
-    if context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER {
-        shell_runtime::run(context);
-        return;
+    #[cfg(feature = "core-host")]
+    core_host::run();
+    #[cfg(not(feature = "core-host"))]
+    {
+        let context = tauri::generate_context!();
+        if context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER {
+            shell_runtime::run(context);
+            return;
+        }
+        run_launcher(context);
     }
-    run_launcher(context);
 }
 
 fn run_launcher(context: tauri::Context<tauri::Wry>) {
